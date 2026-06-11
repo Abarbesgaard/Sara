@@ -27,10 +27,6 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, _no_llm: bool) -> 
         .unwrap_or_default();
 
     let current_files = db::get_task_files(conn, &task.uuid)?;
-    let selected_file_indices: Vec<usize> = current_files
-        .iter()
-        .filter_map(|f| project_files.iter().position(|pf| pf == f))
-        .collect();
 
     let due_str = task
         .due
@@ -45,12 +41,12 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, _no_llm: bool) -> 
             due: due_str,
             tags: task.tags.join(","),
             selected_deps: vec![],
-            selected_files: selected_file_indices,
+            selected_files: current_files,
         },
         available_deps,
         available_files: project_files,
         suggested_dep_indices: vec![],
-        suggested_file_indices: vec![],
+        suggested_files: vec![],
     };
 
     let mut terminal = tui::init_terminal()?;
@@ -84,18 +80,8 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, _no_llm: bool) -> 
     updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
     db::update_task(conn, &updated)?;
 
-    // Update files
-    let all_files: Vec<String> = db::get_project(conn, &updated.project)?
-        .and_then(|p| p.path)
-        .map(|p| crate::files::collect_project_files(std::path::Path::new(&p)))
-        .unwrap_or_default();
-    let selected_paths: Vec<String> = form
-        .selected_files
-        .iter()
-        .filter_map(|&i| all_files.get(i))
-        .cloned()
-        .collect();
-    db::set_task_files(conn, &updated.uuid, &selected_paths)?;
+    // Update files (paths come directly from the form).
+    db::set_task_files(conn, &updated.uuid, &form.selected_files)?;
 
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
 

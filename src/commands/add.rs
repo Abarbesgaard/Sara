@@ -111,15 +111,10 @@ pub fn run(
             .map(|p| crate::files::collect_project_files(std::path::Path::new(p)))
             .unwrap_or_default();
 
-        // Map suggested files to indices
-        let suggested_file_indices: Vec<usize> = enrichment
+        // Files suggested by the LLM (pre-selected and shown as suggestions).
+        let suggested_files: Vec<String> = enrichment
             .as_ref()
-            .map(|e| {
-                e.relevant_files
-                    .iter()
-                    .filter_map(|f| project_files.iter().position(|pf| pf == f))
-                    .collect()
-            })
+            .map(|e| e.relevant_files.clone())
             .unwrap_or_default();
 
         let priority_init = enrichment
@@ -148,12 +143,12 @@ pub fn run(
                     .unwrap_or_default(),
                 tags: init_tags.join(","),
                 selected_deps: vec![],
-                selected_files: suggested_file_indices.clone(),
+                selected_files: suggested_files.clone(),
             },
             available_deps,
             available_files: project_files,
             suggested_dep_indices: vec![], // could map LLM dep suggestions here
-            suggested_file_indices,
+            suggested_files,
         };
 
         let mut terminal = tui::init_terminal()?;
@@ -187,20 +182,27 @@ pub fn run(
 
     db::insert_task(conn, &mut task)?;
 
-    // Attach selected files
-    let project_files: Vec<String> = db::get_project(conn, &task.project)?
-        .and_then(|p| p.path)
-        .map(|p| crate::files::collect_project_files(std::path::Path::new(&p)))
+    // Attach selected files. Paths come straight from the form (they may include
+    // paths the user typed/fuzzy-picked that aren't strictly in the project).
+    let suggested_paths: std::collections::HashSet<String> = enrichment
+        .as_ref()
+        .map(|e| e.relevant_files.iter().cloned().collect())
         .unwrap_or_default();
 
-    let selected_paths: Vec<String> = form
+    let sourced_files: Vec<(String, String)> = form
         .selected_files
         .iter()
-        .filter_map(|&i| project_files.get(i))
-        .cloned()
+        .map(|p| {
+            let source = if suggested_paths.contains(p) {
+                db::SOURCE_SUGGESTED
+            } else {
+                db::SOURCE_MANUAL
+            };
+            (p.clone(), source.to_string())
+        })
         .collect();
-    if !selected_paths.is_empty() {
-        db::set_task_files(conn, &task.uuid, &selected_paths)?;
+    if !sourced_files.is_empty() {
+        db::set_task_files_sourced(conn, &task.uuid, &sourced_files)?;
     }
 
     // Add selected deps

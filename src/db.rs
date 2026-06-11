@@ -82,6 +82,24 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
             );",
         ),
+        M::up(
+            // Track whether a file was attached by the user ('manual') or
+            // proposed by the LLM ('suggested').
+            "ALTER TABLE task_files ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';",
+        ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS task_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid  TEXT NOT NULL,
+                field      TEXT NOT NULL,
+                old_value  TEXT,
+                new_value  TEXT,
+                changed_at TEXT NOT NULL,
+                FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_history_task
+                ON task_history(task_uuid, changed_at);",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -197,6 +215,15 @@ pub fn insert_task(conn: &Connection, task: &mut Task) -> Result<()> {
             task.time_spent,
         ],
     )?;
+    conn.execute(
+        "INSERT INTO task_history (task_uuid, field, old_value, new_value, changed_at)
+         VALUES (?1, 'created', NULL, ?2, ?3)",
+        params![
+            task.uuid.to_string(),
+            task.description,
+            dt_to_str(&task.entry),
+        ],
+    )?;
     Ok(())
 }
 
@@ -252,6 +279,7 @@ pub fn list_tasks(conn: &Connection, project: Option<&str>) -> Result<Vec<Task>>
 }
 
 pub fn update_task(conn: &Connection, task: &Task) -> Result<()> {
+    let prev = get_task_by_uuid_prefix(conn, &task.uuid.to_string())?;
     conn.execute(
         "UPDATE tasks SET description=?1, project=?2, status=?3, priority=?4, due=?5,
                          modified=?6, end=?7, tags_json=?8, urgency=?9,
@@ -272,6 +300,61 @@ pub fn update_task(conn: &Connection, task: &Task) -> Result<()> {
             task.uuid.to_string(),
         ],
     )?;
+    if let Some(prev) = prev {
+        record_changes(conn, &prev, task)?;
+    }
+    Ok(())
+}
+
+/// Display-ready values for each tracked field, used to diff task revisions.
+fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 7] {
+    [
+        ("description", non_empty(&t.description)),
+        ("project", non_empty(&t.project)),
+        ("status", Some(t.status.to_string())),
+        ("priority", t.priority.as_ref().map(|p| p.label().to_string())),
+        (
+            "due",
+            t.due
+                .map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string()),
+        ),
+        (
+            "tags",
+            if t.tags.is_empty() {
+                None
+            } else {
+                Some(t.tags.join(", "))
+            },
+        ),
+        (
+            "timer",
+            t.started_at.map(|_| "running".to_string()),
+        ),
+    ]
+}
+
+fn non_empty(s: &str) -> Option<String> {
+    if s.trim().is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
+/// Record one history row per tracked field that changed between revisions.
+fn record_changes(conn: &Connection, old: &Task, new: &Task) -> Result<()> {
+    let olds = tracked_field_values(old);
+    let news = tracked_field_values(new);
+    let at = dt_to_str(&new.modified);
+    for ((field, old_val), (_, new_val)) in olds.into_iter().zip(news) {
+        if old_val != new_val {
+            conn.execute(
+                "INSERT INTO task_history (task_uuid, field, old_value, new_value, changed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![new.uuid.to_string(), field, old_val, new_val, at],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -368,15 +451,33 @@ pub fn get_blocking(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
 
 // ── task files ───────────────────────────────────────────────────────────────
 
+/// Source of a task file: manually attached by the user, or suggested by the LLM.
+pub const SOURCE_MANUAL: &str = "manual";
+pub const SOURCE_SUGGESTED: &str = "suggested";
+
+/// Replace all files for a task. Every path is stored with `source`.
 pub fn set_task_files(conn: &Connection, task_uuid: &Uuid, paths: &[String]) -> Result<()> {
+    let sourced: Vec<(String, String)> = paths
+        .iter()
+        .map(|p| (p.clone(), SOURCE_MANUAL.to_string()))
+        .collect();
+    set_task_files_sourced(conn, task_uuid, &sourced)
+}
+
+/// Replace all files for a task, recording each file's source.
+pub fn set_task_files_sourced(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    files: &[(String, String)],
+) -> Result<()> {
     conn.execute(
         "DELETE FROM task_files WHERE task_uuid=?1",
         [task_uuid.to_string()],
     )?;
-    for path in paths {
+    for (path, source) in files {
         conn.execute(
-            "INSERT OR IGNORE INTO task_files (task_uuid, path) VALUES (?1,?2)",
-            params![task_uuid.to_string(), path],
+            "INSERT OR IGNORE INTO task_files (task_uuid, path, source) VALUES (?1,?2,?3)",
+            params![task_uuid.to_string(), path, source],
         )?;
     }
     Ok(())
@@ -390,6 +491,23 @@ pub fn get_task_files(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<String>
         .filter_map(|r| r.ok())
         .collect();
     Ok(paths)
+}
+
+/// Return `(path, source)` pairs for a task.
+pub fn get_task_files_sourced(
+    conn: &Connection,
+    task_uuid: &Uuid,
+) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, source FROM task_files WHERE task_uuid=?1 ORDER BY source DESC, path",
+    )?;
+    let rows = stmt
+        .query_map([task_uuid.to_string()], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
 // ── annotations ──────────────────────────────────────────────────────────────
@@ -430,6 +548,37 @@ pub fn get_annotations(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annota
 pub fn delete_annotation(conn: &Connection, ann_id: i64) -> Result<bool> {
     let n = conn.execute("DELETE FROM annotations WHERE id=?1", [ann_id])?;
     Ok(n > 0)
+}
+
+// ── history ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct HistoryEntry {
+    pub field: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub changed_at: DateTime<Utc>,
+}
+
+/// All recorded changes for a task, oldest first.
+pub fn get_history(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<HistoryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT field, old_value, new_value, changed_at
+         FROM task_history WHERE task_uuid=?1 ORDER BY changed_at ASC, id ASC",
+    )?;
+    let rows = stmt
+        .query_map([task_uuid.to_string()], |row| {
+            let changed_str: String = row.get(3)?;
+            Ok(HistoryEntry {
+                field: row.get(0)?,
+                old_value: row.get(1)?,
+                new_value: row.get(2)?,
+                changed_at: str_to_dt(&changed_str).unwrap_or_else(|_| Utc::now()),
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
 // ── projects ─────────────────────────────────────────────────────────────────
@@ -564,4 +713,74 @@ pub fn refresh_urgency(
         params![urgency, task_uuid.to_string()],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        apply_migrations(&mut conn).unwrap();
+        conn
+    }
+
+    fn seed_task(conn: &Connection) -> Task {
+        let mut task = Task::new("demo".into(), "tk".into());
+        insert_task(conn, &mut task).unwrap();
+        task
+    }
+
+    #[test]
+    fn set_task_files_defaults_to_manual_source() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        set_task_files(&conn, &task.uuid, &["a.rs".into(), "b.rs".into()]).unwrap();
+        let sourced = get_task_files_sourced(&conn, &task.uuid).unwrap();
+        assert!(sourced.iter().all(|(_, s)| s == SOURCE_MANUAL));
+        assert_eq!(sourced.len(), 2);
+    }
+
+    #[test]
+    fn sourced_files_round_trip_and_split() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        set_task_files_sourced(
+            &conn,
+            &task.uuid,
+            &[
+                ("Cargo.toml".into(), SOURCE_MANUAL.into()),
+                (".gitignore".into(), SOURCE_MANUAL.into()),
+                ("src/llm/mod.rs".into(), SOURCE_SUGGESTED.into()),
+            ],
+        )
+        .unwrap();
+
+        let sourced = get_task_files_sourced(&conn, &task.uuid).unwrap();
+        let manual: Vec<_> = sourced
+            .iter()
+            .filter(|(_, s)| s == SOURCE_MANUAL)
+            .map(|(p, _)| p.clone())
+            .collect();
+        let suggested: Vec<_> = sourced
+            .iter()
+            .filter(|(_, s)| s == SOURCE_SUGGESTED)
+            .map(|(p, _)| p.clone())
+            .collect();
+        assert_eq!(manual.len(), 2);
+        assert_eq!(suggested, vec!["src/llm/mod.rs".to_string()]);
+    }
+
+    #[test]
+    fn set_task_files_sourced_replaces_previous() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        set_task_files_sourced(&conn, &task.uuid, &[("x.rs".into(), SOURCE_SUGGESTED.into())])
+            .unwrap();
+        set_task_files_sourced(&conn, &task.uuid, &[("y.rs".into(), SOURCE_MANUAL.into())])
+            .unwrap();
+        let sourced = get_task_files_sourced(&conn, &task.uuid).unwrap();
+        assert_eq!(sourced, vec![("y.rs".to_string(), SOURCE_MANUAL.to_string())]);
+    }
 }

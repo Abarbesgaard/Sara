@@ -66,7 +66,7 @@ fn run() -> Result<()> {
         }
 
         Command::Info { id } => {
-            commands::info::run(&conn, &id)?;
+            commands::info::run(&conn, &cfg, &id)?;
         }
 
         Command::Annotate { id, text } => {

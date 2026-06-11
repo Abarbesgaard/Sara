@@ -34,3 +34,17 @@ pub fn restore_terminal() -> Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen)?;
     Ok(())
 }
+
+/// Temporarily hand the terminal back to the shell (e.g. to run `fzf`).
+pub fn suspend() -> Result<()> {
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
+    Ok(())
+}
+
+/// Re-enter the alternate screen / raw mode after [`suspend`].
+pub fn resume() -> Result<()> {
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    Ok(())
+}
