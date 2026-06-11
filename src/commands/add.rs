@@ -17,7 +17,7 @@ pub fn run(
     priority_override: Option<&str>,
     extra_tags: &[String],
     yes: bool,
-    no_llm: bool,
+    llm: bool,
 ) -> Result<()> {
     // Parse inline tokens
     let mut parsed = parse_add_tokens(words);
@@ -55,8 +55,8 @@ pub fn run(
         last_seen: None,
     });
 
-    // LLM enrichment
-    let enrichment = if !no_llm {
+    // LLM enrichment is opt-in (it adds latency); enable with --llm/--ai.
+    let enrichment = if llm {
         enrich::enrich_task(conn, cfg, &parsed.description, &project_profile)
     } else {
         None
@@ -104,17 +104,11 @@ pub fn run(
             })
             .collect();
 
-        // Project files for the file checklist
+        // Project files *and folders* for the manual picker.
         let project_files: Vec<String> = project_profile
             .path
             .as_deref()
-            .map(|p| crate::files::collect_project_files(std::path::Path::new(p)))
-            .unwrap_or_default();
-
-        // Files suggested by the LLM (pre-selected and shown as suggestions).
-        let suggested_files: Vec<String> = enrichment
-            .as_ref()
-            .map(|e| e.relevant_files.clone())
+            .map(|p| crate::files::collect_project_entries(std::path::Path::new(p)))
             .unwrap_or_default();
 
         let priority_init = enrichment
@@ -143,12 +137,12 @@ pub fn run(
                     .unwrap_or_default(),
                 tags: init_tags.join(","),
                 selected_deps: vec![],
-                selected_files: suggested_files.clone(),
+                selected_files: vec![],
             },
             available_deps,
             available_files: project_files,
             suggested_dep_indices: vec![], // could map LLM dep suggestions here
-            suggested_files,
+            suggested_files: vec![],
         };
 
         let mut terminal = tui::init_terminal()?;
@@ -182,27 +176,10 @@ pub fn run(
 
     db::insert_task(conn, &mut task)?;
 
-    // Attach selected files. Paths come straight from the form (they may include
-    // paths the user typed/fuzzy-picked that aren't strictly in the project).
-    let suggested_paths: std::collections::HashSet<String> = enrichment
-        .as_ref()
-        .map(|e| e.relevant_files.iter().cloned().collect())
-        .unwrap_or_default();
-
-    let sourced_files: Vec<(String, String)> = form
-        .selected_files
-        .iter()
-        .map(|p| {
-            let source = if suggested_paths.contains(p) {
-                db::SOURCE_SUGGESTED
-            } else {
-                db::SOURCE_MANUAL
-            };
-            (p.clone(), source.to_string())
-        })
-        .collect();
-    if !sourced_files.is_empty() {
-        db::set_task_files_sourced(conn, &task.uuid, &sourced_files)?;
+    // Attach selected files/folders. All are user-picked (manual). Paths come
+    // straight from the form and may include arbitrary paths the user typed.
+    if !form.selected_files.is_empty() {
+        db::set_task_files(conn, &task.uuid, &form.selected_files)?;
     }
 
     // Add selected deps

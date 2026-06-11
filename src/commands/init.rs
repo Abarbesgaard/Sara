@@ -190,7 +190,6 @@ fn seed_tasks(conn: &Connection, cfg: &Config, project: &Project) -> Result<()> 
         project_goal: project.goal.clone(),
         project_stack: project.stack.clone(),
         project_notes: project.notes.clone(),
-        file_tree_summary: String::new(),
         existing_tasks: vec![],
     };
     let provider = crate::llm::build_provider(cfg);

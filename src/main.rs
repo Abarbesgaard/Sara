@@ -65,7 +65,7 @@ fn run() -> Result<()> {
             commands::reset::run(&mut conn, &cfg, project.as_deref(), yes)?;
         }
 
-        Command::Add { words, project, priority, tag, yes, no_llm } => {
+        Command::Add { words, project, priority, tag, yes, llm } => {
             commands::add::run(
                 &conn,
                 &cfg,
@@ -74,7 +74,7 @@ fn run() -> Result<()> {
                 priority.as_deref(),
                 &tag,
                 yes,
-                no_llm,
+                llm,
             )?;
         }
 

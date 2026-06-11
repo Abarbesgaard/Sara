@@ -53,12 +53,12 @@ pub enum Command {
         /// Tag (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// Accept all LLM proposals without the TUI review form
+        /// Accept all values without the TUI review form
         #[arg(short, long)]
         yes: bool,
-        /// Skip LLM enrichment
-        #[arg(long)]
-        no_llm: bool,
+        /// Enrich with the LLM (priority/due/tags/dependency suggestions). Off by default.
+        #[arg(long, visible_alias = "ai")]
+        llm: bool,
     },
 
     /// Show full details of a task

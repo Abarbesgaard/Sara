@@ -16,7 +16,6 @@ pub struct EnrichmentRequest {
     pub project_goal: Option<String>,
     pub project_stack: Option<String>,
     pub project_notes: Option<String>,
-    pub file_tree_summary: String,
     /// Existing pending task descriptions for dep suggestion context
     pub existing_tasks: Vec<(String, String)>, // (uuid_short, description)
 }
@@ -31,8 +30,6 @@ pub struct EnrichmentResponse {
     pub tags: Vec<String>,
     /// UUIDs (short prefix) of existing tasks this one should depend on
     pub suggested_dependencies: Vec<String>,
-    /// File paths (relative) that are likely relevant to this task
-    pub relevant_files: Vec<String>,
     /// Optional cleaned-up version of the description
     pub description_suggestion: Option<String>,
 }
@@ -65,12 +62,6 @@ pub fn system_prompt(req: &EnrichmentRequest) -> String {
     if let Some(ref notes) = req.project_notes {
         parts.push(format!("Notes/conventions: {notes}"));
     }
-    if !req.file_tree_summary.is_empty() {
-        parts.push(format!(
-            "Project file tree (excerpt):\n{}",
-            req.file_tree_summary
-        ));
-    }
     if !req.existing_tasks.is_empty() {
         let list = req
             .existing_tasks
@@ -91,8 +82,7 @@ pub fn user_prompt(req: &EnrichmentRequest) -> String {
         "Task: \"{}\"\n\n\
          Respond with a JSON object matching the schema. \
          Use null for unknown fields. \
-         Only suggest dependencies from the existing tasks list above. \
-         Only suggest file paths from the project tree above.",
+         Only suggest dependencies from the existing tasks list above.",
         req.description
     )
 }
