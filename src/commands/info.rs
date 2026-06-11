@@ -19,6 +19,7 @@ struct Detail {
     blocked_by: Vec<String>,
     blocking: Vec<String>,
     files: Vec<String>,
+    annotations: Vec<crate::db::Annotation>,
 }
 
 pub fn run(conn: &Connection, id_or_uuid: &str) -> Result<()> {
@@ -40,6 +41,7 @@ pub fn run(conn: &Connection, id_or_uuid: &str) -> Result<()> {
         blocked_by: resolve_ids(db::get_blockers(conn, &task.uuid)?),
         blocking: resolve_ids(db::get_blocking(conn, &task.uuid)?),
         files: db::get_task_files(conn, &task.uuid)?,
+        annotations: db::get_annotations(conn, &task.uuid)?,
         task,
     };
 
@@ -185,6 +187,18 @@ fn render(f: &mut Frame, d: &Detail, scroll: u16) {
             )]));
         }
     }
+    if !d.annotations.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(section("Annotations / comments"));
+        for a in &d.annotations {
+            let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+            lines.push(Line::from(vec![
+                Span::styled(format!("  [{}] ", a.id), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{date}  "), Style::default().fg(Color::DarkGray)),
+                Span::raw(a.text.clone()),
+            ]));
+        }
+    }
 
     let para = Paragraph::new(lines)
         .block(
@@ -257,5 +271,9 @@ fn print_plain(d: &Detail) {
     }
     for file in &d.files {
         println!("{:<14}{}", "File", file);
+    }
+    for a in &d.annotations {
+        let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+        println!("{:<14}[{}] {} {}", "Annotation", a.id, date, a.text);
     }
 }

@@ -73,6 +73,15 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
             "ALTER TABLE tasks ADD COLUMN started_at TEXT;
              ALTER TABLE tasks ADD COLUMN time_spent INTEGER NOT NULL DEFAULT 0;",
         ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS annotations (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid TEXT NOT NULL,
+                text      TEXT NOT NULL,
+                entry     TEXT NOT NULL,
+                FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+            );",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -381,6 +390,46 @@ pub fn get_task_files(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<String>
         .filter_map(|r| r.ok())
         .collect();
     Ok(paths)
+}
+
+// ── annotations ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct Annotation {
+    pub id: i64,
+    pub text: String,
+    pub entry: DateTime<Utc>,
+}
+
+pub fn add_annotation(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO annotations (task_uuid, text, entry) VALUES (?1,?2,?3)",
+        params![task_uuid.to_string(), text, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+pub fn get_annotations(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annotation>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, text, entry FROM annotations WHERE task_uuid=?1 ORDER BY entry ASC",
+    )?;
+    let anns = stmt
+        .query_map([task_uuid.to_string()], |row| {
+            let entry_str: String = row.get(2)?;
+            Ok(Annotation {
+                id: row.get(0)?,
+                text: row.get(1)?,
+                entry: str_to_dt(&entry_str).unwrap_or_else(|_| Utc::now()),
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(anns)
+}
+
+pub fn delete_annotation(conn: &Connection, ann_id: i64) -> Result<bool> {
+    let n = conn.execute("DELETE FROM annotations WHERE id=?1", [ann_id])?;
+    Ok(n > 0)
 }
 
 // ── projects ─────────────────────────────────────────────────────────────────

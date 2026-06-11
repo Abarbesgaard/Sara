@@ -26,8 +26,9 @@ fn run() -> Result<()> {
     if args.len() == 2 && args[1].parse::<i64>().is_ok() {
         args.insert(1, "info".to_string());
     } else if args.len() >= 3 && args[1].parse::<i64>().is_ok() {
-        const ACTIONS: &[&str] =
-            &["start", "stop", "done", "delete", "modify", "info", "dep"];
+        const ACTIONS: &[&str] = &[
+            "start", "stop", "done", "delete", "modify", "info", "dep", "annotate", "attach",
+        ];
         if ACTIONS.contains(&args[2].as_str()) {
             let id = args.remove(1); // remove id
             let action = args.remove(1); // remove action (now at idx 1)
@@ -66,6 +67,18 @@ fn run() -> Result<()> {
 
         Command::Info { id } => {
             commands::info::run(&conn, &id)?;
+        }
+
+        Command::Annotate { id, text } => {
+            commands::annotate::annotate(&conn, &id, &text)?;
+        }
+
+        Command::Denotate { annotation_id } => {
+            commands::annotate::denotate(&conn, annotation_id)?;
+        }
+
+        Command::Attach { id, path } => {
+            commands::annotate::attach(&conn, &id, &path)?;
         }
 
         Command::List { all, project } => {

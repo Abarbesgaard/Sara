@@ -57,6 +57,29 @@ pub enum Command {
         id: String,
     },
 
+    /// Add a comment, note, or PR/URL link to a task
+    Annotate {
+        /// Task id or uuid prefix
+        id: String,
+        /// The comment text or URL
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+    },
+
+    /// Remove an annotation by its number (see `tk info`)
+    Denotate {
+        /// Annotation id (the number shown in the detail view)
+        annotation_id: i64,
+    },
+
+    /// Attach a file path or URL to a task
+    Attach {
+        /// Task id or uuid prefix
+        id: String,
+        /// File path (relative to project) or URL
+        path: String,
+    },
+
     /// List tasks
     List {
         /// Show tasks for all projects (default: current project only)

@@ -1,4 +1,5 @@
 pub mod add;
+pub mod annotate;
 pub mod delete;
 pub mod dep;
 pub mod done;
