@@ -556,7 +556,7 @@ fn render(f: &mut Frame, st: &EditState) {
     }
     if !d.annotations.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Annotations / comments"));
+        lines.push(section("Comments"));
         for a in &d.annotations {
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
             lines.push(Line::from(vec![

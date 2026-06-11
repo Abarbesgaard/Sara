@@ -27,8 +27,8 @@ fn run() -> Result<()> {
         args.insert(1, "info".to_string());
     } else if args.len() >= 3 && args[1].parse::<i64>().is_ok() {
         const ACTIONS: &[&str] = &[
-            "start", "stop", "done", "delete", "modify", "info", "dep", "annotate", "attach",
-            "link",
+            "start", "stop", "done", "delete", "modify", "info", "dep", "annotate", "comment",
+            "attach", "link",
         ];
         if ACTIONS.contains(&args[2].as_str()) {
             let id = args.remove(1); // remove id
@@ -41,7 +41,7 @@ fn run() -> Result<()> {
     let command_label = args[1..].join(" ");
     let cli = Cli::parse_from(args);
     let cfg = config::load()?;
-    let conn = db::open()?;
+    let mut conn = db::open()?;
 
     // Snapshot task writes so this invocation can be reverted later. `undo`
     // itself is excluded so it never records (or undoes) its own work.
@@ -59,6 +59,10 @@ fn run() -> Result<()> {
                 yes,
                 no_llm,
             )?;
+        }
+
+        Command::Reset { project, yes } => {
+            commands::reset::run(&mut conn, &cfg, project.as_deref(), yes)?;
         }
 
         Command::Add { words, project, priority, tag, yes, no_llm } => {

@@ -29,6 +29,16 @@ pub enum Command {
         no_llm: bool,
     },
 
+    /// Nuke a project: delete all its tasks and profile (run `tk init` to recreate)
+    Reset {
+        /// Project to reset (defaults to the current project)
+        #[arg(long, short)]
+        project: Option<String>,
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
+
     /// Add a new task
     Add {
         /// Task description and optional inline tokens (project:x +tag pri:H)
@@ -58,6 +68,7 @@ pub enum Command {
     },
 
     /// Add a comment, note, or PR/URL link to a task
+    #[command(visible_alias = "comment")]
     Annotate {
         /// Task id or uuid prefix
         id: String,
@@ -66,9 +77,10 @@ pub enum Command {
         text: Vec<String>,
     },
 
-    /// Remove an annotation by its number (see `tk info`)
+    /// Remove a comment by its number (see `tk info`)
+    #[command(visible_alias = "uncomment")]
     Denotate {
-        /// Annotation id (the number shown in the detail view)
+        /// Comment id (the number shown in the detail view)
         annotation_id: i64,
     },
 

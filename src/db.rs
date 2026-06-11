@@ -975,6 +975,42 @@ pub fn get_project(conn: &Connection, name: &str) -> Result<Option<Project>> {
     Ok(rows.next().transpose()?)
 }
 
+/// How many tasks a project currently owns (any status).
+pub fn count_project_tasks(conn: &Connection, name: &str) -> Result<usize> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tasks WHERE project=?1",
+        [name],
+        |row| row.get(0),
+    )?;
+    Ok(n as usize)
+}
+
+/// Nuke a project: delete all of its tasks (cascading to their dependencies,
+/// files, links, annotations and history), purge undo-log rows for those tasks,
+/// and remove the project profile itself. Returns the number of tasks deleted.
+pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
+    let tx = conn.transaction()?;
+
+    // Collect the task uuids first so we can clean the undo log (no FK cascade).
+    let uuids: Vec<String> = {
+        let mut stmt = tx.prepare("SELECT uuid FROM tasks WHERE project=?1")?;
+        let rows = stmt.query_map([name], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    for uuid in &uuids {
+        tx.execute("DELETE FROM undo_log WHERE task_uuid=?1", [uuid])?;
+    }
+
+    // Cascades remove dependencies, task_files, annotations, task_history,
+    // and task_links for each deleted task.
+    let deleted = tx.execute("DELETE FROM tasks WHERE project=?1", [name])?;
+    tx.execute("DELETE FROM projects WHERE name=?1", [name])?;
+
+    tx.commit()?;
+    Ok(deleted)
+}
+
 // ── urgency ──────────────────────────────────────────────────────────────────
 
 pub fn compute_urgency(
@@ -1136,6 +1172,40 @@ mod tests {
             .collect();
         assert_eq!(removals.len(), 1);
         assert_eq!(removals[0].old_value.as_deref(), Some("temp note"));
+    }
+
+    #[test]
+    fn reset_project_nukes_tasks_children_and_profile() {
+        let mut conn = mem();
+        let task = seed_task(&conn);
+        // Attach children that should cascade away.
+        set_task_files(&conn, &task.uuid, &["src/main.rs".into()]).unwrap();
+        add_link(&conn, &task.uuid, "https://example.com", None).unwrap();
+        add_annotation(&conn, &task.uuid, "a note").unwrap();
+        save_project_profile(
+            &conn,
+            &crate::model::Project {
+                name: "tk".into(),
+                path: None,
+                goal: Some("g".into()),
+                stack: None,
+                conventions: None,
+                notes: None,
+                initialized_at: None,
+                last_seen: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(count_project_tasks(&conn, "tk").unwrap(), 1);
+        let deleted = reset_project(&mut conn, "tk").unwrap();
+        assert_eq!(deleted, 1);
+
+        assert_eq!(count_project_tasks(&conn, "tk").unwrap(), 0);
+        assert!(get_project(&conn, "tk").unwrap().is_none());
+        assert!(get_task_files(&conn, &task.uuid).unwrap().is_empty());
+        assert!(get_links(&conn, &task.uuid).unwrap().is_empty());
+        assert!(get_annotations(&conn, &task.uuid).unwrap().is_empty());
     }
 
     #[test]
