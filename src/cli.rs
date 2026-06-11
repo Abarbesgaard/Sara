@@ -67,6 +67,18 @@ pub enum Command {
         project: Option<String>,
     },
 
+    /// Start working on a task (begins time tracking, marks it active)
+    Start {
+        /// Task id or uuid prefix
+        id: String,
+    },
+
+    /// Stop working on a task (accumulates time spent)
+    Stop {
+        /// Task id or uuid prefix
+        id: String,
+    },
+
     /// Mark a task as done
     Done {
         /// Task id or uuid prefix

@@ -30,6 +30,12 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
         );
     }
 
+    // Finalize any running timer
+    if let Some(started) = task.started_at {
+        task.time_spent += (Utc::now() - started).num_seconds().max(0);
+        task.started_at = None;
+    }
+
     task.status = Status::Completed;
     task.end = Some(Utc::now());
     task.modified = Utc::now();

@@ -19,10 +19,21 @@ use std::process::ExitCode;
 use cli::{Cli, Command, DepAction};
 
 fn run() -> Result<()> {
-    // Allow `tk <id>` as a shorthand for `tk info <id>` (Taskwarrior-style).
+    // Taskwarrior-style shorthands:
+    //   `tk <id>`          -> `tk info <id>`
+    //   `tk <id> <action>` -> `tk <action> <id>`   (start/stop/done/delete/modify/info/dep)
     let mut args: Vec<String> = std::env::args().collect();
     if args.len() == 2 && args[1].parse::<i64>().is_ok() {
         args.insert(1, "info".to_string());
+    } else if args.len() >= 3 && args[1].parse::<i64>().is_ok() {
+        const ACTIONS: &[&str] =
+            &["start", "stop", "done", "delete", "modify", "info", "dep"];
+        if ACTIONS.contains(&args[2].as_str()) {
+            let id = args.remove(1); // remove id
+            let action = args.remove(1); // remove action (now at idx 1)
+            args.insert(1, action);
+            args.insert(2, id);
+        }
     }
     let cli = Cli::parse_from(args);
     let cfg = config::load()?;
@@ -59,6 +70,14 @@ fn run() -> Result<()> {
 
         Command::List { all, project } => {
             commands::list::run(&conn, &cfg, all, project.as_deref())?;
+        }
+
+        Command::Start { id } => {
+            commands::timer::start(&conn, &cfg, &id)?;
+        }
+
+        Command::Stop { id } => {
+            commands::timer::stop(&conn, &cfg, &id)?;
         }
 
         Command::Done { id, force } => {

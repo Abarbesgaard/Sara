@@ -81,6 +81,38 @@ pub struct Task {
     pub end: Option<DateTime<Utc>>,
     pub tags: Vec<String>,
     pub urgency: f64,
+    /// Set while the task is actively being worked on (time tracking)
+    pub started_at: Option<DateTime<Utc>>,
+    /// Accumulated active time in seconds
+    pub time_spent: i64,
+}
+
+impl Task {
+    pub fn is_active(&self) -> bool {
+        self.started_at.is_some()
+    }
+
+    /// Total time spent including the current active session.
+    pub fn total_time_spent(&self) -> i64 {
+        let live = self
+            .started_at
+            .map(|s| (Utc::now() - s).num_seconds().max(0))
+            .unwrap_or(0);
+        self.time_spent + live
+    }
+}
+
+pub fn format_duration(secs: i64) -> String {
+    if secs <= 0 {
+        return "0m".to_string();
+    }
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    if h > 0 {
+        format!("{h}h {m}m")
+    } else {
+        format!("{m}m")
+    }
 }
 
 impl Task {
@@ -99,6 +131,8 @@ impl Task {
             end: None,
             tags: vec![],
             urgency: 0.0,
+            started_at: None,
+            time_spent: 0,
         }
     }
 }

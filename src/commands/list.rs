@@ -46,7 +46,7 @@ pub fn run(
 
     // Header
     let header = format!(
-        "{id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {desc}",
+        " {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {desc}",
         id = "ID",
         pri = "PRI",
         proj = "PROJECT",
@@ -79,10 +79,13 @@ pub fn run(
         let proj_display = truncate(&task.project, 16);
         let desc_display = truncate(&task.description, 60);
 
+        let active_marker = if task.is_active() { "●" } else { " " };
+
         // Colorize
         if no_color {
             println!(
-                "{id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {desc}",
+                "{active}{id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {desc}",
+                active = active_marker,
                 id = id_str,
                 pri = pri_str,
                 proj = proj_display,
@@ -98,8 +101,14 @@ pub fn run(
                 None => format!("{GRAY}{pri_str:<4}{RESET}"),
             };
             let due_colored = color_due(&task, &due_str, no_color);
+            let active_col = if task.is_active() {
+                format!("{GREEN}●{RESET}")
+            } else {
+                " ".to_string()
+            };
             println!(
-                "{CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {desc}",
+                "{active}{CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {desc}",
+                active = active_col,
                 id = id_str,
                 pri = pri_colored,
                 proj = proj_display,
