@@ -163,6 +163,20 @@ fn run() -> Result<()> {
             println!("Added checklist item to task {}", task.id.unwrap_or(0));
         }
 
+        Command::Activity { project, all } => {
+            let proj = if all {
+                None
+            } else if let Some(p) = project {
+                Some(p)
+            } else {
+                // Auto-detect from git root
+                let cwd = std::env::current_dir().unwrap_or_default();
+                crate::project::find_git_root(&cwd)
+                    .map(|root| crate::project::project_name_from_root(&root))
+            };
+            commands::activity::run(&conn, proj.as_deref())?;
+        }
+
         Command::Paths => {
             let cfg_path = config::config_path()?;
             let db_path = config::db_path()?;

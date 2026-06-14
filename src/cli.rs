@@ -194,6 +194,17 @@ pub enum Command {
         text: String,
     },
 
+    /// Show a GitHub-style activity heatmap
+    #[clap(name = "activity", alias = "heat")]
+    Activity {
+        /// Limit to a specific project (defaults to current git project)
+        #[arg(long, short)]
+        project: Option<String>,
+        /// Show activity across all projects
+        #[arg(long, short)]
+        all: bool,
+    },
+
     /// Print config and data directory paths
     Paths,
 
