@@ -486,9 +486,22 @@ fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Result<()> {
 
 fn render(f: &mut Frame, st: &EditState) {
     let area = f.area();
+    let d = &st.detail;
+
+    let history_height: u16 = if d.history.is_empty() {
+        0
+    } else {
+        (d.history.len() as u16 + 2).min(9) // border (2) + up to 7 entries
+    };
 
     let constraints = if st.editing {
-        vec![Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)]
+        if history_height > 0 {
+            vec![Constraint::Min(1), Constraint::Length(history_height), Constraint::Length(3), Constraint::Length(1)]
+        } else {
+            vec![Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)]
+        }
+    } else if history_height > 0 {
+        vec![Constraint::Min(1), Constraint::Length(history_height), Constraint::Length(1)]
     } else {
         vec![Constraint::Min(1), Constraint::Length(1)]
     };
@@ -497,7 +510,6 @@ fn render(f: &mut Frame, st: &EditState) {
         .constraints(constraints)
         .split(area);
 
-    let d = &st.detail;
     let t = &d.task;
     let active = t.is_active();
     let title = format!(
@@ -625,43 +637,7 @@ fn render(f: &mut Frame, st: &EditState) {
             ]));
         }
     }
-    if !d.history.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(section("History"));
-        for h in &d.history {
-            let date = h.changed_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-            // Label column: annotations read as "comment", everything else uses
-            // the raw field name.
-            let label = if h.field == "annotation" { "comment" } else { &h.field };
-            let mut spans = vec![
-                Span::styled(format!("  {date}  "), Style::default().fg(Color::Gray)),
-                Span::styled(format!("{:<11} ", label), Style::default().fg(Color::Cyan)),
-            ];
-            if h.field == "created" {
-                spans.push(Span::raw(h.new_value.clone().unwrap_or_default()));
-            } else if h.field == "annotation" {
-                // Added: only new_value. Removed: only old_value.
-                if let Some(text) = &h.new_value {
-                    spans.push(Span::styled("added: ", Style::default().fg(Color::Green)));
-                    spans.push(Span::raw(text.clone()));
-                } else if let Some(text) = &h.old_value {
-                    spans.push(Span::styled("removed: ", Style::default().fg(Color::Red)));
-                    spans.push(Span::styled(
-                        text.clone(),
-                        Style::default().add_modifier(Modifier::CROSSED_OUT),
-                    ));
-                }
-            } else {
-                spans.push(Span::styled(
-                    h.old_value.clone().unwrap_or_else(|| "—".into()),
-                    Style::default().fg(Color::Gray),
-                ));
-                spans.push(Span::styled(" → ", Style::default().fg(Color::Gray)));
-                spans.push(Span::raw(h.new_value.clone().unwrap_or_else(|| "—".into())));
-            }
-            lines.push(Line::from(spans));
-        }
-    }
+    // History is rendered in its own box at the bottom — not in the main lines.
 
     // Split the main content area horizontally when wide enough for the panel.
     let show_panel = chunks[0].width >= 96;
@@ -700,8 +676,24 @@ fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(git_para, panel);
     }
 
-    // ── Edit bar
+    // ── History box (pinned to bottom, above edit bar and footer)
+    if history_height > 0 {
+        let hist_chunk = chunks[1]; // always chunk[1] when history is shown
+        let hist_lines = history_lines(&d.history);
+        let hist_para = Paragraph::new(hist_lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" History ")
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            )
+            .wrap(Wrap { trim: false });
+        f.render_widget(hist_para, hist_chunk);
+    }
+
+    // ── Edit bar (chunk index depends on whether history box is present)
     if st.editing {
+        let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
         let field = EDIT_FIELDS.get(st.selected).copied().unwrap_or(EditField::Description);
         let (title, border) = if st.due_error {
             (
@@ -718,8 +710,8 @@ fn render(f: &mut Frame, st: &EditState) {
             .borders(Borders::ALL)
             .title(title)
             .border_style(Style::default().fg(border));
-        let inner = block.inner(chunks[1]);
-        f.render_widget(block, chunks[1]);
+        let inner = block.inner(chunks[edit_chunk_idx]);
+        f.render_widget(block, chunks[edit_chunk_idx]);
         f.render_widget(&st.editor, inner);
     }
 
@@ -733,6 +725,39 @@ fn render(f: &mut Frame, st: &EditState) {
         Paragraph::new(footer).style(Style::default().fg(Color::Gray)),
         chunks[footer_idx],
     );
+}
+
+/// Build lines for the History box at the bottom of the detail view.
+fn history_lines(history: &[crate::db::HistoryEntry]) -> Vec<Line<'static>> {
+    let mut lines = vec![];
+    for h in history.iter().rev() {
+        let date = h.changed_at.with_timezone(&Local).format("%m-%d %H:%M").to_string();
+        let label = if h.field == "annotation" { "comment" } else { &h.field };
+        let mut spans = vec![
+            Span::styled(format!("  {date}  "), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{:<11} ", label), Style::default().fg(Color::Cyan)),
+        ];
+        if h.field == "created" {
+            spans.push(Span::raw(h.new_value.clone().unwrap_or_default()));
+        } else if h.field == "annotation" || h.field == "link" {
+            if let Some(text) = &h.new_value {
+                spans.push(Span::styled("+ ", Style::default().fg(Color::Green)));
+                spans.push(Span::raw(text.clone()));
+            } else if let Some(text) = &h.old_value {
+                spans.push(Span::styled("− ", Style::default().fg(Color::Red)));
+                spans.push(Span::raw(text.clone()));
+            }
+        } else {
+            spans.push(Span::styled(
+                h.old_value.clone().unwrap_or_else(|| "—".into()),
+                Style::default().fg(Color::Gray),
+            ));
+            spans.push(Span::styled(" → ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::raw(h.new_value.clone().unwrap_or_else(|| "—".into())));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
 }
 
 /// Build the content lines for the Git branch panel.
