@@ -40,6 +40,8 @@ struct Detail {
     checklist: Vec<crate::db::ChecklistItem>,
     /// Urgency score components.
     urgency_breakdown: Option<crate::db::UrgencyBreakdown>,
+    /// Daily activity counts for the task's project (last ~16 weeks).
+    activity: std::collections::HashMap<chrono::NaiveDate, u32>,
 }
 
 struct BranchOverlap {
@@ -214,6 +216,9 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         &task, &cfg.urgency, !blockers.is_empty(), blocking_tasks.len(),
     ));
 
+    // Activity heatmap for the project (last 16 weeks)
+    let activity = db::activity_counts(conn, 16 * 7, Some(&task.project)).unwrap_or_default();
+
     Ok(Detail {
         blocked_by: resolve_ids(db::get_blockers(conn, &task.uuid)?),
         blocking: resolve_ids(db::get_blocking(conn, &task.uuid)?),
@@ -228,6 +233,7 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         similar,
         checklist,
         urgency_breakdown,
+        activity,
         task,
     })
 }
@@ -834,8 +840,14 @@ fn render(f: &mut Frame, st: &EditState) {
         .scroll((st.scroll, 0));
     f.render_widget(para, left_area);
 
-    // ── Git branch panel
+    // ── Git branch panel + mini heatmap
     if let Some(panel) = panel_area {
+        // Split the panel: git on top, heatmap at bottom (9 lines + 2 border = 11)
+        let panel_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(4), Constraint::Length(11)])
+            .split(panel);
+
         let git_lines = git_panel_lines(d);
         let git_para = Paragraph::new(git_lines)
             .block(
@@ -845,7 +857,9 @@ fn render(f: &mut Frame, st: &EditState) {
                     .border_style(Style::default().fg(Color::DarkGray)),
             )
             .wrap(Wrap { trim: false });
-        f.render_widget(git_para, panel);
+        f.render_widget(git_para, panel_chunks[0]);
+
+        render_mini_heatmap(f, panel_chunks[1], &d.activity, &d.task.project);
     }
 
     // ── History box (pinned to bottom, above edit bar and footer)
@@ -900,6 +914,127 @@ fn render(f: &mut Frame, st: &EditState) {
 }
 
 /// Build lines for the History box at the bottom of the detail view.
+fn render_mini_heatmap(
+    f: &mut Frame,
+    area: ratatui::layout::Rect,
+    counts: &std::collections::HashMap<chrono::NaiveDate, u32>,
+    project: &str,
+) {
+    use chrono::{Datelike, Duration, Local, Utc};
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" {} ", project))
+        .border_style(Style::default().fg(Color::DarkGray));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let max = counts.values().copied().max().unwrap_or(1).max(1);
+    let today = Local::now().date_naive();
+
+    // Align to most recent Sunday
+    let days_since_sunday = today.weekday().num_days_from_sunday();
+    let grid_end = today - Duration::days(days_since_sunday as i64);
+
+    // Fit weeks into available inner width: label(4) + weeks * 3
+    let cell_w: u16 = 3; // "██ "
+    let label_w: u16 = 4;
+    let num_weeks = ((inner.width.saturating_sub(label_w)) / cell_w).min(16).max(4) as i64;
+    let grid_start = grid_end - Duration::weeks(num_weeks) + Duration::days(1);
+
+    // Month label row (row 0 of inner)
+    {
+        let mut spans: Vec<Span> = vec![Span::raw(format!("{:<width$}", "", width = label_w as usize))];
+        let mut last_month = 0u32;
+        let mut ws = grid_start;
+        for _ in 0..num_weeks {
+            let m = ws.month();
+            if m != last_month {
+                let name = &crate::commands::activity::month_abbr(m)[..3];
+                spans.push(Span::styled(
+                    format!("{:<width$}", name, width = cell_w as usize),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                last_month = m;
+            } else {
+                spans.push(Span::raw(format!("{:<width$}", "", width = cell_w as usize)));
+            }
+            ws += Duration::weeks(1);
+        }
+        let month_area = ratatui::layout::Rect { x: inner.x, y: inner.y, width: inner.width, height: 1 };
+        f.render_widget(Paragraph::new(Line::from(spans)), month_area);
+    }
+
+    // 7 day rows (1..=7 of inner)
+    const DAY_LABELS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const SHOW_LABEL: [bool; 7] = [false, true, false, true, false, true, false];
+
+    for row in 0..7u32 {
+        if inner.y + 1 + row as u16 >= inner.y + inner.height {
+            break;
+        }
+        let mut spans: Vec<Span> = vec![];
+        let label = if SHOW_LABEL[row as usize] { DAY_LABELS[row as usize] } else { "   " };
+        spans.push(Span::styled(format!("{label} "), Style::default().fg(Color::DarkGray)));
+
+        let mut ws = grid_start;
+        for _ in 0..num_weeks {
+            let day = ws + Duration::days(row as i64);
+            let in_future = day > today;
+            let count = if in_future { 0 } else { counts.get(&day).copied().unwrap_or(0) };
+            let color = if in_future {
+                Color::Rgb(12, 14, 18)
+            } else {
+                heat_color_mini(count, max)
+            };
+            spans.push(Span::styled("██ ", Style::default().bg(color).fg(color)));
+            ws += Duration::weeks(1);
+        }
+
+        let row_area = ratatui::layout::Rect {
+            x: inner.x,
+            y: inner.y + 1 + row as u16,
+            width: inner.width,
+            height: 1,
+        };
+        f.render_widget(Paragraph::new(Line::from(spans)), row_area);
+    }
+
+    // Stats line at the bottom
+    let total: u32 = counts.values().sum();
+    let stats_area = ratatui::layout::Rect {
+        x: inner.x,
+        y: inner.y + 8,
+        width: inner.width,
+        height: 1,
+    };
+    if stats_area.y < inner.y + inner.height {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!("  {total} events (16w)"),
+                Style::default().fg(Color::DarkGray),
+            ))),
+            stats_area,
+        );
+    }
+}
+
+fn heat_color_mini(count: u32, max: u32) -> Color {
+    if count == 0 {
+        return Color::Rgb(22, 27, 34);
+    }
+    let ratio = count as f64 / max.max(1) as f64;
+    if ratio < 0.25 {
+        Color::Rgb(14, 68, 41)
+    } else if ratio < 0.5 {
+        Color::Rgb(0, 109, 50)
+    } else if ratio < 0.75 {
+        Color::Rgb(38, 166, 65)
+    } else {
+        Color::Rgb(57, 211, 83)
+    }
+}
+
 fn history_lines(history: &[crate::db::HistoryEntry]) -> Vec<Line<'static>> {
     let mut lines = vec![];
     for h in history.iter().rev() {

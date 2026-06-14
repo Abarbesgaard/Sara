@@ -231,7 +231,7 @@ fn stat_span(label: &str, value: &str) -> Span<'static> {
         .style(Style::default().fg(Color::White))
 }
 
-fn month_abbr(m: u32) -> &'static str {
+pub fn month_abbr(m: u32) -> &'static str {
     match m {
         1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
         5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
