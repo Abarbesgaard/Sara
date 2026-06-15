@@ -688,6 +688,69 @@ pub fn get_blocking(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
     Ok(uuids)
 }
 
+/// Dependency state of a single task, for at-a-glance list rendering.
+#[derive(Debug, Default, Clone)]
+pub struct DepInfo {
+    /// Display IDs of the pending tasks that block this task (sorted).
+    pub blocked_by: Vec<i64>,
+    /// How many pending tasks this task is blocking.
+    pub blocking: usize,
+}
+
+impl DepInfo {
+    pub fn is_blocked(&self) -> bool {
+        !self.blocked_by.is_empty()
+    }
+}
+
+/// Dependency state for every task that has any, keyed by task uuid string.
+/// Only pending tasks count as live blockers/dependents, matching the
+/// semantics of `get_blockers`/`get_blocking`. Computed in two batch queries
+/// so `tk list` stays O(1) in round-trips regardless of task count.
+pub fn dep_info_by_task(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, DepInfo>> {
+    let mut map: std::collections::HashMap<String, DepInfo> = std::collections::HashMap::new();
+
+    // Pending blockers (with their display id) for each task.
+    let mut stmt = conn.prepare(
+        "SELECT d.task_uuid, b.id
+         FROM dependencies d
+         JOIN tasks b ON b.uuid = d.depends_on_uuid
+         WHERE b.status='pending'",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+    })?;
+    for row in rows {
+        let (task_uuid, blocker_id) = row?;
+        if let Some(id) = blocker_id {
+            map.entry(task_uuid).or_default().blocked_by.push(id);
+        }
+    }
+
+    // How many pending tasks each task is blocking.
+    let mut stmt = conn.prepare(
+        "SELECT d.depends_on_uuid, COUNT(*)
+         FROM dependencies d
+         JOIN tasks t ON t.uuid = d.task_uuid
+         WHERE t.status='pending'
+         GROUP BY d.depends_on_uuid",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (dep_uuid, count) = row?;
+        map.entry(dep_uuid).or_default().blocking = count as usize;
+    }
+
+    for info in map.values_mut() {
+        info.blocked_by.sort_unstable();
+    }
+    Ok(map)
+}
+
 // ── task files ───────────────────────────────────────────────────────────────
 
 /// Source of a task file: manually attached by the user, or suggested by the LLM.
