@@ -21,6 +21,9 @@ struct Detail {
     task: Task,
     blocked_by: Vec<String>,
     blocking: Vec<String>,
+    /// Display IDs of the tasks this task currently depends on (pending
+    /// blockers). Used to pre-fill and reconcile the editable "Depends on" field.
+    depends_on_ids: Vec<i64>,
     /// Files the user attached themselves.
     manual_files: Vec<String>,
     /// Files proposed by the LLM.
@@ -62,9 +65,10 @@ enum EditField {
     Tags,
     Estimate,
     Recur,
+    DependsOn,
 }
 
-const EDIT_FIELDS: [EditField; 7] = [
+const EDIT_FIELDS: [EditField; 8] = [
     EditField::Description,
     EditField::Project,
     EditField::Priority,
@@ -72,6 +76,7 @@ const EDIT_FIELDS: [EditField; 7] = [
     EditField::Tags,
     EditField::Estimate,
     EditField::Recur,
+    EditField::DependsOn,
 ];
 
 impl EditField {
@@ -84,6 +89,7 @@ impl EditField {
             EditField::Tags => "Tags",
             EditField::Estimate => "Estimate",
             EditField::Recur => "Recur",
+            EditField::DependsOn => "Depends on",
         }
     }
 }
@@ -228,8 +234,9 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     let stats = db::project_stats(conn, &task.project).ok();
 
     Ok(Detail {
-        blocked_by: resolve_ids(db::get_blockers(conn, &task.uuid)?),
-        blocking: resolve_ids(db::get_blocking(conn, &task.uuid)?),
+        depends_on_ids: dep_ids(conn, &blockers),
+        blocked_by: resolve_ids(blockers.clone()),
+        blocking: resolve_ids(blocking_tasks.clone()),
         manual_files,
         suggested_files,
         links: db::get_links(conn, &task.uuid)?,
@@ -245,6 +252,117 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         stats,
         task,
     })
+}
+
+/// Resolve dependency uuids to their display IDs (skips tasks without an id).
+fn dep_ids(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<i64> {
+    uuids
+        .iter()
+        .filter_map(|u| {
+            db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
+                .ok()
+                .flatten()
+        })
+        .filter_map(|t| t.id)
+        .collect()
+}
+
+/// Resolve dependency uuids to "[id] description" labels.
+fn dep_labels(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<String> {
+    uuids
+        .iter()
+        .filter_map(|u| {
+            db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
+                .ok()
+                .flatten()
+        })
+        .map(|t| format!("[{}] {}", t.id.unwrap_or(0), t.description))
+        .collect()
+}
+
+/// Current value shown (and pre-filled when editing) for the "Depends on" field:
+/// the task's pending blocker IDs, space-separated.
+fn depends_on_display(d: &Detail) -> String {
+    d.depends_on_ids
+        .iter()
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Apply an edited "Depends on" value: reconcile the task's pending dependency
+/// edges with the IDs the user typed (space/comma separated). Adds and removes
+/// edges as needed, then refreshes urgency and reloads dependency detail.
+/// Returns a human-readable error (kept on screen) if a token can't be resolved
+/// or the change would be invalid (self/cycle).
+fn reconcile_dependencies(
+    conn: &Connection,
+    cfg: &Config,
+    detail: &mut Detail,
+    value: &str,
+) -> std::result::Result<(), String> {
+    let task_uuid = detail.task.uuid;
+
+    let tokens: Vec<&str> = value
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut desired: Vec<uuid::Uuid> = Vec::new();
+    for tok in &tokens {
+        let t = db::resolve_task(conn, tok).map_err(|_| format!("no task '{tok}'"))?;
+        if t.uuid == task_uuid {
+            return Err("a task cannot depend on itself".into());
+        }
+        if !desired.contains(&t.uuid) {
+            desired.push(t.uuid);
+        }
+    }
+
+    let current = db::get_blockers(conn, &task_uuid).unwrap_or_default();
+
+    for u in &current {
+        if !desired.contains(u) {
+            db::remove_dependency(conn, &task_uuid, u).map_err(|e| e.to_string())?;
+        }
+    }
+    for u in &desired {
+        if !current.contains(u) {
+            db::add_dependency(conn, &task_uuid, u).map_err(|e| e.to_string())?;
+        }
+    }
+
+    db::refresh_urgency(conn, &cfg.urgency, &task_uuid).ok();
+    for u in current.iter().chain(desired.iter()) {
+        db::refresh_urgency(conn, &cfg.urgency, u).ok();
+    }
+
+    reload_dep_detail(conn, cfg, detail);
+    Ok(())
+}
+
+/// Refresh the dependency-derived parts of the detail view after an edit.
+fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut Detail) {
+    let uuid = detail.task.uuid;
+    let blockers = db::get_blockers(conn, &uuid).unwrap_or_default();
+    let blocking = db::get_blocking(conn, &uuid).unwrap_or_default();
+    detail.depends_on_ids = dep_ids(conn, &blockers);
+    detail.blocked_by = dep_labels(conn, &blockers);
+    detail.blocking = dep_labels(conn, &blocking);
+    if let Some(t) = db::get_task_by_uuid_prefix(conn, &uuid.to_string()[..8])
+        .ok()
+        .flatten()
+    {
+        detail.task.urgency = t.urgency;
+    }
+    detail.urgency_breakdown = Some(db::compute_urgency_breakdown(
+        &detail.task,
+        &cfg.urgency,
+        !blockers.is_empty(),
+        blocking.len(),
+    ));
+    detail.history = db::get_history(conn, &uuid).unwrap_or_default();
 }
 
 fn compute_overlaps(
@@ -309,6 +427,8 @@ struct EditState {
     editing: bool,
     editor: TextArea<'static>,
     due_error: bool,
+    /// Error from the last "Depends on" commit, shown until the next edit.
+    dep_error: Option<String>,
     scroll: u16,
 }
 
@@ -324,6 +444,7 @@ fn edit_loop<B: Backend>(
         editing: false,
         editor: TextArea::default(),
         due_error: false,
+        dep_error: None,
         scroll: 0,
     };
 
@@ -356,6 +477,16 @@ fn edit_loop<B: Backend>(
             match key.code {
                 KeyCode::Enter => {
                     let value = st.editor.lines().join("");
+                    if field == EditField::DependsOn {
+                        match reconcile_dependencies(conn, cfg, &mut st.detail, &value) {
+                            Ok(()) => {
+                                st.editing = false;
+                                st.dep_error = None;
+                            }
+                            Err(e) => st.dep_error = Some(e),
+                        }
+                        continue;
+                    }
                     if field == EditField::Due
                         && !value.trim().is_empty()
                         && !crate::dates::is_valid_due(&value)
@@ -371,6 +502,7 @@ fn edit_loop<B: Backend>(
                 KeyCode::Esc => {
                     st.editing = false;
                     st.due_error = false;
+                    st.dep_error = None;
                 }
                 _ => {
                     st.editor.input(key);
@@ -407,9 +539,16 @@ fn edit_loop<B: Backend>(
                         save(conn, cfg, &mut st.detail)?;
                     }
                     Some(Focusable::Field(field)) => {
-                        st.editor = editor_for(&st.detail.task, field);
+                        st.editor = if field == EditField::DependsOn {
+                            let mut ta = TextArea::default();
+                            ta.insert_str(depends_on_display(&st.detail));
+                            ta
+                        } else {
+                            editor_for(&st.detail.task, field)
+                        };
                         st.editing = true;
                         st.due_error = false;
+                        st.dep_error = None;
                     }
                     Some(Focusable::Link(i)) => {
                         if let Some(link) = st.detail.links.get(i) {
@@ -495,6 +634,8 @@ fn current_value(task: &Task, field: EditField) -> String {
             })
             .unwrap_or_default(),
         EditField::Recur => task.recur.clone().unwrap_or_default(),
+        // Dependencies live in a separate table; handled via depends_on_display.
+        EditField::DependsOn => String::new(),
     }
 }
 
@@ -532,6 +673,8 @@ fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &Config) {
             let v = value.trim().to_lowercase();
             task.recur = if v.is_empty() { None } else { Some(v) };
         }
+        // Reconciled against the dependencies table in reconcile_dependencies.
+        EditField::DependsOn => {}
     }
 }
 
@@ -616,6 +759,9 @@ fn render(f: &mut Frame, st: &EditState) {
         let editing_this = st.editing && i == st.selected;
         let value = if editing_this {
             "…(editing below)".to_string()
+        } else if *field == EditField::DependsOn {
+            let v = depends_on_display(d);
+            if v.is_empty() { "-".to_string() } else { v }
         } else {
             let v = current_value(t, *field);
             if v.is_empty() { "-".to_string() } else { v }
@@ -908,6 +1054,16 @@ fn render(f: &mut Frame, st: &EditState) {
                 format!(" Editing {} — invalid date ", field.label()),
                 Color::Red,
             )
+        } else if let Some(ref err) = st.dep_error {
+            (format!(" Editing {} — {} ", field.label(), err), Color::Red)
+        } else if field == EditField::DependsOn {
+            (
+                format!(
+                    " Editing {}  (task IDs, space/comma separated · Enter confirm · Esc cancel) ",
+                    field.label()
+                ),
+                Color::Yellow,
+            )
         } else {
             (
                 format!(" Editing {}  (Enter confirm · Esc cancel) ", field.label()),
@@ -1163,7 +1319,7 @@ fn history_lines(history: &[crate::db::HistoryEntry]) -> Vec<Line<'static>> {
         ];
         if h.field == "created" {
             spans.push(Span::raw(h.new_value.clone().unwrap_or_default()));
-        } else if h.field == "annotation" || h.field == "link" {
+        } else if h.field == "annotation" || h.field == "link" || h.field == "dependency" {
             if let Some(text) = &h.new_value {
                 spans.push(Span::styled("+ ", Style::default().fg(Color::Green)));
                 spans.push(Span::raw(text.clone()));

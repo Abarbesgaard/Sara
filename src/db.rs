@@ -624,19 +624,36 @@ pub fn add_dependency(conn: &Connection, task_uuid: &Uuid, dep_uuid: &Uuid) -> R
     if would_create_cycle(conn, task_uuid, dep_uuid)? {
         anyhow::bail!("Adding this dependency would create a cycle");
     }
-    conn.execute(
+    let n = conn.execute(
         "INSERT OR IGNORE INTO dependencies (task_uuid, depends_on_uuid) VALUES (?1,?2)",
         params![task_uuid.to_string(), dep_uuid.to_string()],
     )?;
+    if n > 0 {
+        let label = dep_label(conn, dep_uuid);
+        record_history(conn, task_uuid, "dependency", None, Some(&label))?;
+    }
     Ok(())
 }
 
 pub fn remove_dependency(conn: &Connection, task_uuid: &Uuid, dep_uuid: &Uuid) -> Result<()> {
-    conn.execute(
+    let n = conn.execute(
         "DELETE FROM dependencies WHERE task_uuid=?1 AND depends_on_uuid=?2",
         params![task_uuid.to_string(), dep_uuid.to_string()],
     )?;
+    if n > 0 {
+        let label = dep_label(conn, dep_uuid);
+        record_history(conn, task_uuid, "dependency", Some(&label), None)?;
+    }
     Ok(())
+}
+
+/// "[id] description" label for a dependency task, falling back to the uuid.
+fn dep_label(conn: &Connection, dep_uuid: &Uuid) -> String {
+    get_task_by_uuid_prefix(conn, &dep_uuid.to_string()[..8])
+        .ok()
+        .flatten()
+        .map(|t| format!("[{}] {}", t.id.unwrap_or(0), t.description))
+        .unwrap_or_else(|| dep_uuid.to_string())
 }
 
 fn would_create_cycle(conn: &Connection, task: &Uuid, new_dep: &Uuid) -> Result<bool> {

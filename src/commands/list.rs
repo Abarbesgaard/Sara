@@ -49,12 +49,13 @@ pub fn run(
 
     // Header
     let header = format!(
-        "    {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {desc}",
+        "    {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {dep:<16}  {desc}",
         id = "ID",
         pri = "PRI",
         proj = "PROJECT",
         due = "DUE",
         urg = "URG",
+        dep = "DEPS",
         desc = "DESCRIPTION",
     );
     if no_color {
@@ -92,13 +93,14 @@ pub fn run(
         let recur_mark = if task.recur.is_some() { "♺" } else { " " };
 
         // Dependency state: ⊘ = blocked by an unfinished task, ⛓ = blocks others.
+        // The glyph is a quick-scan gutter marker; the DEPS column spells it out.
         let dep = dep_info.get(&task.uuid.to_string());
         let dep_mark = match dep {
             Some(d) if d.is_blocked() => "⊘",
             Some(d) if d.blocking > 0 => "⛓",
             _ => " ",
         };
-        let dep_suffix = dep_suffix_text(dep);
+        let dep_text = truncate(&dep_column_text(dep), DEP_COL_W);
         let pr_badge_plain = if flags.pr {
             "[PR] "
         } else if flags.any {
@@ -110,7 +112,7 @@ pub fn run(
         // Colorize
         if no_color {
             println!(
-                "{active}{recur}{dep} {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {pr}{desc}{dep_suffix}",
+                "{active}{recur}{dep} {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {deptext:<width$}  {pr}{desc}",
                 active = active_marker,
                 recur = recur_mark,
                 dep = dep_mark,
@@ -119,9 +121,10 @@ pub fn run(
                 proj = proj_display,
                 due = due_str,
                 urg = urg_str,
+                deptext = dep_text,
+                width = DEP_COL_W,
                 pr = pr_badge_plain,
                 desc = desc_display,
-                dep_suffix = dep_suffix,
             );
         } else {
             let pri_colored = match &task.priority {
@@ -146,18 +149,11 @@ pub fn run(
                 Some(d) if d.blocking > 0 => format!("{CYAN}⛓{RESET}"),
                 _ => " ".to_string(),
             };
-            let dep_suffix_col = match dep {
-                Some(d) if d.is_blocked() => {
-                    format!("  {RED}⊘ blocked by {}{RESET}", fmt_id_list(&d.blocked_by))
-                }
-                Some(d) if d.blocking > 0 => {
-                    format!(
-                        "  {GRAY}⛓ blocks {} task{}{RESET}",
-                        d.blocking,
-                        if d.blocking == 1 { "" } else { "s" }
-                    )
-                }
-                _ => String::new(),
+            let dep_padded = format!("{:<width$}", dep_text, width = DEP_COL_W);
+            let dep_text_col = match dep {
+                Some(d) if d.is_blocked() => format!("{RED}{dep_padded}{RESET}"),
+                Some(d) if d.blocking > 0 => format!("{GRAY}{dep_padded}{RESET}"),
+                _ => dep_padded,
             };
             let pr_badge = if flags.pr {
                 format!("{MAGENTA}{BOLD}PR{RESET} ")
@@ -167,7 +163,7 @@ pub fn run(
                 String::new()
             };
             println!(
-                "{active}{recur}{dep} {CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {pr}{desc}{dep_suffix}",
+                "{active}{recur}{dep} {CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {deptext}  {pr}{desc}",
                 active = active_col,
                 recur = recur_col,
                 dep = dep_col,
@@ -176,9 +172,9 @@ pub fn run(
                 proj = proj_display,
                 due = due_colored,
                 urg = urg_str,
+                deptext = dep_text_col,
                 pr = pr_badge,
                 desc = desc_display,
-                dep_suffix = dep_suffix_col,
             );
         }
     }
@@ -202,21 +198,22 @@ pub fn run(
     Ok(())
 }
 
+/// Width of the DEPS column in the task list.
+const DEP_COL_W: usize = 16;
+
 fn fmt_id_list(ids: &[i64]) -> String {
     ids.iter()
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
-        .join(", ")
+        .join(",")
 }
 
-/// Plain-text (NO_COLOR) dependency suffix appended after the description.
-fn dep_suffix_text(dep: Option<&db::DepInfo>) -> String {
+/// Plain text for the DEPS column: what the task is waiting on or blocking.
+fn dep_column_text(dep: Option<&db::DepInfo>) -> String {
     match dep {
-        Some(d) if d.is_blocked() => {
-            format!("  ⊘ blocked by {}", fmt_id_list(&d.blocked_by))
-        }
+        Some(d) if d.is_blocked() => format!("blocked by {}", fmt_id_list(&d.blocked_by)),
         Some(d) if d.blocking > 0 => format!(
-            "  ⛓ blocks {} task{}",
+            "blocks {} task{}",
             d.blocking,
             if d.blocking == 1 { "" } else { "s" }
         ),
