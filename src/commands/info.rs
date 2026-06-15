@@ -1317,9 +1317,15 @@ fn history_lines(history: &[crate::db::HistoryEntry]) -> Vec<Line<'static>> {
             Span::styled(format!("  {date}  "), Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{:<11} ", label), Style::default().fg(Color::Cyan)),
         ];
+        // Additive fields render as +/− when exactly one side is set; a
+        // checklist toggle (both sides set) falls through to the arrow form.
+        let additive = matches!(
+            h.field.as_str(),
+            "annotation" | "link" | "dependency" | "checklist" | "file"
+        ) && h.old_value.is_none() != h.new_value.is_none();
         if h.field == "created" {
             spans.push(Span::raw(h.new_value.clone().unwrap_or_default()));
-        } else if h.field == "annotation" || h.field == "link" || h.field == "dependency" {
+        } else if additive {
             if let Some(text) = &h.new_value {
                 spans.push(Span::styled("+ ", Style::default().fg(Color::Green)));
                 spans.push(Span::raw(text.clone()));

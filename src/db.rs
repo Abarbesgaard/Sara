@@ -524,7 +524,7 @@ pub fn update_task(conn: &Connection, task: &Task) -> Result<()> {
 }
 
 /// Display-ready values for each tracked field, used to diff task revisions.
-fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 7] {
+fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 9] {
     [
         ("description", non_empty(&t.description)),
         ("project", non_empty(&t.project)),
@@ -543,11 +543,24 @@ fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 7] {
                 Some(t.tags.join(", "))
             },
         ),
+        ("estimate", t.estimate_mins.map(fmt_estimate)),
+        ("recur", t.recur.clone()),
         (
             "timer",
             t.started_at.map(|_| "running".to_string()),
         ),
     ]
+}
+
+/// Human-readable estimate (e.g. "90" minutes -> "1h30m").
+fn fmt_estimate(mins: i64) -> String {
+    if mins >= 60 {
+        let h = mins / 60;
+        let r = mins % 60;
+        if r == 0 { format!("{h}h") } else { format!("{h}h{r}m") }
+    } else {
+        format!("{mins}m")
+    }
 }
 
 fn non_empty(s: &str) -> Option<String> {
@@ -789,6 +802,9 @@ pub fn set_task_files_sourced(
     task_uuid: &Uuid,
     files: &[(String, String)],
 ) -> Result<()> {
+    let before: std::collections::HashSet<String> =
+        get_task_files(conn, task_uuid).unwrap_or_default().into_iter().collect();
+
     conn.execute(
         "DELETE FROM task_files WHERE task_uuid=?1",
         [task_uuid.to_string()],
@@ -798,6 +814,16 @@ pub fn set_task_files_sourced(
             "INSERT OR IGNORE INTO task_files (task_uuid, path, source) VALUES (?1,?2,?3)",
             params![task_uuid.to_string(), path, source],
         )?;
+    }
+
+    // Log each added / removed path so the change shows up in task history.
+    let after: std::collections::HashSet<String> =
+        files.iter().map(|(p, _)| p.clone()).collect();
+    for path in after.difference(&before) {
+        record_history(conn, task_uuid, "file", None, Some(path))?;
+    }
+    for path in before.difference(&after) {
+        record_history(conn, task_uuid, "file", Some(path), None)?;
     }
     Ok(())
 }
@@ -1140,10 +1166,14 @@ pub fn get_task_branch(conn: &Connection, task_uuid: &Uuid) -> Option<BranchReco
 }
 
 pub fn clear_task_branch(conn: &Connection, task_uuid: &Uuid) -> Result<()> {
-    conn.execute(
+    let prev = get_task_branch(conn, task_uuid).map(|r| r.branch);
+    let n = conn.execute(
         "DELETE FROM task_branches WHERE task_uuid=?1",
         [task_uuid.to_string()],
     )?;
+    if n > 0 {
+        record_history(conn, task_uuid, "branch", prev.as_deref(), None)?;
+    }
     Ok(())
 }
 
@@ -1738,25 +1768,45 @@ pub fn add_checklist_item(conn: &Connection, task_uuid: &Uuid, text: &str) -> Re
         "INSERT INTO task_checklist (task_uuid, text, done, position) VALUES (?1,?2,0,?3)",
         rusqlite::params![task_uuid.to_string(), text, pos],
     )?;
+    record_history(conn, task_uuid, "checklist", None, Some(text))?;
     Ok(())
 }
 
 pub fn toggle_checklist_item(conn: &Connection, item_id: i64) -> Result<bool> {
-    let done: i64 = conn.query_row(
-        "SELECT done FROM task_checklist WHERE id=?1",
+    let (task_uuid_str, text, done): (String, String, i64) = conn.query_row(
+        "SELECT task_uuid, text, done FROM task_checklist WHERE id=?1",
         [item_id],
-        |r| r.get(0),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
     let new_done = if done == 0 { 1i64 } else { 0i64 };
     conn.execute(
         "UPDATE task_checklist SET done=?1 WHERE id=?2",
         rusqlite::params![new_done, item_id],
     )?;
+    if let Ok(uuid) = Uuid::parse_str(&task_uuid_str) {
+        let old = format!("{} {text}", if done == 0 { "[ ]" } else { "[x]" });
+        let new = format!("{} {text}", if new_done == 0 { "[ ]" } else { "[x]" });
+        record_history(conn, &uuid, "checklist", Some(&old), Some(&new))?;
+    }
     Ok(new_done != 0)
 }
 
 pub fn delete_checklist_item(conn: &Connection, item_id: i64) -> Result<()> {
-    conn.execute("DELETE FROM task_checklist WHERE id=?1", [item_id])?;
+    let existing: Option<(String, String)> = conn
+        .query_row(
+            "SELECT task_uuid, text FROM task_checklist WHERE id=?1",
+            [item_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+    let n = conn.execute("DELETE FROM task_checklist WHERE id=?1", [item_id])?;
+    if n > 0 {
+        if let Some((uuid_str, text)) = existing {
+            if let Ok(uuid) = Uuid::parse_str(&uuid_str) {
+                record_history(conn, &uuid, "checklist", Some(&text), None)?;
+            }
+        }
+    }
     Ok(())
 }
 
