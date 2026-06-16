@@ -17,7 +17,7 @@ pub fn run(
     priority_override: Option<&str>,
     extra_tags: &[String],
     yes: bool,
-    llm: bool,
+    no_llm: bool,
     recur_override: Option<&str>,
 ) -> Result<()> {
     // Parse inline tokens
@@ -59,13 +59,11 @@ pub fn run(
         last_seen: None,
     });
 
-    // LLM enrichment is opt-in (it adds latency); enable with --llm/--ai.
-    // Also detect the flag when trailing_var_arg consumed it as part of words.
-    let llm = llm || words.iter().any(|w| w == "--llm" || w == "--ai");
-    let (enrichment, llm_error) = if llm {
-        enrich::enrich_task(conn, cfg, &parsed.description, &project_profile)
-    } else {
+    // LLM enrichment runs by default (Azure/Ollama from config). Skip with --no-llm.
+    let (enrichment, llm_error) = if no_llm {
         (None, None)
+    } else {
+        enrich::enrich_task(conn, cfg, &parsed.description, &project_profile)
     };
 
     // Check if we're in a TTY

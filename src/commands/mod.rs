@@ -9,6 +9,8 @@ pub mod info;
 pub mod init;
 pub mod item;
 pub mod learn_cmd;
+pub mod memory_cmd;
+pub mod remember;
 pub mod list;
 pub mod modify;
 pub mod activity;

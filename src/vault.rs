@@ -30,6 +30,7 @@ pub fn init_store(cfg: &mut Config, path: Option<PathBuf>) -> Result<PathBuf> {
     for dir in PARA_DIRS {
         fs::create_dir_all(store.join(dir))?;
     }
+    crate::memory::init_scaffold(&store)?;
     let profile = store.join(".sara/profile.md");
     if !profile.exists() {
         fs::write(
@@ -51,6 +52,37 @@ pub fn store_root(cfg: &Config) -> Result<PathBuf> {
         );
     }
     Ok(root)
+}
+
+/// Return the store path, auto-creating Sara/ if missing.
+pub fn ensure_store(cfg: &mut Config) -> Result<PathBuf> {
+    let root = crate::config::vault_path(cfg)?;
+    if root.exists() && cfg.vault_path.is_some() {
+        return Ok(root);
+    }
+    init_store(cfg, None)
+}
+
+fn normalize_para_folder(para: Option<&str>) -> &'static str {
+    match para {
+        Some(p) if p.contains("1 Project") => "1 Projects",
+        Some(p) if p.contains("2 Area") => "2 Areas",
+        Some(p) if p.contains("Inbox") => "Inbox",
+        _ => "3 Resources",
+    }
+}
+
+pub fn item_relative_path(item: &Item, para_folder: Option<&str>) -> String {
+    let base = normalize_para_folder(para_folder);
+    let kind_sub = if item.kind == "link" { "links" } else { "notes" };
+    let sub = if base == "3 Resources" {
+        format!("3 Resources/{kind_sub}")
+    } else if base == "Inbox" {
+        "Inbox".to_string()
+    } else {
+        format!("{base}/{kind_sub}")
+    };
+    format!("{}/{}", sub, item_filename(item))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -97,17 +129,11 @@ pub fn item_filename(item: &Item) -> String {
     format!("{}-{}.md", slug, &item.uuid.to_string()[..8])
 }
 
-pub fn item_relative_path(item: &Item) -> String {
-    let sub = match item.kind.as_str() {
-        "link" => "3 Resources/links",
-        _ => "3 Resources/notes",
-    };
-    format!("{}/{}", sub, item_filename(item))
-}
-
 pub fn write_item_md(store: &Path, item: &Item, body: &str) -> Result<PathBuf> {
-    let rel_owned = item_relative_path(item);
-    let rel = item.path.as_deref().unwrap_or(&rel_owned);
+    let rel = item
+        .path
+        .clone()
+        .unwrap_or_else(|| item_relative_path(item, None));
     let full = store.join(rel);
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent)?;

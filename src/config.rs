@@ -122,6 +122,36 @@ impl Config {
         }
         &self.llm
     }
+
+    /// True when [embeddings] was never customized (still Ollama defaults).
+    pub fn embeddings_at_default(&self) -> bool {
+        self.embeddings.provider == "ollama" && self.embeddings.model == "nomic-embed-text"
+    }
+
+    /// Embeddings provider: inherits active LLM when [embeddings] is still at defaults.
+    pub fn effective_embeddings_provider(&self) -> String {
+        if !self.embeddings_at_default() {
+            return self.embeddings.provider.clone();
+        }
+        match self.effective_llm().provider.as_str() {
+            "azure" | "azure_openai" => "azure".to_string(),
+            "openai" => "openai".to_string(),
+            _ => self.embeddings.provider.clone(),
+        }
+    }
+
+    /// Deployment/model name for embeddings API calls.
+    pub fn effective_embeddings_model(&self) -> String {
+        if self.embeddings_at_default() {
+            match self.effective_embeddings_provider().as_str() {
+                "azure" | "azure_openai" | "openai" => {
+                    return "text-embedding-3-small".to_string();
+                }
+                _ => {}
+            }
+        }
+        self.embeddings.model.clone()
+    }
 }
 
 pub fn project_dirs() -> Result<ProjectDirs> {

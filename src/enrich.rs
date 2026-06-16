@@ -59,3 +59,41 @@ pub fn enrich_task(
         }
     }
 }
+
+/// Enrich a captured note or link with summary, tags, and PARA folder suggestion.
+pub fn enrich_item(
+    cfg: &Config,
+    kind: &str,
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+) -> (llm::ItemEnrichmentResponse, Option<String>) {
+    let profile = crate::learn::read_profile_context(cfg);
+    let req = llm::ItemEnrichmentRequest {
+        kind: kind.to_string(),
+        title: title.to_string(),
+        body: body.to_string(),
+        url: url.map(|s| s.to_string()),
+        profile_context: profile,
+    };
+
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .template("{spinner:.cyan} {msg}")
+            .unwrap(),
+    );
+    spinner.set_message("Sara is analyzing…");
+    spinner.enable_steady_tick(Duration::from_millis(80));
+
+    let provider = llm::build_provider(cfg);
+    let result = provider.enrich_item(&req);
+    spinner.finish_and_clear();
+
+    match result {
+        Ok(resp) if resp.summary.is_some() || !resp.tags.is_empty() => (resp, None),
+        Ok(resp) => (resp, None),
+        Err(e) => (llm::ItemEnrichmentResponse::default(), Some(format!("{e:#}"))),
+    }
+}

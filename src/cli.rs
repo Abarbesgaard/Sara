@@ -63,10 +63,7 @@ pub enum Command {
         /// Accept all values without the TUI review form
         #[arg(short, long)]
         yes: bool,
-        /// Enrich with the LLM (priority/due/tags/dependency suggestions). Off by default.
-        #[arg(long, visible_alias = "ai")]
-        llm: bool,
-        /// Skip LLM enrichment for notes/links
+        /// Skip LLM enrichment (priority/due/tags for tasks; summary/tags/PARA for notes/links)
         #[arg(long)]
         no_llm: bool,
         /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
@@ -231,17 +228,48 @@ pub enum Command {
         shell: clap_complete::Shell,
     },
 
-    /// Search Sara's store by meaning (requires Ollama embeddings)
+    /// Ask Sara anything — searches your store and answers with LLM
+    #[command(visible_alias = "ask")]
     Search {
-        /// Search query
+        /// Your question
         query: String,
     },
 
     /// Surface what's most relevant right now
-    Brief,
+    Brief {
+        /// Skip LLM — use template brief only
+        #[arg(long)]
+        no_llm: bool,
+    },
 
-    /// Rebuild Sara's learned profile from recent behavior
+    /// Rebuild long-term memory from daily notes + captures (OpenClaw-style dreaming)
     Learn,
+
+    /// Store a durable fact in long-term memory
+    Remember {
+        #[arg(trailing_var_arg = true, required = true)]
+        words: Vec<String>,
+    },
+
+    /// Inspect and search Sara's memory (MEMORY.md + daily notes)
+    Memory {
+        #[command(subcommand)]
+        action: Option<MemoryAction>,
+        /// Query for `sara memory search`
+        query: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MemoryAction {
+    /// Show long-term MEMORY.md (default)
+    Show,
+    /// Show today's daily notes
+    Today,
+    /// Search memory files by keyword
+    Search,
+    /// Index memory chunks for semantic search
+    Index,
 }
 
 #[derive(Debug, Subcommand)]

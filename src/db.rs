@@ -2269,6 +2269,28 @@ pub fn recent_events(conn: &Connection, limit: i64) -> Result<Vec<(String, Optio
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+pub fn recent_search_queries(conn: &Connection, limit: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT tags_json FROM events WHERE action = 'search' ORDER BY id DESC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map([limit], |r| {
+        let tags_json: String = r.get(0)?;
+        Ok(tags_json)
+    })?;
+    let mut queries = Vec::new();
+    for row in rows {
+        let tags_json = row?;
+        if let Ok(tags) = serde_json::from_str::<Vec<String>>(&tags_json) {
+            if let Some(q) = tags.first() {
+                if !q.is_empty() {
+                    queries.push(q.clone());
+                }
+            }
+        }
+    }
+    Ok(queries)
+}
+
 pub fn upsert_embedding(conn: &Connection, ref_uuid: &Uuid, vector: &[f32]) -> Result<()> {
     let vector_json = serde_json::to_string(vector)?;
     conn.execute(

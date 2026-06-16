@@ -9,6 +9,7 @@ mod enrich;
 mod files;
 mod git;
 mod learn;
+mod memory;
 mod llm;
 mod model;
 mod project;
@@ -21,7 +22,7 @@ use clap::Parser;
 use std::io;
 use std::process::ExitCode;
 
-use cli::{Cli, Command, DepAction, ProjectAction};
+use cli::{Cli, Command, DepAction, MemoryAction, ProjectAction};
 
 fn is_item_handle(id: &str) -> bool {
     let id = id.trim().to_lowercase();
@@ -100,7 +101,6 @@ fn run() -> Result<()> {
             priority,
             tag,
             yes,
-            llm,
             no_llm,
             every,
         } => {
@@ -108,10 +108,11 @@ fn run() -> Result<()> {
                 anyhow::bail!("Provide content to add, or use --note / --link");
             }
             let text = words.join(" ");
+            let use_llm = !no_llm;
             if capture_link || (capture::is_url(&text) && !task && !note) {
-                capture::capture_link(&conn, &cfg, &text, None)?;
+                capture::capture_link(&conn, &mut cfg, &text, None, use_llm)?;
             } else if note {
-                capture::capture_note(&conn, &cfg, &text)?;
+                capture::capture_note(&conn, &mut cfg, &text, use_llm)?;
             } else {
                 commands::add::run(
                     &conn,
@@ -121,12 +122,11 @@ fn run() -> Result<()> {
                     priority.as_deref(),
                     &tag,
                     yes,
-                    llm,
+                    no_llm,
                     every.as_deref(),
                 )?;
                 db::record_event(&conn, "capture", None, Some("task"), &tag, project.as_deref())?;
             }
-            let _ = no_llm;
         }
 
         Command::Info { id } => {
@@ -250,12 +250,21 @@ fn run() -> Result<()> {
             commands::search::run(&conn, &cfg, &query)?;
         }
 
-        Command::Brief => {
-            commands::brief::run(&conn, &cfg)?;
+        Command::Brief { no_llm } => {
+            commands::brief::run(&conn, &cfg, no_llm)?;
         }
 
         Command::Learn => {
             commands::learn_cmd::run(&conn, &cfg)?;
+        }
+
+        Command::Remember { words } => {
+            commands::remember::run(&cfg, &words)?;
+        }
+
+        Command::Memory { action, query } => {
+            let action = action.unwrap_or(MemoryAction::Show);
+            commands::memory_cmd::run(&conn, &cfg, &action, query.as_deref())?;
         }
 
         Command::Init { .. } => unreachable!(),

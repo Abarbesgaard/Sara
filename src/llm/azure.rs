@@ -3,7 +3,8 @@ use serde_json::json;
 use std::time::Duration;
 
 use super::{
-    EnrichmentRequest, EnrichmentResponse, LlmProvider, inline_schema_for_openai, system_prompt,
+    EnrichmentRequest, EnrichmentResponse, ItemEnrichmentRequest, ItemEnrichmentResponse,
+    LlmProvider, inline_schema_for_openai, item_system_prompt, item_user_prompt, system_prompt,
     user_prompt,
 };
 use crate::config::LlmConfig;
@@ -96,5 +97,92 @@ impl LlmProvider for AzureOpenAiProvider {
         let enrichment: EnrichmentResponse =
             serde_json::from_str(content).context("Could not parse Azure OpenAI enrichment JSON")?;
         Ok(enrichment)
+    }
+
+    fn enrich_item(&self, req: &ItemEnrichmentRequest) -> Result<ItemEnrichmentResponse> {
+        let schema = schemars::schema_for!(ItemEnrichmentResponse);
+        let schema_val = inline_schema_for_openai(serde_json::to_value(&schema)?);
+
+        let body = json!({
+            "messages": [
+                {"role": "system", "content": item_system_prompt(req)},
+                {"role": "user",   "content": item_user_prompt(req)}
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "ItemEnrichmentResponse",
+                    "strict": true,
+                    "schema": schema_val
+                }
+            }
+        });
+
+        let url = format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.base_url, self.deployment, self.api_version
+        );
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(self.timeout)
+            .build()?;
+
+        let resp = client
+            .post(&url)
+            .header("api-key", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .context("Azure OpenAI request failed")?;
+
+        let resp_json: serde_json::Value = resp
+            .error_for_status()
+            .context("Azure OpenAI returned an error")?
+            .json()
+            .context("Azure OpenAI response was not valid JSON")?;
+
+        let content = resp_json["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Unexpected Azure OpenAI response shape: {}", resp_json))?;
+
+        serde_json::from_str(content).context("Could not parse Azure OpenAI item enrichment JSON")
+    }
+
+    fn chat(&self, system: &str, user: &str) -> Result<String> {
+        let body = json!({
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user}
+            ],
+            "temperature": 0.3
+        });
+
+        let url = format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.base_url, self.deployment, self.api_version
+        );
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(self.timeout)
+            .build()?;
+
+        let resp = client
+            .post(&url)
+            .header("api-key", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .context("Azure OpenAI request failed")?;
+
+        let resp_json: serde_json::Value = resp
+            .error_for_status()
+            .context("Azure OpenAI returned an error")?
+            .json()
+            .context("Azure OpenAI response was not valid JSON")?;
+
+        resp_json["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow::anyhow!("Unexpected Azure OpenAI response shape: {}", resp_json))
     }
 }

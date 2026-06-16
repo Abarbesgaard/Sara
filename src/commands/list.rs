@@ -44,10 +44,30 @@ pub fn run(
             .as_deref()
             .map(|p| format!("project '{p}'"))
             .unwrap_or_else(|| "any project".to_string());
+        if !show_items {
+            println!("No pending tasks for {scope}.");
+            if !all && filter.is_some() {
+                let all_tasks = db::list_tasks(conn, None)?;
+                if !all_tasks.is_empty() {
+                    println!(
+                        "Tip: run `sara list -a` to see all {} pending tasks.",
+                        all_tasks.len()
+                    );
+                }
+            }
+            return Ok(());
+        }
         println!("No pending tasks for {scope}.");
-        return Ok(());
-    }
-
+        if !all && filter.is_some() {
+            let all_tasks = db::list_tasks(conn, None)?;
+            if !all_tasks.is_empty() {
+                println!(
+                    "Tip: run `sara list -a` to see all {} pending tasks.",
+                    all_tasks.len()
+                );
+            }
+        }
+    } else {
     // Header
     let header = format!(
         "    {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {dep:<16}  {desc}",
@@ -194,6 +214,7 @@ pub fn run(
         println!("{summary}");
     } else {
         println!("{DIM}{summary}{RESET}");
+    }
     }
 
     if show_items {
