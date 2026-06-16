@@ -21,7 +21,6 @@ pub fn run(
     conn: &Connection,
     cfg: &Config,
     all: bool,
-    show_items: bool,
     project_filter: Option<&str>,
 ) -> Result<()> {
     let no_color = std::env::var("NO_COLOR").is_ok();
@@ -44,19 +43,6 @@ pub fn run(
             .as_deref()
             .map(|p| format!("project '{p}'"))
             .unwrap_or_else(|| "any project".to_string());
-        if !show_items {
-            println!("No pending tasks for {scope}.");
-            if !all && filter.is_some() {
-                let all_tasks = db::list_tasks(conn, None)?;
-                if !all_tasks.is_empty() {
-                    println!(
-                        "Tip: run `sara list -a` to see all {} pending tasks.",
-                        all_tasks.len()
-                    );
-                }
-            }
-            return Ok(());
-        }
         println!("No pending tasks for {scope}.");
         if !all && filter.is_some() {
             let all_tasks = db::list_tasks(conn, None)?;
@@ -67,7 +53,9 @@ pub fn run(
                 );
             }
         }
-    } else {
+        return Ok(());
+    }
+
     // Header
     let header = format!(
         "    {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {dep:<16}  {desc}",
@@ -214,28 +202,6 @@ pub fn run(
         println!("{summary}");
     } else {
         println!("{DIM}{summary}{RESET}");
-    }
-    }
-
-    if show_items {
-        let items = db::list_items(conn, None)?;
-        if !items.is_empty() {
-            println!();
-            if no_color {
-                println!("NOTES & LINKS");
-            } else {
-                println!("{BOLD}NOTES & LINKS{RESET}");
-            }
-            for item in &items {
-                let kind_label = if item.kind == "link" { "link" } else { "note" };
-                println!(
-                    "  {} {:<4}  {}",
-                    item.handle(),
-                    kind_label,
-                    truncate(&item.title, 60)
-                );
-            }
-        }
     }
 
     Ok(())

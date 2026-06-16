@@ -54,6 +54,8 @@ pub struct ItemEnrichmentRequest {
     pub body: String,
     pub url: Option<String>,
     pub profile_context: Option<String>,
+    /// Git-detected project when capturing from a repo
+    pub current_project: Option<String>,
 }
 
 pub trait LlmProvider: Send + Sync {
@@ -118,8 +120,19 @@ pub fn item_system_prompt(req: &ItemEnrichmentRequest) -> String {
     if let Some(ref profile) = req.profile_context {
         parts.push(format!("User profile (adapt to their patterns):\n{profile}"));
     }
+    if let Some(ref project) = req.current_project {
+        parts.push(format!(
+            "Current git project: {project}\n\
+             Default PARA destination for active project material: 1 Projects/{project}\n\
+             Use 3 Resources only for general reference not tied to this active project.\n\
+             Use 2 Areas for ongoing responsibilities (health, finance, etc.).\n\
+             Use Inbox when unsure."
+        ));
+    }
     parts.push(
-        "Suggest para_folder as one of: \"1 Projects\", \"2 Areas\", \"3 Resources\", \"Inbox\".".to_string(),
+        "Suggest para_folder as one of: \"1 Projects\", \"2 Areas\", \"3 Resources\", \"Inbox\". \
+         Prefer 1 Projects when content supports active work in the current git project."
+            .to_string(),
     );
     parts.join("\n\n")
 }
@@ -169,12 +182,19 @@ pub fn search_system_prompt(profile_context: Option<&str>) -> String {
          second brain: long-term MEMORY.md, daily notes, captured notes/links, and tasks. \
          Personal memory files are the highest-authority source — trust them over inference. \
          Answer using ONLY the context provided. Be concise and helpful. \
-         Reference sources (MEMORY.md, l1, n2, task ids) when citing. \
+         Reference sources (MEMORY.md, l1, n2, task ids, PARA folder) when citing. \
+         Notes and links are organized in PARA folders (Projects, Areas, Resources, Inbox) — \
+         prefer project-scoped resources when the user asks about the current project. \
          If context is insufficient, say so and suggest what to capture or remember. \
          When asked about project progress: if a 'Recorded project status' or project snapshot \
          says no milestones yet, state that clearly and summarize pending tasks — do not say \
          memory is empty when tasks or snapshots are present. Only suggest capturing milestones \
-         if the user asks how to track progress.".to_string(),
+         if the user asks how to track progress. \
+         When the context includes a live pending tasks list, treat it as authoritative — \
+         it reflects the current database and overrides older project snapshots in memory. \
+         When recent notes & links are listed for a project, summarize those captures first \
+         for \"what's recent\" questions — they are live and override stale memory snapshots."
+            .to_string(),
     ];
     if let Some(profile) = profile_context {
         parts.push(format!("User profile:\n{profile}"));

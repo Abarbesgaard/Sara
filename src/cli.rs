@@ -1,10 +1,9 @@
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "sara",
-    about = "Sara — a personal assistant with a folder-aware task manager",
+    about = "Sara — folder-aware task manager (successor to tk)",
     version
 )]
 pub struct Cli {
@@ -14,13 +13,6 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Initialize Sara's private knowledge store (creates Sara/ with PARA folders)
-    Init {
-        /// Store location (defaults to ./Sara in the current directory)
-        #[arg(long)]
-        path: Option<PathBuf>,
-    },
-
     /// Git project profile commands
     Project {
         #[command(subcommand)]
@@ -37,24 +29,14 @@ pub enum Command {
         yes: bool,
     },
 
-    /// Add a task, note, or link to Sara's store
+    /// Add a task
     Add {
-        /// Content: task description, note text, or URL (auto-detected)
         #[arg(trailing_var_arg = true)]
         words: Vec<String>,
-        /// Add as a task (default for plain text; same as legacy `tk add`)
-        #[arg(long, conflicts_with_all = ["note", "capture_link"])]
-        task: bool,
-        /// Add as a note in Sara's store
-        #[arg(long, conflicts_with_all = ["task", "capture_link"])]
-        note: bool,
-        /// Add as a link in Sara's store
-        #[arg(long, name = "link", conflicts_with_all = ["task", "note"])]
-        capture_link: bool,
         /// Override project
         #[arg(long, short)]
         project: Option<String>,
-        /// Override priority (H/M/L) — tasks only
+        /// Override priority (H/M/L)
         #[arg(long)]
         priority: Option<String>,
         /// Tag (repeatable)
@@ -63,7 +45,7 @@ pub enum Command {
         /// Accept all values without the TUI review form
         #[arg(short, long)]
         yes: bool,
-        /// Skip LLM enrichment (priority/due/tags for tasks; summary/tags/PARA for notes/links)
+        /// Skip LLM enrichment
         #[arg(long)]
         no_llm: bool,
         /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
@@ -71,9 +53,9 @@ pub enum Command {
         every: Option<String>,
     },
 
-    /// Show full details of a task (id) or note/link (n1, l2)
+    /// Show full details of a task
     Info {
-        /// Task id, uuid prefix, or item handle (n1, l2)
+        /// Task id or uuid prefix
         id: String,
     },
 
@@ -120,14 +102,11 @@ pub enum Command {
         link_id: i64,
     },
 
-    /// List tasks and optionally notes/links
+    /// List pending tasks
     List {
         /// Show tasks for all projects (default: current project only)
         #[arg(short, long)]
         all: bool,
-        /// Also list notes and links from Sara's store
-        #[arg(long)]
-        items: bool,
         /// Filter by project name
         #[arg(long)]
         project: Option<String>,
@@ -227,49 +206,6 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
-
-    /// Ask Sara anything — searches your store and answers with LLM
-    #[command(visible_alias = "ask")]
-    Search {
-        /// Your question
-        query: String,
-    },
-
-    /// Surface what's most relevant right now
-    Brief {
-        /// Skip LLM — use template brief only
-        #[arg(long)]
-        no_llm: bool,
-    },
-
-    /// Rebuild long-term memory from daily notes + captures (OpenClaw-style dreaming)
-    Learn,
-
-    /// Store a durable fact in long-term memory
-    Remember {
-        #[arg(trailing_var_arg = true, required = true)]
-        words: Vec<String>,
-    },
-
-    /// Inspect and search Sara's memory (MEMORY.md + daily notes)
-    Memory {
-        #[command(subcommand)]
-        action: Option<MemoryAction>,
-        /// Query for `sara memory search`
-        query: Option<String>,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum MemoryAction {
-    /// Show long-term MEMORY.md (default)
-    Show,
-    /// Show today's daily notes
-    Today,
-    /// Search memory files by keyword
-    Search,
-    /// Index memory chunks for semantic search
-    Index,
 }
 
 #[derive(Debug, Subcommand)]
@@ -352,7 +288,7 @@ mod tests {
     #[test]
     fn cli_has_core_task_commands() {
         let cmd = Cli::command();
-        for name in ["add", "list", "info", "done", "init", "undo"] {
+        for name in ["add", "list", "info", "done", "undo"] {
             assert!(
                 cmd.find_subcommand(name).is_some(),
                 "missing subcommand: {name}"

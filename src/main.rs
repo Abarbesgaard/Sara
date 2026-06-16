@@ -1,20 +1,15 @@
-mod capture;
 mod cli;
 mod commands;
 mod config;
 mod dates;
 mod db;
-mod embed;
 mod enrich;
 mod files;
 mod git;
-mod learn;
-mod memory;
 mod llm;
 mod model;
 mod project;
 mod tui;
-mod vault;
 
 use anyhow::Result;
 use clap::CommandFactory;
@@ -22,21 +17,12 @@ use clap::Parser;
 use std::io;
 use std::process::ExitCode;
 
-use cli::{Cli, Command, DepAction, MemoryAction, ProjectAction};
-
-fn is_item_handle(id: &str) -> bool {
-    let id = id.trim().to_lowercase();
-    if id.starts_with('n') || id.starts_with('l') {
-        id[1..].chars().all(|c| c.is_ascii_digit()) && !id[1..].is_empty()
-    } else {
-        false
-    }
-}
+use cli::{Cli, Command, DepAction, ProjectAction};
 
 fn run() -> Result<()> {
     // Taskwarrior-style shorthands:
     //   `sara <id>`          -> `sara info <id>`
-    //   `sara <id> <action>` -> `sara <action> <id>`   (start/stop/done/delete/modify/info/dep)
+    //   `sara <id> <action>` -> `sara <action> <id>`
     let mut args: Vec<String> = std::env::args().collect();
     if args.len() == 2 && args[1].parse::<i64>().is_ok() {
         args.insert(1, "info".to_string());
@@ -59,15 +45,7 @@ fn run() -> Result<()> {
         return commands::provider::run(action);
     }
 
-    let mut cfg = config::load()?;
-
-    if matches!(cli.command, Command::Init { .. }) {
-        if let Command::Init { path } = cli.command {
-            vault::init_store(&mut cfg, path)?;
-        }
-        return Ok(());
-    }
-
+    let cfg = config::load()?;
     let mut conn = db::open()?;
 
     if !matches!(cli.command, Command::Undo) {
@@ -94,9 +72,6 @@ fn run() -> Result<()> {
 
         Command::Add {
             words,
-            task,
-            note,
-            capture_link,
             project,
             priority,
             tag,
@@ -104,37 +79,24 @@ fn run() -> Result<()> {
             no_llm,
             every,
         } => {
-            if words.is_empty() && !note && !capture_link {
-                anyhow::bail!("Provide content to add, or use --note / --link");
+            if words.is_empty() {
+                anyhow::bail!("Task description cannot be empty");
             }
-            let text = words.join(" ");
-            let use_llm = !no_llm;
-            if capture_link || (capture::is_url(&text) && !task && !note) {
-                capture::capture_link(&conn, &mut cfg, &text, None, use_llm)?;
-            } else if note {
-                capture::capture_note(&conn, &mut cfg, &text, use_llm)?;
-            } else {
-                commands::add::run(
-                    &conn,
-                    &cfg,
-                    &words,
-                    project.as_deref(),
-                    priority.as_deref(),
-                    &tag,
-                    yes,
-                    no_llm,
-                    every.as_deref(),
-                )?;
-                db::record_event(&conn, "capture", None, Some("task"), &tag, project.as_deref())?;
-            }
+            commands::add::run(
+                &conn,
+                &cfg,
+                &words,
+                project.as_deref(),
+                priority.as_deref(),
+                &tag,
+                yes,
+                no_llm,
+                every.as_deref(),
+            )?;
         }
 
         Command::Info { id } => {
-            if is_item_handle(&id) {
-                commands::item::run(&conn, &cfg, &id)?;
-            } else {
-                commands::info::run(&conn, &cfg, &id)?;
-            }
+            commands::info::run(&conn, &cfg, &id)?;
         }
 
         Command::Annotate { id, text } => {
@@ -157,8 +119,8 @@ fn run() -> Result<()> {
             commands::annotate::unlink(&conn, link_id)?;
         }
 
-        Command::List { all, items, project } => {
-            commands::list::run(&conn, &cfg, all, items, project.as_deref())?;
+        Command::List { all, project } => {
+            commands::list::run(&conn, &cfg, all, project.as_deref())?;
         }
 
         Command::Start { id } => {
@@ -171,7 +133,6 @@ fn run() -> Result<()> {
 
         Command::Done { id, force } => {
             commands::done::run(&conn, &cfg, &id, force)?;
-            db::record_event(&conn, "complete", None, Some("task"), &[], None)?;
         }
 
         Command::Modify { id, no_llm } => {
@@ -179,11 +140,7 @@ fn run() -> Result<()> {
         }
 
         Command::Delete { id, yes } => {
-            if is_item_handle(&id) {
-                commands::item::delete_item(&conn, &cfg, &id)?;
-            } else {
-                commands::delete::run(&conn, &id, yes)?;
-            }
+            commands::delete::run(&conn, &id, yes)?;
         }
 
         Command::Dep { id, action } => match action {
@@ -232,12 +189,8 @@ fn run() -> Result<()> {
         Command::Paths => {
             let cfg_path = config::config_path()?;
             let db_path = config::db_path()?;
-            let store = config::vault_path(&cfg).ok();
             println!("Config: {}", cfg_path.display());
             println!("Database: {}", db_path.display());
-            if let Some(s) = store {
-                println!("Store: {}", s.display());
-            }
         }
 
         Command::Completions { shell } => {
@@ -245,29 +198,6 @@ fn run() -> Result<()> {
             let name = cmd.get_name().to_string();
             clap_complete::generate(shell, &mut cmd, name, &mut io::stdout());
         }
-
-        Command::Search { query } => {
-            commands::search::run(&conn, &cfg, &query)?;
-        }
-
-        Command::Brief { no_llm } => {
-            commands::brief::run(&conn, &cfg, no_llm)?;
-        }
-
-        Command::Learn => {
-            commands::learn_cmd::run(&conn, &cfg)?;
-        }
-
-        Command::Remember { words } => {
-            commands::remember::run(&cfg, &words)?;
-        }
-
-        Command::Memory { action, query } => {
-            let action = action.unwrap_or(MemoryAction::Show);
-            commands::memory_cmd::run(&conn, &cfg, &action, query.as_deref())?;
-        }
-
-        Command::Init { .. } => unreachable!(),
     }
 
     Ok(())

@@ -2,7 +2,7 @@
 name = "sara"
 version = "0.1.0"
 edition = "2024"
-description = "Sara — a personal assistant with a folder-aware task manager"
+description = "Sara — folder-aware task manager (successor to tk)"
 license = "MIT"
 
 [[bin]]
@@ -27,8 +27,7 @@ directories = "5"
 anyhow = "1"
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "v5", "serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 toml = "0.8"
-serde_yaml = "0.9"
 nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
