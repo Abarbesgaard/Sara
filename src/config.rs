@@ -321,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn migrate_copies_tk_config_and_db_when_sara_missing() {
         with_home("migrate", || {
             let home = std::env::var("HOME").unwrap();
@@ -345,6 +346,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn migrate_skips_when_sara_already_exists() {
         with_home("migrate-skip", || {
             let home = PathBuf::from(std::env::var("HOME").unwrap());
