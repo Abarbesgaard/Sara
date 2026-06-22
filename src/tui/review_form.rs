@@ -947,6 +947,100 @@ mod tests {
         }
     }
 
+    /// Serialize a rendered TestBackend buffer into text: one line per row,
+    /// trailing whitespace trimmed, rows joined by '\n'. Captures the visible
+    /// glyphs (layout + labels) without styling — enough to pin the layout.
+    fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
+        let buf = terminal.backend().buffer();
+        let area = *buf.area();
+        let mut out = String::new();
+        for y in 0..area.height {
+            let mut line = String::new();
+            for x in 0..area.width {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    #[ignore = "capture helper: run with --ignored to (re)write snapshot files"]
+    fn write_render_snapshots() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/tui/snapshots");
+        std::fs::create_dir_all(dir).unwrap();
+
+        let mut state = FormState::new(ctx_with_deps());
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        std::fs::write(
+            format!("{dir}/review_form_normal.txt"),
+            buffer_to_string(&terminal),
+        )
+        .unwrap();
+
+        let mut ctx = ctx_with_deps();
+        ctx.llm_status = Some("model unavailable, used heuristics".into());
+        let mut state = FormState::new(ctx);
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        std::fs::write(
+            format!("{dir}/review_form_llm_status.txt"),
+            buffer_to_string(&terminal),
+        )
+        .unwrap();
+
+        let mut state = FormState::new(ctx_with_deps());
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        std::fs::write(
+            format!("{dir}/review_form_small.txt"),
+            buffer_to_string(&terminal),
+        )
+        .unwrap();
+    }
+
+    /// Characterization (snapshot) tests for `render`. These pin the visible
+    /// layout and labels so the planned `render_fields` split stays behaviour-
+    /// identical. To intentionally update them, run:
+    ///   cargo test write_render_snapshots -- --ignored
+    /// and review the diff under src/tui/snapshots/.
+    #[test]
+    fn render_normal_matches_snapshot() {
+        let mut state = FormState::new(ctx_with_deps());
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        assert_eq!(
+            buffer_to_string(&terminal),
+            include_str!("snapshots/review_form_normal.txt"),
+        );
+    }
+
+    #[test]
+    fn render_with_llm_status_matches_snapshot() {
+        let mut ctx = ctx_with_deps();
+        ctx.llm_status = Some("model unavailable, used heuristics".into());
+        let mut state = FormState::new(ctx);
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        assert_eq!(
+            buffer_to_string(&terminal),
+            include_str!("snapshots/review_form_llm_status.txt"),
+        );
+    }
+
+    #[test]
+    fn render_small_terminal_matches_snapshot() {
+        let mut state = FormState::new(ctx_with_deps());
+        let mut terminal = Terminal::new(TestBackend::new(40, 10)).unwrap();
+        terminal.draw(|f| render(f, &mut state)).unwrap();
+        assert_eq!(
+            buffer_to_string(&terminal),
+            include_str!("snapshots/review_form_small.txt"),
+        );
+    }
+
     #[test]
     fn render_with_toggled_dep_does_not_panic() {
         let mut state = FormState::new(ctx_with_deps());
