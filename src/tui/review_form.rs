@@ -736,165 +736,164 @@ fn render_fields(f: &mut Frame, state: &mut FormState, area: Rect) {
     render_priority(f, state, rows[2]);
     render_due(f, state, rows[3]);
     render_tags(f, state, rows[4]);
+    render_dependencies(f, state, rows[5]);
+    render_files(f, state, rows[6]);
+    render_buttons(f, state, rows[7]);
+}
 
-    // ── Dependencies
-    {
-        let focused = state.focus == Focus::Dependencies;
-        let block = field_block("Dependencies  (↑/↓ move, space toggle)", focused);
-        let inner = block.inner(rows[5]);
-        f.render_widget(block, rows[5]);
-        if state.ctx.available_deps.is_empty() {
-            f.render_widget(
-                Paragraph::new("No existing tasks").style(Style::default().fg(Color::DarkGray)),
-                inner,
-            );
-        } else {
-            let items: Vec<ListItem> = state
-                .ctx
-                .available_deps
-                .iter()
-                .enumerate()
-                .map(|(i, (id, desc))| {
-                    let check = if state.selected_deps[i] { "☑" } else { "☐" };
-                    let suggested = state.ctx.suggested_dep_indices.contains(&i);
-                    let style = if state.selected_deps[i] {
-                        Style::default().fg(Color::Green)
-                    } else if suggested {
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::ITALIC)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(format!("{check} {id}  {desc}")).style(style)
-                })
-                .collect();
-            let list = List::new(items).highlight_style(
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            );
-            f.render_stateful_widget(list, inner, &mut state.dep_state);
-        }
-    }
-
-    // ── Files
-    {
-        let focused = state.focus == Focus::Files;
-        let n_selected = state.selected_file_paths.len();
-        let hint = if state.fzf_available {
-            "Enter: fzf · space toggle · type to filter"
-        } else {
-            "type to filter · space toggle · Enter add typed"
-        };
-        let mut title = format!("Relevant Files  ({hint})");
-        if n_selected > 0 {
-            title = format!("Relevant Files  [{n_selected} selected]  ({hint})");
-        }
-        let block = field_block(&title, focused);
-        let inner = block.inner(rows[6]);
-        f.render_widget(block, rows[6]);
-
-        // Split: optional filter line + the list.
-        let show_filter = focused && !state.fzf_available;
-        let (filter_area, list_area) = if show_filter {
-            let parts = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(1), Constraint::Min(1)])
-                .split(inner);
-            (Some(parts[0]), parts[1])
-        } else {
-            (None, inner)
-        };
-        if let Some(fa) = filter_area {
-            f.render_widget(
-                Paragraph::new(format!("🔍 {}", state.file_filter))
-                    .style(Style::default().fg(Color::Yellow)),
-                fa,
-            );
-        }
-
-        let file_rows = state.file_rows();
-        if file_rows.is_empty() {
-            let msg = if state.ctx.available_files.is_empty() {
-                "No project files found — type a path, Enter to add"
-            } else {
-                "No matches"
-            };
-            f.render_widget(
-                Paragraph::new(msg).style(Style::default().fg(Color::DarkGray)),
-                list_area,
-            );
-        } else {
-            let items: Vec<ListItem> = file_rows
-                .iter()
-                .map(|r| {
-                    if r.add_custom {
-                        return ListItem::new(format!("＋ add \"{}\"", r.path))
-                            .style(Style::default().fg(Color::Magenta));
-                    }
-                    let check = if r.selected { "☑" } else { "☐" };
-                    let style = if r.selected {
-                        Style::default().fg(Color::Green)
-                    } else if r.suggested {
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::ITALIC)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(format!("{check} {}", r.path)).style(style)
-                })
-                .collect();
-            let list = List::new(items).highlight_style(
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            );
-            f.render_stateful_widget(list, list_area, &mut state.file_state);
-        }
-    }
-
-    // ── Submit / Cancel
-    {
-        let row = rows[7];
-        let halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(row);
-
-        let submit_style = if state.focus == Focus::Submit {
-            Style::default()
-                .bg(Color::Green)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD)
-        } else if state.can_submit() {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        };
+fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Dependencies;
+    let block = field_block("Dependencies  (↑/↓ move, space toggle)", focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if state.ctx.available_deps.is_empty() {
         f.render_widget(
-            Paragraph::new(" ✔  Save  (Ctrl+S)")
-                .style(submit_style)
-                .block(Block::default().borders(Borders::ALL)),
-            halves[0],
+            Paragraph::new("No existing tasks").style(Style::default().fg(Color::DarkGray)),
+            inner,
         );
-
-        let cancel_style = if state.focus == Focus::Cancel {
+    } else {
+        let items: Vec<ListItem> = state
+            .ctx
+            .available_deps
+            .iter()
+            .enumerate()
+            .map(|(i, (id, desc))| {
+                let check = if state.selected_deps[i] { "☑" } else { "☐" };
+                let suggested = state.ctx.suggested_dep_indices.contains(&i);
+                let style = if state.selected_deps[i] {
+                    Style::default().fg(Color::Green)
+                } else if suggested {
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("{check} {id}  {desc}")).style(style)
+            })
+            .collect();
+        let list = List::new(items).highlight_style(
             Style::default()
-                .bg(Color::Red)
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::Red)
-        };
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+        f.render_stateful_widget(list, inner, &mut state.dep_state);
+    }
+}
+
+fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Files;
+    let n_selected = state.selected_file_paths.len();
+    let hint = if state.fzf_available {
+        "Enter: fzf · space toggle · type to filter"
+    } else {
+        "type to filter · space toggle · Enter add typed"
+    };
+    let mut title = format!("Relevant Files  ({hint})");
+    if n_selected > 0 {
+        title = format!("Relevant Files  [{n_selected} selected]  ({hint})");
+    }
+    let block = field_block(&title, focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Split: optional filter line + the list.
+    let show_filter = focused && !state.fzf_available;
+    let (filter_area, list_area) = if show_filter {
+        let parts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(inner);
+        (Some(parts[0]), parts[1])
+    } else {
+        (None, inner)
+    };
+    if let Some(fa) = filter_area {
         f.render_widget(
-            Paragraph::new(" ✖  Cancel  (Esc)")
-                .style(cancel_style)
-                .block(Block::default().borders(Borders::ALL)),
-            halves[1],
+            Paragraph::new(format!("🔍 {}", state.file_filter))
+                .style(Style::default().fg(Color::Yellow)),
+            fa,
         );
     }
+
+    let file_rows = state.file_rows();
+    if file_rows.is_empty() {
+        let msg = if state.ctx.available_files.is_empty() {
+            "No project files found — type a path, Enter to add"
+        } else {
+            "No matches"
+        };
+        f.render_widget(
+            Paragraph::new(msg).style(Style::default().fg(Color::DarkGray)),
+            list_area,
+        );
+    } else {
+        let items: Vec<ListItem> = file_rows
+            .iter()
+            .map(|r| {
+                if r.add_custom {
+                    return ListItem::new(format!("＋ add \"{}\"", r.path))
+                        .style(Style::default().fg(Color::Magenta));
+                }
+                let check = if r.selected { "☑" } else { "☐" };
+                let style = if r.selected {
+                    Style::default().fg(Color::Green)
+                } else if r.suggested {
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("{check} {}", r.path)).style(style)
+            })
+            .collect();
+        let list = List::new(items).highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+        f.render_stateful_widget(list, list_area, &mut state.file_state);
+    }
+}
+
+fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let halves = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+
+    let submit_style = if state.focus == Focus::Submit {
+        Style::default()
+            .bg(Color::Green)
+            .fg(Color::Black)
+            .add_modifier(Modifier::BOLD)
+    } else if state.can_submit() {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    f.render_widget(
+        Paragraph::new(" ✔  Save  (Ctrl+S)")
+            .style(submit_style)
+            .block(Block::default().borders(Borders::ALL)),
+        halves[0],
+    );
+
+    let cancel_style = if state.focus == Focus::Cancel {
+        Style::default()
+            .bg(Color::Red)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red)
+    };
+    f.render_widget(
+        Paragraph::new(" ✖  Cancel  (Esc)")
+            .style(cancel_style)
+            .block(Block::default().borders(Borders::ALL)),
+        halves[1],
+    );
 }
 
 fn render_footer(f: &mut Frame, _state: &FormState, area: Rect) {
