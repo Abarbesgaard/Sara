@@ -1,0 +1,3 @@
+# Snapshot fixtures are compared byte-for-byte against LF-newline output;
+# keep them LF so they don't get CRLF-mangled on Windows checkouts.
+src/tui/snapshots/*.txt text eol=lf

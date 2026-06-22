@@ -1013,7 +1013,8 @@ mod tests {
         terminal.draw(|f| render(f, &mut state)).unwrap();
         assert_eq!(
             buffer_to_string(&terminal),
-            include_str!("snapshots/review_form_normal.txt"),
+            // Normalize CRLF: git may check the snapshot out with \r\n on Windows.
+            include_str!("snapshots/review_form_normal.txt").replace("\r\n", "\n"),
         );
     }
 
@@ -1026,7 +1027,7 @@ mod tests {
         terminal.draw(|f| render(f, &mut state)).unwrap();
         assert_eq!(
             buffer_to_string(&terminal),
-            include_str!("snapshots/review_form_llm_status.txt"),
+            include_str!("snapshots/review_form_llm_status.txt").replace("\r\n", "\n"),
         );
     }
 
@@ -1037,7 +1038,7 @@ mod tests {
         terminal.draw(|f| render(f, &mut state)).unwrap();
         assert_eq!(
             buffer_to_string(&terminal),
-            include_str!("snapshots/review_form_small.txt"),
+            include_str!("snapshots/review_form_small.txt").replace("\r\n", "\n"),
         );
     }
 
