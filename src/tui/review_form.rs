@@ -328,6 +328,29 @@ impl<'a> FormState<'a> {
         !self.desc_area.lines().join("").trim().is_empty() && !self.due_error
     }
 
+    /// If focus is on one of the four text fields, feed the key to it (and
+    /// re-validate Due), returning `true`. Otherwise leave state untouched and
+    /// return `false` so the caller can handle non-text focuses.
+    fn input_to_focused_text_field(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        match self.focus {
+            Focus::Description => {
+                self.desc_area.input(key);
+            }
+            Focus::Project => {
+                self.project_area.input(key);
+            }
+            Focus::Due => {
+                self.due_area.input(key);
+                self.validate_due();
+            }
+            Focus::Tags => {
+                self.tags_area.input(key);
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// Apply a single key event to the form. Returns nothing; mutates state.
     /// Extracted from the event loop so it can be exercised in unit tests
     /// without a live terminal.
@@ -365,21 +388,11 @@ impl<'a> FormState<'a> {
             (KeyCode::Char(' '), _) => match self.focus {
                 Focus::Dependencies => self.toggle_dep(),
                 Focus::Files => self.toggle_file(),
-                // In text fields, a space is just a character.
-                Focus::Description => {
-                    self.desc_area.input(key);
+                // In text fields, a space is just a character; other focuses
+                // (Priority/Submit/Cancel) ignore it.
+                _ => {
+                    self.input_to_focused_text_field(key);
                 }
-                Focus::Project => {
-                    self.project_area.input(key);
-                }
-                Focus::Due => {
-                    self.due_area.input(key);
-                    self.validate_due();
-                }
-                Focus::Tags => {
-                    self.tags_area.input(key);
-                }
-                _ => {}
             },
             (KeyCode::Left, _) if self.focus == Focus::Priority => {
                 self.cycle_priority(false);
@@ -445,19 +458,6 @@ impl<'a> FormState<'a> {
                 self.clamp_file_selection();
             }
             _ => match self.focus {
-                Focus::Description => {
-                    self.desc_area.input(key);
-                }
-                Focus::Project => {
-                    self.project_area.input(key);
-                }
-                Focus::Due => {
-                    self.due_area.input(key);
-                    self.validate_due();
-                }
-                Focus::Tags => {
-                    self.tags_area.input(key);
-                }
                 // In the Files field, plain characters build a filter query.
                 Focus::Files => {
                     if let KeyCode::Char(c) = key.code {
@@ -466,7 +466,11 @@ impl<'a> FormState<'a> {
                         self.clamp_file_selection();
                     }
                 }
-                _ => {}
+                // Text fields route the key (incl. Due validation); other
+                // focuses (Priority/Dependencies/Submit/Cancel) ignore it.
+                _ => {
+                    self.input_to_focused_text_field(key);
+                }
             },
         }
     }
