@@ -656,10 +656,71 @@ fn shrink(r: Rect, n: u16) -> Rect {
     }
 }
 
+fn render_description(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Description;
+    let block = field_block("Description", focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    state.desc_area.set_block(Block::default());
+    f.render_widget(&state.desc_area, inner);
+}
+
+fn render_project(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Project;
+    let block = field_block("Project", focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    state.project_area.set_block(Block::default());
+    f.render_widget(&state.project_area, inner);
+}
+
+fn render_priority(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Priority;
+    let block = field_block("Priority  ←/→ to cycle", focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let label = match &state.priority {
+        None => Span::styled("None", Style::default().fg(Color::DarkGray)),
+        Some(Priority::L) => Span::styled("L  (Low)", Style::default().fg(Color::Green)),
+        Some(Priority::M) => Span::styled("M  (Medium)", Style::default().fg(Color::Yellow)),
+        Some(Priority::H) => Span::styled("H  (High)", Style::default().fg(Color::Red)),
+    };
+    f.render_widget(Paragraph::new(Line::from(label)), inner);
+}
+
+fn render_due(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Due;
+    let title = if state.due_error {
+        "Due  ⚠ invalid date"
+    } else {
+        "Due  ←/→ presets, or type (2026-06-20, friday, +3d)"
+    };
+    let block = if state.due_error {
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Red))
+    } else {
+        field_block(title, focused)
+    };
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    state.due_area.set_block(Block::default());
+    f.render_widget(&state.due_area, inner);
+}
+
+fn render_tags(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Tags;
+    let block = field_block("Tags  (comma-separated)", focused);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    state.tags_area.set_block(Block::default());
+    f.render_widget(&state.tags_area, inner);
+}
+
 fn render_fields(f: &mut Frame, state: &mut FormState, area: Rect) {
     // Heights: desc=3, proj=3, pri=3, due=3, tags=3, deps=5, files=7, buttons=3
     let heights = [3u16, 3, 3, 3, 3, 5, 7, 3];
-    let _total: u16 = heights.iter().sum();
     if area.height < 4 {
         return;
     }
@@ -670,72 +731,11 @@ fn render_fields(f: &mut Frame, state: &mut FormState, area: Rect) {
         .constraints(constraints)
         .split(area);
 
-    // ── Description
-    {
-        let focused = state.focus == Focus::Description;
-        let block = field_block("Description", focused);
-        let inner = block.inner(rows[0]);
-        f.render_widget(block, rows[0]);
-        state.desc_area.set_block(Block::default());
-        f.render_widget(&state.desc_area, inner);
-    }
-
-    // ── Project
-    {
-        let focused = state.focus == Focus::Project;
-        let block = field_block("Project", focused);
-        let inner = block.inner(rows[1]);
-        f.render_widget(block, rows[1]);
-        state.project_area.set_block(Block::default());
-        f.render_widget(&state.project_area, inner);
-    }
-
-    // ── Priority
-    {
-        let focused = state.focus == Focus::Priority;
-        let block = field_block("Priority  ←/→ to cycle", focused);
-        let inner = block.inner(rows[2]);
-        f.render_widget(block, rows[2]);
-        let label = match &state.priority {
-            None => Span::styled("None", Style::default().fg(Color::DarkGray)),
-            Some(Priority::L) => Span::styled("L  (Low)", Style::default().fg(Color::Green)),
-            Some(Priority::M) => Span::styled("M  (Medium)", Style::default().fg(Color::Yellow)),
-            Some(Priority::H) => Span::styled("H  (High)", Style::default().fg(Color::Red)),
-        };
-        f.render_widget(Paragraph::new(Line::from(label)), inner);
-    }
-
-    // ── Due
-    {
-        let focused = state.focus == Focus::Due;
-        let title = if state.due_error {
-            "Due  ⚠ invalid date"
-        } else {
-            "Due  ←/→ presets, or type (2026-06-20, friday, +3d)"
-        };
-        let block = if state.due_error {
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Red))
-        } else {
-            field_block(title, focused)
-        };
-        let inner = block.inner(rows[3]);
-        f.render_widget(block, rows[3]);
-        state.due_area.set_block(Block::default());
-        f.render_widget(&state.due_area, inner);
-    }
-
-    // ── Tags
-    {
-        let focused = state.focus == Focus::Tags;
-        let block = field_block("Tags  (comma-separated)", focused);
-        let inner = block.inner(rows[4]);
-        f.render_widget(block, rows[4]);
-        state.tags_area.set_block(Block::default());
-        f.render_widget(&state.tags_area, inner);
-    }
+    render_description(f, state, rows[0]);
+    render_project(f, state, rows[1]);
+    render_priority(f, state, rows[2]);
+    render_due(f, state, rows[3]);
+    render_tags(f, state, rows[4]);
 
     // ── Dependencies
     {
