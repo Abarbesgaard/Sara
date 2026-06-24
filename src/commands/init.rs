@@ -83,22 +83,18 @@ pub fn run(
     let cwd = std::env::current_dir()?;
     let git_root = find_git_root(&cwd);
 
-    let (project_name, project_path) = if let Some(root) = &git_root {
-        let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-        let name = name_override
-            .map(str::to_string)
-            .unwrap_or_else(|| crate::project::project_name_from_root(&canonical));
-        (name, Some(canonical.to_string_lossy().to_string()))
-    } else {
-        let name = name_override
-            .map(str::to_string)
-            .unwrap_or_else(|| cfg.default_project.clone());
+    // Resolve the project from the current folder: a git repo is its own
+    // project; otherwise the folder itself is initialized as the project.
+    let (resolved_name, resolved_path) = crate::project::project_identity_for_dir(&cwd, cfg);
+    let project_name = name_override.map(str::to_string).unwrap_or(resolved_name);
+    let project_path = Some(resolved_path);
+
+    if git_root.is_none() {
         println!(
-            "Note: not inside a git repo. Registering project '{}' without a path.",
-            name
+            "Note: not inside a git repo — initializing the current folder as project '{}'.",
+            project_name
         );
-        (name, None)
-    };
+    }
 
     // Detect stack
     let detected_stack = project_path

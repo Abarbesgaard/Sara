@@ -13,13 +13,30 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Git project profile commands
+    /// Initialize (or update) the project profile for the current folder
+    Init {
+        /// Override the project name
+        #[arg(long)]
+        name: Option<String>,
+        /// Set the project goal directly (skips prompt)
+        #[arg(long)]
+        goal: Option<String>,
+        /// Accept all detected/LLM values non-interactively
+        #[arg(short, long)]
+        yes: bool,
+        /// Skip LLM task seeding
+        #[arg(long)]
+        no_llm: bool,
+    },
+
+    /// Git project profile commands (deprecated: use `sara init`)
+    #[command(hide = true)]
     Project {
         #[command(subcommand)]
         action: ProjectAction,
     },
 
-    /// Nuke a project: delete all its tasks and profile (run `sara project init` to recreate)
+    /// Nuke a project: delete all its tasks and profile (run `sara init` to recreate)
     Reset {
         /// Project to reset (defaults to the current project)
         #[arg(long, short)]

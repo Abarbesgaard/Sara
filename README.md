@@ -112,12 +112,11 @@ sara --version
 ## Quick start
 
 ```bash
-# Initialize Sara's private store (creates Sara/ in the current directory)
-sara init
-
-# Step into a Git repo and create its project profile
+# Initialize the current folder as a Sara project.
+# A git repo becomes its own project (named after the repo root); any other
+# folder is initialized in place (named after the folder).
 cd ~/my-project
-sara project init
+sara init
 
 # Add a task (opens the interactive review form)
 sara add "implement user authentication"

@@ -38,6 +38,25 @@ pub fn project_name_from_root(root: &Path) -> String {
         .to_string()
 }
 
+/// Resolve the project identity (name, path) for a directory.
+///
+/// A git repo is its own project, named after the repo root. Otherwise the
+/// directory itself is the project, named after the folder — Sara initializes
+/// "inside the folder" rather than dumping into a catch-all. The legacy
+/// `default_project` ("inbox") is only used as a last resort when the folder
+/// has no usable name (e.g. the filesystem root).
+pub fn project_identity_for_dir(dir: &Path, cfg: &crate::config::Config) -> (String, String) {
+    let root = find_git_root(dir).unwrap_or_else(|| dir.to_path_buf());
+    let canonical = root.canonicalize().unwrap_or(root);
+    let name = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| cfg.default_project.clone());
+    (name, canonical.to_string_lossy().to_string())
+}
+
 /// Parse inline Taskwarrior-style tokens from the raw add arguments.
 /// Tokens are only extracted when they appear as leading or trailing words.
 /// Everything between the first non-token and last non-token is the literal description.
@@ -117,28 +136,20 @@ pub fn detect_current_project(
     cfg: &crate::config::Config,
 ) -> Result<(String, Option<String>)> {
     let cwd = std::env::current_dir()?;
-    if let Some(root) = find_git_root(&cwd) {
-        let canonical = root.canonicalize().unwrap_or_else(|_| root.clone());
-        let name = project_name_from_root(&canonical);
-        let path_str = canonical.to_string_lossy().to_string();
+    let (name, path_str) = project_identity_for_dir(&cwd, cfg);
 
-        // Check for path collision (same name, different path)
-        if let Some(existing) = crate::db::get_project(conn, &name)?
-            && let Some(ref existing_path) = existing.path
-            && existing_path != &path_str
-        {
-            eprintln!(
-                "Warning: project '{}' is already registered at {}. \
-                         Using existing name. Use --project to override.",
-                name, existing_path
-            );
-        }
-
-        crate::db::upsert_project_seen(conn, &name, Some(&path_str))?;
-        Ok((name, Some(path_str)))
-    } else {
-        let name = cfg.default_project.clone();
-        crate::db::upsert_project_seen(conn, &name, None)?;
-        Ok((name, None))
+    // Check for path collision (same name, different path)
+    if let Some(existing) = crate::db::get_project(conn, &name)?
+        && let Some(ref existing_path) = existing.path
+        && existing_path != &path_str
+    {
+        eprintln!(
+            "Warning: project '{}' is already registered at {}. \
+                     Using existing name. Use --project to override.",
+            name, existing_path
+        );
     }
+
+    crate::db::upsert_project_seen(conn, &name, Some(&path_str))?;
+    Ok((name, Some(path_str)))
 }

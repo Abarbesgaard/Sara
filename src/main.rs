@@ -67,6 +67,15 @@ fn run() -> Result<()> {
     }
 
     match cli.command {
+        Command::Init {
+            name,
+            goal,
+            yes,
+            no_llm,
+        } => {
+            commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes, no_llm)?;
+        }
+
         Command::Project { action } => match action {
             ProjectAction::Init {
                 name,
@@ -74,6 +83,7 @@ fn run() -> Result<()> {
                 yes,
                 no_llm,
             } => {
+                eprintln!("note: `sara project init` is deprecated — use `sara init` instead.");
                 commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes, no_llm)?;
             }
         },

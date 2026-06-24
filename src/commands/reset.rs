@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::io::{self, Write};
 
 use crate::config::Config;
-use crate::project::{find_git_root, project_name_from_root};
+use crate::project::project_identity_for_dir;
 
 /// Resolve the project name for the current directory *without* registering it
 /// (unlike `detect_current_project`, which upserts a `last_seen` row).
@@ -12,12 +12,8 @@ fn resolve_name(cfg: &Config, override_name: Option<&str>) -> Result<String> {
         return Ok(name.to_string());
     }
     let cwd = std::env::current_dir()?;
-    if let Some(root) = find_git_root(&cwd) {
-        let canonical = root.canonicalize().unwrap_or(root);
-        Ok(project_name_from_root(&canonical))
-    } else {
-        Ok(cfg.default_project.clone())
-    }
+    let (name, _path) = project_identity_for_dir(&cwd, cfg);
+    Ok(name)
 }
 
 pub fn run(
@@ -39,7 +35,7 @@ pub fn run(
         println!(
             "This will permanently delete project '{name}':\n  \
              • {task_count} task(s) and all their files, links, comments and history\n  \
-             • the project profile (you'll need to run `sara project init` again)"
+             • the project profile (you'll need to run `sara init` again)"
         );
         print!("Type the project name to confirm: ");
         io::stdout().flush()?;
@@ -53,6 +49,6 @@ pub fn run(
 
     let deleted = crate::db::reset_project(conn, &name)?;
     println!("✔ Reset project '{name}': removed {deleted} task(s) and its profile.");
-    println!("Run `sara project init` to set it up again.");
+    println!("Run `sara init` to set it up again.");
     Ok(())
 }
