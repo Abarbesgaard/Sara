@@ -125,7 +125,7 @@ pub enum Command {
         #[arg(short, long)]
         all: bool,
         /// Filter by project name
-        #[arg(long)]
+        #[arg(long, short)]
         project: Option<String>,
     },
 
@@ -290,7 +290,7 @@ pub enum DepAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
 
     #[test]
     fn cli_name_is_sara() {
@@ -306,6 +306,39 @@ mod tests {
                 cmd.find_subcommand(name).is_some(),
                 "missing subcommand: {name}"
             );
+        }
+    }
+
+    #[test]
+    fn list_accepts_short_and_long_project_flag() {
+        for args in [
+            ["sara", "list", "-p", "web"],
+            ["sara", "list", "--project", "web"],
+        ] {
+            let cli = Cli::try_parse_from(args).expect("list should parse a project flag");
+            match cli.command {
+                Command::List { project, .. } => {
+                    assert_eq!(project.as_deref(), Some("web"), "{args:?}");
+                }
+                other => panic!("expected List, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn project_filter_short_flag_is_consistent_across_commands() {
+        // `-p` must mean `--project` on every command exposing a project filter.
+        assert!(Cli::try_parse_from(["sara", "list", "-p", "x"]).is_ok());
+        assert!(Cli::try_parse_from(["sara", "reset", "-p", "x"]).is_ok());
+        assert!(Cli::try_parse_from(["sara", "activity", "-p", "x"]).is_ok());
+        // `add` takes `-p` before the trailing description.
+        let cli = Cli::try_parse_from(["sara", "add", "-p", "x", "do", "thing"]).unwrap();
+        match cli.command {
+            Command::Add { project, words, .. } => {
+                assert_eq!(project.as_deref(), Some("x"));
+                assert_eq!(words, vec!["do".to_string(), "thing".to_string()]);
+            }
+            other => panic!("expected Add, got {other:?}"),
         }
     }
 }
