@@ -1300,6 +1300,29 @@ pub fn get_project(conn: &Connection, name: &str) -> Result<Option<Project>> {
     Ok(rows.next().transpose()?)
 }
 
+/// Look up a project profile by its (canonical) path. When several profiles
+/// share a path — e.g. stale rows from before path resolution was fixed — the
+/// most-recently-seen one wins.
+pub fn get_project_by_path(conn: &Connection, path: &str) -> Result<Option<Project>> {
+    let mut stmt = conn.prepare(
+        "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen
+         FROM projects WHERE path=?1 ORDER BY last_seen DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map([path], |row| {
+        Ok(Project {
+            name: row.get(0)?,
+            path: row.get(1)?,
+            goal: row.get(2)?,
+            stack: row.get(3)?,
+            conventions: row.get(4)?,
+            notes: row.get(5)?,
+            initialized_at: None,
+            last_seen: None,
+        })
+    })?;
+    Ok(rows.next().transpose()?)
+}
+
 /// How many tasks a project currently owns (any status).
 pub fn count_project_tasks(conn: &Connection, name: &str) -> Result<usize> {
     let n: i64 = conn.query_row(
@@ -2143,6 +2166,35 @@ mod tests {
             .collect();
         assert_eq!(manual.len(), 2);
         assert_eq!(suggested, vec!["src/llm/mod.rs".to_string()]);
+    }
+
+    #[test]
+    fn get_project_by_path_finds_registered_project() {
+        let conn = mem();
+        upsert_project_seen(&conn, "cardpsp-workspace", Some("/home/u/workspace")).unwrap();
+        let found = get_project_by_path(&conn, "/home/u/workspace").unwrap();
+        assert_eq!(found.map(|p| p.name), Some("cardpsp-workspace".to_string()));
+        assert!(get_project_by_path(&conn, "/elsewhere").unwrap().is_none());
+    }
+
+    #[test]
+    fn get_project_by_path_prefers_most_recently_seen_on_collision() {
+        let conn = mem();
+        upsert_project_seen(&conn, "stale", Some("/home/u/workspace")).unwrap();
+        upsert_project_seen(&conn, "current", Some("/home/u/workspace")).unwrap();
+        // Force deterministic ordering regardless of timestamp resolution.
+        conn.execute(
+            "UPDATE projects SET last_seen='2020-01-01T00:00:00Z' WHERE name='stale'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE projects SET last_seen='2030-01-01T00:00:00Z' WHERE name='current'",
+            [],
+        )
+        .unwrap();
+        let found = get_project_by_path(&conn, "/home/u/workspace").unwrap();
+        assert_eq!(found.map(|p| p.name), Some("current".to_string()));
     }
 
     #[test]

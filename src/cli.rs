@@ -159,6 +159,15 @@ pub enum Command {
         no_llm: bool,
     },
 
+    /// Move a task to another project (non-interactive)
+    #[command(visible_alias = "mv")]
+    Move {
+        /// Task id or uuid prefix
+        id: String,
+        /// Target project name
+        project: String,
+    },
+
     /// Delete a task (soft-delete)
     Delete {
         /// Task id or uuid prefix
