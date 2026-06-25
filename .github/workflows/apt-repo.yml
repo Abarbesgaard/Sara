@@ -1,0 +1,99 @@
+name: APT repository
+
+# Publishes a Debian apt repository to GitHub Pages (gh-pages branch, /apt path)
+# after each release, so users can:
+#   echo "deb [trusted=yes] https://<owner>.github.io/<repo>/apt stable main" \
+#     | sudo tee /etc/apt/sources.list.d/sara.list
+#   sudo apt update && sudo apt install sara
+#
+# Setup required once:
+#   - Settings → Pages → Build from branch → gh-pages / (root).
+#   - (Optional) add an APT_GPG_PRIVATE_KEY secret to sign the repo and drop
+#     the [trusted=yes] flag.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-apt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
+            echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install tooling
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils
+
+      # Existing repo (to carry old package versions forward). May not exist yet.
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: pages
+
+      - name: Download release .deb assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p staging
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir staging
+
+      - name: Assemble apt repository
+        run: |
+          set -eux
+          mkdir -p public/apt/pool/main public/apt/dists/stable/main/binary-amd64
+          # Carry over previously published packages, then add the new ones.
+          if [ -d pages/apt/pool/main ]; then
+            cp -n pages/apt/pool/main/*.deb public/apt/pool/main/ 2>/dev/null || true
+          fi
+          cp staging/*.deb public/apt/pool/main/ 2>/dev/null || true
+
+          cd public/apt
+          dpkg-scanpackages --arch amd64 pool/ > dists/stable/main/binary-amd64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages
+
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=Sara \
+            -o APT::FTPArchive::Release::Label=Sara \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures=amd64 \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > dists/stable/Release
+
+      - name: Sign repository (optional)
+        env:
+          GPG_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "${GPG_KEY:-}" ]; then
+            echo "APT_GPG_PRIVATE_KEY not set — publishing an unsigned repo (clients use [trusted=yes])."
+            exit 0
+          fi
+          echo "$GPG_KEY" | gpg --batch --import
+          KEYID="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/{print $5; exit}')"
+          cd public/apt/dists/stable
+          gpg --batch --yes --default-key "$KEYID" -abs -o Release.gpg Release
+          gpg --batch --yes --default-key "$KEYID" --clearsign -o InRelease Release
+          gpg --batch --yes --armor --export "$KEYID" > ../../sara-archive-keyring.asc
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
