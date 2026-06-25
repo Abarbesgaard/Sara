@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod add;
 pub mod annotate;
+pub mod board;
 pub mod branch;
 pub mod delete;
 pub mod dep;

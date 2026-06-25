@@ -57,6 +57,10 @@ struct Detail {
     head_commit: Option<String>,
     /// Project-level setup/test/lint/run commands (verification context).
     project_commands: crate::db::ProjectCommands,
+    /// The dependency chain (feature) this task belongs to, in blockers-first
+    /// order. Empty when the task has no linked tasks. Used by the right-hand
+    /// "Feature chain" panel to show progress and highlight the current task.
+    chain: Vec<Task>,
 }
 
 struct BranchOverlap {
@@ -278,6 +282,7 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         .as_ref()
         .and_then(|p| crate::git::head_commit(p));
     let project_commands = db::get_project_commands(conn, &task.project).unwrap_or_default();
+    let chain = db::feature_chain(conn, &task.uuid).unwrap_or_default();
 
     Ok(Detail {
         depends_on_ids: dep_ids(conn, &blockers),
@@ -301,6 +306,7 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         ai_runs,
         head_commit,
         project_commands,
+        chain,
         task,
     })
 }
@@ -483,6 +489,8 @@ fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut Detail) {
         blocking.len(),
     ));
     detail.history = db::get_history(conn, &uuid).unwrap_or_default();
+    // Dependency edits reshape the feature chain.
+    detail.chain = db::feature_chain(conn, &uuid).unwrap_or_default();
 }
 
 fn compute_overlaps(
@@ -1065,6 +1073,8 @@ fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Result<()> {
         !blockers.is_empty(),
         blocking_tasks.len(),
     ));
+    // A project change can move the task into a different feature chain.
+    detail.chain = db::feature_chain(conn, &detail.task.uuid).unwrap_or_default();
     Ok(())
 }
 
@@ -1915,20 +1925,43 @@ fn render(f: &mut Frame, st: &EditState) {
         .scroll((st.scroll, 0));
     f.render_widget(para, left_area);
 
-    // ── Git branch panel + stats + mini heatmap
+    // ── Feature chain (top) + Git + stats + mini heatmap
     if let Some(panel) = panel_area {
-        // Three-section right column:
-        //   Git     (top, flexible)
-        //   Stats   (middle, fixed 14)
-        //   Heatmap (bottom, fixed 11)
-        let panel_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
+        // The chain panel only appears when the task is linked to others. Its
+        // height flexes with the chain length (capped) so short chains stay compact.
+        let has_chain = d.chain.len() > 1;
+        let chain_h: u16 = if has_chain {
+            // +3 for border (2) and the progress bar row (1).
+            ((d.chain.len() as u16) + 3).clamp(5, 14)
+        } else {
+            0
+        };
+
+        let constraints: Vec<Constraint> = if has_chain {
+            vec![
+                Constraint::Length(chain_h),
                 Constraint::Min(4),
                 Constraint::Length(14),
                 Constraint::Length(11),
-            ])
+            ]
+        } else {
+            vec![
+                Constraint::Min(4),
+                Constraint::Length(14),
+                Constraint::Length(11),
+            ]
+        };
+        let panel_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
             .split(panel);
+
+        let base = if has_chain {
+            render_chain_panel(f, panel_chunks[0], d);
+            1
+        } else {
+            0
+        };
 
         let git_lines = git_panel_lines(d);
         let git_para = Paragraph::new(git_lines)
@@ -1939,10 +1972,10 @@ fn render(f: &mut Frame, st: &EditState) {
                     .border_style(Style::default().fg(Color::DarkGray)),
             )
             .wrap(Wrap { trim: false });
-        f.render_widget(git_para, panel_chunks[0]);
+        f.render_widget(git_para, panel_chunks[base]);
 
-        render_project_stats(f, panel_chunks[1], d);
-        render_mini_heatmap(f, panel_chunks[2], &d.activity, &d.task.project);
+        render_project_stats(f, panel_chunks[base + 1], d);
+        render_mini_heatmap(f, panel_chunks[base + 2], &d.activity, &d.task.project);
     }
 
     // ── History box (pinned to bottom, above edit bar and footer)
@@ -2028,6 +2061,113 @@ fn render(f: &mut Frame, st: &EditState) {
         Paragraph::new(footer).style(Style::default().fg(Color::Gray)),
         chunks[footer_idx],
     );
+}
+
+/// Right-hand panel showing the dependency chain (feature) the task belongs to,
+/// in blockers-first order: a progress bar plus one row per linked task. Completed
+/// tasks are struck through; the task currently being viewed is highlighted.
+fn render_chain_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
+    let total = d.chain.len();
+    let done = d
+        .chain
+        .iter()
+        .filter(|t| t.status == crate::model::Status::Completed)
+        .count();
+    let all_done = total > 0 && done == total;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" Feature chain  {done}/{total} "))
+        .border_style(Style::default().fg(if all_done { Color::Green } else { Color::Cyan }));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Progress bar across the panel width.
+    let bar_w = inner.width.saturating_sub(2) as usize;
+    if bar_w > 0 {
+        let filled = if total > 0 {
+            (done * bar_w + total / 2) / total
+        } else {
+            0
+        };
+        let mut spans = vec![Span::raw(" ")];
+        spans.push(Span::styled(
+            "█".repeat(filled),
+            Style::default().fg(if all_done { Color::Green } else { Color::Cyan }),
+        ));
+        spans.push(Span::styled(
+            "░".repeat(bar_w - filled),
+            Style::default().fg(Color::DarkGray),
+        ));
+        lines.push(Line::from(spans));
+    }
+
+    let current_idx = d.chain.iter().position(|t| t.uuid == d.task.uuid);
+    let desc_w = inner.width.saturating_sub(8) as usize;
+    for (i, t) in d.chain.iter().enumerate() {
+        let completed = t.status == crate::model::Status::Completed;
+        let is_current = Some(i) == current_idx;
+        let id_str =
+            t.id.map(|n| format!("{n:>3}"))
+                .unwrap_or_else(|| "  -".to_string());
+        let marker = if is_current { "▶ " } else { "  " };
+        let glyph = if completed {
+            "✓"
+        } else if is_current {
+            "◉"
+        } else {
+            "○"
+        };
+        let desc = truncate_str(&t.description, desc_w.max(8));
+
+        let (glyph_style, text_style) = if is_current {
+            (
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else if completed {
+            (
+                Style::default().fg(Color::Green),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::CROSSED_OUT),
+            )
+        } else {
+            (
+                Style::default().fg(Color::Cyan),
+                Style::default().fg(Color::Gray),
+            )
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(marker.to_string(), glyph_style),
+            Span::styled(format!("{glyph} "), glyph_style),
+            Span::styled(format!("{id_str} "), text_style),
+            Span::styled(desc, text_style),
+        ]));
+    }
+
+    // Scroll so the current task stays visible in long chains (1 = progress bar row).
+    let visible = inner.height as usize;
+    let cur_line = current_idx.map(|i| i + 1).unwrap_or(0);
+    let scroll = if cur_line >= visible {
+        (cur_line + 1 - visible) as u16
+    } else {
+        0
+    };
+
+    f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
 }
 
 /// Build lines for the History box at the bottom of the detail view.

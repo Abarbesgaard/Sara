@@ -146,6 +146,13 @@ pub enum Command {
         link_id: i64,
     },
 
+    /// Show all tasks for a project as a board (pending + completed with strikethrough)
+    Board {
+        /// Project name (defaults to current git project)
+        #[arg(long, short)]
+        project: Option<String>,
+    },
+
     /// List pending tasks
     List {
         /// Show tasks for all projects (default: current project only)

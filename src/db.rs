@@ -661,6 +661,138 @@ pub fn list_tasks(conn: &Connection, project: Option<&str>) -> Result<Vec<Task>>
     Ok(rows)
 }
 
+/// Pending tasks (by urgency DESC) followed by completed tasks (by end DESC) for a project.
+/// Used by `sara board` to show the full feature progress view.
+pub fn list_tasks_for_board(conn: &Connection, project: &str) -> Result<Vec<Task>> {
+    let mut tasks = Vec::new();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {TASK_COLUMNS} FROM tasks WHERE project=?1 AND status='pending' ORDER BY urgency DESC"
+    ))?;
+    tasks.extend(
+        stmt.query_map([project], row_to_task)?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
+    );
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {TASK_COLUMNS} FROM tasks WHERE project=?1 AND status='completed' ORDER BY end DESC"
+    ))?;
+    tasks.extend(
+        stmt.query_map([project], row_to_task)?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
+    );
+    Ok(tasks)
+}
+
+/// All dependency edges between tasks that both belong to `project`, regardless of
+/// status. Each tuple is `(task, depends_on)` — i.e. `task` is blocked by / comes
+/// after `depends_on` in the chain. Used by `sara board` to group tasks into the
+/// features (dependency chains) they belong to.
+pub fn dependency_edges_for_project(conn: &Connection, project: &str) -> Result<Vec<(Uuid, Uuid)>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.task_uuid, d.depends_on_uuid
+         FROM dependencies d
+         JOIN tasks t ON t.uuid = d.task_uuid
+         JOIN tasks b ON b.uuid = d.depends_on_uuid
+         WHERE t.project = ?1 AND b.project = ?1",
+    )?;
+    let rows = stmt
+        .query_map([project], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .filter_map(|(a, b)| Some((Uuid::parse_str(&a).ok()?, Uuid::parse_str(&b).ok()?)))
+        .collect();
+    Ok(rows)
+}
+
+/// The dependency chain (connected component of the dependency graph) that
+/// contains `task_uuid`, returned as tasks in blockers-first (topological) order.
+/// Scoped to the task's project. Returns an empty vec when the task stands alone
+/// (no linked tasks) so callers can skip rendering a one-node "chain".
+pub fn feature_chain(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Task>> {
+    let current = match get_task_by_uuid_prefix(conn, &task_uuid.to_string()[..8])? {
+        Some(t) => t,
+        None => return Ok(vec![]),
+    };
+    let all = list_tasks_for_board(conn, &current.project)?;
+    let pos: std::collections::HashMap<Uuid, usize> =
+        all.iter().enumerate().map(|(i, t)| (t.uuid, i)).collect();
+    let Some(&start) = pos.get(task_uuid) else {
+        return Ok(vec![]);
+    };
+    let edges = dependency_edges_for_project(conn, &current.project)?;
+    let n = all.len();
+
+    // Undirected adjacency (for the component) + directed dependents (for topo).
+    let mut undirected: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut dependents: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
+    let mut indeg = vec![0usize; n];
+    for (task, dep) in &edges {
+        if let (Some(&ti), Some(&di)) = (pos.get(task), pos.get(dep)) {
+            undirected[ti].push(di);
+            undirected[di].push(ti);
+            dependents.entry(di).or_default().push(ti);
+            indeg[ti] += 1;
+        }
+    }
+
+    // Connected component containing `start` (undirected BFS).
+    let mut seen = vec![false; n];
+    let mut comp: Vec<usize> = Vec::new();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(start);
+    seen[start] = true;
+    while let Some(x) = queue.pop_front() {
+        comp.push(x);
+        for &y in &undirected[x] {
+            if !seen[y] {
+                seen[y] = true;
+                queue.push_back(y);
+            }
+        }
+    }
+    if comp.len() <= 1 {
+        return Ok(vec![]);
+    }
+
+    // Kahn topological sort within the component (blockers first). Ties break by
+    // position in `all` (pending-by-urgency, then completed) for stable output.
+    let comp_set: std::collections::HashSet<usize> = comp.iter().copied().collect();
+    let mut remaining: std::collections::HashMap<usize, usize> =
+        comp.iter().map(|&i| (i, indeg[i])).collect();
+    let mut ready: Vec<usize> = comp.iter().copied().filter(|i| indeg[*i] == 0).collect();
+    ready.sort_unstable_by(|a, b| b.cmp(a)); // pop() yields smallest position
+    let mut order: Vec<usize> = Vec::with_capacity(comp.len());
+    while let Some(i) = ready.pop() {
+        order.push(i);
+        if let Some(deps) = dependents.get(&i) {
+            for &j in deps {
+                if !comp_set.contains(&j) {
+                    continue;
+                }
+                if let Some(d) = remaining.get_mut(&j) {
+                    *d -= 1;
+                    if *d == 0 {
+                        ready.push(j);
+                        ready.sort_unstable_by(|a, b| b.cmp(a));
+                    }
+                }
+            }
+        }
+    }
+    if order.len() < comp.len() {
+        let mut leftover: Vec<usize> = comp
+            .iter()
+            .copied()
+            .filter(|i| !order.contains(i))
+            .collect();
+        leftover.sort_unstable();
+        order.extend(leftover);
+    }
+
+    Ok(order.into_iter().map(|i| all[i].clone()).collect())
+}
+
 pub fn update_task(conn: &Connection, task: &Task) -> Result<()> {
     let prev = get_task_by_uuid_prefix(conn, &task.uuid.to_string())?;
     conn.execute(
@@ -3417,6 +3549,52 @@ mod tests {
 
         let closure = dependency_closure(&conn, &c.uuid).unwrap();
         assert_eq!(closure, vec![a.uuid, b.uuid, c.uuid]);
+    }
+
+    // ── feature chain (board / detail panel) ────────────────────────────────
+
+    #[test]
+    fn feature_chain_returns_linked_tasks_blockers_first() {
+        let conn = mem();
+        // c → b → a (c depends on b depends on a). Queried from the middle (b),
+        // the whole chain comes back in blockers-first order.
+        let a = seed_named_task(&conn, "a");
+        let b = seed_named_task(&conn, "b");
+        let c = seed_named_task(&conn, "c");
+        add_dependency(&conn, &b.uuid, &a.uuid).unwrap();
+        add_dependency(&conn, &c.uuid, &b.uuid).unwrap();
+
+        let chain: Vec<Uuid> = feature_chain(&conn, &b.uuid)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.uuid)
+            .collect();
+        assert_eq!(chain, vec![a.uuid, b.uuid, c.uuid]);
+    }
+
+    #[test]
+    fn feature_chain_is_empty_for_standalone_task() {
+        let conn = mem();
+        let a = seed_named_task(&conn, "a");
+        // No dependencies → no chain to draw.
+        assert!(feature_chain(&conn, &a.uuid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn feature_chain_excludes_unrelated_tasks() {
+        let conn = mem();
+        let a = seed_named_task(&conn, "a");
+        let b = seed_named_task(&conn, "b");
+        let unrelated = seed_named_task(&conn, "unrelated");
+        add_dependency(&conn, &b.uuid, &a.uuid).unwrap();
+
+        let chain: Vec<Uuid> = feature_chain(&conn, &a.uuid)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.uuid)
+            .collect();
+        assert_eq!(chain, vec![a.uuid, b.uuid]);
+        assert!(!chain.contains(&unrelated.uuid));
     }
 
     // ── project commands ────────────────────────────────────────────────────

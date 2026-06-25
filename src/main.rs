@@ -176,6 +176,10 @@ fn run() -> Result<()> {
             commands::annotate::unlink(&conn, link_id)?;
         }
 
+        Command::Board { project } => {
+            commands::board::run(&conn, &cfg, project.as_deref())?;
+        }
+
         Command::List { all, project, json } => {
             commands::list::run(&conn, &cfg, all, project.as_deref(), json)?;
         }
