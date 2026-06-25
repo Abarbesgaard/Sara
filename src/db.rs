@@ -181,6 +181,144 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 vector_json TEXT NOT NULL
             );",
         ),
+        M::up(
+            // AI-first guide expansion: each task becomes a self-contained,
+            // LLM-authored implementation guide with provenance + freshness.
+            "ALTER TABLE tasks ADD COLUMN assignment TEXT;
+             ALTER TABLE tasks ADD COLUMN rationale TEXT;
+             ALTER TABLE tasks ADD COLUMN validated_commit TEXT;
+             ALTER TABLE tasks ADD COLUMN validated_at TEXT;
+             ALTER TABLE tasks ADD COLUMN meta_json TEXT;
+
+             ALTER TABLE task_checklist ADD COLUMN intent TEXT;
+             ALTER TABLE task_checklist ADD COLUMN source TEXT NOT NULL DEFAULT 'human';
+             ALTER TABLE task_checklist ADD COLUMN kind TEXT NOT NULL DEFAULT 'step';
+             ALTER TABLE task_checklist ADD COLUMN verify_cmd TEXT;
+             ALTER TABLE task_checklist ADD COLUMN result TEXT;
+             ALTER TABLE task_checklist ADD COLUMN done_commit TEXT;
+             ALTER TABLE task_checklist ADD COLUMN done_at TEXT;
+
+             ALTER TABLE annotations ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment';
+             ALTER TABLE annotations ADD COLUMN author TEXT NOT NULL DEFAULT 'human';
+             ALTER TABLE annotations ADD COLUMN target_kind TEXT;
+             ALTER TABLE annotations ADD COLUMN target_id TEXT;
+             ALTER TABLE annotations ADD COLUMN status TEXT NOT NULL DEFAULT 'open';
+             ALTER TABLE annotations ADD COLUMN request_revision INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE annotations ADD COLUMN resolved_by_run INTEGER;
+
+             ALTER TABLE task_files ADD COLUMN reason TEXT;
+             ALTER TABLE task_files ADD COLUMN symbol TEXT;
+             ALTER TABLE task_files ADD COLUMN line_start INTEGER;
+             ALTER TABLE task_files ADD COLUMN line_end INTEGER;
+
+             ALTER TABLE projects ADD COLUMN setup_cmd TEXT;
+             ALTER TABLE projects ADD COLUMN test_cmd TEXT;
+             ALTER TABLE projects ADD COLUMN lint_cmd TEXT;
+             ALTER TABLE projects ADD COLUMN run_cmd TEXT;
+
+             CREATE TABLE IF NOT EXISTS task_ai_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid     TEXT NOT NULL,
+                kind          TEXT NOT NULL,
+                model         TEXT,
+                provider      TEXT,
+                prompt        TEXT,
+                response_json TEXT,
+                created_at    TEXT NOT NULL,
+                FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_task_ai_runs_task
+                ON task_ai_runs(task_uuid, created_at);",
+        ),
+        M::up(
+            // Lean on the SQLite engine: an FTS5 index for cross-task memory
+            // kept in sync by triggers, and a JSON-producing view that
+            // assembles the whole guide in one query (json1 is bundled).
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+                ref_kind UNINDEXED, ref_id UNINDEXED, task_uuid UNINDEXED, text
+             );
+
+             CREATE TRIGGER IF NOT EXISTS trg_tasks_ai AFTER INSERT ON tasks BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                VALUES ('task', new.uuid, new.uuid,
+                    coalesce(new.description,'')||' '||coalesce(new.rationale,'')||' '||coalesce(new.assignment,''));
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_tasks_au AFTER UPDATE ON tasks BEGIN
+                DELETE FROM search_index WHERE ref_kind='task' AND ref_id=old.uuid;
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                VALUES ('task', new.uuid, new.uuid,
+                    coalesce(new.description,'')||' '||coalesce(new.rationale,'')||' '||coalesce(new.assignment,''));
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_tasks_ad AFTER DELETE ON tasks BEGIN
+                DELETE FROM search_index WHERE ref_kind='task' AND ref_id=old.uuid;
+             END;
+
+             CREATE TRIGGER IF NOT EXISTS trg_ann_ai AFTER INSERT ON annotations BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                VALUES ('note', new.id, new.task_uuid, coalesce(new.text,''));
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_ann_au AFTER UPDATE ON annotations BEGIN
+                DELETE FROM search_index WHERE ref_kind='note' AND ref_id=old.id;
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                VALUES ('note', new.id, new.task_uuid, coalesce(new.text,''));
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_ann_ad AFTER DELETE ON annotations BEGIN
+                DELETE FROM search_index WHERE ref_kind='note' AND ref_id=old.id;
+             END;
+
+             CREATE TRIGGER IF NOT EXISTS trg_files_ai AFTER INSERT ON task_files BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                VALUES ('anchor', new.rowid, new.task_uuid,
+                    coalesce(new.path,'')||' '||coalesce(new.reason,'')||' '||coalesce(new.symbol,''));
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_files_ad AFTER DELETE ON task_files BEGIN
+                DELETE FROM search_index WHERE ref_kind='anchor' AND ref_id=old.rowid;
+             END;
+
+             CREATE VIEW IF NOT EXISTS task_guide AS
+             SELECT t.uuid AS uuid, json_object(
+                'uuid', t.uuid,
+                'id', t.id,
+                'description', t.description,
+                'project', t.project,
+                'status', t.status,
+                'priority', t.priority,
+                'due', t.due,
+                'entry', t.entry,
+                'modified', t.modified,
+                'tags', json(t.tags_json),
+                'urgency', t.urgency,
+                'assignment', t.assignment,
+                'rationale', t.rationale,
+                'validated_commit', t.validated_commit,
+                'validated_at', t.validated_at,
+                'meta', CASE WHEN t.meta_json IS NOT NULL AND t.meta_json != '' THEN json(t.meta_json) ELSE NULL END,
+                'steps', (SELECT json_group_array(json_object(
+                        'id', c.id, 'position', c.position, 'text', c.text, 'intent', c.intent,
+                        'done', c.done, 'kind', c.kind, 'source', c.source, 'verify_cmd', c.verify_cmd,
+                        'result', c.result, 'done_commit', c.done_commit, 'done_at', c.done_at))
+                    FROM task_checklist c WHERE c.task_uuid = t.uuid),
+                'files', (SELECT json_group_array(json_object(
+                        'path', f.path, 'source', f.source, 'reason', f.reason,
+                        'symbol', f.symbol, 'line_start', f.line_start, 'line_end', f.line_end))
+                    FROM task_files f WHERE f.task_uuid = t.uuid),
+                'notes', (SELECT json_group_array(json_object(
+                        'id', a.id, 'kind', a.kind, 'author', a.author, 'text', a.text,
+                        'target_kind', a.target_kind, 'target_id', a.target_id,
+                        'status', a.status, 'request_revision', a.request_revision,
+                        'resolved_by_run', a.resolved_by_run, 'entry', a.entry))
+                    FROM annotations a WHERE a.task_uuid = t.uuid),
+                'links', (SELECT json_group_array(json_object('id', l.id, 'url', l.url, 'label', l.label))
+                    FROM task_links l WHERE l.task_uuid = t.uuid),
+                'ai_runs', (SELECT json_group_array(json_object(
+                        'id', r.id, 'kind', r.kind, 'model', r.model, 'provider', r.provider, 'created_at', r.created_at))
+                    FROM task_ai_runs r WHERE r.task_uuid = t.uuid),
+                'blocked_by', (SELECT json_group_array(b.id)
+                    FROM dependencies d JOIN tasks b ON b.uuid = d.depends_on_uuid
+                    WHERE d.task_uuid = t.uuid AND b.status = 'pending')
+             ) AS guide_json
+             FROM tasks t;",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -892,32 +1030,131 @@ pub struct Annotation {
     pub id: i64,
     pub text: String,
     pub entry: DateTime<Utc>,
+    /// comment | finding | thought | constraint | assumption | open_question |
+    /// non_goal | decision | risk | pattern
+    pub kind: String,
+    /// "human" or "ai".
+    pub author: String,
+    /// What this note anchors to: e.g. "step", "acceptance", "anchor", "note", or NULL (task-level).
+    pub target_kind: Option<String>,
+    pub target_id: Option<String>,
+    /// "open" or "resolved".
+    pub status: String,
+    /// The "reconsider this" flag.
+    pub request_revision: bool,
+    pub resolved_by_run: Option<i64>,
 }
 
+pub const NOTE_KIND_COMMENT: &str = "comment";
+
+fn row_to_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Annotation> {
+    let entry_str: String = row.get(2)?;
+    Ok(Annotation {
+        id: row.get(0)?,
+        text: row.get(1)?,
+        entry: str_to_dt(&entry_str).unwrap_or_else(|_| Utc::now()),
+        kind: row.get(3)?,
+        author: row.get(4)?,
+        target_kind: row.get(5)?,
+        target_id: row.get(6)?,
+        status: row.get(7)?,
+        request_revision: row.get::<_, i64>(8)? != 0,
+        resolved_by_run: row.get(9)?,
+    })
+}
+
+const ANN_COLUMNS: &str = "id, text, entry, kind, author, target_kind, target_id, status, request_revision, resolved_by_run";
+
 pub fn add_annotation(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<()> {
+    add_annotation_full(
+        conn,
+        task_uuid,
+        text,
+        NOTE_KIND_COMMENT,
+        "human",
+        None,
+        None,
+        false,
+    )
+    .map(|_| ())
+}
+
+/// Insert a typed, attributed note (or anchored feedback); returns its id.
+#[allow(clippy::too_many_arguments)]
+pub fn add_annotation_full(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    text: &str,
+    kind: &str,
+    author: &str,
+    target_kind: Option<&str>,
+    target_id: Option<&str>,
+    request_revision: bool,
+) -> Result<i64> {
     conn.execute(
-        "INSERT INTO annotations (task_uuid, text, entry) VALUES (?1,?2,?3)",
-        params![task_uuid.to_string(), text, dt_to_str(&Utc::now())],
+        "INSERT INTO annotations
+           (task_uuid, text, entry, kind, author, target_kind, target_id, status, request_revision)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,'open',?8)",
+        params![
+            task_uuid.to_string(),
+            text,
+            dt_to_str(&Utc::now()),
+            kind,
+            author,
+            target_kind,
+            target_id,
+            request_revision as i64,
+        ],
     )?;
+    // Capture the annotation id *before* record_history inserts into task_history,
+    // otherwise last_insert_rowid() would return the history row's id instead.
+    let id = conn.last_insert_rowid();
     record_history(conn, task_uuid, "annotation", None, Some(text))?;
-    Ok(())
+    Ok(id)
 }
 
 pub fn get_annotations(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annotation>> {
-    let mut stmt = conn
-        .prepare("SELECT id, text, entry FROM annotations WHERE task_uuid=?1 ORDER BY entry ASC")?;
+    let sql =
+        format!("SELECT {ANN_COLUMNS} FROM annotations WHERE task_uuid=?1 ORDER BY entry ASC");
+    let mut stmt = conn.prepare(&sql)?;
     let anns = stmt
-        .query_map([task_uuid.to_string()], |row| {
-            let entry_str: String = row.get(2)?;
-            Ok(Annotation {
-                id: row.get(0)?,
-                text: row.get(1)?,
-                entry: str_to_dt(&entry_str).unwrap_or_else(|_| Utc::now()),
-            })
-        })?
+        .query_map([task_uuid.to_string()], row_to_annotation)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(anns)
+}
+
+/// Open human feedback (comments) for a task, flagged-for-revision first.
+pub fn get_open_feedback(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annotation>> {
+    let sql = format!(
+        "SELECT {ANN_COLUMNS} FROM annotations
+         WHERE task_uuid=?1 AND kind='comment' AND status='open'
+         ORDER BY request_revision DESC, entry ASC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let anns = stmt
+        .query_map([task_uuid.to_string()], row_to_annotation)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(anns)
+}
+
+/// Mark a piece of feedback resolved, optionally linking the run that addressed it.
+pub fn resolve_annotation(conn: &Connection, ann_id: i64, run_id: Option<i64>) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE annotations SET status='resolved', resolved_by_run=?2 WHERE id=?1",
+        params![ann_id, run_id],
+    )?;
+    Ok(n > 0)
+}
+
+/// Toggle the "reconsider this" flag on a note.
+pub fn set_request_revision(conn: &Connection, ann_id: i64, flag: bool) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE annotations SET request_revision=?2, status=CASE WHEN ?2=1 THEN 'open' ELSE status END WHERE id=?1",
+        params![ann_id, flag as i64],
+    )?;
+    Ok(n > 0)
 }
 
 pub fn delete_annotation(conn: &Connection, ann_id: i64) -> Result<bool> {
@@ -1518,26 +1755,84 @@ pub struct ChecklistItem {
     pub id: i64,
     pub text: String,
     pub done: bool,
+    pub position: i64,
+    /// Fuller "what this step does" written by the LLM (None for legacy items).
+    pub intent: Option<String>,
+    /// "step" (default) or "acceptance" (a definition-of-done criterion).
+    pub kind: String,
+    /// "human" or "ai".
+    pub source: String,
+    /// Command that verifies this step / criterion.
+    pub verify_cmd: Option<String>,
+    /// Execution outcome recorded when the step is marked done.
+    pub result: Option<String>,
+    /// Git commit the step was completed at.
+    pub done_commit: Option<String>,
+    pub done_at: Option<String>,
 }
 
+/// Step kinds.
+pub const STEP_KIND_STEP: &str = "step";
+pub const STEP_KIND_ACCEPTANCE: &str = "acceptance";
+
+fn row_to_step(r: &rusqlite::Row<'_>) -> rusqlite::Result<ChecklistItem> {
+    Ok(ChecklistItem {
+        id: r.get(0)?,
+        text: r.get(1)?,
+        done: r.get::<_, i64>(2)? != 0,
+        position: r.get(3)?,
+        intent: r.get(4)?,
+        kind: r.get(5)?,
+        source: r.get(6)?,
+        verify_cmd: r.get(7)?,
+        result: r.get(8)?,
+        done_commit: r.get(9)?,
+        done_at: r.get(10)?,
+    })
+}
+
+const STEP_COLUMNS: &str =
+    "id, text, done, position, intent, kind, source, verify_cmd, result, done_commit, done_at";
+
 pub fn get_checklist(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<ChecklistItem>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, text, done FROM task_checklist WHERE task_uuid=?1 ORDER BY position, id",
-    )?;
+    let sql = format!(
+        "SELECT {STEP_COLUMNS} FROM task_checklist WHERE task_uuid=?1 ORDER BY position, id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map([task_uuid.to_string()], |r| {
-            Ok(ChecklistItem {
-                id: r.get(0)?,
-                text: r.get(1)?,
-                done: r.get::<_, i64>(2)? != 0,
-            })
-        })?
+        .query_map([task_uuid.to_string()], row_to_step)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(items)
+}
+
+/// Steps (or acceptance criteria) for a task, filtered by kind, ordered.
+pub fn get_steps(conn: &Connection, task_uuid: &Uuid, kind: &str) -> Result<Vec<ChecklistItem>> {
+    let sql = format!(
+        "SELECT {STEP_COLUMNS} FROM task_checklist WHERE task_uuid=?1 AND kind=?2 ORDER BY position, id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let items = stmt
+        .query_map(rusqlite::params![task_uuid.to_string(), kind], row_to_step)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(items)
 }
 
 pub fn add_checklist_item(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<()> {
+    add_step(conn, task_uuid, text, None, STEP_KIND_STEP, "human", None).map(|_| ())
+}
+
+/// Insert a step / acceptance criterion with full metadata; returns its id.
+pub fn add_step(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    text: &str,
+    intent: Option<&str>,
+    kind: &str,
+    source: &str,
+    verify_cmd: Option<&str>,
+) -> Result<i64> {
     let pos: i64 = conn
         .query_row(
             "SELECT COALESCE(MAX(position),0)+1 FROM task_checklist WHERE task_uuid=?1",
@@ -1546,11 +1841,68 @@ pub fn add_checklist_item(conn: &Connection, task_uuid: &Uuid, text: &str) -> Re
         )
         .unwrap_or(1);
     conn.execute(
-        "INSERT INTO task_checklist (task_uuid, text, done, position) VALUES (?1,?2,0,?3)",
-        rusqlite::params![task_uuid.to_string(), text, pos],
+        "INSERT INTO task_checklist (task_uuid, text, done, position, intent, kind, source, verify_cmd)
+         VALUES (?1,?2,0,?3,?4,?5,?6,?7)",
+        rusqlite::params![task_uuid.to_string(), text, pos, intent, kind, source, verify_cmd],
     )?;
-    record_history(conn, task_uuid, "checklist", None, Some(text))?;
+    let id = conn.last_insert_rowid();
+    let label = if kind == STEP_KIND_ACCEPTANCE {
+        "acceptance"
+    } else {
+        "checklist"
+    };
+    record_history(conn, task_uuid, label, None, Some(text))?;
+    Ok(id)
+}
+
+/// Mark a step done/undone, recording the execution result and git commit.
+pub fn set_step_done(
+    conn: &Connection,
+    item_id: i64,
+    done: bool,
+    result: Option<&str>,
+    commit: Option<&str>,
+) -> Result<()> {
+    let task_uuid_str: String = conn.query_row(
+        "SELECT task_uuid FROM task_checklist WHERE id=?1",
+        [item_id],
+        |r| r.get(0),
+    )?;
+    if done {
+        conn.execute(
+            "UPDATE task_checklist SET done=1, result=COALESCE(?2,result), done_commit=?3, done_at=?4 WHERE id=?1",
+            rusqlite::params![item_id, result, commit, dt_to_str(&Utc::now())],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE task_checklist SET done=0, done_commit=NULL, done_at=NULL WHERE id=?1",
+            [item_id],
+        )?;
+    }
+    if let Ok(uuid) = Uuid::parse_str(&task_uuid_str) {
+        record_history(
+            conn,
+            &uuid,
+            "checklist",
+            None,
+            Some(if done { "step done" } else { "step reopened" }),
+        )?;
+    }
     Ok(())
+}
+
+/// Find a step id by its 1-based position among the task's steps of a kind.
+pub fn step_id_by_index(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    kind: &str,
+    index: usize,
+) -> Result<i64> {
+    let steps = get_steps(conn, task_uuid, kind)?;
+    steps
+        .get(index.saturating_sub(1))
+        .map(|s| s.id)
+        .ok_or_else(|| anyhow::anyhow!("No {kind} #{index} on this task"))
 }
 
 pub fn toggle_checklist_item(conn: &Connection, item_id: i64) -> Result<bool> {
@@ -2088,6 +2440,334 @@ pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
+
+// ── code anchors (task_files with reason + symbol/lines) ─────────────────────
+
+#[derive(Debug, Clone)]
+pub struct Anchor {
+    pub path: String,
+    pub source: String,
+    pub reason: Option<String>,
+    pub symbol: Option<String>,
+    pub line_start: Option<i64>,
+    pub line_end: Option<i64>,
+}
+
+impl Anchor {
+    /// Human-friendly location suffix, e.g. " :: enrich_task (10-57)".
+    pub fn location(&self) -> String {
+        let mut s = String::new();
+        if let Some(sym) = &self.symbol {
+            s.push_str(" :: ");
+            s.push_str(sym);
+        }
+        match (self.line_start, self.line_end) {
+            (Some(a), Some(b)) => s.push_str(&format!(" ({a}-{b})")),
+            (Some(a), None) => s.push_str(&format!(" (L{a})")),
+            _ => {}
+        }
+        s
+    }
+}
+
+pub fn get_task_anchors(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Anchor>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, source, reason, symbol, line_start, line_end
+         FROM task_files WHERE task_uuid=?1 ORDER BY source DESC, path",
+    )?;
+    let rows = stmt
+        .query_map([task_uuid.to_string()], |r| {
+            Ok(Anchor {
+                path: r.get(0)?,
+                source: r.get(1)?,
+                reason: r.get(2)?,
+                symbol: r.get(3)?,
+                line_start: r.get(4)?,
+                line_end: r.get(5)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Additively attach (or update) one code anchor with provenance + reason.
+#[allow(clippy::too_many_arguments)]
+pub fn add_task_file(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    path: &str,
+    source: &str,
+    reason: Option<&str>,
+    symbol: Option<&str>,
+    line_start: Option<i64>,
+    line_end: Option<i64>,
+) -> Result<()> {
+    let existed: bool = conn
+        .query_row(
+            "SELECT 1 FROM task_files WHERE task_uuid=?1 AND path=?2",
+            params![task_uuid.to_string(), path],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    conn.execute(
+        "INSERT INTO task_files (task_uuid, path, source, reason, symbol, line_start, line_end)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(task_uuid, path) DO UPDATE SET
+            source=excluded.source, reason=excluded.reason, symbol=excluded.symbol,
+            line_start=excluded.line_start, line_end=excluded.line_end",
+        params![
+            task_uuid.to_string(),
+            path,
+            source,
+            reason,
+            symbol,
+            line_start,
+            line_end
+        ],
+    )?;
+    if !existed {
+        record_history(conn, task_uuid, "file", None, Some(path))?;
+    }
+    Ok(())
+}
+
+// ── task-level guide fields (assignment / rationale / freshness / meta) ───────
+
+#[derive(Debug, Clone, Default)]
+pub struct TaskGuideFields {
+    pub assignment: Option<String>,
+    pub rationale: Option<String>,
+    pub validated_commit: Option<String>,
+    pub validated_at: Option<String>,
+    pub meta_json: Option<String>,
+}
+
+pub fn get_guide_fields(conn: &Connection, task_uuid: &Uuid) -> Result<TaskGuideFields> {
+    conn.query_row(
+        "SELECT assignment, rationale, validated_commit, validated_at, meta_json
+         FROM tasks WHERE uuid=?1",
+        [task_uuid.to_string()],
+        |r| {
+            Ok(TaskGuideFields {
+                assignment: r.get(0)?,
+                rationale: r.get(1)?,
+                validated_commit: r.get(2)?,
+                validated_at: r.get(3)?,
+                meta_json: r.get(4)?,
+            })
+        },
+    )
+    .map_err(Into::into)
+}
+
+pub fn set_assignment(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET assignment=?2 WHERE uuid=?1",
+        params![task_uuid.to_string(), text],
+    )?;
+    record_history(conn, task_uuid, "assignment", None, Some(text))?;
+    Ok(())
+}
+
+pub fn set_rationale(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET rationale=?2 WHERE uuid=?1",
+        params![task_uuid.to_string(), text],
+    )?;
+    record_history(conn, task_uuid, "rationale", None, Some(text))?;
+    Ok(())
+}
+
+/// Stamp the commit the guide was validated against (freshness guard).
+pub fn set_validated(conn: &Connection, task_uuid: &Uuid, commit: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET validated_commit=?2, validated_at=?3 WHERE uuid=?1",
+        params![task_uuid.to_string(), commit, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+pub fn set_meta_json(conn: &Connection, task_uuid: &Uuid, json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET meta_json=?2 WHERE uuid=?1",
+        params![task_uuid.to_string(), json],
+    )?;
+    Ok(())
+}
+
+// ── AI run audit trail ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct AiRun {
+    pub id: i64,
+    pub kind: String,
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Record one LLM interaction against a task; returns the run id.
+pub fn record_ai_run(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    kind: &str,
+    model: Option<&str>,
+    provider: Option<&str>,
+    prompt: Option<&str>,
+    response_json: Option<&str>,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO task_ai_runs (task_uuid, kind, model, provider, prompt, response_json, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![
+            task_uuid.to_string(),
+            kind,
+            model,
+            provider,
+            prompt,
+            response_json,
+            dt_to_str(&Utc::now()),
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, kind, model, provider, created_at FROM task_ai_runs
+         WHERE task_uuid=?1 ORDER BY created_at ASC, id ASC",
+    )?;
+    let rows = stmt
+        .query_map([task_uuid.to_string()], |r| {
+            let at: String = r.get(4)?;
+            Ok(AiRun {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                model: r.get(2)?,
+                provider: r.get(3)?,
+                created_at: str_to_dt(&at).unwrap_or_else(|_| Utc::now()),
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+// ── full guide JSON (single-query, via the task_guide view) ───────────────────
+
+/// Assemble the entire guide for a task as a JSON value in one query.
+pub fn guide_json(conn: &Connection, task_uuid: &Uuid) -> Result<serde_json::Value> {
+    let raw: String = conn.query_row(
+        "SELECT guide_json FROM task_guide WHERE uuid=?1",
+        [task_uuid.to_string()],
+        |r| r.get(0),
+    )?;
+    Ok(serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null))
+}
+
+// ── cross-task memory (FTS5 keyword search) ──────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct SearchHit {
+    pub ref_kind: String,
+    pub task_uuid: String,
+    pub text: String,
+}
+
+/// Keyword search across tasks/notes/anchors via the FTS5 index.
+pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
+    // Quote the query as an FTS5 string literal to tolerate arbitrary input.
+    let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+    let mut stmt = conn.prepare(
+        "SELECT ref_kind, task_uuid, text FROM search_index
+         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![fts_query, limit], |r| {
+            Ok(SearchHit {
+                ref_kind: r.get(0)?,
+                task_uuid: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+// ── project env commands ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default)]
+pub struct ProjectCommands {
+    pub setup_cmd: Option<String>,
+    pub test_cmd: Option<String>,
+    pub lint_cmd: Option<String>,
+    pub run_cmd: Option<String>,
+}
+
+pub fn get_project_commands(conn: &Connection, name: &str) -> Result<ProjectCommands> {
+    conn.query_row(
+        "SELECT setup_cmd, test_cmd, lint_cmd, run_cmd FROM projects WHERE name=?1",
+        [name],
+        |r| {
+            Ok(ProjectCommands {
+                setup_cmd: r.get(0)?,
+                test_cmd: r.get(1)?,
+                lint_cmd: r.get(2)?,
+                run_cmd: r.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map(|o| o.unwrap_or_default())
+    .map_err(Into::into)
+}
+
+pub fn set_project_commands(conn: &Connection, name: &str, cmds: &ProjectCommands) -> Result<()> {
+    conn.execute(
+        "INSERT INTO projects (name, setup_cmd, test_cmd, lint_cmd, run_cmd, last_seen)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(name) DO UPDATE SET
+            setup_cmd = COALESCE(?2, setup_cmd),
+            test_cmd  = COALESCE(?3, test_cmd),
+            lint_cmd  = COALESCE(?4, lint_cmd),
+            run_cmd   = COALESCE(?5, run_cmd)",
+        params![
+            name,
+            cmds.setup_cmd,
+            cmds.test_cmd,
+            cmds.lint_cmd,
+            cmds.run_cmd,
+            dt_to_str(&Utc::now()),
+        ],
+    )?;
+    Ok(())
+}
+
+// ── dependency closure (recursive CTE) ───────────────────────────────────────
+
+/// Transitive set of tasks `task_uuid` depends on (its blockers, recursively),
+/// returned blockers-first so a briefing reads in execution order.
+pub fn dependency_closure(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
+    let mut stmt = conn.prepare(
+        "WITH RECURSIVE deps(uuid, depth) AS (
+            SELECT ?1, 0
+            UNION
+            SELECT d.depends_on_uuid, deps.depth + 1
+              FROM dependencies d JOIN deps ON d.task_uuid = deps.uuid
+         )
+         SELECT uuid FROM deps GROUP BY uuid ORDER BY MAX(depth) DESC",
+    )?;
+    let rows = stmt
+        .query_map([task_uuid.to_string()], |r| r.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .filter_map(|s| Uuid::parse_str(&s).ok())
+        .collect();
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2367,5 +3047,366 @@ mod tests {
             sourced,
             vec![("y.rs".to_string(), SOURCE_MANUAL.to_string())]
         );
+    }
+
+    fn seed_named_task(conn: &Connection, desc: &str) -> Task {
+        let mut task = Task::new(desc.into(), "demo".into());
+        insert_task(conn, &mut task).unwrap();
+        task
+    }
+
+    // ── steps / acceptance criteria ─────────────────────────────────────────
+
+    #[test]
+    fn add_step_stores_full_metadata_and_get_steps_filters_by_kind() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        add_step(
+            &conn,
+            &task.uuid,
+            "wire the parser",
+            Some("parse the plan JSON"),
+            STEP_KIND_STEP,
+            "ai",
+            Some("cargo test"),
+        )
+        .unwrap();
+        add_step(
+            &conn,
+            &task.uuid,
+            "it compiles",
+            None,
+            STEP_KIND_ACCEPTANCE,
+            "human",
+            None,
+        )
+        .unwrap();
+
+        let steps = get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap();
+        assert_eq!(steps.len(), 1);
+        let s = &steps[0];
+        assert_eq!(s.text, "wire the parser");
+        assert_eq!(s.intent.as_deref(), Some("parse the plan JSON"));
+        assert_eq!(s.kind, STEP_KIND_STEP);
+        assert_eq!(s.source, "ai");
+        assert_eq!(s.verify_cmd.as_deref(), Some("cargo test"));
+        assert!(!s.done);
+
+        let acc = get_steps(&conn, &task.uuid, STEP_KIND_ACCEPTANCE).unwrap();
+        assert_eq!(acc.len(), 1);
+        assert_eq!(acc[0].text, "it compiles");
+    }
+
+    #[test]
+    fn steps_get_sequential_positions_and_index_lookup_is_one_based() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        for t in ["first", "second", "third"] {
+            add_step(&conn, &task.uuid, t, None, STEP_KIND_STEP, "human", None).unwrap();
+        }
+        let steps = get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap();
+        assert_eq!(
+            steps.iter().map(|s| s.position).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+
+        let id2 = step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 2).unwrap();
+        assert_eq!(id2, steps[1].id);
+        assert!(step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 99).is_err());
+    }
+
+    #[test]
+    fn set_step_done_records_result_and_commit_then_undone_clears_them() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let id = add_step(
+            &conn,
+            &task.uuid,
+            "do it",
+            None,
+            STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+
+        set_step_done(&conn, id, true, Some("all green"), Some("abc1234")).unwrap();
+        let s = &get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap()[0];
+        assert!(s.done);
+        assert_eq!(s.result.as_deref(), Some("all green"));
+        assert_eq!(s.done_commit.as_deref(), Some("abc1234"));
+        assert!(s.done_at.is_some());
+
+        set_step_done(&conn, id, false, None, None).unwrap();
+        let s = &get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap()[0];
+        assert!(!s.done);
+        assert!(s.done_commit.is_none());
+        assert!(s.done_at.is_none());
+        // Result is preserved across reopen (COALESCE only writes, never clears it).
+        assert_eq!(s.result.as_deref(), Some("all green"));
+    }
+
+    // ── code anchors ────────────────────────────────────────────────────────
+
+    #[test]
+    fn add_task_file_upserts_anchor_metadata() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        add_task_file(
+            &conn,
+            &task.uuid,
+            "src/db.rs",
+            SOURCE_SUGGESTED,
+            Some("initial reason"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // Same path again: ON CONFLICT updates in place, no duplicate row.
+        add_task_file(
+            &conn,
+            &task.uuid,
+            "src/db.rs",
+            SOURCE_MANUAL,
+            Some("better reason"),
+            Some("add_step"),
+            Some(10),
+            Some(57),
+        )
+        .unwrap();
+
+        let anchors = get_task_anchors(&conn, &task.uuid).unwrap();
+        assert_eq!(anchors.len(), 1);
+        let a = &anchors[0];
+        assert_eq!(a.source, SOURCE_MANUAL);
+        assert_eq!(a.reason.as_deref(), Some("better reason"));
+        assert_eq!(a.symbol.as_deref(), Some("add_step"));
+        assert_eq!((a.line_start, a.line_end), (Some(10), Some(57)));
+        assert_eq!(a.location(), " :: add_step (10-57)");
+    }
+
+    #[test]
+    fn anchor_location_formats_partial_ranges() {
+        let single = Anchor {
+            path: "x".into(),
+            source: SOURCE_MANUAL.into(),
+            reason: None,
+            symbol: None,
+            line_start: Some(42),
+            line_end: None,
+        };
+        assert_eq!(single.location(), " (L42)");
+
+        let bare = Anchor {
+            path: "x".into(),
+            source: SOURCE_MANUAL.into(),
+            reason: None,
+            symbol: Some("foo".into()),
+            line_start: None,
+            line_end: None,
+        };
+        assert_eq!(bare.location(), " :: foo");
+    }
+
+    // ── guide fields ────────────────────────────────────────────────────────
+
+    #[test]
+    fn guide_fields_round_trip() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        set_assignment(&conn, &task.uuid, "the original prompt").unwrap();
+        set_rationale(&conn, &task.uuid, "because reasons").unwrap();
+        set_validated(&conn, &task.uuid, "deadbeef").unwrap();
+        set_meta_json(&conn, &task.uuid, r#"{"k":1}"#).unwrap();
+
+        let g = get_guide_fields(&conn, &task.uuid).unwrap();
+        assert_eq!(g.assignment.as_deref(), Some("the original prompt"));
+        assert_eq!(g.rationale.as_deref(), Some("because reasons"));
+        assert_eq!(g.validated_commit.as_deref(), Some("deadbeef"));
+        assert!(g.validated_at.is_some());
+        assert_eq!(g.meta_json.as_deref(), Some(r#"{"k":1}"#));
+    }
+
+    // ── AI run audit trail ──────────────────────────────────────────────────
+
+    #[test]
+    fn ai_runs_are_recorded_and_returned_in_order() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let r1 = record_ai_run(
+            &conn,
+            &task.uuid,
+            "enrich",
+            Some("opus"),
+            Some("azure"),
+            Some("prompt"),
+            Some("{}"),
+        )
+        .unwrap();
+        let r2 = record_ai_run(&conn, &task.uuid, "refine", None, None, None, None).unwrap();
+        assert!(r2 > r1);
+
+        let runs = get_ai_runs(&conn, &task.uuid).unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0].kind, "enrich");
+        assert_eq!(runs[0].model.as_deref(), Some("opus"));
+        assert_eq!(runs[1].kind, "refine");
+        assert!(runs[1].model.is_none());
+    }
+
+    // ── feedback lifecycle ──────────────────────────────────────────────────
+
+    #[test]
+    fn open_feedback_lists_comments_flagged_first_and_resolves() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        // A plain comment, a flagged comment, and a non-comment note.
+        add_annotation_full(
+            &conn, &task.uuid, "plain", "comment", "human", None, None, false,
+        )
+        .unwrap();
+        let flagged = add_annotation_full(
+            &conn,
+            &task.uuid,
+            "reconsider this",
+            "comment",
+            "human",
+            Some("step"),
+            Some("2"),
+            true,
+        )
+        .unwrap();
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "a finding",
+            "finding",
+            "ai",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let open = get_open_feedback(&conn, &task.uuid).unwrap();
+        assert_eq!(open.len(), 2, "only open comments count as feedback");
+        assert_eq!(
+            open[0].text, "reconsider this",
+            "flagged feedback sorts first"
+        );
+
+        // Resolving links the run and drops it from the open set.
+        assert!(resolve_annotation(&conn, flagged, Some(7)).unwrap());
+        let open = get_open_feedback(&conn, &task.uuid).unwrap();
+        assert_eq!(open.len(), 1);
+        assert_eq!(open[0].text, "plain");
+    }
+
+    // ── cross-task FTS memory ───────────────────────────────────────────────
+
+    #[test]
+    fn search_fts_matches_tasks_notes_and_anchors() {
+        let conn = mem();
+        let task = seed_named_task(&conn, "implement frobnicator widget");
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "the frobnicator caches results",
+            "finding",
+            "ai",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+        add_task_file(
+            &conn,
+            &task.uuid,
+            "src/frob.rs",
+            SOURCE_MANUAL,
+            Some("frobnicator lives here"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let kinds: std::collections::HashSet<String> = search_fts(&conn, "frobnicator", 50)
+            .unwrap()
+            .into_iter()
+            .map(|h| h.ref_kind)
+            .collect();
+        assert!(kinds.contains("task"));
+        assert!(kinds.contains("note"));
+        assert!(kinds.contains("anchor"));
+    }
+
+    #[test]
+    fn search_fts_tolerates_quotes_in_query() {
+        let conn = mem();
+        let task = seed_named_task(&conn, "handle the \"weird\" input");
+        // A query containing a double-quote must not blow up the FTS parser.
+        let hits = search_fts(&conn, "\"weird\" input", 10).unwrap();
+        assert!(hits.iter().any(|h| h.task_uuid == task.uuid.to_string()));
+    }
+
+    // ── dependency closure ──────────────────────────────────────────────────
+
+    #[test]
+    fn dependency_closure_returns_blockers_first() {
+        let conn = mem();
+        // c depends on b, b depends on a  →  closure of c is [a, b, c].
+        let a = seed_named_task(&conn, "a");
+        let b = seed_named_task(&conn, "b");
+        let c = seed_named_task(&conn, "c");
+        add_dependency(&conn, &b.uuid, &a.uuid).unwrap();
+        add_dependency(&conn, &c.uuid, &b.uuid).unwrap();
+
+        let closure = dependency_closure(&conn, &c.uuid).unwrap();
+        assert_eq!(closure, vec![a.uuid, b.uuid, c.uuid]);
+    }
+
+    // ── project commands ────────────────────────────────────────────────────
+
+    #[test]
+    fn project_commands_round_trip_and_partial_update_preserves_others() {
+        let conn = mem();
+        set_project_commands(
+            &conn,
+            "demo",
+            &ProjectCommands {
+                setup_cmd: Some("cargo fetch".into()),
+                test_cmd: Some("cargo test".into()),
+                lint_cmd: None,
+                run_cmd: None,
+            },
+        )
+        .unwrap();
+        // A partial update (only lint) must COALESCE-preserve the earlier commands.
+        set_project_commands(
+            &conn,
+            "demo",
+            &ProjectCommands {
+                setup_cmd: None,
+                test_cmd: None,
+                lint_cmd: Some("cargo clippy".into()),
+                run_cmd: None,
+            },
+        )
+        .unwrap();
+
+        let c = get_project_commands(&conn, "demo").unwrap();
+        assert_eq!(c.setup_cmd.as_deref(), Some("cargo fetch"));
+        assert_eq!(c.test_cmd.as_deref(), Some("cargo test"));
+        assert_eq!(c.lint_cmd.as_deref(), Some("cargo clippy"));
+        assert!(c.run_cmd.is_none());
+    }
+
+    #[test]
+    fn get_project_commands_defaults_to_empty_when_absent() {
+        let conn = mem();
+        let c = get_project_commands(&conn, "nope").unwrap();
+        assert!(c.setup_cmd.is_none() && c.test_cmd.is_none());
     }
 }

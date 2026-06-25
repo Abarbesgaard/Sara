@@ -43,6 +43,21 @@ pub fn current_branch(repo: &Path) -> Option<String> {
     }
 }
 
+/// Return the current HEAD commit SHA (short), or None if not a repo.
+pub fn head_commit(repo: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if sha.is_empty() { None } else { Some(sha) }
+}
+
 /// Heuristic: find the most likely base branch for comparison.
 /// Prefers the default remote branch, then falls back to main/master.
 pub fn default_base(repo: &Path) -> String {

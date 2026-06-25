@@ -17,7 +17,13 @@ const CYAN: &str = "\x1b[36m";
 const GRAY: &str = "\x1b[90m";
 const MAGENTA: &str = "\x1b[35m";
 
-pub fn run(conn: &Connection, cfg: &Config, all: bool, project_filter: Option<&str>) -> Result<()> {
+pub fn run(
+    conn: &Connection,
+    cfg: &Config,
+    all: bool,
+    project_filter: Option<&str>,
+    as_json: bool,
+) -> Result<()> {
     let no_color = std::env::var("NO_COLOR").is_ok();
 
     let filter = if all {
@@ -32,6 +38,30 @@ pub fn run(conn: &Connection, cfg: &Config, all: bool, project_filter: Option<&s
     let tasks = db::list_tasks(conn, filter.as_deref())?;
     let link_flags = db::link_flags_by_task(conn).unwrap_or_default();
     let dep_info = db::dep_info_by_task(conn).unwrap_or_default();
+
+    if as_json {
+        let arr: Vec<_> = tasks
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "id": t.id,
+                    "uuid": t.uuid.to_string(),
+                    "description": t.description,
+                    "project": t.project,
+                    "priority": t.priority.as_ref().map(|p| p.label()),
+                    "due": t.due.map(|d| d.to_rfc3339()),
+                    "urgency": t.urgency,
+                    "status": t.status.to_string(),
+                    "tags": t.tags,
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "tasks": arr }))?
+        );
+        return Ok(());
+    }
 
     if tasks.is_empty() {
         let scope = filter

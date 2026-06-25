@@ -117,20 +117,54 @@ fn run() -> Result<()> {
             )?;
         }
 
-        Command::Info { id } => {
-            commands::info::run(&conn, &cfg, &id)?;
+        Command::Info { id, json } => {
+            if json {
+                commands::info::run_json(&conn, &cfg, &id)?;
+            } else {
+                commands::info::run(&conn, &cfg, &id)?;
+            }
         }
 
-        Command::Annotate { id, text } => {
-            commands::annotate::annotate(&conn, &id, &text)?;
+        Command::Annotate {
+            id,
+            text,
+            kind,
+            author,
+            on,
+            reconsider,
+        } => {
+            commands::annotate::annotate(
+                &conn,
+                &id,
+                &text,
+                kind.as_deref(),
+                author.as_deref(),
+                on.as_deref(),
+                reconsider,
+            )?;
         }
 
         Command::Denotate { annotation_id } => {
             commands::annotate::denotate(&conn, annotation_id)?;
         }
 
-        Command::Attach { id, path } => {
-            commands::annotate::attach(&conn, &id, &path)?;
+        Command::Attach {
+            id,
+            path,
+            reason,
+            symbol,
+            lines,
+            source,
+        } => {
+            commands::annotate::attach(
+                &conn,
+                &id,
+                &path,
+                reason.as_deref(),
+                symbol.as_deref(),
+                lines.as_deref(),
+                source.as_deref(),
+            )?;
         }
 
         Command::Link { id, url, label } => {
@@ -141,8 +175,8 @@ fn run() -> Result<()> {
             commands::annotate::unlink(&conn, link_id)?;
         }
 
-        Command::List { all, project } => {
-            commands::list::run(&conn, &cfg, all, project.as_deref())?;
+        Command::List { all, project, json } => {
+            commands::list::run(&conn, &cfg, all, project.as_deref(), json)?;
         }
 
         Command::Start { id } => {
@@ -189,11 +223,101 @@ fn run() -> Result<()> {
             commands::provider::run(&action)?;
         }
 
-        Command::Check { id, text } => {
+        Command::Check {
+            id,
+            text,
+            intent,
+            kind,
+            source,
+            verify,
+        } => {
             let task = db::resolve_task(&conn, &id)?;
-            db::add_checklist_item(&conn, &task.uuid, &text)?;
-            println!("Added checklist item to task {}", task.id.unwrap_or(0));
+            let kind = match kind.as_deref() {
+                Some("acceptance") => db::STEP_KIND_ACCEPTANCE,
+                _ => db::STEP_KIND_STEP,
+            };
+            let source = source.as_deref().unwrap_or("human");
+            db::add_step(
+                &conn,
+                &task.uuid,
+                &text,
+                intent.as_deref(),
+                kind,
+                source,
+                verify.as_deref(),
+            )?;
+            println!("Added {kind} to task {}", task.id.unwrap_or(0));
         }
+
+        Command::Next { id, json } => {
+            commands::guide::next(&conn, &cfg, &id, json)?;
+        }
+
+        Command::Steps { id, until, json } => {
+            commands::guide::steps(&conn, &cfg, &id, until, json)?;
+        }
+
+        Command::Step { action } => match action {
+            cli::StepAction::Done {
+                id,
+                n,
+                result,
+                kind,
+            } => {
+                commands::guide::step_done(
+                    &conn,
+                    &cfg,
+                    &id,
+                    n,
+                    result.as_deref(),
+                    kind.as_deref(),
+                )?;
+            }
+            cli::StepAction::Undone { id, n, kind } => {
+                commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref())?;
+            }
+        },
+
+        Command::Verify { id, step, run } => {
+            commands::guide::verify(&conn, &cfg, &id, step, run)?;
+        }
+
+        Command::Recall { query, limit, json } => {
+            commands::recall::run(&conn, &cfg, &query.join(" "), limit, json)?;
+        }
+
+        Command::Refine { id, only_flagged } => {
+            commands::refine::run(&conn, &cfg, &id, only_flagged)?;
+        }
+
+        Command::Assignment { id, text } => {
+            commands::guide::assignment(&conn, &id, &text.join(" "))?;
+        }
+
+        Command::Rationale { id, text } => {
+            commands::guide::rationale(&conn, &id, &text.join(" "))?;
+        }
+
+        Command::Validate { id } => {
+            commands::guide::validate(&conn, &id)?;
+        }
+
+        Command::Feedback { id, json } => {
+            commands::guide::feedback(&conn, &id, json)?;
+        }
+
+        Command::Resolve { feedback_id } => {
+            commands::guide::resolve(&conn, feedback_id)?;
+        }
+
+        Command::Plan { action } => match action {
+            cli::PlanAction::Import { source } => {
+                commands::plan::import(&conn, &cfg, &source)?;
+            }
+            cli::PlanAction::Show { id, json } => {
+                commands::plan::show(&conn, &cfg, &id, json)?;
+            }
+        },
 
         Command::Activity { project, all } => {
             let proj = if all {

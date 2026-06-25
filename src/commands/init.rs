@@ -193,6 +193,8 @@ fn seed_tasks(conn: &Connection, cfg: &Config, project: &Project) -> Result<()> 
         project_stack: project.stack.clone(),
         project_notes: project.notes.clone(),
         existing_tasks: vec![],
+        repo_tree: None,
+        project_commands: None,
     };
     let provider = crate::llm::build_provider(cfg);
     let result = provider.enrich(&req);

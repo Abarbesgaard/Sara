@@ -94,8 +94,6 @@ impl LlmProvider for AzureOpenAiProvider {
                 anyhow::anyhow!("Unexpected Azure OpenAI response shape: {}", resp_json)
             })?;
 
-        let _ = std::fs::write("/tmp/tk-azure-debug.txt", format!("content: {content}\n"));
-
         let enrichment: EnrichmentResponse = serde_json::from_str(content)
             .context("Could not parse Azure OpenAI enrichment JSON")?;
         Ok(enrichment)

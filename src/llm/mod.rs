@@ -19,9 +19,28 @@ pub struct EnrichmentRequest {
     pub project_notes: Option<String>,
     /// Existing pending task descriptions for dep suggestion context
     pub existing_tasks: Vec<(String, String)>, // (uuid_short, description)
+    /// Gitignore-aware repo file-tree summary, so suggestions reference real paths.
+    pub repo_tree: Option<String>,
+    /// Project build/test/lint/run commands, so verification is grounded.
+    pub project_commands: Option<String>,
+}
+
+/// A code anchor the LLM thinks is relevant to the task.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct RelevantFile {
+    /// Repo-relative path.
+    pub path: String,
+    /// Why this file/symbol matters for the task.
+    pub reason: Option<String>,
+    /// Specific symbol (function/type) to change, if known.
+    pub symbol: Option<String>,
+    pub line_start: Option<i64>,
+    pub line_end: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
 pub struct EnrichmentResponse {
     /// Suggested priority: "H", "M", "L", or null
     pub priority: Option<String>,
@@ -33,6 +52,28 @@ pub struct EnrichmentResponse {
     pub suggested_dependencies: Vec<String>,
     /// Optional cleaned-up version of the description
     pub description_suggestion: Option<String>,
+    /// Why this task exists / how it fits the project.
+    pub rationale: Option<String>,
+    /// Ordered implementation steps (checkmarks); each item is a step intent.
+    pub steps: Vec<String>,
+    /// Acceptance criteria / definition of done.
+    pub acceptance_criteria: Vec<String>,
+    /// Key findings about the codebase relevant to this task.
+    pub findings: Vec<String>,
+    /// Hard constraints the implementation must respect.
+    pub constraints: Vec<String>,
+    /// Explicit non-goals / out-of-scope items.
+    pub non_goals: Vec<String>,
+    /// Assumptions the plan makes.
+    pub assumptions: Vec<String>,
+    /// Open questions for the human to answer.
+    pub open_questions: Vec<String>,
+    /// Relevant files / code anchors.
+    pub relevant_files: Vec<RelevantFile>,
+    /// Command that verifies the task (tests).
+    pub test_cmd: Option<String>,
+    /// Lint command for the task.
+    pub lint_cmd: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -85,7 +126,12 @@ pub fn build_provider(cfg: &Config) -> Box<dyn LlmProvider> {
 /// Build the system prompt that is shared across all providers.
 pub fn system_prompt(req: &EnrichmentRequest) -> String {
     let mut parts = vec![
-        "You are a task-management assistant. Analyze the task and return a JSON object with enrichment suggestions.".to_string(),
+        "You are an AI software-engineering planner. Turn the task into a thorough, \
+         self-contained implementation guide that another engineer (human or LLM) can execute \
+         step by step. Return a JSON object matching the schema. Ground every file/anchor in the \
+         repo tree below (use real paths), keep steps ordered and concrete, make acceptance \
+         criteria verifiable, and surface assumptions/open questions instead of guessing."
+            .to_string(),
         format!("Project: {}", req.project_name),
     ];
     if let Some(ref goal) = req.project_goal {
@@ -96,6 +142,14 @@ pub fn system_prompt(req: &EnrichmentRequest) -> String {
     }
     if let Some(ref notes) = req.project_notes {
         parts.push(format!("Notes/conventions: {notes}"));
+    }
+    if let Some(ref cmds) = req.project_commands {
+        parts.push(format!("Project commands:\n{cmds}"));
+    }
+    if let Some(ref tree) = req.repo_tree {
+        parts.push(format!(
+            "Repository file tree (suggest only real paths):\n{tree}"
+        ));
     }
     if !req.existing_tasks.is_empty() {
         let list = req
@@ -203,31 +257,70 @@ pub fn search_system_prompt(profile_context: Option<&str>) -> String {
     parts.join("\n\n")
 }
 
-/// Post-process schema for OpenAI strict mode:
-/// - Flatten $defs/$ref
-/// - Make all properties required
-/// - Disallow additional properties
-pub fn inline_schema_for_openai(mut schema: serde_json::Value) -> serde_json::Value {
-    // Remove $schema, $defs
-    if let Some(obj) = schema.as_object_mut() {
+/// Post-process schema for OpenAI/Azure strict mode:
+/// - Inline every `$ref` against `$defs`/`definitions` (recursively)
+/// - Make all object properties `required`
+/// - Disallow `additionalProperties` on every object
+///
+/// This handles nested objects (e.g. `relevant_files: Vec<RelevantFile>`),
+/// which schemars emits as `$ref` into `$defs`.
+pub fn inline_schema_for_openai(schema: serde_json::Value) -> serde_json::Value {
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .cloned();
+    let mut root = schema;
+    if let Some(obj) = root.as_object_mut() {
         obj.remove("$schema");
         obj.remove("$defs");
-        // Ensure additionalProperties false
-        obj.insert(
-            "additionalProperties".to_string(),
-            serde_json::Value::Bool(false),
-        );
-        // Make all properties required
-        if let Some(props) = obj.get("properties")
-            && let Some(keys) = props.as_object().map(|m| {
-                m.keys()
-                    .cloned()
-                    .map(serde_json::Value::String)
-                    .collect::<Vec<_>>()
-            })
-        {
-            obj.insert("required".to_string(), serde_json::Value::Array(keys));
+        obj.remove("definitions");
+    }
+    resolve_strict(root, defs.as_ref())
+}
+
+fn resolve_strict(node: serde_json::Value, defs: Option<&serde_json::Value>) -> serde_json::Value {
+    use serde_json::Value;
+
+    // Resolve a `$ref` by inlining the referenced definition.
+    if let Some(reference) = node.get("$ref").and_then(|r| r.as_str()) {
+        let name = reference.rsplit('/').next().unwrap_or("");
+        if let Some(def) = defs.and_then(|d| d.get(name)) {
+            return resolve_strict(def.clone(), defs);
         }
     }
-    schema
+
+    match node {
+        Value::Object(mut map) => {
+            map.remove("$ref");
+            if let Some(Value::Object(props)) = map.get_mut("properties") {
+                let resolved: serde_json::Map<String, Value> = props
+                    .iter()
+                    .map(|(k, v)| (k.clone(), resolve_strict(v.clone(), defs)))
+                    .collect();
+                *props = resolved;
+            }
+            if let Some(items) = map.get_mut("items") {
+                *items = resolve_strict(items.clone(), defs);
+            }
+            for key in ["anyOf", "oneOf", "allOf"] {
+                if let Some(Value::Array(arr)) = map.get_mut(key) {
+                    *arr = arr
+                        .iter()
+                        .map(|v| resolve_strict(v.clone(), defs))
+                        .collect();
+                }
+            }
+            let is_object = map.get("type").map(|t| t == "object").unwrap_or(false)
+                || map.contains_key("properties");
+            if is_object {
+                map.insert("additionalProperties".to_string(), Value::Bool(false));
+                if let Some(Value::Object(props)) = map.get("properties") {
+                    let keys: Vec<Value> = props.keys().cloned().map(Value::String).collect();
+                    map.insert("required".to_string(), Value::Array(keys));
+                }
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
 }

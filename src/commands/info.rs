@@ -47,6 +47,14 @@ struct Detail {
     activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     /// Aggregated stats for the project.
     stats: Option<crate::db::ProjectStats>,
+    /// AI-first guide fields: assignment, rationale, freshness, meta.
+    guide: crate::db::TaskGuideFields,
+    /// Code anchors (relevant files with reasons / symbols / lines).
+    anchors: Vec<crate::db::Anchor>,
+    /// LLM run audit trail.
+    ai_runs: Vec<crate::db::AiRun>,
+    /// Current project HEAD commit, for the freshness banner.
+    head_commit: Option<String>,
 }
 
 struct BranchOverlap {
@@ -101,20 +109,44 @@ enum Focusable {
     File(String),
     Link(usize),
     Checklist(usize),
+    /// Index into `d.anchors` (AI-suggested code anchors).
+    Anchor(usize),
+    /// Index into the task-level comment list (annotations where kind="comment").
+    Comment(usize),
+    /// Index into the flat list of typed AI/human notes (finding, constraint, …).
+    Note(usize),
 }
 
-/// Ordered list of focusable items: editable fields, then links, then files.
-/// (Matches the on-screen order so arrow-key navigation feels natural.)
+/// Ordered list of focusable items — matches on-screen render order so ↑/↓ feels natural.
+/// Screen order: metadata fields → typed notes (findings/constraints/…) → links →
+///               manual files → AI anchors → checklist → task-level comments.
 fn focusables(d: &Detail) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
+    // Typed notes appear right after the metadata block in the TUI.
+    for i in 0..typed_notes(d).len() {
+        v.push(Focusable::Note(i));
+    }
     for i in 0..d.links.len() {
         v.push(Focusable::Link(i));
     }
     for f in d.manual_files.iter().chain(d.suggested_files.iter()) {
         v.push(Focusable::File(f.clone()));
     }
+    // AI-suggested code anchors (Possible relevant files).
+    for i in 0..d.anchors.len() {
+        v.push(Focusable::Anchor(i));
+    }
     for i in 0..d.checklist.len() {
         v.push(Focusable::Checklist(i));
+    }
+    // Task-level comments (anchor-threaded ones are shown inline under their element).
+    let comment_count = d
+        .annotations
+        .iter()
+        .filter(|a| a.kind == "comment" && a.target_kind.as_deref() != Some("anchor"))
+        .count();
+    for i in 0..comment_count {
+        v.push(Focusable::Comment(i));
     }
     v
 }
@@ -236,6 +268,14 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     // Project stats
     let stats = db::project_stats(conn, &task.project).ok();
 
+    // AI-first guide data.
+    let guide = db::get_guide_fields(conn, &task.uuid).unwrap_or_default();
+    let anchors = db::get_task_anchors(conn, &task.uuid).unwrap_or_default();
+    let ai_runs = db::get_ai_runs(conn, &task.uuid).unwrap_or_default();
+    let head_commit = project_root
+        .as_ref()
+        .and_then(|p| crate::git::head_commit(p));
+
     Ok(Detail {
         depends_on_ids: dep_ids(conn, &blockers),
         blocked_by: resolve_ids(blockers.clone()),
@@ -253,8 +293,47 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         urgency_breakdown,
         activity,
         stats,
+        guide,
+        anchors,
+        ai_runs,
+        head_commit,
         task,
     })
+}
+
+/// Whether the guide is stale (validated against a different commit than HEAD).
+fn guide_is_stale(d: &Detail) -> bool {
+    match (&d.head_commit, &d.guide.validated_commit) {
+        (Some(h), Some(v)) => h != v,
+        (Some(_), None) => false,
+        _ => false,
+    }
+}
+
+/// Annotations of a given kind (findings, constraints, …) authored on the task.
+fn notes_of_kind<'a>(d: &'a Detail, kind: &str) -> Vec<&'a crate::db::Annotation> {
+    d.annotations.iter().filter(|a| a.kind == kind).collect()
+}
+
+/// All typed notes in render order (finding, constraint, assumption, …).
+const NOTE_KINDS: [&str; 8] = [
+    "finding",
+    "constraint",
+    "assumption",
+    "open_question",
+    "non_goal",
+    "decision",
+    "risk",
+    "pattern",
+];
+fn typed_notes(d: &Detail) -> Vec<&crate::db::Annotation> {
+    let mut out = Vec::new();
+    for kind in NOTE_KINDS {
+        for n in notes_of_kind(d, kind) {
+            out.push(n);
+        }
+    }
+    out
 }
 
 /// Resolve dependency uuids to their display IDs (skips tasks without an id).
@@ -407,6 +486,59 @@ fn compute_overlaps(
     result
 }
 
+/// `sara info --json` — emit the full guide (assembled by the `task_guide` view)
+/// plus freshness + open-feedback, in one machine-readable document.
+pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
+    let task = db::resolve_task(conn, id_or_uuid)?;
+    let mut guide = db::guide_json(conn, &task.uuid)?;
+
+    // Freshness: compare the validated commit against the project's current HEAD.
+    let head = db::get_project(conn, &task.project)
+        .ok()
+        .flatten()
+        .and_then(|p| p.path)
+        .and_then(|path| crate::git::head_commit(std::path::Path::new(&path)));
+    let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
+    let stale = match (&head, &validated) {
+        (Some(h), Some(v)) => h != v,
+        _ => false,
+    };
+
+    // Open feedback the agent should act on (flagged-for-reconsider first).
+    let feedback = db::get_open_feedback(conn, &task.uuid)?;
+    let open_feedback: Vec<_> = feedback
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "id": f.id,
+                "text": f.text,
+                "target_kind": f.target_kind,
+                "target_id": f.target_id,
+                "request_revision": f.request_revision,
+            })
+        })
+        .collect();
+    let needs_revision = feedback.iter().any(|f| f.request_revision);
+
+    if let Some(obj) = guide.as_object_mut() {
+        obj.insert(
+            "freshness".to_string(),
+            serde_json::json!({ "head": head, "validated_commit": validated, "stale": stale }),
+        );
+        obj.insert(
+            "open_feedback".to_string(),
+            serde_json::Value::Array(open_feedback),
+        );
+        obj.insert(
+            "needs_revision".to_string(),
+            serde_json::Value::Bool(needs_revision),
+        );
+    }
+
+    println!("{}", serde_json::to_string_pretty(&guide)?);
+    Ok(())
+}
+
 pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     let detail = load_detail(conn, cfg, task)?;
@@ -428,11 +560,89 @@ struct EditState {
     detail: Detail,
     selected: usize,
     editing: bool,
+    /// True while typing a comment anchored to the focused element.
+    commenting: bool,
     editor: TextArea<'static>,
     due_error: bool,
     /// Error from the last "Depends on" commit, shown until the next edit.
     dep_error: Option<String>,
     scroll: u16,
+}
+
+/// The (target_kind, target_id) a comment would anchor to given the focused item.
+fn comment_target(d: &Detail, focus: &Option<Focusable>) -> (Option<String>, Option<String>) {
+    match focus {
+        Some(Focusable::Checklist(i)) => {
+            if let Some(item) = d.checklist.get(*i) {
+                let kind = if item.kind == db::STEP_KIND_ACCEPTANCE {
+                    "acceptance"
+                } else {
+                    "step"
+                };
+                return (Some(kind.to_string()), Some(item.id.to_string()));
+            }
+            (None, None)
+        }
+        Some(Focusable::Anchor(i)) => {
+            if let Some(anchor) = d.anchors.get(*i) {
+                return (Some("anchor".to_string()), Some(anchor.path.clone()));
+            }
+            (None, None)
+        }
+        Some(Focusable::File(path)) => (Some("anchor".to_string()), Some(path.clone())),
+        Some(Focusable::Note(i)) => {
+            if let Some(note) = typed_notes(d).get(*i) {
+                return (Some("note".to_string()), Some(note.id.to_string()));
+            }
+            (None, None)
+        }
+        Some(Focusable::Comment(i)) => {
+            // Replying to a comment: anchor to the note itself.
+            let comments: Vec<&crate::db::Annotation> = d
+                .annotations
+                .iter()
+                .filter(|a| a.kind == "comment")
+                .collect();
+            if let Some(a) = comments.get(*i) {
+                return (Some("note".to_string()), Some(a.id.to_string()));
+            }
+            (None, None)
+        }
+        _ => (None, None),
+    }
+}
+
+/// Open feedback annotations anchored to the focused element (most recent first).
+fn feedback_for_focus<'a>(
+    d: &'a Detail,
+    focus: &Option<Focusable>,
+) -> Vec<&'a crate::db::Annotation> {
+    match focus {
+        // When the cursor is ON a comment, r/x act on that comment directly.
+        Some(Focusable::Comment(i)) => {
+            let comments: Vec<&crate::db::Annotation> = d
+                .annotations
+                .iter()
+                .filter(|a| a.kind == "comment")
+                .collect();
+            return comments
+                .get(*i)
+                .copied()
+                .map(|a| vec![a])
+                .unwrap_or_default();
+        }
+        _ => {}
+    }
+    let (tk, tid) = comment_target(d, focus);
+    let mut v: Vec<&crate::db::Annotation> = d
+        .annotations
+        .iter()
+        .filter(|a| {
+            a.kind == "comment" && a.status == "open" && a.target_kind == tk && a.target_id == tid
+        })
+        .collect();
+    v.reverse();
+    v
 }
 
 fn edit_loop<B: Backend>(
@@ -445,6 +655,7 @@ fn edit_loop<B: Backend>(
         detail,
         selected: 0,
         editing: false,
+        commenting: false,
         editor: TextArea::default(),
         due_error: false,
         dep_error: None,
@@ -475,7 +686,33 @@ fn edit_loop<B: Backend>(
             _ => None,
         };
 
-        if st.editing {
+        if st.commenting {
+            match key.code {
+                KeyCode::Enter => {
+                    let text = st.editor.lines().join(" ");
+                    if !text.trim().is_empty() {
+                        let (tk, tid) = comment_target(&st.detail, &current);
+                        let _ = db::add_annotation_full(
+                            conn,
+                            &st.detail.task.uuid,
+                            text.trim(),
+                            db::NOTE_KIND_COMMENT,
+                            "human",
+                            tk.as_deref(),
+                            tid.as_deref(),
+                            false,
+                        );
+                        st.detail.annotations =
+                            db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
+                    }
+                    st.commenting = false;
+                }
+                KeyCode::Esc => st.commenting = false,
+                _ => {
+                    st.editor.input(key);
+                }
+            }
+        } else if st.editing {
             let field = current_field.unwrap_or(EditField::Description);
             match key.code {
                 KeyCode::Enter => {
@@ -584,6 +821,31 @@ fn edit_loop<B: Backend>(
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                     }
+                    // Enter on an anchor opens the file in the editor.
+                    Some(Focusable::Anchor(i)) => {
+                        if let Some(anchor) = st.detail.anchors.get(i) {
+                            let target = st
+                                .detail
+                                .project_root
+                                .as_ref()
+                                .map(|r| r.join(&anchor.path))
+                                .unwrap_or_else(|| std::path::PathBuf::from(&anchor.path));
+                            tui::suspend()?;
+                            let _ = open_in_editor(&target);
+                            tui::resume()?;
+                            terminal.clear()?;
+                        }
+                    }
+                    // Enter on a comment opens the comment input to reply.
+                    Some(Focusable::Comment(_)) => {
+                        st.editor = TextArea::default();
+                        st.commenting = true;
+                    }
+                    // Enter on a typed note opens the comment input to comment on it.
+                    Some(Focusable::Note(_)) => {
+                        st.editor = TextArea::default();
+                        st.commenting = true;
+                    }
                     None => {}
                 },
                 KeyCode::Char(' ') => {
@@ -593,6 +855,45 @@ fn edit_loop<B: Backend>(
                         let _ = db::toggle_checklist_item(conn, item.id);
                         st.detail.checklist =
                             db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                    }
+                }
+                // ── Review & comment loop ────────────────────────────────────
+                KeyCode::Char('c') => {
+                    st.editor = TextArea::default();
+                    st.commenting = true;
+                }
+                KeyCode::Char('r') => {
+                    // Mark the focused element for reconsideration.
+                    // If it already has an open comment, toggle the flag on it.
+                    // If not, create a new comment with request_revision=true so
+                    // the element is flagged even without a written note.
+                    let fb = feedback_for_focus(&st.detail, &current);
+                    if let Some(existing) = fb.first() {
+                        let _ =
+                            db::set_request_revision(conn, existing.id, !existing.request_revision);
+                    } else {
+                        // No existing comment — auto-create a reconsider marker.
+                        let (tk, tid) = comment_target(&st.detail, &current);
+                        let _ = db::add_annotation_full(
+                            conn,
+                            &st.detail.task.uuid,
+                            "⟳ reconsider this",
+                            db::NOTE_KIND_COMMENT,
+                            "human",
+                            tk.as_deref(),
+                            tid.as_deref(),
+                            true, // request_revision = true
+                        );
+                    }
+                    st.detail.annotations =
+                        db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
+                }
+                KeyCode::Char('x') => {
+                    // Resolve the focused element's latest open feedback.
+                    if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
+                        let _ = db::resolve_annotation(conn, fb.id, None);
+                        st.detail.annotations =
+                            db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
                     }
                 }
                 _ => {}
@@ -742,7 +1043,7 @@ fn render(f: &mut Frame, st: &EditState) {
         (d.history.len() as u16 + 2).min(6) // border (2) + up to 4 most-recent entries
     };
 
-    let constraints = if st.editing {
+    let constraints = if st.editing || st.commenting {
         if history_height > 0 {
             vec![
                 Constraint::Min(1),
@@ -945,6 +1246,160 @@ fn render(f: &mut Frame, st: &EditState) {
     ));
     lines.push(field_line("UUID", &t.uuid.to_string()));
 
+    // ── AI-first guide: assignment / rationale / freshness banner ────────────
+    if let Some(a) = &d.guide.assignment {
+        lines.push(Line::from(vec![
+            key_span("Assignment"),
+            Span::styled(a.clone(), Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+    if let Some(r) = &d.guide.rationale {
+        lines.push(Line::from(vec![
+            key_span("Rationale"),
+            Span::raw(r.clone()),
+        ]));
+    }
+    if guide_is_stale(d) {
+        lines.push(Line::from(vec![Span::styled(
+            format!(
+                "  ⚠ guide may be stale — validated @ {} but HEAD is {} (run `sara validate`)",
+                d.guide.validated_commit.as_deref().unwrap_or("-"),
+                d.head_commit.as_deref().unwrap_or("-"),
+            ),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]));
+    } else if let Some(v) = &d.guide.validated_commit {
+        lines.push(Line::from(vec![
+            key_span("Freshness"),
+            Span::styled(
+                format!("validated @ {v}"),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+    }
+
+    // Compute selection once here so typed notes, anchors, comments and
+    // checklist can all reference it below.
+    let items = focusables(d);
+    let sel: Option<Focusable> = if st.editing {
+        None
+    } else {
+        items.get(st.selected).cloned()
+    };
+    let file_selected = |path: &str| sel == Some(Focusable::File(path.to_string()));
+
+    // ── Typed AI/human notes (findings, constraints, …) ──────────────────────
+    // Build a flat note list once so indices match Focusable::Note(i).
+    let all_typed = typed_notes(d);
+    let mut note_cursor: usize = 0; // tracks position in all_typed across kinds
+    for (label, kind) in [
+        ("Findings", "finding"),
+        ("Constraints", "constraint"),
+        ("Assumptions", "assumption"),
+        ("Open questions", "open_question"),
+        ("Non-goals", "non_goal"),
+        ("Decisions", "decision"),
+        ("Risks", "risk"),
+        ("Patterns", "pattern"),
+    ] {
+        let notes = notes_of_kind(d, kind);
+        if notes.is_empty() {
+            continue;
+        }
+        lines.push(Line::from(""));
+        lines.push(section(&format!(
+            "{label}  (↑/↓ select · c comment · r reconsider)"
+        )));
+        for n in &notes {
+            let note_idx = note_cursor;
+            note_cursor += 1;
+            let is_sel = sel == Some(Focusable::Note(note_idx));
+            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
+            let row_fg = if is_sel { Color::White } else { Color::Reset };
+
+            // Open comments targeting this note.
+            let note_id_str = n.id.to_string();
+            let note_fb: Vec<&crate::db::Annotation> = d
+                .annotations
+                .iter()
+                .filter(|a| {
+                    a.kind == "comment"
+                        && a.status == "open"
+                        && a.target_kind.as_deref() == Some("note")
+                        && a.target_id.as_deref() == Some(note_id_str.as_str())
+                })
+                .collect();
+
+            let prefix = if is_sel { " ▶ " } else { "   " };
+            let mut spans = vec![
+                Span::styled(
+                    prefix.to_string(),
+                    Style::default()
+                        .fg(if is_sel { Color::White } else { Color::Gray })
+                        .bg(row_bg),
+                ),
+                Span::styled(
+                    "• ".to_string(),
+                    Style::default()
+                        .fg(if is_sel { Color::White } else { Color::Gray })
+                        .bg(row_bg),
+                ),
+                Span::styled(
+                    n.text.clone(),
+                    Style::default()
+                        .fg(row_fg)
+                        .bg(row_bg)
+                        .add_modifier(if is_sel {
+                            Modifier::BOLD
+                        } else {
+                            Modifier::empty()
+                        }),
+                ),
+            ];
+            if n.author == "ai" {
+                spans.push(Span::styled(
+                    " (ai)",
+                    Style::default()
+                        .fg(if is_sel { Color::White } else { Color::Magenta })
+                        .bg(row_bg),
+                ));
+            }
+            if !note_fb.is_empty() {
+                spans.push(Span::styled(
+                    format!("  💬{}", note_fb.len()),
+                    Style::default().fg(Color::Cyan).bg(row_bg),
+                ));
+            }
+            if note_fb.iter().any(|a| a.request_revision) {
+                spans.push(Span::styled(
+                    " ⟳",
+                    Style::default().fg(Color::Yellow).bg(row_bg),
+                ));
+            }
+            lines.push(Line::from(spans));
+
+            // Thread: show open comments indented beneath this note.
+            for a in &note_fb {
+                let date = a.entry.with_timezone(&Local).format("%H:%M");
+                let flag = if a.request_revision { " ⟳" } else { "" };
+                lines.push(Line::from(vec![
+                    Span::styled("      ╰ ".to_string(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("{date}{flag}  "),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+        // note_cursor already advanced per-note above.
+    }
+    // Sanity: note_cursor should equal all_typed.len() — unused but kept for
+    // clarity; the compiler will optimise it away.
+    let _ = all_typed.len();
+
     if !d.blocked_by.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("Blocked by"));
@@ -959,43 +1414,35 @@ fn render(f: &mut Frame, st: &EditState) {
             lines.push(Line::from(format!("  {b}")));
         }
     }
-    // Selected focusable (for highlighting files/links). Fields are handled
-    // inline above via their index.
-    let items = focusables(d);
-    let sel = if st.editing {
-        None
-    } else {
-        items.get(st.selected).cloned()
-    };
-    let file_selected = |path: &str| sel == Some(Focusable::File(path.to_string()));
+    // (sel / items / file_selected already computed above — before typed notes)
 
     if !d.links.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("Links  (Enter to open)"));
         for (i, link) in d.links.iter().enumerate() {
             let selected = sel == Some(Focusable::Link(i));
-            let marker = if selected { "› " } else { "  " };
-            let style = if selected {
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            let (bg, fg) = if selected {
+                (Color::Blue, Color::White)
             } else {
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::UNDERLINED)
+                (Color::Reset, Color::Cyan)
             };
+            let prefix = if selected { " ▶ " } else { "   " };
+            let style = Style::default()
+                .fg(fg)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+            let meta_style = Style::default()
+                .fg(if selected { Color::White } else { Color::Gray })
+                .bg(bg);
             let mut spans = vec![
-                Span::styled(
-                    format!("{marker}[{}] ", link.id),
-                    Style::default().fg(Color::Gray),
-                ),
+                Span::styled(prefix.to_string(), meta_style),
+                Span::styled(format!("[{}] ", link.id), meta_style),
                 Span::styled(link.display(), style),
             ];
-            // Show the raw URL too when a label was derived/added.
             if link.display() != link.url {
                 spans.push(Span::styled(
                     format!("  {}", link.url),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(Color::DarkGray).bg(bg),
                 ));
             }
             lines.push(Line::from(spans));
@@ -1008,37 +1455,217 @@ fn render(f: &mut Frame, st: &EditState) {
             lines.push(nav_line(file, Color::Cyan, false, file_selected(file)));
         }
     }
-    if !d.suggested_files.is_empty() {
+    // ── Code anchors: each is focusable, shows 💬/⟳ markers + threaded comments ──
+    if !d.anchors.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Possible relevant files (suggested by AI)"));
-        for file in &d.suggested_files {
-            lines.push(nav_line(file, Color::Gray, true, file_selected(file)));
+        lines.push(section(
+            "Possible relevant files  · ↑/↓ select · c comment · r reconsider",
+        ));
+        for (ai, anchor) in d.anchors.iter().enumerate() {
+            let is_sel = sel == Some(Focusable::Anchor(ai));
+            let file_text = format!("{}{}", anchor.path, anchor.location());
+            let badge = if anchor.source == db::SOURCE_SUGGESTED {
+                " (ai)"
+            } else {
+                ""
+            };
+
+            // Threaded comments anchored to this file.
+            let anchor_fb: Vec<&crate::db::Annotation> = d
+                .annotations
+                .iter()
+                .filter(|a| {
+                    a.kind == "comment"
+                        && a.target_kind.as_deref() == Some("anchor")
+                        && a.target_id.as_deref() == Some(anchor.path.as_str())
+                })
+                .collect();
+            let open_fb = anchor_fb.iter().filter(|a| a.status == "open").count();
+            let needs_reconsider = anchor_fb
+                .iter()
+                .any(|a| a.request_revision && a.status == "open");
+
+            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
+            let row_fg = if is_sel { Color::White } else { Color::Cyan };
+            let meta_fg = if is_sel { Color::White } else { Color::Gray };
+
+            let mut spans = vec![
+                Span::styled(
+                    if is_sel { " ▶ " } else { "   " }.to_string(),
+                    Style::default().fg(meta_fg).bg(row_bg),
+                ),
+                Span::styled(
+                    file_text,
+                    Style::default()
+                        .fg(row_fg)
+                        .bg(row_bg)
+                        .add_modifier(if is_sel {
+                            Modifier::BOLD
+                        } else {
+                            Modifier::empty()
+                        }),
+                ),
+                Span::styled(
+                    badge.to_string(),
+                    Style::default()
+                        .fg(if is_sel { Color::White } else { Color::Magenta })
+                        .bg(row_bg),
+                ),
+            ];
+            if let Some(r) = &anchor.reason {
+                spans.push(Span::styled(
+                    format!("  — {r}"),
+                    Style::default()
+                        .fg(if is_sel {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .bg(row_bg),
+                ));
+            }
+            if open_fb > 0 {
+                spans.push(Span::styled(
+                    format!("  💬{open_fb}"),
+                    Style::default().fg(Color::Cyan).bg(row_bg),
+                ));
+            }
+            if needs_reconsider {
+                spans.push(Span::styled(
+                    " ⟳",
+                    Style::default().fg(Color::Yellow).bg(row_bg),
+                ));
+            }
+            lines.push(Line::from(spans));
+
+            // Thread: show comments anchored to this file, indented beneath it.
+            for a in &anchor_fb {
+                let date = a.entry.with_timezone(&Local).format("%H:%M");
+                let resolved = a.status == "resolved";
+                let text_style = if resolved {
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::CROSSED_OUT)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                let flag = if a.request_revision && !resolved {
+                    " ⟳"
+                } else {
+                    ""
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("      ╰ ".to_string(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("{date}{flag}  "),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(a.text.clone(), text_style),
+                ]));
+            }
         }
     }
-    if !d.annotations.is_empty() {
+
+    // ── Comments section: task-level + replies only (anchored ones shown above) ─
+    let all_comments: Vec<&crate::db::Annotation> = d
+        .annotations
+        .iter()
+        .filter(|a| a.kind == "comment")
+        .collect();
+    // Only show task-level comments and note-replies here; anchor-threaded ones
+    // are already rendered above under their file row.
+    let unthreaded: Vec<&crate::db::Annotation> = all_comments
+        .iter()
+        .copied()
+        .filter(|a| a.target_kind.as_deref() != Some("anchor"))
+        .collect();
+    if !unthreaded.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Comments"));
-        for a in &d.annotations {
+        lines.push(section(
+            "Comments  (↑/↓ select · c add · r reconsider · x resolve)",
+        ));
+        // Build an index: comment-id -> annotation, for resolving note: replies.
+        let id_map: std::collections::HashMap<i64, &crate::db::Annotation> =
+            all_comments.iter().map(|a| (a.id, *a)).collect();
+
+        for (ci, a) in all_comments.iter().enumerate() {
+            // Skip anchor-threaded ones (already rendered under their file).
+            if a.target_kind.as_deref() == Some("anchor") {
+                continue;
+            }
+            let is_sel = sel == Some(Focusable::Comment(ci));
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-            lines.push(Line::from(vec![
-                Span::styled(format!("  [{}] ", a.id), Style::default().fg(Color::Gray)),
-                Span::styled(format!("{date}  "), Style::default().fg(Color::Gray)),
-                Span::raw(a.text.clone()),
-            ]));
+
+            // Resolve note: target to show what's being replied to.
+            let target_label = match (a.target_kind.as_deref(), a.target_id.as_deref()) {
+                (Some("note"), Some(idv)) => {
+                    if let Ok(parent_id) = idv.parse::<i64>()
+                        && let Some(parent) = id_map.get(&parent_id)
+                    {
+                        let snippet: String = parent.text.chars().take(40).collect();
+                        format!("↩ \"{snippet}\"  ")
+                    } else {
+                        format!("note:{idv}  ")
+                    }
+                }
+                (Some("step"), Some(idv)) => format!("step:{idv}  "),
+                (Some("acceptance"), Some(idv)) => format!("accept:{idv}  "),
+                _ => String::new(),
+            };
+
+            let resolved = a.status == "resolved";
+            let text_style = if resolved {
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::CROSSED_OUT)
+            } else if is_sel {
+                Style::default().fg(Color::White).bg(Color::Blue)
+            } else {
+                Style::default()
+            };
+            let meta_style = if is_sel {
+                Style::default().fg(Color::White).bg(Color::Blue)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            let mut spans = vec![
+                Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
+                Span::styled(format!("[{}] ", a.id), meta_style),
+                Span::styled(format!("{date}  "), meta_style),
+            ];
+            if !target_label.is_empty() {
+                spans.push(Span::styled(
+                    target_label,
+                    if is_sel {
+                        Style::default().fg(Color::White).bg(Color::Blue)
+                    } else {
+                        Style::default().fg(Color::Cyan)
+                    },
+                ));
+            }
+            if a.request_revision && !resolved {
+                spans.push(Span::styled("⟳ ", Style::default().fg(Color::Yellow)));
+            }
+            spans.push(Span::styled(a.text.clone(), text_style));
+            lines.push(Line::from(spans));
         }
     }
-    // ── Checklist
+    // ── Checklist (steps + acceptance criteria with intent + provenance)
     if !d.checklist.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Checklist  (Space to toggle)"));
+        lines.push(section(
+            "Checklist  (Space toggle · c comment · r reconsider · x resolve)",
+        ));
         for (i, item) in d.checklist.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Checklist(i));
-            let marker = if is_sel { "› " } else { "  " };
+            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
+
             let (box_str, text_style) = if item.done {
                 (
                     "[x]",
                     Style::default()
                         .fg(Color::DarkGray)
+                        .bg(row_bg)
                         .add_modifier(Modifier::CROSSED_OUT),
                 )
             } else if is_sel {
@@ -1046,18 +1673,94 @@ fn render(f: &mut Frame, st: &EditState) {
                     "[ ]",
                     Style::default()
                         .fg(Color::White)
+                        .bg(Color::Blue)
                         .add_modifier(Modifier::BOLD),
                 )
             } else {
                 ("[ ]", Style::default())
             };
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("{marker}{box_str} "),
-                    Style::default().fg(Color::Gray),
-                ),
+            // Feedback markers for this step: comment count + reconsider flag.
+            let target_k = if item.kind == db::STEP_KIND_ACCEPTANCE {
+                "acceptance"
+            } else {
+                "step"
+            };
+            let item_id_str = item.id.to_string();
+            let fb: Vec<&crate::db::Annotation> = d
+                .annotations
+                .iter()
+                .filter(|a| {
+                    a.kind == "comment"
+                        && a.status == "open"
+                        && a.target_kind.as_deref() == Some(target_k)
+                        && a.target_id.as_deref() == Some(item_id_str.as_str())
+                })
+                .collect();
+            let prefix = if is_sel { " ▶ " } else { "   " };
+            let box_style = Style::default()
+                .fg(if is_sel { Color::White } else { Color::Gray })
+                .bg(row_bg);
+            let mut spans = vec![
+                Span::styled(prefix.to_string(), box_style),
+                Span::styled(format!("{box_str} "), box_style),
                 Span::styled(item.text.clone(), text_style),
-            ]));
+            ];
+            if item.kind == db::STEP_KIND_ACCEPTANCE {
+                spans.push(Span::styled(" [accept]", Style::default().fg(Color::Blue)));
+            }
+            if item.source == "ai" {
+                spans.push(Span::styled(" (ai)", Style::default().fg(Color::Magenta)));
+            }
+            if !fb.is_empty() {
+                spans.push(Span::styled(
+                    format!("  💬{}", fb.len()),
+                    Style::default().fg(Color::Cyan),
+                ));
+            }
+            if fb.iter().any(|a| a.request_revision) {
+                spans.push(Span::styled(" ⟳", Style::default().fg(Color::Yellow)));
+            }
+            lines.push(Line::from(spans));
+            if let Some(intent) = &item.intent {
+                lines.push(Line::from(Span::styled(
+                    format!("         {intent}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            // Thread: show comments anchored to this step/acceptance, indented.
+            for a in &fb {
+                let date = a.entry.with_timezone(&Local).format("%H:%M");
+                let flag = if a.request_revision { " ⟳" } else { "" };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "         ╰ ".to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(
+                        format!("{date}{flag}  "),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+    }
+
+    // ── AI activity (provenance footer)
+    if !d.ai_runs.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(section("AI activity"));
+        for r in &d.ai_runs {
+            let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "  {} via {} [{}] @ {date}",
+                    r.kind,
+                    r.model.as_deref().unwrap_or("?"),
+                    r.provider.as_deref().unwrap_or("?"),
+                ),
+                Style::default().fg(Color::DarkGray),
+            )));
         }
     }
     // ── Similar tasks (shared tags, same project)
@@ -1145,6 +1848,25 @@ fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(hist_para, hist_chunk);
     }
 
+    // ── Comment bar (anchored to the focused element)
+    if st.commenting {
+        let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
+        let items = focusables(d);
+        let focus = items.get(st.selected).cloned();
+        let (tk, tid) = comment_target(d, &focus);
+        let target = match (tk, tid) {
+            (Some(k), Some(i)) => format!("{k}:{i}"),
+            _ => "task".to_string(),
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" Comment on {target}  (Enter save · Esc cancel) "))
+            .border_style(Style::default().fg(Color::Yellow));
+        let inner = block.inner(chunks[edit_chunk_idx]);
+        f.render_widget(block, chunks[edit_chunk_idx]);
+        f.render_widget(&st.editor, inner);
+    }
+
     // ── Edit bar (chunk index depends on whether history box is present)
     if st.editing {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
@@ -1182,11 +1904,12 @@ fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(&st.editor, inner);
     }
 
-    let footer = if st.editing {
+    let footer = if st.commenting {
+        " type a comment  •  Enter save  •  Esc cancel ".to_string()
+    } else if st.editing {
         " type to edit  •  Enter confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move  •  Enter edit/open  •  ←/→ priority  •  PgUp/PgDn scroll  •  q close "
-            .to_string()
+        " ↑/↓ move • Enter edit/open • c comment • r reconsider • x resolve • q close ".to_string()
     };
     let footer_idx = chunks.len() - 1;
     f.render_widget(
@@ -1705,28 +2428,46 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 /// A selectable file/link row with a `›` marker when focused.
 fn nav_line<'a>(text: &str, color: Color, italic: bool, selected: bool) -> Line<'a> {
-    let marker = if selected { "› " } else { "  " };
     let mut style = Style::default().fg(color);
     if italic {
         style = style.add_modifier(Modifier::ITALIC);
     }
     if selected {
-        style = style.add_modifier(Modifier::BOLD);
+        style = style
+            .bg(Color::Blue)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
     }
+    let prefix = if selected { " ▶ " } else { "   " };
     Line::from(vec![
-        Span::styled(marker.to_string(), Style::default().fg(Color::Gray)),
+        Span::styled(prefix.to_string(), style),
         Span::styled(text.to_string(), style),
     ])
 }
 
+/// A single rendered row with optional selection highlight (blue bg).
+fn sel_line<'a>(spans: Vec<Span<'a>>, selected: bool) -> Line<'a> {
+    if !selected {
+        return Line::from(spans);
+    }
+    // Paint the entire row blue so it's unmissable.
+    let highlighted: Vec<Span> = spans
+        .into_iter()
+        .map(|s| Span::styled(s.content, s.style.bg(Color::Blue).fg(Color::White)))
+        .collect();
+    Line::from(highlighted)
+}
+
 fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &Task) -> Line<'a> {
-    let marker = if selected { "› " } else { "  " };
-    let key_style = if selected {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+    let (bg, fg) = if selected {
+        (Color::Blue, Color::White)
     } else {
-        Style::default().fg(Color::Gray)
+        (Color::Reset, Color::Gray)
+    };
+    let key_style = if selected {
+        Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(fg)
     };
 
     // Priority gets a colored value.
@@ -1743,8 +2484,15 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
         Span::raw(v.to_string())
     };
 
+    let prefix = if selected { " ▶ " } else { "   " };
+    let value_style = if selected {
+        Style::default().fg(Color::White).bg(Color::Blue)
+    } else {
+        Style::default()
+    };
+    let value_span = Span::styled(value_span.content, value_span.style.patch(value_style));
     Line::from(vec![
-        Span::styled(marker.to_string(), key_style),
+        Span::styled(prefix.to_string(), key_style),
         Span::styled(format!("{:<12}", k), key_style),
         value_span,
     ])
@@ -1852,6 +2600,100 @@ fn print_plain(d: &Detail) {
     );
     println!("{:<14}{:.1}", "Urgency", t.urgency);
     println!("{:<14}{}", "UUID", t.uuid);
+
+    // ── AI-first guide ───────────────────────────────────────────────────────
+    if let Some(a) = &d.guide.assignment {
+        println!("{:<14}{}", "Assignment", a);
+    }
+    if let Some(r) = &d.guide.rationale {
+        println!("{:<14}{}", "Rationale", r);
+    }
+    if guide_is_stale(d) {
+        println!(
+            "{:<14}guide validated @ {} but HEAD is {} — may be stale (run `sara validate`)",
+            "Freshness",
+            d.guide.validated_commit.as_deref().unwrap_or("-"),
+            d.head_commit.as_deref().unwrap_or("-"),
+        );
+    } else if let Some(v) = &d.guide.validated_commit {
+        println!("{:<14}validated @ {}", "Freshness", v);
+    }
+
+    // Steps (with intent + result).
+    let steps: Vec<&crate::db::ChecklistItem> = d
+        .checklist
+        .iter()
+        .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
+        .collect();
+    if !steps.is_empty() {
+        println!("\nSteps:");
+        for (i, s) in steps.iter().enumerate() {
+            let mark = if s.done { "x" } else { " " };
+            let badge = if s.source == "ai" { " (ai)" } else { "" };
+            println!("  [{}] {}. {}{}", mark, i + 1, s.text, badge);
+            if let Some(intent) = &s.intent {
+                println!("        intent: {intent}");
+            }
+            if let Some(v) = &s.verify_cmd {
+                println!("        verify: {v}");
+            }
+            if let Some(r) = &s.result {
+                println!("        result: {r}");
+            }
+        }
+    }
+
+    // Acceptance criteria.
+    let acceptance: Vec<&crate::db::ChecklistItem> = d
+        .checklist
+        .iter()
+        .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
+        .collect();
+    if !acceptance.is_empty() {
+        println!("\nAcceptance criteria:");
+        for (i, a) in acceptance.iter().enumerate() {
+            let mark = if a.done { "x" } else { " " };
+            println!("  [{}] {}. {}", mark, i + 1, a.text);
+        }
+    }
+
+    // Typed AI/human notes grouped by kind.
+    for (label, kind) in [
+        ("Findings", "finding"),
+        ("Constraints", "constraint"),
+        ("Assumptions", "assumption"),
+        ("Open questions", "open_question"),
+        ("Non-goals", "non_goal"),
+        ("Decisions", "decision"),
+        ("Risks", "risk"),
+        ("Patterns", "pattern"),
+    ] {
+        let notes = notes_of_kind(d, kind);
+        if !notes.is_empty() {
+            println!("\n{label}:");
+            for n in notes {
+                let badge = if n.author == "ai" { " (ai)" } else { "" };
+                println!("  - {}{}", n.text, badge);
+            }
+        }
+    }
+
+    // Code anchors (relevant files with reasons).
+    let suggested: Vec<&crate::db::Anchor> = d
+        .anchors
+        .iter()
+        .filter(|a| a.source == db::SOURCE_SUGGESTED)
+        .collect();
+    if !suggested.is_empty() {
+        println!("\nRelevant code anchors (suggested by AI):");
+        for a in suggested {
+            println!("  {}{}", a.path, a.location());
+            if let Some(r) = &a.reason {
+                println!("      {r}");
+            }
+        }
+    }
+
     for b in &d.blocked_by {
         println!("{:<14}{}", "Blocked by", b);
     }
@@ -1870,12 +2712,45 @@ fn print_plain(d: &Detail) {
     for file in &d.manual_files {
         println!("{:<14}{}", "File", file);
     }
-    for file in &d.suggested_files {
-        println!("{:<14}{}", "Possible file", file);
+    // Comments (human feedback), with anchor + reconsider markers.
+    let comments = notes_of_kind(d, "comment");
+    if !comments.is_empty() {
+        println!("\nComments:");
+        for a in comments {
+            let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+            let target = match (&a.target_kind, &a.target_id) {
+                (Some(k), Some(idv)) => format!(" [{k}:{idv}]"),
+                _ => String::new(),
+            };
+            let flag = if a.request_revision {
+                " (reconsider)"
+            } else {
+                ""
+            };
+            let resolved = if a.status == "resolved" {
+                " (resolved)"
+            } else {
+                ""
+            };
+            println!(
+                "  #{}{}{}{} {} {}",
+                a.id, target, flag, resolved, date, a.text
+            );
+        }
     }
-    for a in &d.annotations {
-        let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-        println!("{:<14}[{}] {} {}", "Annotation", a.id, date, a.text);
+    // AI activity footer.
+    if !d.ai_runs.is_empty() {
+        println!("\nAI activity:");
+        for r in &d.ai_runs {
+            let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+            println!(
+                "  {} via {} [{}] @ {}",
+                r.kind,
+                r.model.as_deref().unwrap_or("?"),
+                r.provider.as_deref().unwrap_or("?"),
+                date
+            );
+        }
     }
     for h in &d.history {
         let date = h.changed_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");

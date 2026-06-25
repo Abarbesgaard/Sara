@@ -74,16 +74,31 @@ pub enum Command {
     Info {
         /// Task id or uuid prefix
         id: String,
+        /// Emit the full guide as JSON (for agents/scripts)
+        #[arg(long)]
+        json: bool,
     },
 
-    /// Add a comment, note, or PR/URL link to a task
+    /// Add a comment, note, or anchored feedback to a task
     #[command(visible_alias = "comment")]
     Annotate {
         /// Task id or uuid prefix
         id: String,
-        /// The comment text or URL
+        /// The comment / note text or URL
         #[arg(trailing_var_arg = true, required = true)]
         text: Vec<String>,
+        /// Note kind: comment|finding|thought|constraint|assumption|open_question|non_goal|decision|risk|pattern
+        #[arg(long)]
+        kind: Option<String>,
+        /// Author of the note: human|ai
+        #[arg(long)]
+        author: Option<String>,
+        /// Anchor the comment to a guide element: step:N, acceptance:N, anchor:ID, note:ID
+        #[arg(long)]
+        on: Option<String>,
+        /// Flag the targeted element for the LLM to reconsider
+        #[arg(long)]
+        reconsider: bool,
     },
 
     /// Remove a comment by its number (see `sara info`)
@@ -100,6 +115,18 @@ pub enum Command {
         id: String,
         /// File path (relative to project) or URL
         path: String,
+        /// Why this file matters (turns it into a code anchor)
+        #[arg(long)]
+        reason: Option<String>,
+        /// Specific symbol (function/type) to change
+        #[arg(long)]
+        symbol: Option<String>,
+        /// Line range, e.g. 10:57
+        #[arg(long)]
+        lines: Option<String>,
+        /// Provenance: human (default) or ai (records as a suggestion)
+        #[arg(long)]
+        source: Option<String>,
     },
 
     /// Add a link (e.g. a GitHub PR) to a task
@@ -127,6 +154,9 @@ pub enum Command {
         /// Filter by project name
         #[arg(long)]
         project: Option<String>,
+        /// Emit the list as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Start working on a task (begins time tracking, marks it active)
@@ -194,13 +224,131 @@ pub enum Command {
         action: ProviderAction,
     },
 
-    /// Add a checklist item to a task
+    /// Add a checklist item / step / acceptance criterion to a task
     #[clap(name = "check")]
     Check {
         /// Task ID
         id: String,
-        /// Checklist item text
+        /// Step / criterion text
         text: String,
+        /// Fuller "what this step does" intent
+        #[arg(long)]
+        intent: Option<String>,
+        /// Item kind: step (default) or acceptance
+        #[arg(long)]
+        kind: Option<String>,
+        /// Provenance: human (default) or ai
+        #[arg(long)]
+        source: Option<String>,
+        /// Command that verifies this step / criterion
+        #[arg(long)]
+        verify: Option<String>,
+    },
+
+    /// Show the next not-done step (the execution cursor)
+    Next {
+        /// Task id or uuid prefix
+        id: String,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show ordered steps, optionally up to checkmark N ("implement until N")
+    Steps {
+        /// Task id or uuid prefix
+        id: String,
+        /// Only show steps 1..=N
+        #[arg(long)]
+        until: Option<usize>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Mark steps done/undone with an execution record
+    Step {
+        #[command(subcommand)]
+        action: StepAction,
+    },
+
+    /// Print (and optionally run) verification commands / acceptance criteria
+    Verify {
+        /// Task id or uuid prefix
+        id: String,
+        /// Only verify step N
+        #[arg(long)]
+        step: Option<usize>,
+        /// Actually run the verification command(s)
+        #[arg(long)]
+        run: bool,
+    },
+
+    /// Cross-task memory: keyword search across tasks/findings/anchors
+    Recall {
+        /// Search query
+        #[arg(trailing_var_arg = true, required = true)]
+        query: Vec<String>,
+        /// Max results
+        #[arg(long, default_value_t = 20)]
+        limit: i64,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Hand a task back to Sara to improve the guide with her LLM
+    Refine {
+        /// Task id or uuid prefix
+        id: String,
+        /// Only address flagged-for-reconsider feedback
+        #[arg(long)]
+        only_flagged: bool,
+    },
+
+    /// Set the originating assignment/prompt for a task
+    Assignment {
+        /// Task id or uuid prefix
+        id: String,
+        /// The assignment text
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+    },
+
+    /// Set the rationale (why this task exists)
+    Rationale {
+        /// Task id or uuid prefix
+        id: String,
+        /// The rationale text
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+    },
+
+    /// Stamp the guide as validated against the current git HEAD
+    Validate {
+        /// Task id or uuid prefix
+        id: String,
+    },
+
+    /// List open feedback (human comments) for a task
+    Feedback {
+        /// Task id or uuid prefix
+        id: String,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Resolve a piece of feedback by its id
+    Resolve {
+        /// Feedback (annotation) id
+        feedback_id: i64,
+    },
+
+    /// Atomic plan ingestion and dependency-ordered briefings
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
     },
 
     /// Show a GitHub-style activity heatmap
@@ -269,6 +417,50 @@ pub enum ProviderAction {
     },
     /// Remove a named profile
     Remove { name: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum StepAction {
+    /// Mark step N done, recording an execution result + commit
+    Done {
+        /// Task id or uuid prefix
+        id: String,
+        /// 1-based step number
+        n: usize,
+        /// Execution result / note
+        #[arg(long)]
+        result: Option<String>,
+        /// Item kind: step (default) or acceptance
+        #[arg(long)]
+        kind: Option<String>,
+    },
+    /// Reopen step N
+    Undone {
+        /// Task id or uuid prefix
+        id: String,
+        /// 1-based step number
+        n: usize,
+        /// Item kind: step (default) or acceptance
+        #[arg(long)]
+        kind: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PlanAction {
+    /// Ingest a whole task graph from JSON (file path, or '-' for stdin)
+    Import {
+        /// Path to the plan JSON file, or '-' to read stdin
+        source: String,
+    },
+    /// Emit a dependency-ordered briefing for a task and its blockers
+    Show {
+        /// Task id or uuid prefix
+        id: String,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
