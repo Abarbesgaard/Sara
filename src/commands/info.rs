@@ -1796,10 +1796,7 @@ fn render(f: &mut Frame, st: &EditState) {
             // Execution outcome recorded when the step was marked done.
             if let Some(r) = &item.result {
                 lines.push(Line::from(vec![
-                    Span::styled(
-                        "         → ".to_string(),
-                        Style::default().fg(Color::Green),
-                    ),
+                    Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
                     Span::styled(r.clone(), Style::default().fg(Color::Green)),
                 ]));
             }
@@ -1856,10 +1853,7 @@ fn render(f: &mut Frame, st: &EditState) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(cmd.clone(), Style::default().fg(Color::Blue)),
-                Span::styled(
-                    format!("  ({scope})"),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!("  ({scope})"), Style::default().fg(Color::DarkGray)),
             ]));
         }
     }
