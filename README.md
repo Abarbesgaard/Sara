@@ -67,6 +67,51 @@ is ever written into your repositories.**
 
 ## Installation
 
+The fastest paths use prebuilt packages and need **no Rust toolchain**. Prefer
+one of these; the from-source build further down is for development.
+
+### Quick install (Linux & macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh
+```
+
+Downloads the right binary from the latest
+[GitHub Release](https://github.com/Abarbesgaard/Sara/releases) into
+`~/.local/bin` (override with `SARA_INSTALL_DIR`).
+
+### crates.io
+
+Published as **`sara-tasks`** (`sara` and `sara-cli` were taken); the installed
+binary is still `sara`.
+
+```bash
+cargo install sara-tasks          # compiles from source
+cargo binstall sara-tasks         # or grabs the prebuilt binary, no compile
+```
+
+### Debian / Ubuntu (apt)
+
+One-off `.deb` from a release:
+
+```bash
+curl -fsSLO https://github.com/Abarbesgaard/Sara/releases/latest/download/sara_amd64.deb
+sudo apt install ./sara_amd64.deb
+```
+
+Or add the apt repository so `sudo apt install sara` and future upgrades work:
+
+```bash
+echo "deb [trusted=yes] https://abarbesgaard.github.io/Sara/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/sara.list
+sudo apt update
+sudo apt install sara
+```
+
+---
+
+### Build from source
+
 ### 1 — Prerequisites
 
 **Rust** (if not already installed):

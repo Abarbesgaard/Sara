@@ -1,13 +1,41 @@
 [package]
-name = "sara"
+# Crate name on crates.io. `sara` and `sara-cli` are already taken, so the
+# published crate is `sara-tasks` while the installed binary stays `sara`
+# (see [[bin]] below).
+name = "sara-tasks"
 version = "0.1.0"
 edition = "2024"
 description = "Sara — folder-aware task manager (successor to tk)"
 license = "MIT"
+authors = ["Andreas Barbesgaard"]
+repository = "https://github.com/Abarbesgaard/Sara"
+homepage = "https://github.com/Abarbesgaard/Sara"
+readme = "README.md"
+keywords = ["task", "cli", "tui", "productivity", "todo"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "sara"
 path = "src/main.rs"
+
+# ── Debian packaging (cargo-deb) ─────────────────────────────────────────────
+# Build with: cargo deb --target <triple>
+[package.metadata.deb]
+# Debian package name stays `sara` (crate is `sara-cli`) so `apt install sara` works.
+name = "sara"
+maintainer = "Andreas Barbesgaard <Abarbesgaard@users.noreply.github.com>"
+copyright = "2026, Andreas Barbesgaard"
+license-file = ["LICENSE", "0"]
+extended-description = """
+Sara is a folder-aware task manager. A git repository is treated as a project,
+so tasks live alongside the code they belong to. Features include dependency
+chains, a TUI board, time tracking, and an AI-assisted task guide."""
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/sara", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/sara/README.md", "644"],
+]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "unstable-ext"] }
