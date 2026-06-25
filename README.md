@@ -352,6 +352,14 @@ plus the dependency edges between the exported tasks. On import every task gets 
 never collides), dependency edges are remapped within the bundle, the timer is
 reset and urgency is recomputed. History and time-tracking do not travel.
 
+A bundle carries each task's project **name**, not the project *profile* (its
+goal, stack, conventions and setup/test/lint commands). Importing a task whose
+project doesn't exist locally is fine — it's created under that name and shows up
+in `sara list`/`-p` and tab-completion straight away; only the profile metadata
+is absent. Run `sara init` in that project's folder to attach a profile, or use
+`-p`/`--project` on import to drop everything into an existing local project
+instead of the bundle's original name.
+
 The blob tolerates being line-wrapped by email or chat clients, so a pasted
 `sara-task-v1:…` token still imports even if it picked up newlines.
 
