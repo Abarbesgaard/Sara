@@ -31,3 +31,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 toml = "0.8"
 nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
+base64 = "0.22"

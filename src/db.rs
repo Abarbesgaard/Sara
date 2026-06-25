@@ -1022,6 +1022,20 @@ pub fn get_blocking(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
     Ok(uuids)
 }
 
+/// All dependency (blocker) uuids for a task regardless of the blocker's status.
+/// Unlike [`get_blockers`], which only returns *pending* blockers for urgency and
+/// readiness, this returns every `depends_on` edge — used when exporting a task's
+/// full dependency closure.
+pub fn get_dependency_uuids(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
+    let mut stmt = conn.prepare("SELECT depends_on_uuid FROM dependencies WHERE task_uuid=?1")?;
+    let uuids = stmt
+        .query_map([task_uuid.to_string()], |r| r.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .filter_map(|s| Uuid::parse_str(&s).ok())
+        .collect();
+    Ok(uuids)
+}
+
 /// Dependency state of a single task, for at-a-glance list rendering.
 #[derive(Debug, Default, Clone)]
 pub struct DepInfo {

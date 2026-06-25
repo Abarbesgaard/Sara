@@ -36,6 +36,7 @@ is ever written into your repositories.**
   - [Checklists](#checklists)
   - [Notes, comments & links](#notes-comments--links)
   - [Git branch linkage](#git-branch-linkage)
+  - [Sharing tasks](#sharing-tasks)
   - [History & undo](#history--undo)
 - [The urgency model](#the-urgency-model)
 - [LLM setup](#llm-setup)
@@ -327,6 +328,33 @@ sara addbranch 1 --clear    # remove the tie
 > from the repo you're standing in. The task's project must have been `sara init`'d
 > inside that repo. Run `sara stop` afterwards to snapshot the changed files.
 
+### Sharing tasks
+
+Export a task — together with its full dependency closure (the task plus every
+task it transitively depends on) — to a single copy-pasteable blob, then import
+it into another user's Sara on a different machine.
+
+```bash
+sara export 1                     # print a `sara-task-v1:…` blob to stdout
+sara export 1 -o task.blob        # …or write it to a file
+sara 1 export                     # the usual id-first shorthand
+
+sara import task.blob             # read a blob from a file
+sara import "sara-task-v1:…"      # …or pass the blob string directly
+pbpaste | sara import             # …or pipe it in on stdin
+sara import task.blob -p backlog  # reassign every imported task to a project
+```
+
+What travels: the description, project, status, priority, due date, tags,
+estimate, recurrence, comments, checklist/steps, links and attached file paths —
+plus the dependency edges between the exported tasks. On import every task gets a
+**fresh** uuid and display id (so importing into a DB that already has the task
+never collides), dependency edges are remapped within the bundle, the timer is
+reset and urgency is recomputed. History and time-tracking do not travel.
+
+The blob tolerates being line-wrapped by email or chat clients, so a pasted
+`sara-task-v1:…` token still imports even if it picked up newlines.
+
 ### History & undo
 
 Every mutating action is recorded and shown in the History panel of `sara info`:
@@ -568,6 +596,8 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara link <id> <url>`             | Add a link; `sara unlink <n>` removes                    |
 | `sara attach <id> <path>`          | Attach a file path (alias `pr`)                          |
 | `sara addbranch <id>`              | Tie the current git branch to a task (`--clear`)         |
+| `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
+| `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
 | `sara provider …`                  | Manage LLM provider profiles                             |
 | `sara undo`                        | Revert the most recent command                           |

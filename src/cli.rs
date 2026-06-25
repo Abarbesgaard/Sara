@@ -216,6 +216,25 @@ pub enum Command {
         project: String,
     },
 
+    /// Export a task (and its dependency closure) to a portable copy-paste blob
+    Export {
+        /// Task id or uuid prefix
+        #[arg(add = ArgValueCandidates::new(task_ids))]
+        id: String,
+        /// Write the blob to a file instead of stdout
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
+    },
+
+    /// Import a task bundle from a portable blob (file, argument, or stdin)
+    Import {
+        /// Path to a blob file, or the blob string itself; omit to read stdin
+        source: Option<String>,
+        /// Reassign every imported task to this project
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Option<String>,
+    },
+
     /// Delete a task (soft-delete)
     Delete {
         /// Task id or uuid prefix

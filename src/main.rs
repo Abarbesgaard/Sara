@@ -12,6 +12,7 @@ mod files;
 mod git;
 mod llm;
 mod model;
+mod portable;
 mod project;
 mod tui;
 
@@ -43,6 +44,7 @@ fn run() -> Result<()> {
             "delete",
             "modify",
             "move",
+            "export",
             "info",
             "dep",
             "annotate",
@@ -208,6 +210,14 @@ fn run() -> Result<()> {
 
         Command::Move { id, project } => {
             commands::move_task::run(&conn, &cfg, &id, &project)?;
+        }
+
+        Command::Export { id, output } => {
+            commands::export::run(&conn, &id, output.as_deref())?;
+        }
+
+        Command::Import { source, project } => {
+            commands::import::run(&mut conn, &cfg, source.as_deref(), project.as_deref())?;
         }
 
         Command::Delete { id, yes } => {
