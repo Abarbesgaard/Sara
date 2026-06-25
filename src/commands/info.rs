@@ -55,6 +55,8 @@ struct Detail {
     ai_runs: Vec<crate::db::AiRun>,
     /// Current project HEAD commit, for the freshness banner.
     head_commit: Option<String>,
+    /// Project-level setup/test/lint/run commands (verification context).
+    project_commands: crate::db::ProjectCommands,
 }
 
 struct BranchOverlap {
@@ -275,6 +277,7 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     let head_commit = project_root
         .as_ref()
         .and_then(|p| crate::git::head_commit(p));
+    let project_commands = db::get_project_commands(conn, &task.project).unwrap_or_default();
 
     Ok(Detail {
         depends_on_ids: dep_ids(conn, &blockers),
@@ -297,8 +300,43 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
         anchors,
         ai_runs,
         head_commit,
+        project_commands,
         task,
     })
+}
+
+/// Verification/execution commands an executor should run, gathered from the
+/// project record (setup/test/lint/run) and the task's `meta_json` grab-bag
+/// (e.g. task-specific test_cmd / lint_cmd). Returns (scope, label, command).
+fn verification_rows(d: &Detail) -> Vec<(&'static str, String, String)> {
+    let mut rows: Vec<(&'static str, String, String)> = Vec::new();
+    let pc = &d.project_commands;
+    for (label, cmd) in [
+        ("setup", &pc.setup_cmd),
+        ("test", &pc.test_cmd),
+        ("lint", &pc.lint_cmd),
+        ("run", &pc.run_cmd),
+    ] {
+        if let Some(c) = cmd.as_deref().filter(|s| !s.trim().is_empty()) {
+            rows.push(("project", label.to_string(), c.to_string()));
+        }
+    }
+    // Task-level commands from the meta_json grab-bag (render any "*_cmd" key).
+    if let Some(meta) = d
+        .guide
+        .meta_json
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        && let Some(obj) = meta.as_object()
+    {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str().filter(|s| !s.trim().is_empty()) {
+                let label = k.strip_suffix("_cmd").unwrap_or(k).to_string();
+                rows.push(("task", label, s.to_string()));
+            }
+        }
+    }
+    rows
 }
 
 /// Whether the guide is stale (validated against a different commit than HEAD).
@@ -1649,10 +1687,31 @@ fn render(f: &mut Frame, st: &EditState) {
     }
     // ── Checklist (steps + acceptance criteria with intent + provenance)
     if !d.checklist.is_empty() {
+        // At-a-glance progress: steps done / total, acceptance done / total.
+        let (mut steps_done, mut steps_total, mut acc_done, mut acc_total) = (0, 0, 0, 0);
+        for it in &d.checklist {
+            if it.kind == db::STEP_KIND_ACCEPTANCE {
+                acc_total += 1;
+                acc_done += it.done as i32;
+            } else {
+                steps_total += 1;
+                steps_done += it.done as i32;
+            }
+        }
+        let mut progress = String::new();
+        if steps_total > 0 {
+            progress.push_str(&format!("{steps_done}/{steps_total} steps"));
+        }
+        if acc_total > 0 {
+            if !progress.is_empty() {
+                progress.push_str(" · ");
+            }
+            progress.push_str(&format!("{acc_done}/{acc_total} acceptance"));
+        }
         lines.push(Line::from(""));
-        lines.push(section(
-            "Checklist  (Space toggle · c comment · r reconsider · x resolve)",
-        ));
+        lines.push(section(&format!(
+            "Checklist  {progress}  (Space toggle · c comment · r reconsider · x resolve)"
+        )));
         for (i, item) in d.checklist.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Checklist(i));
             let row_bg = if is_sel { Color::Blue } else { Color::Reset };
@@ -1724,6 +1783,43 @@ fn render(f: &mut Frame, st: &EditState) {
                     Style::default().fg(Color::DarkGray),
                 )));
             }
+            // Verify command — how this step/criterion is checked.
+            if let Some(v) = &item.verify_cmd {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "         verify ".to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(v.clone(), Style::default().fg(Color::Blue)),
+                ]));
+            }
+            // Execution outcome recorded when the step was marked done.
+            if let Some(r) = &item.result {
+                lines.push(Line::from(vec![
+                    Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
+                    Span::styled(r.clone(), Style::default().fg(Color::Green)),
+                ]));
+            }
+            // Completion provenance: which commit / when the step was finished.
+            if item.done && (item.done_commit.is_some() || item.done_at.is_some()) {
+                let commit = item
+                    .done_commit
+                    .as_deref()
+                    .map(|c| {
+                        let short: String = c.chars().take(8).collect();
+                        format!("@ {short}")
+                    })
+                    .unwrap_or_default();
+                let when = item
+                    .done_at
+                    .as_deref()
+                    .map(|w| format!("  {w}"))
+                    .unwrap_or_default();
+                lines.push(Line::from(Span::styled(
+                    format!("         done {commit}{when}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
             // Thread: show comments anchored to this step/acceptance, indented.
             for a in &fb {
                 let date = a.entry.with_timezone(&Local).format("%H:%M");
@@ -1740,6 +1836,25 @@ fn render(f: &mut Frame, st: &EditState) {
                     Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
                 ]));
             }
+        }
+    }
+
+    // ── Verification: how to test/lint/run this task (project + task commands)
+    let verif = verification_rows(d);
+    if !verif.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(section("Verification  (run: sara guide <id> --run)"));
+        for (scope, label, cmd) in &verif {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {label:<7}"),
+                    Style::default()
+                        .fg(Color::Gray)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(cmd.clone(), Style::default().fg(Color::Blue)),
+                Span::styled(format!("  ({scope})"), Style::default().fg(Color::DarkGray)),
+            ]));
         }
     }
 
@@ -2637,6 +2752,18 @@ fn print_plain(d: &Detail) {
             if let Some(r) = &s.result {
                 println!("        result: {r}");
             }
+            if s.done && (s.done_commit.is_some() || s.done_at.is_some()) {
+                let commit = s
+                    .done_commit
+                    .as_deref()
+                    .map(|c| {
+                        let short: String = c.chars().take(8).collect();
+                        format!("@ {short} ")
+                    })
+                    .unwrap_or_default();
+                let when = s.done_at.as_deref().unwrap_or("");
+                println!("        done:   {commit}{when}");
+            }
         }
     }
 
@@ -2651,6 +2778,15 @@ fn print_plain(d: &Detail) {
         for (i, a) in acceptance.iter().enumerate() {
             let mark = if a.done { "x" } else { " " };
             println!("  [{}] {}. {}", mark, i + 1, a.text);
+        }
+    }
+
+    // Verification commands (project + task-level).
+    let verif = verification_rows(d);
+    if !verif.is_empty() {
+        println!("\nVerification:");
+        for (scope, label, cmd) in &verif {
+            println!("  {label:<7} {cmd}  ({scope})");
         }
     }
 
