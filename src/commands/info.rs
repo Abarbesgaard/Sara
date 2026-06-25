@@ -698,7 +698,7 @@ fn edit_loop<B: Backend>(
     };
 
     loop {
-        terminal.draw(|f| render(f, &st))?;
+        terminal.draw(|f| render(f, &mut st))?;
 
         if !event::poll(std::time::Duration::from_millis(100))? {
             continue;
@@ -1068,7 +1068,7 @@ fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Result<()> {
     Ok(())
 }
 
-fn render(f: &mut Frame, st: &EditState) {
+fn render(f: &mut Frame, st: &mut EditState) {
     let area = f.area();
     let d = &st.detail;
 
@@ -1116,10 +1116,16 @@ fn render(f: &mut Frame, st: &EditState) {
     );
 
     let mut lines: Vec<Line> = vec![];
+    // Line index of the currently-selected focusable's primary row, so the
+    // viewport can auto-scroll to keep it visible.
+    let mut sel_line: Option<usize> = None;
 
     // ── Editable fields
     for (i, field) in EDIT_FIELDS.iter().enumerate() {
         let selected = !st.editing && i == st.selected;
+        if selected {
+            sel_line = Some(lines.len());
+        }
         let editing_this = st.editing && i == st.selected;
         let value = if editing_this {
             "…(editing below)".to_string()
@@ -1351,6 +1357,9 @@ fn render(f: &mut Frame, st: &EditState) {
             let note_idx = note_cursor;
             note_cursor += 1;
             let is_sel = sel == Some(Focusable::Note(note_idx));
+            if is_sel {
+                sel_line = Some(lines.len());
+            }
             let row_bg = if is_sel { Color::Blue } else { Color::Reset };
             let row_fg = if is_sel { Color::White } else { Color::Reset };
 
@@ -1456,6 +1465,9 @@ fn render(f: &mut Frame, st: &EditState) {
         lines.push(section("Links  (Enter to open)"));
         for (i, link) in d.links.iter().enumerate() {
             let selected = sel == Some(Focusable::Link(i));
+            if selected {
+                sel_line = Some(lines.len());
+            }
             let (bg, fg) = if selected {
                 (Color::Blue, Color::White)
             } else {
@@ -1487,6 +1499,9 @@ fn render(f: &mut Frame, st: &EditState) {
         lines.push(Line::from(""));
         lines.push(section("Relevant files"));
         for file in &d.manual_files {
+            if file_selected(file) {
+                sel_line = Some(lines.len());
+            }
             lines.push(nav_line(file, Color::Cyan, false, file_selected(file)));
         }
     }
@@ -1498,6 +1513,9 @@ fn render(f: &mut Frame, st: &EditState) {
         ));
         for (ai, anchor) in d.anchors.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Anchor(ai));
+            if is_sel {
+                sel_line = Some(lines.len());
+            }
             let file_text = format!("{}{}", anchor.path, anchor.location());
             let badge = if anchor.source == db::SOURCE_SUGGESTED {
                 " (ai)"
@@ -1623,12 +1641,24 @@ fn render(f: &mut Frame, st: &EditState) {
         let id_map: std::collections::HashMap<i64, &crate::db::Annotation> =
             all_comments.iter().map(|a| (a.id, *a)).collect();
 
+        // Width available for the wrapped comment body (matches the left column,
+        // accounting for the side panel and borders).
+        let left_w = if area.width >= 96 {
+            area.width.saturating_sub(42)
+        } else {
+            area.width
+        };
+        let body_w = left_w.saturating_sub(4) as usize;
+
         for (ci, a) in all_comments.iter().enumerate() {
             // Skip anchor-threaded ones (already rendered under their file).
             if a.target_kind.as_deref() == Some("anchor") {
                 continue;
             }
             let is_sel = sel == Some(Focusable::Comment(ci));
+            if is_sel {
+                sel_line = Some(lines.len());
+            }
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
 
             // Resolve note: target to show what's being replied to.
@@ -1663,13 +1693,14 @@ fn render(f: &mut Frame, st: &EditState) {
             } else {
                 Style::default().fg(Color::Gray)
             };
-            let mut spans = vec![
+            // Header row: marker · [id] · date · reply-target · reconsider flag.
+            let mut header = vec![
                 Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
                 Span::styled(format!("[{}] ", a.id), meta_style),
                 Span::styled(format!("{date}  "), meta_style),
             ];
             if !target_label.is_empty() {
-                spans.push(Span::styled(
+                header.push(Span::styled(
                     target_label,
                     if is_sel {
                         Style::default().fg(Color::White).bg(Color::Blue)
@@ -1679,10 +1710,16 @@ fn render(f: &mut Frame, st: &EditState) {
                 ));
             }
             if a.request_revision && !resolved {
-                spans.push(Span::styled("⟳ ", Style::default().fg(Color::Yellow)));
+                header.push(Span::styled("⟳", Style::default().fg(Color::Yellow)));
             }
-            spans.push(Span::styled(a.text.clone(), text_style));
-            lines.push(Line::from(spans));
+            lines.push(Line::from(header));
+            // Body on its own word-wrapped, hanging-indented lines so long
+            // comments stay legible and don't run flush to the margin.
+            for bl in wrap_indented(&a.text, "       ", body_w) {
+                lines.push(Line::from(Span::styled(bl, text_style)));
+            }
+            // Blank separator between comments.
+            lines.push(Line::from(""));
         }
     }
     // ── Checklist (steps + acceptance criteria with intent + provenance)
@@ -1714,6 +1751,9 @@ fn render(f: &mut Frame, st: &EditState) {
         )));
         for (i, item) in d.checklist.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Checklist(i));
+            if is_sel {
+                sel_line = Some(lines.len());
+            }
             let row_bg = if is_sel { Color::Blue } else { Color::Reset };
 
             let (box_str, text_style) = if item.done {
@@ -1903,6 +1943,21 @@ fn render(f: &mut Frame, st: &EditState) {
     } else {
         (chunks[0], None)
     };
+
+    // Auto-follow the selection and clamp scroll to the content so the focused
+    // row stays on screen and PageUp/Down can't scroll past the end. Line counts
+    // are logical (pre-wrap), so this tracks closely without being pixel-exact.
+    let view_h = left_area.height.saturating_sub(2); // minus top/bottom borders
+    let content_len = lines.len() as u16;
+    if let Some(sl) = sel_line {
+        let sl = sl as u16;
+        if sl < st.scroll {
+            st.scroll = sl;
+        } else if view_h > 0 && sl >= st.scroll + view_h {
+            st.scroll = sl + 1 - view_h;
+        }
+    }
+    st.scroll = st.scroll.min(content_len.saturating_sub(view_h));
 
     let para = Paragraph::new(lines)
         .block(
@@ -2529,6 +2584,37 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
     lines
 }
 
+/// Word-wrap `text` to `width` columns, prefixing every produced line with
+/// `indent` (a hanging indent). Long single words that exceed the width are left
+/// intact — ratatui's wrap will fold them rather than us breaking mid-token.
+fn wrap_indented(text: &str, indent: &str, width: usize) -> Vec<String> {
+    let avail = width.saturating_sub(indent.chars().count());
+    if avail < 8 {
+        // Too narrow to wrap meaningfully — keep it on one (indented) line.
+        return vec![format!("{indent}{text}")];
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if line.is_empty() {
+            line.push_str(word);
+        } else if line.chars().count() + 1 + word.chars().count() <= avail {
+            line.push(' ');
+            line.push_str(word);
+        } else {
+            out.push(format!("{indent}{line}"));
+            line = word.to_string();
+        }
+    }
+    if !line.is_empty() {
+        out.push(format!("{indent}{line}"));
+    }
+    if out.is_empty() {
+        out.push(indent.to_string());
+    }
+    out
+}
+
 fn truncate_str(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -2970,6 +3056,24 @@ mod tests {
         assert!(t.priority.is_none());
         cycle_priority(&mut t, false);
         assert_eq!(t.priority, Some(Priority::H));
+    }
+
+    #[test]
+    fn wrap_indented_breaks_on_width_and_keeps_indent() {
+        let lines = wrap_indented("the quick brown fox jumps", "  ", 12);
+        assert!(lines.len() > 1, "should wrap into multiple lines");
+        assert!(
+            lines.iter().all(|l| l.starts_with("  ")),
+            "every line indented"
+        );
+        // No wrapped line should exceed the target width.
+        assert!(lines.iter().all(|l| l.chars().count() <= 12));
+    }
+
+    #[test]
+    fn wrap_indented_narrow_width_is_single_line() {
+        let lines = wrap_indented("hello world", "    ", 6);
+        assert_eq!(lines, vec!["    hello world".to_string()]);
     }
 
     #[test]
