@@ -169,7 +169,7 @@ first.
 ```bash
 sara list                      # current project
 sara list -a                   # all projects
-sara list --project web-app    # a specific project from anywhere
+sara list -p web-app           # a specific project from anywhere (`--project` also works)
 ```
 
 Each row has a small marker gutter, columns, and a dependency column:
@@ -556,7 +556,7 @@ Run `sara paths` to see the exact locations on your machine.
 |------------------------------------|----------------------------------------------------------|
 | `sara init`                        | Initialize the current folder as a project (git repo or plain folder) |
 | `sara add <desc> [tokens]`         | Add a task (`--yes`, `--no-llm`, `-p`, `--priority`, `-t`, `--every`) |
-| `sara list`                        | List tasks (`-a` all, `--project <name>`)                |
+| `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara info <id>`                   | Open the interactive detail view                         |
 | `sara modify <id>`                 | Edit via the review form (`--no-llm`)                    |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
