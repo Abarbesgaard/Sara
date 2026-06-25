@@ -36,6 +36,7 @@ fn run() -> Result<()> {
             "done",
             "delete",
             "modify",
+            "move",
             "info",
             "dep",
             "annotate",
@@ -159,6 +160,10 @@ fn run() -> Result<()> {
 
         Command::Modify { id, no_llm } => {
             commands::modify::run(&conn, &cfg, &id, no_llm)?;
+        }
+
+        Command::Move { id, project } => {
+            commands::move_task::run(&conn, &cfg, &id, &project)?;
         }
 
         Command::Delete { id, yes } => {
