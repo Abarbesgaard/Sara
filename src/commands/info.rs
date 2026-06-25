@@ -1619,109 +1619,6 @@ fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
-    // ── Comments section: task-level + replies only (anchored ones shown above) ─
-    let all_comments: Vec<&crate::db::Annotation> = d
-        .annotations
-        .iter()
-        .filter(|a| a.kind == "comment")
-        .collect();
-    // Only show task-level comments and note-replies here; anchor-threaded ones
-    // are already rendered above under their file row.
-    let unthreaded: Vec<&crate::db::Annotation> = all_comments
-        .iter()
-        .copied()
-        .filter(|a| a.target_kind.as_deref() != Some("anchor"))
-        .collect();
-    if !unthreaded.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(section(
-            "Comments  (↑/↓ select · c add · r reconsider · x resolve)",
-        ));
-        // Build an index: comment-id -> annotation, for resolving note: replies.
-        let id_map: std::collections::HashMap<i64, &crate::db::Annotation> =
-            all_comments.iter().map(|a| (a.id, *a)).collect();
-
-        // Width available for the wrapped comment body (matches the left column,
-        // accounting for the side panel and borders).
-        let left_w = if area.width >= 96 {
-            area.width.saturating_sub(42)
-        } else {
-            area.width
-        };
-        let body_w = left_w.saturating_sub(4) as usize;
-
-        for (ci, a) in all_comments.iter().enumerate() {
-            // Skip anchor-threaded ones (already rendered under their file).
-            if a.target_kind.as_deref() == Some("anchor") {
-                continue;
-            }
-            let is_sel = sel == Some(Focusable::Comment(ci));
-            if is_sel {
-                sel_line = Some(lines.len());
-            }
-            let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-
-            // Resolve note: target to show what's being replied to.
-            let target_label = match (a.target_kind.as_deref(), a.target_id.as_deref()) {
-                (Some("note"), Some(idv)) => {
-                    if let Ok(parent_id) = idv.parse::<i64>()
-                        && let Some(parent) = id_map.get(&parent_id)
-                    {
-                        let snippet: String = parent.text.chars().take(40).collect();
-                        format!("↩ \"{snippet}\"  ")
-                    } else {
-                        format!("note:{idv}  ")
-                    }
-                }
-                (Some("step"), Some(idv)) => format!("step:{idv}  "),
-                (Some("acceptance"), Some(idv)) => format!("accept:{idv}  "),
-                _ => String::new(),
-            };
-
-            let resolved = a.status == "resolved";
-            let text_style = if resolved {
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::CROSSED_OUT)
-            } else if is_sel {
-                Style::default().fg(Color::White).bg(Color::Blue)
-            } else {
-                Style::default()
-            };
-            let meta_style = if is_sel {
-                Style::default().fg(Color::White).bg(Color::Blue)
-            } else {
-                Style::default().fg(Color::Gray)
-            };
-            // Header row: marker · [id] · date · reply-target · reconsider flag.
-            let mut header = vec![
-                Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
-                Span::styled(format!("[{}] ", a.id), meta_style),
-                Span::styled(format!("{date}  "), meta_style),
-            ];
-            if !target_label.is_empty() {
-                header.push(Span::styled(
-                    target_label,
-                    if is_sel {
-                        Style::default().fg(Color::White).bg(Color::Blue)
-                    } else {
-                        Style::default().fg(Color::Cyan)
-                    },
-                ));
-            }
-            if a.request_revision && !resolved {
-                header.push(Span::styled("⟳", Style::default().fg(Color::Yellow)));
-            }
-            lines.push(Line::from(header));
-            // Body on its own word-wrapped, hanging-indented lines so long
-            // comments stay legible and don't run flush to the margin.
-            for bl in wrap_indented(&a.text, "       ", body_w) {
-                lines.push(Line::from(Span::styled(bl, text_style)));
-            }
-            // Blank separator between comments.
-            lines.push(Line::from(""));
-        }
-    }
     // ── Checklist (steps + acceptance criteria with intent + provenance)
     if !d.checklist.is_empty() {
         // At-a-glance progress: steps done / total, acceptance done / total.
@@ -1876,6 +1773,112 @@ fn render(f: &mut Frame, st: &mut EditState) {
                     Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
                 ]));
             }
+        }
+    }
+
+    // ── Comments section: task-level + replies only (anchored ones shown above) ─
+    // Rendered after the checklist so the on-screen order matches the ↑/↓
+    // navigation order in `focusables()` (… anchors → checklist → comments).
+    let all_comments: Vec<&crate::db::Annotation> = d
+        .annotations
+        .iter()
+        .filter(|a| a.kind == "comment")
+        .collect();
+    // Only show task-level comments and note-replies here; anchor-threaded ones
+    // are already rendered above under their file row.
+    let unthreaded: Vec<&crate::db::Annotation> = all_comments
+        .iter()
+        .copied()
+        .filter(|a| a.target_kind.as_deref() != Some("anchor"))
+        .collect();
+    if !unthreaded.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(section(
+            "Comments  (↑/↓ select · c add · r reconsider · x resolve)",
+        ));
+        // Build an index: comment-id -> annotation, for resolving note: replies.
+        let id_map: std::collections::HashMap<i64, &crate::db::Annotation> =
+            all_comments.iter().map(|a| (a.id, *a)).collect();
+
+        // Width available for the wrapped comment body (matches the left column,
+        // accounting for the side panel and borders).
+        let left_w = if area.width >= 96 {
+            area.width.saturating_sub(42)
+        } else {
+            area.width
+        };
+        let body_w = left_w.saturating_sub(4) as usize;
+
+        for (ci, a) in all_comments.iter().enumerate() {
+            // Skip anchor-threaded ones (already rendered under their file).
+            if a.target_kind.as_deref() == Some("anchor") {
+                continue;
+            }
+            let is_sel = sel == Some(Focusable::Comment(ci));
+            if is_sel {
+                sel_line = Some(lines.len());
+            }
+            let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+
+            // Resolve note: target to show what's being replied to.
+            let target_label = match (a.target_kind.as_deref(), a.target_id.as_deref()) {
+                (Some("note"), Some(idv)) => {
+                    if let Ok(parent_id) = idv.parse::<i64>()
+                        && let Some(parent) = id_map.get(&parent_id)
+                    {
+                        let snippet: String = parent.text.chars().take(40).collect();
+                        format!("↩ \"{snippet}\"  ")
+                    } else {
+                        format!("note:{idv}  ")
+                    }
+                }
+                (Some("step"), Some(idv)) => format!("step:{idv}  "),
+                (Some("acceptance"), Some(idv)) => format!("accept:{idv}  "),
+                _ => String::new(),
+            };
+
+            let resolved = a.status == "resolved";
+            let text_style = if resolved {
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::CROSSED_OUT)
+            } else if is_sel {
+                Style::default().fg(Color::White).bg(Color::Blue)
+            } else {
+                Style::default()
+            };
+            let meta_style = if is_sel {
+                Style::default().fg(Color::White).bg(Color::Blue)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            // Header row: marker · [id] · date · reply-target · reconsider flag.
+            let mut header = vec![
+                Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
+                Span::styled(format!("[{}] ", a.id), meta_style),
+                Span::styled(format!("{date}  "), meta_style),
+            ];
+            if !target_label.is_empty() {
+                header.push(Span::styled(
+                    target_label,
+                    if is_sel {
+                        Style::default().fg(Color::White).bg(Color::Blue)
+                    } else {
+                        Style::default().fg(Color::Cyan)
+                    },
+                ));
+            }
+            if a.request_revision && !resolved {
+                header.push(Span::styled("⟳", Style::default().fg(Color::Yellow)));
+            }
+            lines.push(Line::from(header));
+            // Body on its own word-wrapped, hanging-indented lines so long
+            // comments stay legible and don't run flush to the margin.
+            for bl in wrap_indented(&a.text, "       ", body_w) {
+                lines.push(Line::from(Span::styled(bl, text_style)));
+            }
+            // Blank separator between comments.
+            lines.push(Line::from(""));
         }
     }
 
