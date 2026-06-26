@@ -32,8 +32,12 @@ jobs:
 
       - name: Create and push tag
         if: steps.check.outputs.exists == 'false'
+        env:
+          # Must use a PAT (not GITHUB_TOKEN) so the tag push triggers release.yml.
+          # GITHUB_TOKEN-created events do not cascade into further workflow runs.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.version }}"
-          git push origin "${{ steps.version.outputs.version }}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${{ steps.version.outputs.version }}"
