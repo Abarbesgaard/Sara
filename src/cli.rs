@@ -440,6 +440,17 @@ pub enum StepAction {
         #[arg(long)]
         kind: Option<String>,
     },
+    /// Remove step N (a checklist item / acceptance criterion)
+    #[command(visible_alias = "rm")]
+    Remove {
+        /// Task id or uuid prefix
+        id: String,
+        /// 1-based step number
+        n: usize,
+        /// Item kind: step (default) or acceptance
+        #[arg(long)]
+        kind: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]

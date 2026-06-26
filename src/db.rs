@@ -2087,6 +2087,27 @@ pub fn step_id_by_index(
         .ok_or_else(|| anyhow::anyhow!("No {kind} #{index} on this task"))
 }
 
+/// Remove a step / acceptance criterion by its stable row id, recording history.
+/// Remaining items keep their `position`, so the 1-based display order stays
+/// consistent (later items simply shift up by one).
+pub fn delete_step(conn: &Connection, item_id: i64) -> Result<()> {
+    let (task_uuid_str, text, kind): (String, String, String) = conn.query_row(
+        "SELECT task_uuid, text, kind FROM task_checklist WHERE id=?1",
+        [item_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    conn.execute("DELETE FROM task_checklist WHERE id=?1", [item_id])?;
+    if let Ok(uuid) = Uuid::parse_str(&task_uuid_str) {
+        let label = if kind == STEP_KIND_ACCEPTANCE {
+            "acceptance"
+        } else {
+            "checklist"
+        };
+        record_history(conn, &uuid, label, Some(&text), Some("removed"))?;
+    }
+    Ok(())
+}
+
 pub fn toggle_checklist_item(conn: &Connection, item_id: i64) -> Result<bool> {
     let (task_uuid_str, text, done): (String, String, i64) = conn.query_row(
         "SELECT task_uuid, text, done FROM task_checklist WHERE id=?1",
@@ -3339,6 +3360,39 @@ mod tests {
         let id2 = step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 2).unwrap();
         assert_eq!(id2, steps[1].id);
         assert!(step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 99).is_err());
+    }
+
+    #[test]
+    fn delete_step_removes_item_and_shifts_remaining() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        for t in ["first", "second", "third"] {
+            add_step(&conn, &task.uuid, t, None, STEP_KIND_STEP, "human", None).unwrap();
+        }
+
+        // Remove the middle item by its stable id.
+        let mid = step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 2).unwrap();
+        delete_step(&conn, mid).unwrap();
+
+        let steps = get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap();
+        assert_eq!(
+            steps.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(),
+            vec!["first", "third"]
+        );
+        // The former #3 ("third") is now reachable at #2.
+        let now2 = step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 2).unwrap();
+        assert_eq!(now2, steps[1].id);
+
+        // Removal is recorded in task history.
+        let removed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_history
+                 WHERE task_uuid=?1 AND field='checklist' AND new_value='removed'",
+                [task.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(removed, 1);
     }
 
     #[test]

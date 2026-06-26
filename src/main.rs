@@ -279,6 +279,9 @@ fn run() -> Result<()> {
             cli::StepAction::Undone { id, n, kind } => {
                 commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref())?;
             }
+            cli::StepAction::Remove { id, n, kind } => {
+                commands::guide::step_remove(&conn, &cfg, &id, n, kind.as_deref())?;
+            }
         },
 
         Command::Verify { id, step, run } => {
