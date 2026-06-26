@@ -24,12 +24,9 @@ pub enum Command {
         /// Set the project goal directly (skips prompt)
         #[arg(long)]
         goal: Option<String>,
-        /// Accept all detected/LLM values non-interactively
+        /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
-        /// Skip LLM task seeding
-        #[arg(long)]
-        no_llm: bool,
     },
 
     /// Git project profile commands (deprecated: use `sara init`)
@@ -65,9 +62,6 @@ pub enum Command {
         /// Accept all values without the TUI review form
         #[arg(short, long)]
         yes: bool,
-        /// Skip LLM enrichment
-        #[arg(long)]
-        no_llm: bool,
         /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
         #[arg(long, visible_alias = "recur")]
         every: Option<String>,
@@ -101,7 +95,7 @@ pub enum Command {
         /// Anchor the comment to a guide element: step:N, acceptance:N, anchor:ID, note:ID
         #[arg(long)]
         on: Option<String>,
-        /// Flag the targeted element for the LLM to reconsider
+        /// Flag the targeted element for reconsideration
         #[arg(long)]
         reconsider: bool,
     },
@@ -202,9 +196,6 @@ pub enum Command {
         /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Skip LLM re-enrichment
-        #[arg(long)]
-        no_llm: bool,
     },
 
     /// Move a task to another project (non-interactive)
@@ -266,12 +257,6 @@ pub enum Command {
 
     /// Revert the most recent command
     Undo,
-
-    /// Manage LLM provider profiles (switch on the fly without editing config)
-    Provider {
-        #[command(subcommand)]
-        action: ProviderAction,
-    },
 
     /// Add a checklist item / step / acceptance criterion to a task
     #[clap(name = "check")]
@@ -345,15 +330,6 @@ pub enum Command {
         /// Emit as JSON
         #[arg(long)]
         json: bool,
-    },
-
-    /// Hand a task back to Sara to improve the guide with her LLM
-    Refine {
-        /// Task id or uuid prefix
-        id: String,
-        /// Only address flagged-for-reconsider feedback
-        #[arg(long)]
-        only_flagged: bool,
     },
 
     /// Set the originating assignment/prompt for a task
@@ -433,40 +409,10 @@ pub enum ProjectAction {
         /// Set the project goal directly (skips prompt)
         #[arg(long)]
         goal: Option<String>,
-        /// Accept all detected/LLM values non-interactively
+        /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
-        /// Skip LLM task seeding
-        #[arg(long)]
-        no_llm: bool,
     },
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ProviderAction {
-    /// List configured provider profiles and show the active one
-    List,
-    /// Switch to a named profile (or "default" to revert to [llm] block)
-    Use { name: String },
-    /// Add a new named provider profile (and activate it)
-    Add {
-        /// Profile name (e.g. "azure", "mlx", "gpt4o")
-        name: String,
-        /// Provider type: azure | openai | mlx | ollama | anthropic
-        #[arg(long = "type", short = 't')]
-        provider_type: String,
-        /// Model name
-        #[arg(long, short)]
-        model: String,
-        /// Base URL (required for azure/mlx/ollama)
-        #[arg(long, short)]
-        url: Option<String>,
-        /// API key
-        #[arg(long, short)]
-        key: Option<String>,
-    },
-    /// Remove a named profile
-    Remove { name: String },
 }
 
 #[derive(Debug, Subcommand)]

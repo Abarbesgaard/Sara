@@ -3,7 +3,7 @@
 # published crate is `sara-tasks` while the installed binary stays `sara`
 # (see [[bin]] below).
 name = "sara-tasks"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 description = "Sara — folder-aware task manager (successor to tk)"
 license = "MIT"
@@ -29,7 +29,7 @@ license-file = ["LICENSE", "0"]
 extended-description = """
 Sara is a folder-aware task manager. A git repository is treated as a project,
 so tasks live alongside the code they belong to. Features include dependency
-chains, a TUI board, time tracking, and an AI-assisted task guide."""
+chains, a TUI board, time tracking, and a rich task guide."""
 section = "utils"
 priority = "optional"
 assets = [
@@ -44,13 +44,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 rusqlite_migration = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = { version = "0.8", features = ["derive"] }
-reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
 ignore = "0.4"
 ratatui = "0.29"
 crossterm = "0.28"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
-indicatif = "0.17"
 directories = "5"
 anyhow = "1"
 thiserror = "2"

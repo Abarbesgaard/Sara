@@ -98,7 +98,7 @@ pub fn collect_project_entries(root: &Path) -> Vec<String> {
     entries
 }
 
-/// Build a concise file-tree summary string to embed in LLM prompts (max ~100 lines).
+/// Build a concise file-tree summary string (max ~100 lines).
 pub fn build_tree_summary(root: &Path, files: &[String]) -> String {
     let root_name = root
         .file_name()

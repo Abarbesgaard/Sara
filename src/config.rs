@@ -1,31 +1,7 @@
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct LlmConfig {
-    pub provider: String,
-    pub model: String,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    /// Request timeout in seconds
-    pub timeout_secs: u64,
-}
-
-impl Default for LlmConfig {
-    fn default() -> Self {
-        LlmConfig {
-            provider: "ollama".to_string(),
-            model: "qwen2.5".to_string(),
-            base_url: None,
-            api_key: None,
-            timeout_secs: 60,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -66,12 +42,6 @@ impl Default for UrgencyConfig {
 pub struct Config {
     pub default_project: String,
     pub date_dialect: String,
-    /// Active named provider (overrides [llm] when set)
-    pub active_provider: Option<String>,
-    /// Named provider profiles: `sara provider use <name>` switches between them
-    pub providers: HashMap<String, LlmConfig>,
-    /// Fallback / legacy direct LLM config
-    pub llm: LlmConfig,
     pub urgency: UrgencyConfig,
     /// Absolute path to Sara's private knowledge store (markdown notes/links).
     pub vault_path: Option<PathBuf>,
@@ -102,9 +72,6 @@ impl Default for Config {
         Config {
             default_project: "inbox".to_string(),
             date_dialect: "uk".to_string(),
-            active_provider: None,
-            providers: HashMap::new(),
-            llm: LlmConfig::default(),
             urgency: UrgencyConfig::default(),
             vault_path: None,
             embeddings: EmbeddingsConfig::default(),
@@ -113,43 +80,18 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Return the effective LLM config: active named profile if set, else [llm].
-    pub fn effective_llm(&self) -> &LlmConfig {
-        if let Some(ref name) = self.active_provider
-            && let Some(profile) = self.providers.get(name)
-        {
-            return profile;
-        }
-        &self.llm
-    }
-
     /// True when [embeddings] was never customized (still Ollama defaults).
     pub fn embeddings_at_default(&self) -> bool {
         self.embeddings.provider == "ollama" && self.embeddings.model == "nomic-embed-text"
     }
 
-    /// Embeddings provider: inherits active LLM when [embeddings] is still at defaults.
+    /// Embeddings provider.
     pub fn effective_embeddings_provider(&self) -> String {
-        if !self.embeddings_at_default() {
-            return self.embeddings.provider.clone();
-        }
-        match self.effective_llm().provider.as_str() {
-            "azure" | "azure_openai" => "azure".to_string(),
-            "openai" => "openai".to_string(),
-            _ => self.embeddings.provider.clone(),
-        }
+        self.embeddings.provider.clone()
     }
 
     /// Deployment/model name for embeddings API calls.
     pub fn effective_embeddings_model(&self) -> String {
-        if self.embeddings_at_default() {
-            match self.effective_embeddings_provider().as_str() {
-                "azure" | "azure_openai" | "openai" => {
-                    return "text-embedding-3-small".to_string();
-                }
-                _ => {}
-            }
-        }
         self.embeddings.model.clone()
     }
 }

@@ -7,7 +7,7 @@ use crate::db;
 use crate::tui;
 use crate::tui::review_form::{FormContext, FormInput, run_form};
 
-pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, _no_llm: bool) -> Result<()> {
+pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
 
     // Build form context from existing task
@@ -47,7 +47,6 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, _no_llm: bool) -> 
         available_files: project_files,
         suggested_dep_indices: vec![],
         suggested_files: vec![],
-        llm_status: None,
     };
 
     let mut terminal = tui::init_terminal()?;

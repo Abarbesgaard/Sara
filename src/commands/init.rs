@@ -78,7 +78,6 @@ pub fn run(
     name_override: Option<&str>,
     goal_override: Option<&str>,
     yes: bool,
-    no_llm: bool,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let git_root = find_git_root(&cwd);
@@ -153,85 +152,5 @@ pub fn run(
     }
     println!("  Stack: {detected_stack}");
 
-    // Optional LLM task seeding
-    if !no_llm && !yes {
-        print!("Seed initial tasks from goal via LLM? [y/N]: ");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        if input.trim().eq_ignore_ascii_case("y") {
-            seed_tasks(conn, cfg, &project)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn seed_tasks(conn: &Connection, cfg: &Config, project: &Project) -> Result<()> {
-    use indicatif::{ProgressBar, ProgressStyle};
-    use std::time::Duration;
-
-    let Some(goal) = &project.goal else {
-        println!("No goal set — skipping task seeding.");
-        return Ok(());
-    };
-
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    spinner.set_message("Generating initial tasks…");
-    spinner.enable_steady_tick(Duration::from_millis(80));
-
-    let req = crate::llm::EnrichmentRequest {
-        description: format!("Break this project goal into 3-5 initial tasks: {goal}"),
-        project_name: project.name.clone(),
-        project_goal: project.goal.clone(),
-        project_stack: project.stack.clone(),
-        project_notes: project.notes.clone(),
-        existing_tasks: vec![],
-        repo_tree: None,
-        project_commands: None,
-    };
-    let provider = crate::llm::build_provider(cfg);
-    let result = provider.enrich(&req);
-    spinner.finish_and_clear();
-
-    match result {
-        Ok(resp) => {
-            if let Some(cleaned) = &resp.description_suggestion {
-                // Parse newline-separated tasks from the suggestion
-                for (i, line) in cleaned.lines().enumerate() {
-                    let line = line.trim().trim_start_matches(|c: char| !c.is_alphabetic());
-                    if line.is_empty() {
-                        continue;
-                    }
-                    println!("  {}. {}", i + 1, line);
-                }
-                print!("Accept and create these tasks? [y/N]: ");
-                std::io::Write::flush(&mut std::io::stdout())?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if input.trim().eq_ignore_ascii_case("y") {
-                    for line in cleaned.lines() {
-                        let desc = line.trim().trim_start_matches(|c: char| !c.is_alphabetic());
-                        if desc.is_empty() {
-                            continue;
-                        }
-                        let mut task =
-                            crate::model::Task::new(desc.to_string(), project.name.clone());
-                        crate::db::insert_task(conn, &mut task)?;
-                    }
-                    println!("✔ Tasks created.");
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("LLM seeding failed: {e:#}");
-        }
-    }
     Ok(())
 }

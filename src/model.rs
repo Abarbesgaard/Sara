@@ -229,6 +229,17 @@ pub struct Project {
     pub last_seen: Option<DateTime<Utc>>,
 }
 
+/// A code anchor pointing at a file (or symbol) relevant to a task.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RelevantFile {
+    pub path: String,
+    pub reason: Option<String>,
+    pub symbol: Option<String>,
+    pub line_start: Option<i64>,
+    pub line_end: Option<i64>,
+}
+
 /// A captured note or link in Sara's store (indexed in SQLite, body in markdown).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {

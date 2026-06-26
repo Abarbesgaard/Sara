@@ -7,10 +7,8 @@ mod completion;
 mod config;
 mod dates;
 mod db;
-mod enrich;
 mod files;
 mod git;
-mod llm;
 mod model;
 mod portable;
 mod project;
@@ -64,10 +62,6 @@ fn run() -> Result<()> {
     let command_label = args[1..].join(" ");
     let cli = Cli::parse_from(args);
 
-    if let Command::Provider { ref action } = cli.command {
-        return commands::provider::run(action);
-    }
-
     let cfg = config::load()?;
     let mut conn = db::open()?;
 
@@ -76,24 +70,14 @@ fn run() -> Result<()> {
     }
 
     match cli.command {
-        Command::Init {
-            name,
-            goal,
-            yes,
-            no_llm,
-        } => {
-            commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes, no_llm)?;
+        Command::Init { name, goal, yes } => {
+            commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes)?;
         }
 
         Command::Project { action } => match action {
-            ProjectAction::Init {
-                name,
-                goal,
-                yes,
-                no_llm,
-            } => {
+            ProjectAction::Init { name, goal, yes } => {
                 eprintln!("note: `sara project init` is deprecated — use `sara init` instead.");
-                commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes, no_llm)?;
+                commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes)?;
             }
         },
 
@@ -107,7 +91,6 @@ fn run() -> Result<()> {
             priority,
             tag,
             yes,
-            no_llm,
             every,
         } => {
             if words.is_empty() {
@@ -121,7 +104,6 @@ fn run() -> Result<()> {
                 priority.as_deref(),
                 &tag,
                 yes,
-                no_llm,
                 every.as_deref(),
             )?;
         }
@@ -204,8 +186,8 @@ fn run() -> Result<()> {
             commands::done::run(&conn, &cfg, &id, force)?;
         }
 
-        Command::Modify { id, no_llm } => {
-            commands::modify::run(&conn, &cfg, &id, no_llm)?;
+        Command::Modify { id } => {
+            commands::modify::run(&conn, &cfg, &id)?;
         }
 
         Command::Move { id, project } => {
@@ -242,10 +224,6 @@ fn run() -> Result<()> {
 
         Command::Undo => {
             commands::undo::run(&conn)?;
-        }
-
-        Command::Provider { action } => {
-            commands::provider::run(&action)?;
         }
 
         Command::Check {
@@ -309,10 +287,6 @@ fn run() -> Result<()> {
 
         Command::Recall { query, limit, json } => {
             commands::recall::run(&conn, &cfg, &query.join(" "), limit, json)?;
-        }
-
-        Command::Refine { id, only_flagged } => {
-            commands::refine::run(&conn, &cfg, &id, only_flagged)?;
         }
 
         Command::Assignment { id, text } => {

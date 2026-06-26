@@ -26,7 +26,7 @@ struct Detail {
     depends_on_ids: Vec<i64>,
     /// Files the user attached themselves.
     manual_files: Vec<String>,
-    /// Files proposed by the LLM.
+    /// Files attached as suggestions.
     suggested_files: Vec<String>,
     links: Vec<crate::db::Link>,
     annotations: Vec<crate::db::Annotation>,
@@ -47,11 +47,11 @@ struct Detail {
     activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     /// Aggregated stats for the project.
     stats: Option<crate::db::ProjectStats>,
-    /// AI-first guide fields: assignment, rationale, freshness, meta.
+    /// Guide fields: assignment, rationale, freshness, meta.
     guide: crate::db::TaskGuideFields,
     /// Code anchors (relevant files with reasons / symbols / lines).
     anchors: Vec<crate::db::Anchor>,
-    /// LLM run audit trail.
+    /// AI run audit trail.
     ai_runs: Vec<crate::db::AiRun>,
     /// Current project HEAD commit, for the freshness banner.
     head_commit: Option<String>,
@@ -115,17 +115,17 @@ enum Focusable {
     File(String),
     Link(usize),
     Checklist(usize),
-    /// Index into `d.anchors` (AI-suggested code anchors).
+    /// Index into `d.anchors` (code anchors).
     Anchor(usize),
     /// Index into the task-level comment list (annotations where kind="comment").
     Comment(usize),
-    /// Index into the flat list of typed AI/human notes (finding, constraint, …).
+    /// Index into the flat list of typed notes (finding, constraint, …).
     Note(usize),
 }
 
 /// Ordered list of focusable items — matches on-screen render order so ↑/↓ feels natural.
 /// Screen order: metadata fields → typed notes (findings/constraints/…) → links →
-///               manual files → AI anchors → checklist → task-level comments.
+///               manual files → anchors → checklist → task-level comments.
 fn focusables(d: &Detail) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
     // Typed notes appear right after the metadata block in the TUI.
@@ -138,7 +138,6 @@ fn focusables(d: &Detail) -> Vec<Focusable> {
     for f in d.manual_files.iter().chain(d.suggested_files.iter()) {
         v.push(Focusable::File(f.clone()));
     }
-    // AI-suggested code anchors (Possible relevant files).
     for i in 0..d.anchors.len() {
         v.push(Focusable::Anchor(i));
     }
@@ -274,7 +273,6 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     // Project stats
     let stats = db::project_stats(conn, &task.project).ok();
 
-    // AI-first guide data.
     let guide = db::get_guide_fields(conn, &task.uuid).unwrap_or_default();
     let anchors = db::get_task_anchors(conn, &task.uuid).unwrap_or_default();
     let ai_runs = db::get_ai_runs(conn, &task.uuid).unwrap_or_default();
@@ -1291,7 +1289,7 @@ fn render(f: &mut Frame, st: &EditState) {
     ));
     lines.push(field_line("UUID", &t.uuid.to_string()));
 
-    // ── AI-first guide: assignment / rationale / freshness banner ────────────
+    // ── Guide: assignment / rationale / freshness banner ────────────
     if let Some(a) = &d.guide.assignment {
         lines.push(Line::from(vec![
             key_span("Assignment"),
@@ -1335,7 +1333,7 @@ fn render(f: &mut Frame, st: &EditState) {
     };
     let file_selected = |path: &str| sel == Some(Focusable::File(path.to_string()));
 
-    // ── Typed AI/human notes (findings, constraints, …) ──────────────────────
+    // ── Typed notes (findings, constraints, …) ───────────────────────────────
     // Build a flat note list once so indices match Focusable::Note(i).
     let all_typed = typed_notes(d);
     let mut note_cursor: usize = 0; // tracks position in all_typed across kinds
@@ -2869,7 +2867,7 @@ fn print_plain(d: &Detail) {
     println!("{:<14}{:.1}", "Urgency", t.urgency);
     println!("{:<14}{}", "UUID", t.uuid);
 
-    // ── AI-first guide ───────────────────────────────────────────────────────
+    // ── Guide ───────────────────────────────────────────────────────
     if let Some(a) = &d.guide.assignment {
         println!("{:<14}{}", "Assignment", a);
     }

@@ -29,7 +29,7 @@ struct PlanTask {
     acceptance: Vec<String>,
     findings: Vec<String>,
     constraints: Vec<String>,
-    files: Vec<crate::llm::RelevantFile>,
+    files: Vec<crate::model::RelevantFile>,
     /// Local keys (or existing task ids/uuids) this task depends on.
     depends_on: Vec<String>,
 }

@@ -2,9 +2,7 @@
 
 `Sara` is a personal assistant with a folder-aware task manager at its core. She
 knows which Git project you're standing in, ranks your work with a transparent
-urgency model, tracks time, links tasks to branches, and (optionally) uses an
-LLM to enrich new tasks with a priority, due date, tags, dependencies, and
-relevant files.
+urgency model, tracks time, and links tasks to branches.
 
 Task data lives in a single SQLite database in your home directory — **nothing
 is ever written into your repositories.**
@@ -39,8 +37,6 @@ is ever written into your repositories.**
   - [Sharing tasks](#sharing-tasks)
   - [History & undo](#history--undo)
 - [The urgency model](#the-urgency-model)
-- [LLM setup](#llm-setup)
-- [Provider profiles](#provider-profiles)
 - [Configuration](#configuration)
 - [Inline Taskwarrior-style tokens](#inline-taskwarrior-style-tokens)
 - [Due dates](#due-dates)
@@ -61,7 +57,6 @@ is ever written into your repositories.**
 - **Time tracking** — `sara start` / `sara stop` accumulate active time, with optional estimates.
 - **Git integration** — tie a task to a branch and snapshot the files it touched.
 - **Full history** — every change (field edits, deps, files, checklist, links, comments, timer) is recorded.
-- **Optional LLM** — enrich new tasks locally with Ollama, or via OpenAI / Anthropic / Azure / MLX.
 - **Single SQLite file** — easy to back up, and nothing is written into your repos.
 
 ---
@@ -123,18 +118,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-**Ollama** (optional — for local LLM enrichment):
-
-```bash
-# macOS
-brew install ollama
-ollama serve &        # start the server
-ollama pull qwen2.5   # default model (good structured-output quality)
-```
-
-`sara` works fine without any LLM — pass `--no-llm` to skip enrichment, or just
-leave Ollama unconfigured and Sara falls back to a plain task.
-
 ### 2 — Build & install
 
 ```bash
@@ -168,9 +151,6 @@ sara add "add password reset flow"
 
 # Add quickly, no form, with an inline priority token
 sara add "fix logout redirect" pri:H --yes
-
-# Skip the LLM enrichment for a quick capture
-sara add "rename the config keys" --no-llm
 
 # See what to work on (current project, ranked by urgency)
 sara list
@@ -283,19 +263,16 @@ section and the History panel.
 ```bash
 sara add "write integration tests"            # opens the review form
 sara add "write tests" --yes                  # skip the form, save immediately
-sara add "write tests" --no-llm               # save without LLM enrichment
 sara add "write tests" -p web-app --priority H -t testing
 ```
 
 By default `sara add` opens an interactive review form so you can confirm the
-fields before saving, and (unless you pass `--no-llm`) asks the configured LLM
-to propose a priority, due date, tags, dependencies, and relevant files first.
-`--yes` saves immediately without the form. See
+fields before saving. `--yes` saves immediately without the form. See
 [inline tokens](#inline-taskwarrior-style-tokens) for the `project:` / `+tag` /
 `pri:` shorthand.
 
 ```bash
-sara modify 2        # edit via the review form (--no-llm to skip re-enrichment)
+sara modify 2        # edit via the review form
 sara done 1          # mark complete (use --force to complete a blocked task)
 sara delete 3        # soft-delete (prompts; -y to skip)
 ```
@@ -446,60 +423,6 @@ All coefficients are configurable under `[urgency]` in the config file.
 
 ---
 
-## LLM setup
-
-LLM enrichment runs by default on `sara add`; pass `--no-llm` to skip it. The
-default provider is local Ollama, so no API key is required.
-
-### Ollama (default — local & private)
-
-```toml
-# config.toml
-[llm]
-provider = "ollama"
-model    = "qwen2.5"        # or llama3.1, mistral-nemo, etc.
-# base_url = "http://localhost:11434"
-```
-
-### OpenAI
-
-```toml
-[llm]
-provider = "openai"
-model    = "gpt-4o"
-api_key  = "sk-..."
-```
-
-### Anthropic
-
-```toml
-[llm]
-provider = "anthropic"
-model    = "claude-opus-4-8"
-api_key  = "sk-ant-..."
-```
-
-Azure and MLX are also supported (see `sara provider add --type`).
-
----
-
-## Provider profiles
-
-Switch LLM backends on the fly without editing the config by hand:
-
-```bash
-sara provider list                  # show profiles and the active one
-sara provider add gpt4o --type openai --model gpt-4o --key sk-...
-sara provider add local --type ollama --model qwen2.5 --url http://localhost:11434
-sara provider use gpt4o             # activate a profile
-sara provider use default           # revert to the [llm] block
-sara provider remove gpt4o
-```
-
-The active profile overrides the `[llm]` block for all enrichment.
-
----
-
 ## Configuration
 
 A config file is created with sensible defaults on first run.
@@ -514,13 +437,6 @@ Full example:
 ```toml
 default_project = "inbox"   # last-resort fallback name when a folder has no usable name
 date_dialect    = "uk"      # "uk" or "us" — affects "next friday" parsing
-
-[llm]
-provider     = "ollama"
-model        = "qwen2.5"
-timeout_secs = 60
-# base_url = "http://localhost:11434"
-# api_key  = ""
 
 [urgency]                   # all optional; defaults shown
 priority_h = 6.0
@@ -636,10 +552,10 @@ Run `sara paths` to see the exact locations on your machine.
 | Command                            | Description                                              |
 |------------------------------------|----------------------------------------------------------|
 | `sara init`                        | Initialize the current folder as a project (git repo or plain folder) |
-| `sara add <desc> [tokens]`         | Add a task (`--yes`, `--no-llm`, `-p`, `--priority`, `-t`, `--every`) |
+| `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara info <id>`                   | Open the interactive detail view                         |
-| `sara modify <id>`                 | Edit via the review form (`--no-llm`)                    |
+| `sara modify <id>`                 | Edit via the review form                                 |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |
 | `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |
@@ -652,7 +568,6 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
 | `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
-| `sara provider …`                  | Manage LLM provider profiles                             |
 | `sara undo`                        | Revert the most recent command                           |
 | `sara reset`                       | Delete a project's tasks and profile (`-p`, `-y`)        |
 | `sara paths`                       | Print config and data paths                              |
