@@ -254,6 +254,29 @@ the set — adding and removing edges — and rejects self-references and cycles
 with an inline error. The change is reflected immediately in the "Blocked by"
 section and the History panel.
 
+### Non-interactive & agent-friendly output
+
+`sara info` detects whether stdout is a terminal: in a TTY it opens the
+interactive view; when piped it prints a readable plain-text digest instead.
+You can force a specific format regardless of TTY:
+
+| Flag        | Output                                                                 |
+|-------------|------------------------------------------------------------------------|
+| `--md`      | **Markdown digest** — LLM-native: `##` headings and `- [ ]`/`- [x]` checkboxes for steps & acceptance. Ideal for agent context or a PR body. |
+| `--plain`   | The readable plain-text digest, forced (no TUI).                       |
+| `--json`    | The full structured guide (every field) for scripts.                   |
+| `--history` | Include the full History log in `--plain`/`--md` (collapsed to a one-line summary by default to keep output lean). |
+
+```bash
+sara info 7 --md                 # paste-ready Markdown for an agent / PR
+sara info 7 --md --history       # …including the full change log
+sara info 7 --plain              # readable text, History collapsed
+sara info 7 --json | jq .steps   # structured access
+```
+
+The Markdown digest is the recommended way to feed a task to an AI agent: it's
+stable, omits the unbounded History log by default, and needs no reshaping.
+
 ---
 
 ## Working with tasks
@@ -554,7 +577,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara init`                        | Initialize the current folder as a project (git repo or plain folder) |
 | `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
-| `sara info <id>`                   | Open the interactive detail view                         |
+| `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
 | `sara modify <id>`                 | Edit via the review form                                 |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |

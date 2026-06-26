@@ -583,14 +583,29 @@ pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()
     Ok(())
 }
 
-pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
+pub fn run(
+    conn: &Connection,
+    cfg: &Config,
+    id_or_uuid: &str,
+    plain: bool,
+    md: bool,
+    history: bool,
+) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     let detail = load_detail(conn, cfg, task)?;
+    let opts = RenderOpts { history };
 
-    // If not a TTY, fall back to plain text output (read-only).
+    // Markdown digest — agent context / PR bodies. Never opens the TUI.
+    if md {
+        print!("{}", render_markdown(&detail, opts));
+        return Ok(());
+    }
+
+    // Readable text digest: forced via --plain, or the automatic fallback when
+    // stdout is not a TTY (e.g. piped into an agent).
     use std::io::IsTerminal;
-    if !std::io::stdout().is_terminal() {
-        print_plain(&detail);
+    if plain || !std::io::stdout().is_terminal() {
+        print!("{}", render_plain(&detail, opts));
         return Ok(());
     }
 
@@ -2828,19 +2843,36 @@ fn parse_duration_to_mins(s: &str) -> Option<i64> {
     m_part.parse::<i64>().ok()
 }
 
-fn print_plain(d: &Detail) {
+/// Options controlling the readable digest renderers (`render_plain` /
+/// `render_markdown`). Defaults to the agent-friendly view: History collapsed.
+#[derive(Clone, Copy, Default)]
+struct RenderOpts {
+    /// Include the full History log (collapsed to a one-line summary otherwise).
+    history: bool,
+}
+
+/// Render the readable plain-text digest of a task — the single source of truth
+/// shared by the non-TTY fallback, `sara info --plain`, and (later) the MCP
+/// server. History is collapsed by default to keep agent token usage low.
+fn render_plain(d: &Detail, opts: RenderOpts) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    macro_rules! w {
+        () => {{ let _ = writeln!(out); }};
+        ($($arg:tt)*) => {{ let _ = writeln!(out, $($arg)*); }};
+    }
     let t = &d.task;
-    println!("Task {}", t.id.unwrap_or(0));
-    println!();
-    println!("{:<14}{}", "Description", t.description);
-    println!("{:<14}{}", "Project", t.project);
-    println!("{:<14}{}", "Status", t.status);
-    println!(
+    w!("Task {}", t.id.unwrap_or(0));
+    w!();
+    w!("{:<14}{}", "Description", t.description);
+    w!("{:<14}{}", "Project", t.project);
+    w!("{:<14}{}", "Status", t.status);
+    w!(
         "{:<14}{}",
         "Priority",
         t.priority.as_ref().map(|p| p.label()).unwrap_or("-")
     );
-    println!(
+    w!(
         "{:<14}{}",
         "Due",
         t.due
@@ -2850,7 +2882,7 @@ fn print_plain(d: &Detail) {
                 .to_string())
             .unwrap_or_else(|| "-".to_string())
     );
-    println!(
+    w!(
         "{:<14}{}",
         "Tags",
         if t.tags.is_empty() {
@@ -2859,30 +2891,30 @@ fn print_plain(d: &Detail) {
             t.tags.join(", ")
         }
     );
-    println!(
+    w!(
         "{:<14}{}",
         "Time spent",
         format_duration(t.total_time_spent())
     );
-    println!("{:<14}{:.1}", "Urgency", t.urgency);
-    println!("{:<14}{}", "UUID", t.uuid);
+    w!("{:<14}{:.1}", "Urgency", t.urgency);
+    w!("{:<14}{}", "UUID", t.uuid);
 
     // ── Guide ───────────────────────────────────────────────────────
     if let Some(a) = &d.guide.assignment {
-        println!("{:<14}{}", "Assignment", a);
+        w!("{:<14}{}", "Assignment", a);
     }
     if let Some(r) = &d.guide.rationale {
-        println!("{:<14}{}", "Rationale", r);
+        w!("{:<14}{}", "Rationale", r);
     }
     if guide_is_stale(d) {
-        println!(
+        w!(
             "{:<14}guide validated @ {} but HEAD is {} — may be stale (run `sara validate`)",
             "Freshness",
             d.guide.validated_commit.as_deref().unwrap_or("-"),
             d.head_commit.as_deref().unwrap_or("-"),
         );
     } else if let Some(v) = &d.guide.validated_commit {
-        println!("{:<14}validated @ {}", "Freshness", v);
+        w!("{:<14}validated @ {}", "Freshness", v);
     }
 
     // Steps (with intent + result).
@@ -2892,19 +2924,19 @@ fn print_plain(d: &Detail) {
         .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
         .collect();
     if !steps.is_empty() {
-        println!("\nSteps:");
+        w!("\nSteps:");
         for (i, s) in steps.iter().enumerate() {
             let mark = if s.done { "x" } else { " " };
             let badge = if s.source == "ai" { " (ai)" } else { "" };
-            println!("  [{}] {}. {}{}", mark, i + 1, s.text, badge);
+            w!("  [{}] {}. {}{}", mark, i + 1, s.text, badge);
             if let Some(intent) = &s.intent {
-                println!("        intent: {intent}");
+                w!("        intent: {intent}");
             }
             if let Some(v) = &s.verify_cmd {
-                println!("        verify: {v}");
+                w!("        verify: {v}");
             }
             if let Some(r) = &s.result {
-                println!("        result: {r}");
+                w!("        result: {r}");
             }
             if s.done && (s.done_commit.is_some() || s.done_at.is_some()) {
                 let commit = s
@@ -2916,7 +2948,7 @@ fn print_plain(d: &Detail) {
                     })
                     .unwrap_or_default();
                 let when = s.done_at.as_deref().unwrap_or("");
-                println!("        done:   {commit}{when}");
+                w!("        done:   {commit}{when}");
             }
         }
     }
@@ -2928,19 +2960,19 @@ fn print_plain(d: &Detail) {
         .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
         .collect();
     if !acceptance.is_empty() {
-        println!("\nAcceptance criteria:");
+        w!("\nAcceptance criteria:");
         for (i, a) in acceptance.iter().enumerate() {
             let mark = if a.done { "x" } else { " " };
-            println!("  [{}] {}. {}", mark, i + 1, a.text);
+            w!("  [{}] {}. {}", mark, i + 1, a.text);
         }
     }
 
     // Verification commands (project + task-level).
     let verif = verification_rows(d);
     if !verif.is_empty() {
-        println!("\nVerification:");
+        w!("\nVerification:");
         for (scope, label, cmd) in &verif {
-            println!("  {label:<7} {cmd}  ({scope})");
+            w!("  {label:<7} {cmd}  ({scope})");
         }
     }
 
@@ -2957,10 +2989,10 @@ fn print_plain(d: &Detail) {
     ] {
         let notes = notes_of_kind(d, kind);
         if !notes.is_empty() {
-            println!("\n{label}:");
+            w!("\n{label}:");
             for n in notes {
                 let badge = if n.author == "ai" { " (ai)" } else { "" };
-                println!("  - {}{}", n.text, badge);
+                w!("  - {}{}", n.text, badge);
             }
         }
     }
@@ -2972,23 +3004,23 @@ fn print_plain(d: &Detail) {
         .filter(|a| a.source == db::SOURCE_SUGGESTED)
         .collect();
     if !suggested.is_empty() {
-        println!("\nRelevant code anchors (suggested by AI):");
+        w!("\nRelevant code anchors (suggested by AI):");
         for a in suggested {
-            println!("  {}{}", a.path, a.location());
+            w!("  {}{}", a.path, a.location());
             if let Some(r) = &a.reason {
-                println!("      {r}");
+                w!("      {r}");
             }
         }
     }
 
     for b in &d.blocked_by {
-        println!("{:<14}{}", "Blocked by", b);
+        w!("{:<14}{}", "Blocked by", b);
     }
     for b in &d.blocking {
-        println!("{:<14}{}", "Blocking", b);
+        w!("{:<14}{}", "Blocking", b);
     }
     for link in &d.links {
-        println!(
+        w!(
             "{:<14}[{}] {}  {}",
             "Link",
             link.id,
@@ -2997,12 +3029,12 @@ fn print_plain(d: &Detail) {
         );
     }
     for file in &d.manual_files {
-        println!("{:<14}{}", "File", file);
+        w!("{:<14}{}", "File", file);
     }
     // Comments (human feedback), with anchor + reconsider markers.
     let comments = notes_of_kind(d, "comment");
     if !comments.is_empty() {
-        println!("\nComments:");
+        w!("\nComments:");
         for a in comments {
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
             let target = match (&a.target_kind, &a.target_id) {
@@ -3019,18 +3051,23 @@ fn print_plain(d: &Detail) {
             } else {
                 ""
             };
-            println!(
+            w!(
                 "  #{}{}{}{} {} {}",
-                a.id, target, flag, resolved, date, a.text
+                a.id,
+                target,
+                flag,
+                resolved,
+                date,
+                a.text
             );
         }
     }
     // AI activity footer.
     if !d.ai_runs.is_empty() {
-        println!("\nAI activity:");
+        w!("\nAI activity:");
         for r in &d.ai_runs {
             let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-            println!(
+            w!(
                 "  {} via {} [{}] @ {}",
                 r.kind,
                 r.model.as_deref().unwrap_or("?"),
@@ -3039,26 +3076,238 @@ fn print_plain(d: &Detail) {
             );
         }
     }
-    for h in &d.history {
-        let date = h.changed_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-        let change = if h.field == "created" {
-            h.new_value.clone().unwrap_or_default()
-        } else if h.field == "annotation" {
-            match (&h.new_value, &h.old_value) {
-                (Some(text), _) => format!("comment added: {text}"),
-                (None, Some(text)) => format!("comment removed: {text}"),
-                _ => "comment".to_string(),
-            }
-        } else {
-            format!(
-                "{}: {} -> {}",
-                h.field,
-                h.old_value.as_deref().unwrap_or("-"),
-                h.new_value.as_deref().unwrap_or("-"),
-            )
-        };
-        println!("{:<14}{} {}", "History", date, change);
+    // History — collapsed to a one-line summary unless explicitly requested.
+    if opts.history {
+        for h in &d.history {
+            w!(
+                "{:<14}{} {}",
+                "History",
+                history_changed_at(h),
+                history_change(h)
+            );
+        }
+    } else if !d.history.is_empty() {
+        w!(
+            "{:<14}{} entries (use --history to show)",
+            "History",
+            d.history.len()
+        );
     }
+    out
+}
+
+/// Format a single history entry's timestamp for the readable digest.
+fn history_changed_at(h: &crate::db::HistoryEntry) -> String {
+    h.changed_at
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
+/// Describe a single history entry as a one-line change summary.
+fn history_change(h: &crate::db::HistoryEntry) -> String {
+    if h.field == "created" {
+        h.new_value.clone().unwrap_or_default()
+    } else if h.field == "annotation" {
+        match (&h.new_value, &h.old_value) {
+            (Some(text), _) => format!("comment added: {text}"),
+            (None, Some(text)) => format!("comment removed: {text}"),
+            _ => "comment".to_string(),
+        }
+    } else {
+        format!(
+            "{}: {} -> {}",
+            h.field,
+            h.old_value.as_deref().unwrap_or("-"),
+            h.new_value.as_deref().unwrap_or("-"),
+        )
+    }
+}
+
+/// Render a Markdown digest of a task — description, steps and acceptance
+/// criteria as checkboxes, plus the key context sections. Suitable for embedding
+/// in agent context or a PR body. Shares `RenderOpts` with `render_plain`.
+fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    macro_rules! w {
+        () => {{ let _ = writeln!(out); }};
+        ($($arg:tt)*) => {{ let _ = writeln!(out, $($arg)*); }};
+    }
+    let t = &d.task;
+
+    w!("# Task {} — {}", t.id.unwrap_or(0), t.status);
+    w!();
+    w!("- **Project:** {}", t.project);
+    w!(
+        "- **Priority:** {}",
+        t.priority.as_ref().map(|p| p.label()).unwrap_or("-")
+    );
+    if let Some(due) = t.due {
+        w!(
+            "- **Due:** {}",
+            due.with_timezone(&Local).format("%Y-%m-%d %H:%M")
+        );
+    }
+    if !t.tags.is_empty() {
+        w!("- **Tags:** {}", t.tags.join(", "));
+    }
+    w!("- **Urgency:** {:.1}", t.urgency);
+    w!("- **UUID:** `{}`", t.uuid);
+
+    if guide_is_stale(d) {
+        w!();
+        w!(
+            "> ⚠️ Guide validated @ {} but project HEAD is {} — may be stale (run `sara validate`).",
+            d.guide.validated_commit.as_deref().unwrap_or("-"),
+            d.head_commit.as_deref().unwrap_or("-"),
+        );
+    }
+
+    w!();
+    w!("## Description");
+    w!();
+    w!("{}", t.description);
+
+    if let Some(a) = &d.guide.assignment {
+        w!();
+        w!("## Assignment");
+        w!();
+        w!("{a}");
+    }
+    if let Some(r) = &d.guide.rationale {
+        w!();
+        w!("## Rationale");
+        w!();
+        w!("{r}");
+    }
+
+    let steps: Vec<&crate::db::ChecklistItem> = d
+        .checklist
+        .iter()
+        .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
+        .collect();
+    if !steps.is_empty() {
+        w!();
+        w!("## Steps");
+        w!();
+        for s in &steps {
+            let mark = if s.done { "x" } else { " " };
+            w!("- [{}] {}", mark, s.text);
+        }
+    }
+
+    let acceptance: Vec<&crate::db::ChecklistItem> = d
+        .checklist
+        .iter()
+        .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
+        .collect();
+    if !acceptance.is_empty() {
+        w!();
+        w!("## Acceptance criteria");
+        w!();
+        for a in &acceptance {
+            let mark = if a.done { "x" } else { " " };
+            w!("- [{}] {}", mark, a.text);
+        }
+    }
+
+    // Typed AI/human notes grouped by kind.
+    for (label, kind) in [
+        ("Findings", "finding"),
+        ("Constraints", "constraint"),
+        ("Assumptions", "assumption"),
+        ("Open questions", "open_question"),
+        ("Non-goals", "non_goal"),
+        ("Decisions", "decision"),
+        ("Risks", "risk"),
+        ("Patterns", "pattern"),
+    ] {
+        let notes = notes_of_kind(d, kind);
+        if !notes.is_empty() {
+            w!();
+            w!("## {label}");
+            w!();
+            for n in notes {
+                w!("- {}", n.text);
+            }
+        }
+    }
+
+    let anchors: Vec<&crate::db::Anchor> = d
+        .anchors
+        .iter()
+        .filter(|a| a.source == db::SOURCE_SUGGESTED)
+        .collect();
+    if !anchors.is_empty() {
+        w!();
+        w!("## Relevant code anchors");
+        w!();
+        for a in &anchors {
+            match &a.reason {
+                Some(r) => w!("- `{}{}` — {}", a.path, a.location(), r),
+                None => w!("- `{}{}`", a.path, a.location()),
+            }
+        }
+    }
+
+    if !d.links.is_empty() {
+        w!();
+        w!("## Links");
+        w!();
+        for link in &d.links {
+            w!("- [{}]({})", link.display(), link.url);
+        }
+    }
+
+    if !d.blocked_by.is_empty() {
+        w!();
+        w!("## Blocked by");
+        w!();
+        for b in &d.blocked_by {
+            w!("- {b}");
+        }
+    }
+    if !d.blocking.is_empty() {
+        w!();
+        w!("## Blocking");
+        w!();
+        for b in &d.blocking {
+            w!("- {b}");
+        }
+    }
+
+    // Human comments — high-signal direction for an agent; flag reconsider/open.
+    let comments = notes_of_kind(d, "comment");
+    if !comments.is_empty() {
+        w!();
+        w!("## Comments");
+        w!();
+        for a in comments {
+            let flag = if a.request_revision {
+                " **(reconsider)**"
+            } else {
+                ""
+            };
+            let resolved = if a.status == "resolved" {
+                " _(resolved)_"
+            } else {
+                ""
+            };
+            w!("- #{}{}{} {}", a.id, flag, resolved, a.text);
+        }
+    }
+
+    if opts.history && !d.history.is_empty() {
+        w!();
+        w!("## History");
+        w!();
+        for h in &d.history {
+            w!("- {} {}", history_changed_at(h), history_change(h));
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -3134,5 +3383,128 @@ mod tests {
         assert_eq!(current_value(&t, EditField::Project), "myproj");
         apply_field(&mut t, EditField::Tags, "a, b", &cfg);
         assert_eq!(current_value(&t, EditField::Tags), "a, b");
+    }
+
+    fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::db::ChecklistItem {
+        crate::db::ChecklistItem {
+            id,
+            text: text.into(),
+            done,
+            position: id,
+            intent: None,
+            kind: kind.into(),
+            source: "human".into(),
+            verify_cmd: None,
+            result: None,
+            done_commit: None,
+            done_at: None,
+        }
+    }
+
+    fn history(field: &str, old: Option<&str>, new: Option<&str>) -> crate::db::HistoryEntry {
+        crate::db::HistoryEntry {
+            field: field.into(),
+            old_value: old.map(Into::into),
+            new_value: new.map(Into::into),
+            changed_at: chrono::Utc::now(),
+        }
+    }
+
+    fn detail(
+        checklist: Vec<crate::db::ChecklistItem>,
+        hist: Vec<crate::db::HistoryEntry>,
+    ) -> Detail {
+        Detail {
+            task: task(),
+            blocked_by: vec![],
+            blocking: vec![],
+            depends_on_ids: vec![],
+            manual_files: vec![],
+            suggested_files: vec![],
+            links: vec![],
+            annotations: vec![],
+            history: hist,
+            project_root: None,
+            branch: None,
+            overlaps: vec![],
+            similar: vec![],
+            checklist,
+            urgency_breakdown: None,
+            activity: std::collections::HashMap::new(),
+            stats: None,
+            guide: crate::db::TaskGuideFields::default(),
+            anchors: vec![],
+            ai_runs: vec![],
+            head_commit: None,
+            project_commands: crate::db::ProjectCommands::default(),
+            chain: vec![],
+        }
+    }
+
+    #[test]
+    fn render_plain_collapses_history_by_default() {
+        let d = detail(
+            vec![],
+            vec![history("status", Some("pending"), Some("done"))],
+        );
+        let collapsed = render_plain(&d, RenderOpts { history: false });
+        assert!(collapsed.contains("1 entries (use --history to show)"));
+        assert!(!collapsed.contains("status: pending -> done"));
+
+        let full = render_plain(&d, RenderOpts { history: true });
+        assert!(full.contains("status: pending -> done"));
+    }
+
+    #[test]
+    fn render_plain_lists_steps_and_acceptance() {
+        let d = detail(
+            vec![
+                step(1, "do the thing", db::STEP_KIND_STEP, true),
+                step(2, "ship it", db::STEP_KIND_ACCEPTANCE, false),
+            ],
+            vec![],
+        );
+        let out = render_plain(&d, RenderOpts::default());
+        assert!(out.contains("Steps:"));
+        assert!(out.contains("[x] 1. do the thing"));
+        assert!(out.contains("Acceptance criteria:"));
+        assert!(out.contains("[ ] 1. ship it"));
+    }
+
+    #[test]
+    fn render_markdown_has_description_steps_and_acceptance() {
+        let d = detail(
+            vec![
+                step(1, "first step", db::STEP_KIND_STEP, false),
+                step(2, "second step", db::STEP_KIND_STEP, true),
+                step(3, "definition of done", db::STEP_KIND_ACCEPTANCE, false),
+            ],
+            vec![],
+        );
+        let md = render_markdown(&d, RenderOpts::default());
+        // Description present.
+        assert!(md.contains("## Description"));
+        assert!(md.contains("original"));
+        // Steps rendered as GitHub-style checkboxes.
+        assert!(md.contains("## Steps"));
+        assert!(md.contains("- [ ] first step"));
+        assert!(md.contains("- [x] second step"));
+        // Acceptance criteria rendered with checkboxes.
+        assert!(md.contains("## Acceptance criteria"));
+        assert!(md.contains("- [ ] definition of done"));
+    }
+
+    #[test]
+    fn render_markdown_omits_history_unless_requested() {
+        let d = detail(
+            vec![],
+            vec![history("status", Some("pending"), Some("done"))],
+        );
+        let lean = render_markdown(&d, RenderOpts { history: false });
+        assert!(!lean.contains("## History"));
+
+        let full = render_markdown(&d, RenderOpts { history: true });
+        assert!(full.contains("## History"));
+        assert!(full.contains("status: pending -> done"));
     }
 }
