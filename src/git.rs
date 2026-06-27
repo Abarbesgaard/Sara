@@ -101,36 +101,63 @@ pub fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
     Some((owner, repo))
 }
 
-/// Resolve the GitHub `owner/repo` by reading the `origin` remote URL from the
+/// Resolve the GitHub `owner/repo` by finding a GitHub remote in the
 /// given git repository root.
 ///
+/// Searches all remotes for GitHub URLs. If multiple GitHub remotes exist,
+/// uses the first one found (sorted alphabetically by remote name).
+///
 /// Errors with a message explaining what Sara expected when:
-/// - The repository has no `origin` remote.
-/// - The `origin` URL is not a recognised GitHub remote form.
+/// - The repository has no remotes.
+/// - None of the remotes point to GitHub.
 pub fn github_repo_from_remote(repo_root: &Path) -> Result<(String, String)> {
+    // Get all remotes with their URLs
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(repo_root)
-        .args(["remote", "get-url", "origin"])
+        .args(["remote", "-v"])
         .output()
-        .context("failed to run git remote get-url")?;
+        .context("failed to run git remote -v")?;
 
     if !out.status.success() {
+        anyhow::bail!("Failed to list git remotes.");
+    }
+
+    let remotes_output = String::from_utf8_lossy(&out.stdout);
+    let mut github_remotes: Vec<(String, String, String)> = Vec::new();
+
+    // Parse remotes and find GitHub URLs
+    for line in remotes_output.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let remote_name = parts[0];
+            let url = parts[1];
+            
+            if let Some((owner, repo)) = parse_github_owner_repo(url) {
+                github_remotes.push((remote_name.to_string(), owner, repo));
+            }
+        }
+    }
+
+    if github_remotes.is_empty() {
         anyhow::bail!(
-            "No 'origin' remote found in this repository. \
-             Sara needs an 'origin' remote that points to a GitHub repository \
+            "No GitHub remotes found in this repository. \
+             Sara needs a remote that points to a GitHub repository \
              (e.g. 'https://github.com/owner/repo.git' or 'git@github.com:owner/repo.git')."
         );
     }
 
-    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    parse_github_owner_repo(&url).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Remote 'origin' URL '{url}' is not a recognised GitHub remote. \
-             Sara expects a URL like 'https://github.com/owner/repo.git' \
-             or 'git@github.com:owner/repo.git'."
-        )
-    })
+    // Deduplicate by remote name (git remote -v shows each remote twice: fetch/push)
+    github_remotes.sort_by(|a, b| a.0.cmp(&b.0));
+    github_remotes.dedup_by(|a, b| a.0 == b.0);
+
+    // Use the first GitHub remote (alphabetically)
+    let (remote_name, owner, repo) = &github_remotes[0];
+    if github_remotes.len() > 1 {
+        eprintln!("Multiple GitHub remotes found. Using '{remote_name}': {owner}/{repo}");
+    }
+    
+    Ok((owner.clone(), repo.clone()))
 }
 
 /// Return `(base_ref, changed_file_paths)` for the given branch relative to
@@ -289,7 +316,7 @@ mod tests {
         make_git_repo_with_remote(&dir, None);
         let err = github_repo_from_remote(&dir).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("No 'origin' remote"), "unexpected: {msg}");
+        assert!(msg.contains("No GitHub remotes found"), "unexpected: {msg}");
         assert!(msg.contains("Sara needs"), "unexpected: {msg}");
     }
 
@@ -300,9 +327,9 @@ mod tests {
         let err = github_repo_from_remote(&dir).unwrap_err();
         let msg = err.to_string();
         assert!(
-            msg.contains("not a recognised GitHub remote"),
+            msg.contains("No GitHub remotes found"),
             "unexpected: {msg}"
         );
-        assert!(msg.contains("Sara expects"), "unexpected: {msg}");
+        assert!(msg.contains("Sara needs"), "unexpected: {msg}");
     }
 }
