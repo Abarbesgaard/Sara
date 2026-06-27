@@ -150,6 +150,32 @@ pub fn step_undone(
     Ok(())
 }
 
+/// `sara step remove <id> <N> [--kind acceptance]` — delete a checklist item.
+pub fn step_remove(
+    conn: &Connection,
+    _cfg: &Config,
+    id: &str,
+    n: usize,
+    kind: Option<&str>,
+) -> Result<()> {
+    let task = db::resolve_task(conn, id)?;
+    let kind = kind_arg(kind);
+    let steps = db::get_steps(conn, &task.uuid, kind)?;
+    let item = steps
+        .get(n.saturating_sub(1))
+        .ok_or_else(|| anyhow::anyhow!("No {kind} #{n} on this task"))?;
+    let text = item.text.clone();
+    db::delete_step(conn, item.id)?;
+    println!(
+        "Removed {} {} of task {}: {}",
+        kind,
+        n,
+        task.id.unwrap_or(0),
+        text
+    );
+    Ok(())
+}
+
 /// `sara verify [--step N] [--run]` — surface/run verification commands.
 pub fn verify(
     conn: &Connection,

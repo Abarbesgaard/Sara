@@ -343,9 +343,14 @@ Break a task into sub-steps without creating separate tasks:
 ```bash
 sara check 1 "draft the schema"
 sara check 1 "write the migration"
+
+sara step done 1 1                  # tick step 1 (records the commit, if any)
+sara step undone 1 1               # reopen it
+sara step remove 1 2              # delete step 2 (alias: sara step rm); later steps shift up
 ```
 
-Toggle items with `Space` in `sara info`.
+Add `--kind acceptance` to any `sara step …` command to act on the task's
+acceptance criteria instead of its steps. Toggle items with `Space` in `sara info`.
 
 ### Notes, comments & links
 
@@ -584,6 +589,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |
 | `sara dep <id> on\|off\|list`       | Manage dependencies                                     |
 | `sara check <id> <text>`           | Add a checklist item                                     |
+| `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`)|
 | `sara annotate <id> <text>`        | Add a comment (alias `comment`); `sara denotate <n>` removes |
 | `sara link <id> <url>`             | Add a link; `sara unlink <n>` removes                    |
 | `sara attach <id> <path>`          | Attach a file path (alias `pr`)                          |
