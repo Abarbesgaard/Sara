@@ -241,6 +241,8 @@ It's also where you **edit** a task inline.
 | `Enter` / `e`  | Edit the selected field, or open the selected file/link |
 | `←` / `→`      | Cycle priority (when Priority is selected)        |
 | `Space`        | Toggle the selected checklist item                |
+| `a`            | Add a new checklist step (Enter saves, Esc cancels) |
+| `⇧↑` / `⇧↓` (or `K` / `J`) | Reorder the selected checklist step within its kind |
 | `PgUp` / `PgDn`| Scroll                                            |
 | `Esc`          | Cancel an edit                                    |
 | `q` / `Esc`    | Close the view                                    |

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{Local, Utc};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -154,6 +154,37 @@ fn focusables(d: &Detail) -> Vec<Focusable> {
         v.push(Focusable::Comment(i));
     }
     v
+}
+
+/// Index in the focusable list of the checklist row with the given item id.
+fn checklist_focus_index(d: &Detail, item_id: i64) -> Option<usize> {
+    focusables(d).iter().position(|f| match f {
+        Focusable::Checklist(i) => d.checklist.get(*i).map(|c| c.id) == Some(item_id),
+        _ => false,
+    })
+}
+
+/// Move the focused checklist step up/down within its kind, keeping the cursor
+/// on the moved row. No-op when the focus is not a checklist item or the row is
+/// already at its section boundary.
+fn reorder_focused_step(
+    conn: &Connection,
+    st: &mut EditState,
+    current: &Option<Focusable>,
+    up: bool,
+) {
+    let Some(Focusable::Checklist(i)) = current else {
+        return;
+    };
+    let Some(id) = st.detail.checklist.get(*i).map(|c| c.id) else {
+        return;
+    };
+    if db::move_step(conn, id, up).unwrap_or(false) {
+        st.detail.checklist = db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+        if let Some(p) = checklist_focus_index(&st.detail, id) {
+            st.selected = p;
+        }
+    }
 }
 
 /// Open a URL in the OS default browser (non-blocking). Adds a scheme for
@@ -621,6 +652,8 @@ struct EditState {
     editing: bool,
     /// True while typing a comment anchored to the focused element.
     commenting: bool,
+    /// True while typing the text of a new checklist step to add.
+    adding_step: bool,
     editor: TextArea<'static>,
     due_error: bool,
     /// Error from the last "Depends on" commit, shown until the next edit.
@@ -712,6 +745,7 @@ fn edit_loop<B: Backend>(
         selected: 0,
         editing: false,
         commenting: false,
+        adding_step: false,
         editor: TextArea::default(),
         due_error: false,
         dep_error: None,
@@ -742,7 +776,49 @@ fn edit_loop<B: Backend>(
             _ => None,
         };
 
-        if st.commenting {
+        if st.adding_step {
+            match key.code {
+                KeyCode::Enter => {
+                    let text = st.editor.lines().join(" ");
+                    if !text.trim().is_empty() {
+                        // Add to the kind of the focused checklist row (so adding
+                        // while on an acceptance criterion adds another criterion);
+                        // default to a step otherwise.
+                        let kind = match &current {
+                            Some(Focusable::Checklist(i)) => st
+                                .detail
+                                .checklist
+                                .get(*i)
+                                .map(|c| c.kind.clone())
+                                .unwrap_or_else(|| db::STEP_KIND_STEP.to_string()),
+                            _ => db::STEP_KIND_STEP.to_string(),
+                        };
+                        let new_id = db::add_step(
+                            conn,
+                            &st.detail.task.uuid,
+                            text.trim(),
+                            None,
+                            &kind,
+                            "human",
+                            None,
+                        )
+                        .ok();
+                        st.detail.checklist =
+                            db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                        if let Some(id) = new_id
+                            && let Some(p) = checklist_focus_index(&st.detail, id)
+                        {
+                            st.selected = p;
+                        }
+                    }
+                    st.adding_step = false;
+                }
+                KeyCode::Esc => st.adding_step = false,
+                _ => {
+                    st.editor.input(key);
+                }
+            }
+        } else if st.commenting {
             match key.code {
                 KeyCode::Enter => {
                     let text = st.editor.lines().join(" ");
@@ -811,6 +887,16 @@ fn edit_loop<B: Backend>(
         } else {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => break,
+                // Reorder the focused checklist step within its kind.
+                // Uppercase J/K are inherently shifted; Shift+Arrow is the alias.
+                KeyCode::Char('K') => reorder_focused_step(conn, &mut st, &current, true),
+                KeyCode::Char('J') => reorder_focused_step(conn, &mut st, &current, false),
+                KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    reorder_focused_step(conn, &mut st, &current, true);
+                }
+                KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    reorder_focused_step(conn, &mut st, &current, false);
+                }
                 KeyCode::Down | KeyCode::Char('j') => {
                     if !items.is_empty() {
                         st.selected = (st.selected + 1).min(items.len() - 1);
@@ -912,6 +998,11 @@ fn edit_loop<B: Backend>(
                         st.detail.checklist =
                             db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                     }
+                }
+                // ── Add a new checklist step ────────────────────────────────
+                KeyCode::Char('a') => {
+                    st.editor = TextArea::default();
+                    st.adding_step = true;
                 }
                 // ── Review & comment loop ────────────────────────────────────
                 KeyCode::Char('c') => {
@@ -1101,7 +1192,7 @@ fn render(f: &mut Frame, st: &EditState) {
         (d.history.len() as u16 + 2).min(6) // border (2) + up to 4 most-recent entries
     };
 
-    let constraints = if st.editing || st.commenting {
+    let constraints = if st.editing || st.commenting || st.adding_step {
         if history_height > 0 {
             vec![
                 Constraint::Min(1),
@@ -2026,6 +2117,18 @@ fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(hist_para, hist_chunk);
     }
 
+    // ── Add-step bar ────────────────────────────────────────────────────────
+    if st.adding_step {
+        let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Add step  (Enter save · Esc cancel) ".to_string())
+            .border_style(Style::default().fg(Color::Green));
+        let inner = block.inner(chunks[edit_chunk_idx]);
+        f.render_widget(block, chunks[edit_chunk_idx]);
+        f.render_widget(&st.editor, inner);
+    }
+
     // ── Comment bar (anchored to the focused element)
     if st.commenting {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
@@ -2082,12 +2185,15 @@ fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(&st.editor, inner);
     }
 
-    let footer = if st.commenting {
+    let footer = if st.adding_step {
+        " type a step  •  Enter save  •  Esc cancel ".to_string()
+    } else if st.commenting {
         " type a comment  •  Enter save  •  Esc cancel ".to_string()
     } else if st.editing {
         " type to edit  •  Enter confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • Enter edit/open • c comment • r reconsider • x resolve • q close ".to_string()
+        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • q close "
+            .to_string()
     };
     let footer_idx = chunks.len() - 1;
     f.render_widget(

@@ -2161,6 +2161,50 @@ pub fn step_id_by_index(
         .ok_or_else(|| anyhow::anyhow!("No {kind} #{index} on this task"))
 }
 
+/// Move a checklist item one slot up (`up=true`) or down within its own kind
+/// (steps reorder among steps, acceptance among acceptance). Returns `true` if
+/// the order changed, `false` when the item is already at the section boundary.
+///
+/// The set of `position` slots occupied by the kind is preserved and the rows
+/// are reassigned to them in the new order, so items of the other kind are never
+/// disturbed or interleaved.
+pub fn move_step(conn: &Connection, item_id: i64, up: bool) -> Result<bool> {
+    let (task_uuid_str, kind): (String, String) = conn.query_row(
+        "SELECT task_uuid, kind FROM task_checklist WHERE id=?1",
+        [item_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let uuid = Uuid::parse_str(&task_uuid_str)?;
+
+    let mut items = get_steps(conn, &uuid, &kind)?;
+    let Some(idx) = items.iter().position(|s| s.id == item_id) else {
+        return Ok(false);
+    };
+    let target = if up {
+        if idx == 0 {
+            return Ok(false);
+        }
+        idx - 1
+    } else {
+        if idx + 1 >= items.len() {
+            return Ok(false);
+        }
+        idx + 1
+    };
+
+    // Reassign the kind's rows to their existing position slots in the new order.
+    let slots: Vec<i64> = items.iter().map(|s| s.position).collect();
+    items.swap(idx, target);
+    for (slot, it) in slots.iter().zip(items.iter()) {
+        conn.execute(
+            "UPDATE task_checklist SET position=?1 WHERE id=?2",
+            rusqlite::params![slot, it.id],
+        )?;
+    }
+    record_history(conn, &uuid, "checklist", None, Some("step reordered"))?;
+    Ok(true)
+}
+
 /// Remove a step / acceptance criterion by its stable row id, recording history.
 /// Remaining items keep their `position`, so the 1-based display order stays
 /// consistent (later items simply shift up by one).
@@ -3701,6 +3745,57 @@ mod tests {
         let id2 = step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 2).unwrap();
         assert_eq!(id2, steps[1].id);
         assert!(step_id_by_index(&conn, &task.uuid, STEP_KIND_STEP, 99).is_err());
+    }
+
+    #[test]
+    fn move_step_reorders_within_kind_and_is_noop_at_boundaries() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        for t in ["first", "second", "third"] {
+            add_step(&conn, &task.uuid, t, None, STEP_KIND_STEP, "human", None).unwrap();
+        }
+        // An acceptance row must stay put while steps are reordered.
+        add_step(
+            &conn,
+            &task.uuid,
+            "it compiles",
+            None,
+            STEP_KIND_ACCEPTANCE,
+            "human",
+            None,
+        )
+        .unwrap();
+
+        let steps = get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap();
+        let second_id = steps[1].id;
+
+        // Move "second" up -> order becomes second, first, third.
+        assert!(move_step(&conn, second_id, true).unwrap());
+        let texts: Vec<String> = get_steps(&conn, &task.uuid, STEP_KIND_STEP)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(texts, vec!["second", "first", "third"]);
+
+        // Move it down -> back to first, second, third.
+        assert!(move_step(&conn, second_id, false).unwrap());
+        let texts: Vec<String> = get_steps(&conn, &task.uuid, STEP_KIND_STEP)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(texts, vec!["first", "second", "third"]);
+
+        // Top item up and bottom item down are no-ops.
+        let steps = get_steps(&conn, &task.uuid, STEP_KIND_STEP).unwrap();
+        assert!(!move_step(&conn, steps[0].id, true).unwrap());
+        assert!(!move_step(&conn, steps[2].id, false).unwrap());
+
+        // The acceptance row was never touched.
+        let acc = get_steps(&conn, &task.uuid, STEP_KIND_ACCEPTANCE).unwrap();
+        assert_eq!(acc.len(), 1);
+        assert_eq!(acc[0].text, "it compiles");
     }
 
     #[test]
