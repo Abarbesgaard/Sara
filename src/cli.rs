@@ -24,6 +24,15 @@ pub enum Command {
         /// Set the project goal directly (skips prompt)
         #[arg(long)]
         goal: Option<String>,
+        /// Set the tech stack directly (overrides auto-detection)
+        #[arg(long)]
+        stack: Option<String>,
+        /// Set project conventions directly
+        #[arg(long)]
+        conventions: Option<String>,
+        /// Set project notes directly (skips prompt)
+        #[arg(long)]
+        notes: Option<String>,
         /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
@@ -205,6 +214,24 @@ pub enum Command {
         /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
+        /// Set the description non-interactively (skips the review-form TUI)
+        #[arg(long)]
+        description: Option<String>,
+        /// Set the priority (H/M/L) non-interactively
+        #[arg(long)]
+        priority: Option<String>,
+        /// Set the due date non-interactively (same formats as `add`)
+        #[arg(long)]
+        due: Option<String>,
+        /// Clear the due date
+        #[arg(long)]
+        clear_due: bool,
+        /// Replace tags (repeatable) non-interactively
+        #[arg(long, short)]
+        tag: Vec<String>,
+        /// Clear all tags
+        #[arg(long)]
+        clear_tags: bool,
     },
 
     /// Move a task to another project (non-interactive)

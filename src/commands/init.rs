@@ -77,6 +77,9 @@ pub fn run(
     cfg: &Config,
     name_override: Option<&str>,
     goal_override: Option<&str>,
+    stack_override: Option<&str>,
+    conventions_override: Option<&str>,
+    notes_override: Option<&str>,
     yes: bool,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
@@ -95,7 +98,7 @@ pub fn run(
         );
     }
 
-    // Detect stack
+    // Detect stack (auto-detection can be overridden via --stack)
     let detected_stack = project_path
         .as_deref()
         .map(detect_stack)
@@ -106,6 +109,12 @@ pub fn run(
 
     // Load existing profile if any
     let existing = crate::db::get_project(conn, &project_name)?;
+
+    // Stack: explicit --stack wins, else preserve an existing value, else use detection.
+    let resolved_stack = stack_override
+        .map(str::to_string)
+        .or_else(|| existing.as_ref().and_then(|p| p.stack.clone()))
+        .unwrap_or_else(|| detected_stack.clone());
 
     let goal = if let Some(g) = goal_override {
         g.to_string()
@@ -119,7 +128,9 @@ pub fn run(
         prompt("What is this project? (one-line goal)", current_goal)?
     };
 
-    let notes = if yes {
+    let notes = if let Some(n) = notes_override {
+        n.to_string()
+    } else if yes {
         existing
             .as_ref()
             .and_then(|p| p.notes.clone())
@@ -129,6 +140,11 @@ pub fn run(
         prompt("Any conventions or notes? (optional)", current_notes)?
     };
 
+    // Conventions: set via flag, otherwise preserve any existing value.
+    let conventions = conventions_override
+        .map(str::to_string)
+        .or_else(|| existing.as_ref().and_then(|p| p.conventions.clone()));
+
     let project = Project {
         name: project_name.clone(),
         path: project_path,
@@ -137,8 +153,8 @@ pub fn run(
         } else {
             Some(goal.clone())
         },
-        stack: Some(detected_stack.clone()),
-        conventions: None,
+        stack: Some(resolved_stack.clone()),
+        conventions,
         notes: if notes.is_empty() { None } else { Some(notes) },
         initialized_at: Some(chrono::Utc::now()),
         last_seen: Some(chrono::Utc::now()),
@@ -153,7 +169,7 @@ pub fn run(
     if let Some(g) = &project.goal {
         println!("  Goal:  {g}");
     }
-    println!("  Stack: {detected_stack}");
+    println!("  Stack: {resolved_stack}");
 
     Ok(())
 }

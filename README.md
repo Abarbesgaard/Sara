@@ -296,6 +296,9 @@ fields before saving. `--yes` saves immediately without the form. See
 
 ```bash
 sara modify 2        # edit via the review form
+# …or set fields non-interactively (no TUI):
+sara modify 2 --description "new text" --priority H --due 2026-12-31
+sara modify 2 --tag api --tag urgent   # replace tags (--clear-tags / --clear-due to unset)
 sara done 1          # mark complete (use --force to complete a blocked task)
 sara delete 3        # soft-delete (prompts; -y to skip)
 ```
@@ -579,11 +582,11 @@ Run `sara paths` to see the exact locations on your machine.
 
 | Command                            | Description                                              |
 |------------------------------------|----------------------------------------------------------|
-| `sara init`                        | Initialize the current folder as a project (git repo or plain folder) |
+| `sara init`                        | Initialize/update the current folder as a project (`--goal`, `--stack`, `--conventions`, `--notes`, `-y`) |
 | `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
+| `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
-| `sara modify <id>`                 | Edit via the review form                                 |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |
 | `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |

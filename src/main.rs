@@ -70,14 +70,39 @@ fn run() -> Result<()> {
     }
 
     match cli.command {
-        Command::Init { name, goal, yes } => {
-            commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes)?;
+        Command::Init {
+            name,
+            goal,
+            stack,
+            conventions,
+            notes,
+            yes,
+        } => {
+            commands::init::run(
+                &conn,
+                &cfg,
+                name.as_deref(),
+                goal.as_deref(),
+                stack.as_deref(),
+                conventions.as_deref(),
+                notes.as_deref(),
+                yes,
+            )?;
         }
 
         Command::Project { action } => match action {
             ProjectAction::Init { name, goal, yes } => {
                 eprintln!("note: `sara project init` is deprecated — use `sara init` instead.");
-                commands::init::run(&conn, &cfg, name.as_deref(), goal.as_deref(), yes)?;
+                commands::init::run(
+                    &conn,
+                    &cfg,
+                    name.as_deref(),
+                    goal.as_deref(),
+                    None,
+                    None,
+                    None,
+                    yes,
+                )?;
             }
         },
 
@@ -192,8 +217,26 @@ fn run() -> Result<()> {
             commands::done::run(&conn, &cfg, &id, force)?;
         }
 
-        Command::Modify { id } => {
-            commands::modify::run(&conn, &cfg, &id)?;
+        Command::Modify {
+            id,
+            description,
+            priority,
+            due,
+            clear_due,
+            tag,
+            clear_tags,
+        } => {
+            commands::modify::run(
+                &conn,
+                &cfg,
+                &id,
+                description.as_deref(),
+                priority.as_deref(),
+                due.as_deref(),
+                clear_due,
+                &tag,
+                clear_tags,
+            )?;
         }
 
         Command::Move { id, project } => {
