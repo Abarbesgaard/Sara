@@ -227,6 +227,26 @@ pub struct Project {
     pub notes: Option<String>,
     pub initialized_at: Option<DateTime<Utc>>,
     pub last_seen: Option<DateTime<Utc>>,
+    /// GitHub full repository name (e.g. "owner/repo"). Never a secret.
+    pub github_repo: Option<String>,
+    /// GitHub login (username) used when syncing. Never a PAT or token.
+    pub github_login: Option<String>,
+    /// Comma-separated sync scopes, e.g. "issues" or "issues,prs".
+    pub github_sync_scope: Option<String>,
+}
+
+/// Non-secret provenance metadata for a task imported from a GitHub issue or PR.
+/// Stored under the key `"github"` inside `tasks.meta_json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubProvenance {
+    /// Full repository name (owner/repo).
+    pub repo: String,
+    /// Issue or PR number on GitHub.
+    pub number: i64,
+    /// RFC3339 timestamp when this task was imported.
+    pub imported_at: DateTime<Utc>,
+    /// GitHub login of the user who performed the import (not a token).
+    pub imported_by: Option<String>,
 }
 
 /// A code anchor pointing at a file (or symbol) relevant to a task.

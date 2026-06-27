@@ -331,6 +331,10 @@ fn run() -> Result<()> {
             commands::activity::run(&conn, proj.as_deref())?;
         }
 
+        Command::Sync => {
+            commands::sync::run(&conn, &cfg)?;
+        }
+
         Command::Paths => {
             let cfg_path = config::config_path()?;
             let db_path = config::db_path()?;

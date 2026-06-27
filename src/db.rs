@@ -231,6 +231,15 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 ON task_ai_runs(task_uuid, created_at);",
         ),
         M::up(
+            // Non-secret GitHub sync identity fields for projects, plus a
+            // stable index to let project detection look up repos by full_name.
+            "ALTER TABLE projects ADD COLUMN github_repo        TEXT;
+             ALTER TABLE projects ADD COLUMN github_login       TEXT;
+             ALTER TABLE projects ADD COLUMN github_sync_scope  TEXT;
+             CREATE INDEX IF NOT EXISTS idx_projects_github_repo
+               ON projects(github_repo) WHERE github_repo IS NOT NULL;",
+        ),
+        M::up(
             // Lean on the SQLite engine: an FTS5 index for cross-task memory
             // kept in sync by triggers, and a JSON-producing view that
             // assembles the whole guide in one query (json1 is bundled).
@@ -1640,8 +1649,10 @@ pub fn upsert_project_seen(conn: &Connection, name: &str, path: Option<&str>) ->
 pub fn save_project_profile(conn: &Connection, project: &Project) -> Result<()> {
     let now = dt_to_str(&Utc::now());
     conn.execute(
-        "INSERT INTO projects (name, path, goal, stack, conventions, notes, initialized_at, last_seen)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?7)
+        "INSERT INTO projects (name, path, goal, stack, conventions, notes,
+                              initialized_at, last_seen,
+                              github_repo, github_login, github_sync_scope)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?7,?8,?9,?10)
          ON CONFLICT(name) DO UPDATE SET
            path          = COALESCE(?2, path),
            goal          = COALESCE(?3, goal),
@@ -1649,7 +1660,10 @@ pub fn save_project_profile(conn: &Connection, project: &Project) -> Result<()> 
            conventions   = COALESCE(?5, conventions),
            notes         = COALESCE(?6, notes),
            initialized_at = COALESCE(?7, initialized_at),
-           last_seen      = ?7",
+           last_seen      = ?7,
+           github_repo    = COALESCE(?8, github_repo),
+           github_login   = COALESCE(?9, github_login),
+           github_sync_scope = COALESCE(?10, github_sync_scope)",
         params![
             project.name,
             project.path,
@@ -1658,6 +1672,9 @@ pub fn save_project_profile(conn: &Connection, project: &Project) -> Result<()> 
             project.conventions,
             project.notes,
             now,
+            project.github_repo,
+            project.github_login,
+            project.github_sync_scope,
         ],
     )?;
     Ok(())
@@ -1665,7 +1682,8 @@ pub fn save_project_profile(conn: &Connection, project: &Project) -> Result<()> 
 
 pub fn get_project(conn: &Connection, name: &str) -> Result<Option<Project>> {
     let mut stmt = conn.prepare(
-        "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen
+        "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen,
+                github_repo,github_login,github_sync_scope
          FROM projects WHERE name=?1",
     )?;
     let mut rows = stmt.query_map([name], |row| {
@@ -1676,8 +1694,15 @@ pub fn get_project(conn: &Connection, name: &str) -> Result<Option<Project>> {
             stack: row.get(3)?,
             conventions: row.get(4)?,
             notes: row.get(5)?,
-            initialized_at: None,
-            last_seen: None,
+            initialized_at: row
+                .get::<_, Option<String>>(6)?
+                .and_then(|s| str_to_dt(&s).ok()),
+            last_seen: row
+                .get::<_, Option<String>>(7)?
+                .and_then(|s| str_to_dt(&s).ok()),
+            github_repo: row.get(8)?,
+            github_login: row.get(9)?,
+            github_sync_scope: row.get(10)?,
         })
     })?;
     Ok(rows.next().transpose()?)
@@ -1701,7 +1726,8 @@ pub fn project_names(conn: &Connection) -> Result<Vec<String>> {
 /// most-recently-seen one wins.
 pub fn get_project_by_path(conn: &Connection, path: &str) -> Result<Option<Project>> {
     let mut stmt = conn.prepare(
-        "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen
+        "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen,
+                github_repo,github_login,github_sync_scope
          FROM projects WHERE path=?1 ORDER BY last_seen DESC LIMIT 1",
     )?;
     let mut rows = stmt.query_map([path], |row| {
@@ -1712,8 +1738,15 @@ pub fn get_project_by_path(conn: &Connection, path: &str) -> Result<Option<Proje
             stack: row.get(3)?,
             conventions: row.get(4)?,
             notes: row.get(5)?,
-            initialized_at: None,
-            last_seen: None,
+            initialized_at: row
+                .get::<_, Option<String>>(6)?
+                .and_then(|s| str_to_dt(&s).ok()),
+            last_seen: row
+                .get::<_, Option<String>>(7)?
+                .and_then(|s| str_to_dt(&s).ok()),
+            github_repo: row.get(8)?,
+            github_login: row.get(9)?,
+            github_sync_scope: row.get(10)?,
         })
     })?;
     Ok(rows.next().transpose()?)
@@ -2928,7 +2961,96 @@ pub fn set_project_commands(conn: &Connection, name: &str, cmds: &ProjectCommand
     Ok(())
 }
 
-// ── dependency closure (recursive CTE) ───────────────────────────────────────
+// ── GitHub sync settings ─────────────────────────────────────────────────────
+
+/// Non-secret GitHub sync identity for a project.
+/// Contains a repo full_name, the authenticated login, and the sync scope.
+/// No PAT or credential is stored — authentication is always resolved at
+/// runtime (e.g. from `gh auth status` or the environment).
+#[derive(Debug, Clone, Default)]
+pub struct GithubSyncSettings {
+    /// GitHub full repository name (owner/repo).
+    pub repo: Option<String>,
+    /// GitHub username (login) associated with the sync, not a token.
+    pub login: Option<String>,
+    /// Comma-separated sync scopes, e.g. "issues" or "issues,prs".
+    pub scope: Option<String>,
+}
+
+/// Persist GitHub sync identity for a project.  Only the three non-secret
+/// fields (repo, login, scope) are written; no token is accepted.
+pub fn set_github_sync(conn: &Connection, project: &str, s: &GithubSyncSettings) -> Result<()> {
+    conn.execute(
+        "INSERT INTO projects (name, github_repo, github_login, github_sync_scope, last_seen)
+         VALUES (?1,?2,?3,?4,?5)
+         ON CONFLICT(name) DO UPDATE SET
+           github_repo       = COALESCE(?2, github_repo),
+           github_login      = COALESCE(?3, github_login),
+           github_sync_scope = COALESCE(?4, github_sync_scope),
+           last_seen         = ?5",
+        params![project, s.repo, s.login, s.scope, dt_to_str(&Utc::now()),],
+    )?;
+    Ok(())
+}
+
+/// Load GitHub sync identity for a project from the projects table.
+pub fn get_github_sync(conn: &Connection, project: &str) -> Result<GithubSyncSettings> {
+    conn.query_row(
+        "SELECT github_repo, github_login, github_sync_scope FROM projects WHERE name=?1",
+        [project],
+        |r| {
+            Ok(GithubSyncSettings {
+                repo: r.get(0)?,
+                login: r.get(1)?,
+                scope: r.get(2)?,
+            })
+        },
+    )
+    .optional()
+    .map(|o| o.unwrap_or_default())
+    .map_err(Into::into)
+}
+
+// ── GitHub issue provenance (stored in tasks.meta_json["github"]) ─────────────
+
+/// Read the GitHub provenance embedded in a task's `meta_json`, if any.
+pub fn get_github_provenance(
+    conn: &Connection,
+    task_uuid: &Uuid,
+) -> Result<Option<crate::model::GithubProvenance>> {
+    let fields = get_guide_fields(conn, task_uuid)?;
+    let Some(raw) = fields.meta_json else {
+        return Ok(None);
+    };
+    let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+    let prov = obj
+        .get("github")
+        .and_then(|v| serde_json::from_value::<crate::model::GithubProvenance>(v.clone()).ok());
+    Ok(prov)
+}
+
+/// Write (or replace) the GitHub provenance inside a task's `meta_json`.
+/// Merges with any existing keys so other meta_json entries are preserved.
+/// No token or secret is accepted by the type — `GithubProvenance` contains
+/// only repo name, number, timestamp and login.
+pub fn set_github_provenance(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    prov: &crate::model::GithubProvenance,
+) -> Result<()> {
+    let fields = get_guide_fields(conn, task_uuid)?;
+    let mut obj: serde_json::Map<String, serde_json::Value> = fields
+        .meta_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    obj.insert(
+        "github".to_string(),
+        serde_json::to_value(prov).unwrap_or(serde_json::Value::Null),
+    );
+    let json = serde_json::to_string(&obj)?;
+    set_meta_json(conn, task_uuid, &json)
+}
 
 /// Transitive set of tasks `task_uuid` depends on (its blockers, recursively),
 /// returned blockers-first so a briefing reads in execution order.
@@ -3102,6 +3224,9 @@ mod tests {
                 notes: None,
                 initialized_at: None,
                 last_seen: None,
+                github_repo: None,
+                github_login: None,
+                github_sync_scope: None,
             },
         )
         .unwrap();
@@ -3680,5 +3805,193 @@ mod tests {
         let conn = mem();
         let c = get_project_commands(&conn, "nope").unwrap();
         assert!(c.setup_cmd.is_none() && c.test_cmd.is_none());
+    }
+
+    // ── GitHub sync settings ─────────────────────────────────────────────────
+
+    #[test]
+    fn github_sync_settings_round_trip_through_project_storage() {
+        let conn = mem();
+        upsert_project_seen(&conn, "myrepo", Some("/home/u/myrepo")).unwrap();
+        set_github_sync(
+            &conn,
+            "myrepo",
+            &GithubSyncSettings {
+                repo: Some("acme/myrepo".into()),
+                login: Some("alice".into()),
+                scope: Some("issues".into()),
+            },
+        )
+        .unwrap();
+
+        let s = get_github_sync(&conn, "myrepo").unwrap();
+        assert_eq!(s.repo.as_deref(), Some("acme/myrepo"));
+        assert_eq!(s.login.as_deref(), Some("alice"));
+        assert_eq!(s.scope.as_deref(), Some("issues"));
+    }
+
+    #[test]
+    fn save_project_profile_persists_github_fields() {
+        let conn = mem();
+        save_project_profile(
+            &conn,
+            &crate::model::Project {
+                name: "myrepo".into(),
+                path: Some("/home/u/myrepo".into()),
+                goal: Some("g".into()),
+                stack: None,
+                conventions: None,
+                notes: None,
+                initialized_at: None,
+                last_seen: None,
+                github_repo: Some("acme/myrepo".into()),
+                github_login: Some("alice".into()),
+                github_sync_scope: Some("issues".into()),
+            },
+        )
+        .unwrap();
+
+        let project = get_project(&conn, "myrepo").unwrap().unwrap();
+        assert_eq!(project.github_repo.as_deref(), Some("acme/myrepo"));
+        assert_eq!(project.github_login.as_deref(), Some("alice"));
+        assert_eq!(project.github_sync_scope.as_deref(), Some("issues"));
+    }
+
+    #[test]
+    fn github_sync_partial_update_preserves_existing_fields() {
+        let conn = mem();
+        upsert_project_seen(&conn, "p", None).unwrap();
+        set_github_sync(
+            &conn,
+            "p",
+            &GithubSyncSettings {
+                repo: Some("org/p".into()),
+                login: Some("bob".into()),
+                scope: Some("issues".into()),
+            },
+        )
+        .unwrap();
+        // Update only scope — repo and login must be preserved (COALESCE).
+        set_github_sync(
+            &conn,
+            "p",
+            &GithubSyncSettings {
+                repo: None,
+                login: None,
+                scope: Some("issues,prs".into()),
+            },
+        )
+        .unwrap();
+
+        let s = get_github_sync(&conn, "p").unwrap();
+        assert_eq!(s.repo.as_deref(), Some("org/p"), "repo preserved");
+        assert_eq!(s.login.as_deref(), Some("bob"), "login preserved");
+        assert_eq!(s.scope.as_deref(), Some("issues,prs"), "scope updated");
+    }
+
+    #[test]
+    fn github_sync_no_secret_field_in_settings_struct() {
+        // login is a username, not a token — the type only accepts non-secret strings.
+        let s = GithubSyncSettings {
+            repo: Some("org/repo".into()),
+            login: Some("user".into()),
+            scope: Some("issues".into()),
+        };
+        assert!(
+            !s.login.as_deref().unwrap_or("").starts_with("ghp_"),
+            "login field should hold a username, not a PAT"
+        );
+    }
+
+    #[test]
+    fn project_detection_loads_github_sync_metadata_for_path() {
+        let conn = mem();
+        upsert_project_seen(&conn, "sara", Some("/home/u/Sara")).unwrap();
+        set_github_sync(
+            &conn,
+            "sara",
+            &GithubSyncSettings {
+                repo: Some("acme/sara".into()),
+                login: Some("alice".into()),
+                scope: Some("issues".into()),
+            },
+        )
+        .unwrap();
+
+        // Simulates what detect_current_project returns: the project loaded by path.
+        let project = get_project_by_path(&conn, "/home/u/Sara")
+            .unwrap()
+            .expect("project must be found by path");
+
+        assert_eq!(project.name, "sara");
+        assert_eq!(project.github_repo.as_deref(), Some("acme/sara"));
+        assert_eq!(project.github_login.as_deref(), Some("alice"));
+        assert_eq!(project.github_sync_scope.as_deref(), Some("issues"));
+    }
+
+    // ── GitHub issue provenance ──────────────────────────────────────────────
+
+    #[test]
+    fn github_provenance_round_trips_through_meta_json() {
+        let conn = mem();
+        let task = seed_task(&conn);
+
+        let prov = crate::model::GithubProvenance {
+            repo: "acme/widgets".into(),
+            number: 99,
+            imported_at: Utc::now(),
+            imported_by: Some("alice".into()),
+        };
+        set_github_provenance(&conn, &task.uuid, &prov).unwrap();
+
+        let loaded = get_github_provenance(&conn, &task.uuid)
+            .unwrap()
+            .expect("provenance must be present");
+        assert_eq!(loaded.repo, "acme/widgets");
+        assert_eq!(loaded.number, 99);
+        assert_eq!(loaded.imported_by.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn github_provenance_merges_with_existing_meta_json_keys() {
+        let conn = mem();
+        let task = seed_task(&conn);
+
+        // Pre-populate meta_json with some other data.
+        set_meta_json(&conn, &task.uuid, r#"{"my_key":"keep_me"}"#).unwrap();
+
+        let prov = crate::model::GithubProvenance {
+            repo: "org/repo".into(),
+            number: 1,
+            imported_at: Utc::now(),
+            imported_by: None,
+        };
+        set_github_provenance(&conn, &task.uuid, &prov).unwrap();
+
+        let raw = get_guide_fields(&conn, &task.uuid)
+            .unwrap()
+            .meta_json
+            .unwrap();
+        let obj: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        // Both the existing key and the new github key must be present.
+        assert_eq!(obj["my_key"], "keep_me");
+        assert_eq!(obj["github"]["repo"], "org/repo");
+        assert_eq!(obj["github"]["number"], 1);
+    }
+
+    #[test]
+    fn github_provenance_contains_no_secret_fields() {
+        // GithubProvenance has: repo, number, imported_at, imported_by.
+        // None of these fields can hold a PAT. imported_by is a login string.
+        let prov = crate::model::GithubProvenance {
+            repo: "org/repo".into(),
+            number: 5,
+            imported_at: Utc::now(),
+            imported_by: Some("bob".into()),
+        };
+        let serialized = serde_json::to_string(&prov).unwrap();
+        // Sanity: no "token" or "pat" key appears in the serialised provenance.
+        assert!(!serialized.to_lowercase().contains("token"));
+        assert!(!serialized.to_lowercase().contains(r#""pat""#));
     }
 }

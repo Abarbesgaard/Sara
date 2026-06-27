@@ -142,6 +142,9 @@ pub fn run(
         notes: if notes.is_empty() { None } else { Some(notes) },
         initialized_at: Some(chrono::Utc::now()),
         last_seen: Some(chrono::Utc::now()),
+        github_repo: None,
+        github_login: None,
+        github_sync_scope: None,
     };
 
     crate::db::save_project_profile(conn, &project)?;

@@ -55,6 +55,9 @@ pub fn run(
         notes: None,
         initialized_at: None,
         last_seen: None,
+        github_repo: None,
+        github_login: None,
+        github_sync_scope: None,
     });
 
     // Check if we're in a TTY

@@ -388,6 +388,9 @@ pub enum Command {
         all: bool,
     },
 
+    /// Sync open GitHub issues assigned to you for the current repo
+    Sync,
+
     /// Print config and data directory paths
     Paths,
 
