@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::config::Config;
 use crate::db;
+use crate::git::github_repo_from_remote;
 use crate::model::Task;
 use crate::project::find_git_root;
 
@@ -36,49 +37,48 @@ struct GhIssue {
     pull_request: Option<serde_json::Value>,
 }
 
-/// Parse "owner" and "repo" from a GitHub remote URL.
-///
-/// Supports:
-///   - SSH:   `git@github.com:owner/repo.git`
-///   - HTTPS: `https://github.com/owner/repo[.git]`
-fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
-    let url = url.trim();
-    let stripped = url
-        .strip_prefix("git@github.com:")
-        .or_else(|| url.strip_prefix("https://github.com/"))
-        .or_else(|| url.strip_prefix("http://github.com/"))?;
-
-    let stripped = stripped.strip_suffix(".git").unwrap_or(stripped);
-    let mut parts = stripped.splitn(2, '/');
-    let owner = parts.next()?.to_string();
-    let repo = parts.next()?.to_string();
-    if owner.is_empty() || repo.is_empty() {
-        return None;
-    }
-    Some((owner, repo))
+/// Minimal GitHub issue comment shape from the REST API.
+#[derive(Debug, Deserialize)]
+struct GhComment {
+    id: i64,
+    body: Option<String>,
+    html_url: String,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+    user: GhUser,
 }
 
-/// Resolve the GitHub owner/repo by reading the `origin` remote URL.
-fn github_repo_from_remote(repo_root: &std::path::Path) -> Result<(String, String)> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo_root)
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .context("failed to run git remote get-url")?;
+/// Resolve the GitHub token from the active shell environment.
+///
+/// `GH_TOKEN` wins over `GITHUB_TOKEN`. The error explains how to export a
+/// token before launching Sara.
+pub fn resolve_github_token() -> Result<String> {
+    resolve_github_token_from(|key| std::env::var(key).ok())
+}
 
-    if !out.status.success() {
-        anyhow::bail!("No 'origin' remote found. Is this repository hosted on GitHub?");
+fn resolve_github_token_from<F>(mut lookup: F) -> Result<String>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    if let Some(token) = lookup("GH_TOKEN").filter(|t| !t.trim().is_empty()) {
+        return Ok(token);
+    }
+    if let Some(token) = lookup("GITHUB_TOKEN").filter(|t| !t.trim().is_empty()) {
+        return Ok(token);
     }
 
-    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    parse_github_owner_repo(&url)
-        .ok_or_else(|| anyhow::anyhow!("Remote URL '{url}' does not look like a GitHub repo"))
+    anyhow::bail!(
+        "No GitHub token found in GH_TOKEN or GITHUB_TOKEN. \
+         Export one in your shell first, for example:\n\
+         export GH_TOKEN=ghp_your_token_here\n\
+         then launch Sara again."
+    )
 }
 
 /// Resolve the authenticated GitHub login via `gh api /user`.
-fn github_login() -> Result<String> {
+fn github_login(token: &str) -> Result<String> {
     let out = std::process::Command::new("gh")
+        .env("GH_TOKEN", token)
         .args(["api", "/user", "--jq", ".login"])
         .output()
         .context("failed to run 'gh api /user' — is 'gh' installed and authenticated?")?;
@@ -99,10 +99,16 @@ fn github_login() -> Result<String> {
 /// Uses `gh api --paginate` so every page is retrieved automatically.
 /// Pull requests (which the issues API also returns) are filtered out
 /// by checking for the `pull_request` field.
-fn fetch_assigned_issues(owner: &str, repo: &str, login: &str) -> Result<Vec<GhIssue>> {
+fn fetch_assigned_issues(
+    token: &str,
+    owner: &str,
+    repo: &str,
+    login: &str,
+) -> Result<Vec<GhIssue>> {
     let endpoint = format!("/repos/{owner}/{repo}/issues?state=open&assignee={login}&per_page=100");
 
     let out = std::process::Command::new("gh")
+        .env("GH_TOKEN", token)
         .args(["api", "--paginate", &endpoint])
         .output()
         .with_context(|| format!("failed to call gh api for {owner}/{repo}"))?;
@@ -220,6 +226,84 @@ fn create_new_task(
     Ok(task.uuid)
 }
 
+/// Fetch all comments for a single issue (or PR) in `owner/repo`.
+///
+/// Uses `gh api --paginate` so every page is retrieved automatically.
+fn fetch_issue_comments(
+    token: &str,
+    owner: &str,
+    repo: &str,
+    issue_number: i64,
+) -> Result<Vec<GhComment>> {
+    let endpoint =
+        format!("/repos/{owner}/{repo}/issues/{issue_number}/comments?per_page=100");
+
+    let out = std::process::Command::new("gh")
+        .env("GH_TOKEN", token)
+        .args(["api", "--paginate", &endpoint])
+        .output()
+        .with_context(|| {
+            format!(
+                "failed to call gh api for comments on {owner}/{repo}#{issue_number}"
+            )
+        })?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        anyhow::bail!("GitHub API call failed for comments: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut comments: Vec<GhComment> = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let batch: Vec<GhComment> = serde_json::from_str(line)
+            .with_context(|| "failed to parse GitHub comment API response")?;
+        comments.extend(batch);
+    }
+    Ok(comments)
+}
+
+/// Import comments for a single issue into the task's annotation list.
+///
+/// Each comment is stored idempotently: the stable `comment_id` is used as the
+/// deduplication key so repeated syncs never create duplicates.  The full
+/// comment record (including `url` and `updated_at`) is also persisted in
+/// `meta_json["github_comments"]`.
+///
+/// Returns `(added, skipped)` counts.
+fn import_issue_comments(
+    conn: &Connection,
+    task_uuid: &uuid::Uuid,
+    comments: &[GhComment],
+) -> Result<(usize, usize)> {
+    let mut added = 0usize;
+    let mut meta_comments: Vec<crate::model::GithubComment> = Vec::with_capacity(comments.len());
+
+    for c in comments {
+        let gh_comment = crate::model::GithubComment {
+            comment_id: c.id,
+            author: c.user.login.clone(),
+            body: c.body.clone().unwrap_or_default(),
+            url: c.html_url.clone(),
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+        };
+        if db::upsert_github_comment_annotation(conn, task_uuid, &gh_comment)? {
+            added += 1;
+        }
+        meta_comments.push(gh_comment);
+    }
+
+    let skipped = comments.len().saturating_sub(added);
+    // Always refresh the full metadata so url/updated_at stay current.
+    db::set_github_comments(conn, task_uuid, &meta_comments)?;
+    Ok((added, skipped))
+}
+
 /// Sync open GitHub issues assigned to the authenticated user for the current repo.
 pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     let cwd = std::env::current_dir()?;
@@ -227,13 +311,14 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
         find_git_root(&cwd).ok_or_else(|| anyhow::anyhow!("Not inside a git repository"))?;
 
     let (owner, repo) = github_repo_from_remote(&git_root)?;
-    let login = github_login()?;
+    let token = resolve_github_token()?;
+    let login = github_login(&token)?;
     let (project_name, _) = crate::project::detect_current_project(conn, cfg)?;
     let repo_full_name = format!("{owner}/{repo}");
 
     println!("Syncing issues for {owner}/{repo} assigned to @{login}…");
 
-    let issues = fetch_assigned_issues(&owner, &repo, &login)?;
+    let issues = fetch_assigned_issues(&token, &owner, &repo, &login)?;
     db::set_github_sync(
         conn,
         &project_name,
@@ -253,7 +338,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
             issue.number,
             issue.node_id.as_deref(),
         )?;
-        if let Some(task_uuid) = existing {
+        let task_uuid = if let Some(task_uuid) = existing {
             update_existing_task(conn, cfg, &task_uuid, issue, &repo_full_name, &login)?;
             let task = db::get_task_by_uuid_prefix(conn, &task_uuid.to_string())?
                 .ok_or_else(|| anyhow::anyhow!("missing updated task {task_uuid}"))?;
@@ -264,6 +349,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
                 issue.title
             );
             updated += 1;
+            task_uuid
         } else {
             let task_uuid =
                 create_new_task(conn, cfg, &project_name, &repo_full_name, &login, issue)?;
@@ -276,6 +362,13 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
                 issue.title
             );
             created += 1;
+            task_uuid
+        };
+
+        let raw_comments = fetch_issue_comments(&token, &owner, &repo, issue.number)?;
+        let (new_comments, _) = import_issue_comments(conn, &task_uuid, &raw_comments)?;
+        if new_comments > 0 {
+            println!("    + {new_comments} new comment(s) imported");
         }
     }
 
@@ -288,46 +381,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_ssh_remote_url() {
-        let (o, r) = parse_github_owner_repo("git@github.com:Abarbesgaard/Sara.git").unwrap();
-        assert_eq!(o, "Abarbesgaard");
-        assert_eq!(r, "Sara");
+    fn gh_token_takes_precedence_over_github_token() {
+        let token = resolve_github_token_from(|key| match key {
+            "GH_TOKEN" => Some("gh-token".into()),
+            "GITHUB_TOKEN" => Some("github-token".into()),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(token, "gh-token");
     }
 
     #[test]
-    fn parses_https_url_with_git_suffix() {
-        let (o, r) = parse_github_owner_repo("https://github.com/Abarbesgaard/Sara.git").unwrap();
-        assert_eq!(o, "Abarbesgaard");
-        assert_eq!(r, "Sara");
+    fn falls_back_to_github_token_when_gh_token_absent() {
+        let token = resolve_github_token_from(|key| match key {
+            "GH_TOKEN" => None,
+            "GITHUB_TOKEN" => Some("github-token".into()),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(token, "github-token");
     }
 
     #[test]
-    fn parses_https_url_without_git_suffix() {
-        let (o, r) = parse_github_owner_repo("https://github.com/Abarbesgaard/Sara").unwrap();
-        assert_eq!(o, "Abarbesgaard");
-        assert_eq!(r, "Sara");
-    }
-
-    #[test]
-    fn parses_http_url() {
-        let (o, r) = parse_github_owner_repo("http://github.com/owner/repo.git").unwrap();
-        assert_eq!(o, "owner");
-        assert_eq!(r, "repo");
-    }
-
-    #[test]
-    fn rejects_non_github_url() {
-        assert!(parse_github_owner_repo("https://gitlab.com/user/repo.git").is_none());
-    }
-
-    #[test]
-    fn rejects_url_with_empty_owner() {
-        assert!(parse_github_owner_repo("git@github.com:/repo.git").is_none());
-    }
-
-    #[test]
-    fn rejects_url_with_empty_repo() {
-        assert!(parse_github_owner_repo("https://github.com/owner/").is_none());
+    fn fails_with_clear_error_when_no_token_in_env() {
+        let err = resolve_github_token_from(|_| None).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("GH_TOKEN"), "{msg}");
+        assert!(msg.contains("GITHUB_TOKEN"), "{msg}");
+        assert!(msg.contains("export GH_TOKEN"), "{msg}");
     }
 
     #[test]
@@ -379,5 +460,44 @@ mod tests {
             .collect();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].number, 10);
+    }
+
+    #[test]
+    fn comment_payload_deserialises_with_all_required_fields() {
+        let json = r#"{
+            "id": 999,
+            "body": "Great issue!",
+            "html_url": "https://github.com/a/b/issues/7#issuecomment-999",
+            "created_at": "2026-06-01T09:00:00Z",
+            "updated_at": "2026-06-02T10:30:00Z",
+            "user": {"login": "bob"}
+        }"#;
+        let c: GhComment = serde_json::from_str(json).unwrap();
+        assert_eq!(c.id, 999);
+        assert_eq!(c.body.as_deref(), Some("Great issue!"));
+        assert_eq!(c.html_url, "https://github.com/a/b/issues/7#issuecomment-999");
+        assert_eq!(c.user.login, "bob");
+        assert_eq!(
+            c.created_at.to_rfc3339(),
+            "2026-06-01T09:00:00+00:00"
+        );
+        assert_eq!(
+            c.updated_at.to_rfc3339(),
+            "2026-06-02T10:30:00+00:00"
+        );
+    }
+
+    #[test]
+    fn comment_payload_handles_null_body() {
+        let json = r#"{
+            "id": 1,
+            "body": null,
+            "html_url": "https://github.com/a/b/issues/1#issuecomment-1",
+            "created_at": "2026-06-01T00:00:00Z",
+            "updated_at": "2026-06-01T00:00:00Z",
+            "user": {"login": "alice"}
+        }"#;
+        let c: GhComment = serde_json::from_str(json).unwrap();
+        assert!(c.body.is_none());
     }
 }
