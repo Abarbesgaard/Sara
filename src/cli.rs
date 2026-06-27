@@ -75,6 +75,15 @@ pub enum Command {
         /// Emit the full guide as JSON (for agents/scripts)
         #[arg(long)]
         json: bool,
+        /// Force the readable text digest regardless of TTY (no TUI)
+        #[arg(long)]
+        plain: bool,
+        /// Emit a Markdown digest (description, steps, acceptance) for agent context or PR bodies
+        #[arg(long)]
+        md: bool,
+        /// Include the full History log in --plain/--md output (collapsed by default)
+        #[arg(long)]
+        history: bool,
     },
 
     /// Add a comment, note, or anchored feedback to a task

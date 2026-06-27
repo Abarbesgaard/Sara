@@ -67,7 +67,7 @@ pub fn run(conn: &Connection, cfg: &Config, project_arg: Option<&str>) -> Result
         match action {
             BoardAction::Quit => break,
             BoardAction::OpenTask(uuid) => {
-                crate::commands::info::run(conn, cfg, &uuid)?;
+                crate::commands::info::run(conn, cfg, &uuid, false, false, false)?;
                 // Reload — status/dependencies may have changed in the detail view.
                 let project = std::mem::take(&mut st.project);
                 let sel = st.selected;

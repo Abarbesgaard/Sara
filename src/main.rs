@@ -108,11 +108,17 @@ fn run() -> Result<()> {
             )?;
         }
 
-        Command::Info { id, json } => {
+        Command::Info {
+            id,
+            json,
+            plain,
+            md,
+            history,
+        } => {
             if json {
                 commands::info::run_json(&conn, &cfg, &id)?;
             } else {
-                commands::info::run(&conn, &cfg, &id)?;
+                commands::info::run(&conn, &cfg, &id, plain, md, history)?;
             }
         }
 
