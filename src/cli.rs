@@ -172,6 +172,9 @@ pub enum Command {
         project: Option<String>,
     },
 
+    /// Browse all projects in a TUI; select one to open its board
+    Projects,
+
     /// List pending tasks
     List {
         /// Show tasks for all projects (default: current project only)
