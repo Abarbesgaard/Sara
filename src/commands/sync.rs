@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde::Deserialize;
 
 use crate::config::Config;
@@ -8,13 +8,30 @@ use crate::db;
 use crate::model::Task;
 use crate::project::find_git_root;
 
+#[derive(Debug, Deserialize)]
+struct GhUser {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhIssueAssignee {
+    login: String,
+}
+
 /// Minimal GitHub issue shape from the REST API.
 #[derive(Debug, Deserialize)]
 struct GhIssue {
+    id: i64,
+    node_id: Option<String>,
     number: i64,
     title: String,
     body: Option<String>,
     html_url: String,
+    state: String,
+    updated_at: chrono::DateTime<Utc>,
+    user: GhUser,
+    #[serde(default)]
+    assignees: Vec<GhIssueAssignee>,
     /// Present only on pull requests; used to exclude them.
     pull_request: Option<serde_json::Value>,
 }
@@ -96,9 +113,6 @@ fn fetch_assigned_issues(owner: &str, repo: &str, login: &str) -> Result<Vec<GhI
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);
-
-    // `gh api --paginate` writes each page as a separate JSON array.
-    // Parse each line and merge the results.
     let mut issues: Vec<GhIssue> = Vec::new();
     for line in stdout.lines() {
         let line = line.trim();
@@ -110,23 +124,100 @@ fn fetch_assigned_issues(owner: &str, repo: &str, login: &str) -> Result<Vec<GhI
         issues.extend(batch);
     }
 
-    // Exclude pull requests (the issues API mixes both).
     Ok(issues
         .into_iter()
         .filter(|i| i.pull_request.is_none())
         .collect())
 }
 
-/// Return true if a task for this GitHub issue already exists in the database.
-fn already_imported(conn: &Connection, repo: &str, number: i64) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM tasks \
-         WHERE json_extract(meta_json, '$.github.repo') = ?1 \
-           AND json_extract(meta_json, '$.github.number') = ?2",
-        params![repo, number],
-        |r| r.get(0),
-    )?;
-    Ok(count > 0)
+fn issue_provenance(
+    repo: &str,
+    sync_login: &str,
+    issue: &GhIssue,
+) -> crate::model::GithubProvenance {
+    crate::model::GithubProvenance {
+        repo: repo.to_string(),
+        issue_id: Some(issue.id),
+        node_id: issue.node_id.clone(),
+        number: issue.number,
+        html_url: Some(issue.html_url.clone()),
+        title: Some(issue.title.clone()),
+        body: issue.body.clone(),
+        state: Some(issue.state.clone()),
+        assignees: issue.assignees.iter().map(|a| a.login.clone()).collect(),
+        creator: Some(issue.user.login.clone()),
+        updated_at: Some(issue.updated_at),
+        synced_at: Utc::now(),
+        synced_by: Some(sync_login.to_string()),
+    }
+}
+
+fn ensure_issue_link(conn: &Connection, task_uuid: &uuid::Uuid, issue: &GhIssue) -> Result<()> {
+    let links = db::get_links(conn, task_uuid)?;
+    if links.iter().any(|link| link.url == issue.html_url) {
+        return Ok(());
+    }
+    db::add_link(
+        conn,
+        task_uuid,
+        &issue.html_url,
+        Some(&format!("#{}", issue.number)),
+    )
+}
+
+fn update_existing_task(
+    conn: &Connection,
+    cfg: &Config,
+    task_uuid: &uuid::Uuid,
+    issue: &GhIssue,
+    repo: &str,
+    login: &str,
+) -> Result<()> {
+    let mut task = db::get_task_by_uuid_prefix(conn, &task_uuid.to_string())?
+        .ok_or_else(|| anyhow::anyhow!("missing imported task {task_uuid}"))?;
+    task.description = issue.title.clone();
+    task.modified = Utc::now();
+    if !task.tags.iter().any(|t| t == "github") {
+        task.tags.push("github".to_string());
+    }
+    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    db::update_task(conn, &task)?;
+
+    if let Some(body) = issue.body.as_deref() {
+        let body = body.trim();
+        if !body.is_empty() {
+            db::set_assignment(conn, &task.uuid, body)?;
+        }
+    }
+
+    db::set_github_provenance(conn, &task.uuid, &issue_provenance(repo, login, issue))?;
+    ensure_issue_link(conn, &task.uuid, issue)?;
+    Ok(())
+}
+
+fn create_new_task(
+    conn: &Connection,
+    cfg: &Config,
+    project_name: &str,
+    repo: &str,
+    login: &str,
+    issue: &GhIssue,
+) -> Result<uuid::Uuid> {
+    let mut task = Task::new(issue.title.clone(), project_name.to_string());
+    task.tags.push("github".to_string());
+    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    db::insert_task(conn, &mut task)?;
+    db::set_github_provenance(conn, &task.uuid, &issue_provenance(repo, login, issue))?;
+    ensure_issue_link(conn, &task.uuid, issue)?;
+
+    if let Some(body) = issue.body.as_deref() {
+        let body = body.trim();
+        if !body.is_empty() {
+            db::set_assignment(conn, &task.uuid, body)?;
+        }
+    }
+
+    Ok(task.uuid)
 }
 
 /// Sync open GitHub issues assigned to the authenticated user for the current repo.
@@ -138,6 +229,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     let (owner, repo) = github_repo_from_remote(&git_root)?;
     let login = github_login()?;
     let (project_name, _) = crate::project::detect_current_project(conn, cfg)?;
+    let repo_full_name = format!("{owner}/{repo}");
 
     println!("Syncing issues for {owner}/{repo} assigned to @{login}…");
 
@@ -146,67 +238,48 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
         conn,
         &project_name,
         &db::GithubSyncSettings {
-            repo: Some(format!("{owner}/{repo}")),
+            repo: Some(repo_full_name.clone()),
             login: Some(login.clone()),
             scope: Some("issues".to_string()),
         },
     )?;
 
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-
+    let mut created = 0usize;
+    let mut updated = 0usize;
     for issue in &issues {
-        if already_imported(conn, &format!("{owner}/{repo}"), issue.number)? {
-            skipped += 1;
-            continue;
-        }
-
-        let mut task = Task::new(issue.title.clone(), project_name.clone());
-        task.tags.push("github".to_string());
-        task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
-
-        db::insert_task(conn, &mut task)?;
-
-        db::set_github_provenance(
+        let existing = db::find_github_task_uuid(
             conn,
-            &task.uuid,
-            &crate::model::GithubProvenance {
-                repo: format!("{owner}/{repo}"),
-                number: issue.number,
-                imported_at: Utc::now(),
-                imported_by: Some(login.clone()),
-            },
+            &repo_full_name,
+            issue.number,
+            issue.node_id.as_deref(),
         )?;
-
-        // Attach the issue URL as a clickable link.
-        db::add_link(
-            conn,
-            &task.uuid,
-            &issue.html_url,
-            Some(&format!("#{}", issue.number)),
-        )?;
-
-        // Store the issue body as the assignment (the "why" for this task).
-        if let Some(ref body) = issue.body {
-            let body = body.trim();
-            if !body.is_empty() {
-                db::set_assignment(conn, &task.uuid, body)?;
-            }
+        if let Some(task_uuid) = existing {
+            update_existing_task(conn, cfg, &task_uuid, issue, &repo_full_name, &login)?;
+            let task = db::get_task_by_uuid_prefix(conn, &task_uuid.to_string())?
+                .ok_or_else(|| anyhow::anyhow!("missing updated task {task_uuid}"))?;
+            println!(
+                "  Updated task {} [#{}]: {}",
+                task.id.unwrap_or(0),
+                issue.number,
+                issue.title
+            );
+            updated += 1;
+        } else {
+            let task_uuid =
+                create_new_task(conn, cfg, &project_name, &repo_full_name, &login, issue)?;
+            let task = db::get_task_by_uuid_prefix(conn, &task_uuid.to_string())?
+                .ok_or_else(|| anyhow::anyhow!("missing created task {task_uuid}"))?;
+            println!(
+                "  Imported task {} [#{}]: {}",
+                task.id.unwrap_or(0),
+                issue.number,
+                issue.title
+            );
+            created += 1;
         }
-
-        println!(
-            "  Imported task {} [#{issue_num}]: {title}",
-            task.id.unwrap_or(0),
-            issue_num = issue.number,
-            title = issue.title,
-        );
-        imported += 1;
     }
 
-    println!(
-        "Done. {imported} issue{} imported, {skipped} already present.",
-        if imported == 1 { "" } else { "s" }
-    );
+    println!("Done. {created} created, {updated} updated.");
     Ok(())
 }
 
@@ -254,19 +327,38 @@ mod tests {
 
     #[test]
     fn rejects_url_with_empty_repo() {
-        // After stripping .git the repo part is empty
         assert!(parse_github_owner_repo("https://github.com/owner/").is_none());
+    }
+
+    #[test]
+    fn issue_payload_deserialises_with_identity_fields() {
+        let json = r#"{
+            "id": 1,
+            "node_id": "NODE1",
+            "number": 7,
+            "title": "Fix bug",
+            "body": "body",
+            "html_url": "https://github.com/a/b/issues/7",
+            "state": "open",
+            "updated_at": "2026-06-27T11:00:00Z",
+            "user": {"login": "alice"},
+            "assignees": [{"login": "alice"}]
+        }"#;
+        let issue: GhIssue = serde_json::from_str(json).unwrap();
+        assert_eq!(issue.id, 1);
+        assert_eq!(issue.node_id.as_deref(), Some("NODE1"));
+        assert_eq!(issue.number, 7);
+        assert_eq!(issue.user.login, "alice");
+        assert_eq!(issue.assignees.len(), 1);
     }
 
     #[test]
     fn pr_field_presence_marks_entry_as_pr() {
         let json = r#"[
-            {"number":1,"title":"Fix bug","body":null,"html_url":"https://github.com/a/b/issues/1","pull_request":null},
-            {"number":2,"title":"Add feature","body":null,"html_url":"https://github.com/a/b/issues/2"}
+            {"id":1,"number":1,"title":"Fix bug","body":null,"html_url":"https://github.com/a/b/issues/1","state":"open","updated_at":"2026-06-27T11:00:00Z","user":{"login":"alice"},"assignees":[],"pull_request":null},
+            {"id":2,"number":2,"title":"Add feature","body":null,"html_url":"https://github.com/a/b/issues/2","state":"open","updated_at":"2026-06-27T11:00:00Z","user":{"login":"bob"},"assignees":[]}
         ]"#;
         let issues: Vec<GhIssue> = serde_json::from_str(json).unwrap();
-        // Issue #1 has pull_request: null (not a PR), issue #2 has no pull_request field (not a PR).
-        // A real PR would have pull_request: { ... some object ... }.
         let filtered: Vec<_> = issues
             .into_iter()
             .filter(|i| i.pull_request.is_none())
@@ -277,8 +369,8 @@ mod tests {
     #[test]
     fn pull_request_entries_are_excluded() {
         let json = r#"[
-            {"number":10,"title":"Real issue","body":null,"html_url":"https://github.com/a/b/issues/10"},
-            {"number":11,"title":"A pull request","body":null,"html_url":"https://github.com/a/b/pull/11","pull_request":{"url":"https://api.github.com/repos/a/b/pulls/11"}}
+            {"id":10,"number":10,"title":"Real issue","body":null,"html_url":"https://github.com/a/b/issues/10","state":"open","updated_at":"2026-06-27T11:00:00Z","user":{"login":"alice"},"assignees":[]},
+            {"id":11,"number":11,"title":"A pull request","body":null,"html_url":"https://github.com/a/b/pull/11","state":"open","updated_at":"2026-06-27T11:00:00Z","user":{"login":"bob"},"assignees":[],"pull_request":{"url":"https://api.github.com/repos/a/b/pulls/11"}}
         ]"#;
         let issues: Vec<GhIssue> = serde_json::from_str(json).unwrap();
         let filtered: Vec<_> = issues

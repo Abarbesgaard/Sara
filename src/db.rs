@@ -3029,10 +3029,44 @@ pub fn get_github_provenance(
     Ok(prov)
 }
 
+/// Find the existing task imported from a GitHub issue/PR by stable identity.
+pub fn find_github_task_uuid(
+    conn: &Connection,
+    repo: &str,
+    number: i64,
+    node_id: Option<&str>,
+) -> Result<Option<Uuid>> {
+    let mut sql = String::from(
+        "SELECT uuid FROM tasks
+         WHERE json_extract(meta_json, '$.github.repo') = ?1
+           AND (
+             json_extract(meta_json, '$.github.number') = ?2",
+    );
+    if node_id.is_some() {
+        sql.push_str(" OR json_extract(meta_json, '$.github.node_id') = ?3");
+    }
+    sql.push_str(
+        ")
+         LIMIT 1",
+    );
+
+    let row = if let Some(node_id) = node_id {
+        conn.query_row(&sql, params![repo, number, node_id], |r| {
+            r.get::<_, String>(0)
+        })
+        .optional()?
+    } else {
+        conn.query_row(&sql, params![repo, number], |r| r.get::<_, String>(0))
+            .optional()?
+    };
+
+    Ok(row.and_then(|s| Uuid::parse_str(&s).ok()))
+}
+
 /// Write (or replace) the GitHub provenance inside a task's `meta_json`.
 /// Merges with any existing keys so other meta_json entries are preserved.
 /// No token or secret is accepted by the type — `GithubProvenance` contains
-/// only repo name, number, timestamp and login.
+/// only stable remote identity and sync metadata.
 pub fn set_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -3938,9 +3972,18 @@ mod tests {
 
         let prov = crate::model::GithubProvenance {
             repo: "acme/widgets".into(),
+            issue_id: Some(42),
+            node_id: Some("NODE42".into()),
             number: 99,
-            imported_at: Utc::now(),
-            imported_by: Some("alice".into()),
+            html_url: Some("https://github.com/acme/widgets/issues/99".into()),
+            title: Some("Fix widget".into()),
+            body: Some("body".into()),
+            state: Some("open".into()),
+            assignees: vec!["alice".into()],
+            creator: Some("alice".into()),
+            updated_at: Some(Utc::now()),
+            synced_at: Utc::now(),
+            synced_by: Some("alice".into()),
         };
         set_github_provenance(&conn, &task.uuid, &prov).unwrap();
 
@@ -3949,7 +3992,9 @@ mod tests {
             .expect("provenance must be present");
         assert_eq!(loaded.repo, "acme/widgets");
         assert_eq!(loaded.number, 99);
-        assert_eq!(loaded.imported_by.as_deref(), Some("alice"));
+        assert_eq!(loaded.synced_by.as_deref(), Some("alice"));
+        assert_eq!(loaded.issue_id, Some(42));
+        assert_eq!(loaded.node_id.as_deref(), Some("NODE42"));
     }
 
     #[test]
@@ -3962,9 +4007,18 @@ mod tests {
 
         let prov = crate::model::GithubProvenance {
             repo: "org/repo".into(),
+            issue_id: None,
+            node_id: None,
             number: 1,
-            imported_at: Utc::now(),
-            imported_by: None,
+            html_url: Some("https://github.com/org/repo/issues/1".into()),
+            title: Some("Issue".into()),
+            body: None,
+            state: Some("open".into()),
+            assignees: vec![],
+            creator: Some("alice".into()),
+            updated_at: Some(Utc::now()),
+            synced_at: Utc::now(),
+            synced_by: None,
         };
         set_github_provenance(&conn, &task.uuid, &prov).unwrap();
 
@@ -3981,17 +4035,57 @@ mod tests {
 
     #[test]
     fn github_provenance_contains_no_secret_fields() {
-        // GithubProvenance has: repo, number, imported_at, imported_by.
-        // None of these fields can hold a PAT. imported_by is a login string.
+        // GithubProvenance only stores remote identity and sync metadata.
         let prov = crate::model::GithubProvenance {
             repo: "org/repo".into(),
+            issue_id: Some(7),
+            node_id: Some("NODE7".into()),
             number: 5,
-            imported_at: Utc::now(),
-            imported_by: Some("bob".into()),
+            html_url: Some("https://github.com/org/repo/issues/5".into()),
+            title: Some("Issue".into()),
+            body: Some("body".into()),
+            state: Some("open".into()),
+            assignees: vec!["bob".into()],
+            creator: Some("bob".into()),
+            updated_at: Some(Utc::now()),
+            synced_at: Utc::now(),
+            synced_by: Some("bob".into()),
         };
         let serialized = serde_json::to_string(&prov).unwrap();
         // Sanity: no "token" or "pat" key appears in the serialised provenance.
         assert!(!serialized.to_lowercase().contains("token"));
         assert!(!serialized.to_lowercase().contains(r#""pat""#));
+    }
+
+    #[test]
+    fn find_github_task_uuid_matches_repo_and_number_or_node_id() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let prov = crate::model::GithubProvenance {
+            repo: "acme/widgets".into(),
+            issue_id: Some(100),
+            node_id: Some("NODE100".into()),
+            number: 8,
+            html_url: Some("https://github.com/acme/widgets/issues/8".into()),
+            title: Some("Issue".into()),
+            body: None,
+            state: Some("open".into()),
+            assignees: vec![],
+            creator: Some("alice".into()),
+            updated_at: Some(Utc::now()),
+            synced_at: Utc::now(),
+            synced_by: Some("alice".into()),
+        };
+        set_github_provenance(&conn, &task.uuid, &prov).unwrap();
+
+        let by_number = find_github_task_uuid(&conn, "acme/widgets", 8, None)
+            .unwrap()
+            .expect("match by number");
+        assert_eq!(by_number, task.uuid);
+
+        let by_node = find_github_task_uuid(&conn, "acme/widgets", 999, Some("NODE100"))
+            .unwrap()
+            .expect("match by node id");
+        assert_eq!(by_node, task.uuid);
     }
 }

@@ -241,12 +241,41 @@ pub struct Project {
 pub struct GithubProvenance {
     /// Full repository name (owner/repo).
     pub repo: String,
+    /// GitHub database id for the issue or PR.
+    #[serde(default)]
+    pub issue_id: Option<i64>,
+    /// GitHub node id for the issue or PR.
+    #[serde(default)]
+    pub node_id: Option<String>,
     /// Issue or PR number on GitHub.
     pub number: i64,
-    /// RFC3339 timestamp when this task was imported.
-    pub imported_at: DateTime<Utc>,
-    /// GitHub login of the user who performed the import (not a token).
-    pub imported_by: Option<String>,
+    /// Canonical HTML URL for the remote issue.
+    #[serde(default)]
+    pub html_url: Option<String>,
+    /// Remote issue title as imported from GitHub.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Remote issue body as imported from GitHub.
+    #[serde(default)]
+    pub body: Option<String>,
+    /// Remote issue state ("open" / "closed").
+    #[serde(default)]
+    pub state: Option<String>,
+    /// Assignee logins attached to the remote issue.
+    #[serde(default)]
+    pub assignees: Vec<String>,
+    /// Remote issue creator login.
+    #[serde(default)]
+    pub creator: Option<String>,
+    /// RFC3339 timestamp when the remote issue was last updated.
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+    /// RFC3339 timestamp when this task was synced.
+    #[serde(alias = "imported_at")]
+    pub synced_at: DateTime<Utc>,
+    /// GitHub login of the user who performed the sync (not a token).
+    #[serde(alias = "imported_by")]
+    pub synced_by: Option<String>,
 }
 
 /// A code anchor pointing at a file (or symbol) relevant to a task.
