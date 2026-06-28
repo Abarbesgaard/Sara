@@ -202,7 +202,7 @@ fn run() -> Result<()> {
         }
 
         Command::Projects => {
-            commands::projects::run(&conn, &cfg)?;
+            commands::projects::run(&mut conn, &cfg)?;
         }
 
         Command::List { all, project, json } => {

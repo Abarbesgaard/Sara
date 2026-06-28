@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension, params};
 use rusqlite_migration::{M, Migrations};
 
@@ -1840,6 +1840,55 @@ pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
     Ok(deleted)
 }
 
+/// Rename a project everywhere it is referenced: rewrite `tasks.project` for all
+/// of its tasks (recording a per-task history entry) and rename the profile row
+/// (`projects.name`, the primary key). Returns the number of tasks rewritten.
+///
+/// Fails if `new` is empty/whitespace or already names another project, so a
+/// rename can never silently merge two projects together. Renaming to the same
+/// name is a no-op that returns 0.
+pub fn rename_project(conn: &mut Connection, old: &str, new: &str) -> Result<usize> {
+    let new = new.trim();
+    if new.is_empty() {
+        bail!("New project name cannot be empty");
+    }
+    if new == old {
+        return Ok(0);
+    }
+    if project_names(conn)?.iter().any(|n| n == new) {
+        bail!("A project named '{new}' already exists");
+    }
+
+    let tx = conn.transaction()?;
+
+    let uuids: Vec<String> = {
+        let mut stmt = tx.prepare("SELECT uuid FROM tasks WHERE project=?1")?;
+        let rows = stmt.query_map([old], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    let now = dt_to_str(&Utc::now());
+    for uuid in &uuids {
+        tx.execute(
+            "INSERT INTO task_history (task_uuid, field, old_value, new_value, changed_at)
+             VALUES (?1, 'project', ?2, ?3, ?4)",
+            params![uuid, old, new, now],
+        )?;
+    }
+
+    let updated = tx.execute(
+        "UPDATE tasks SET project=?1 WHERE project=?2",
+        params![new, old],
+    )?;
+    tx.execute(
+        "UPDATE projects SET name=?1 WHERE name=?2",
+        params![new, old],
+    )?;
+
+    tx.commit()?;
+    Ok(updated)
+}
+
 // ── urgency ──────────────────────────────────────────────────────────────────
 
 pub fn compute_urgency(
@@ -3553,6 +3602,62 @@ mod tests {
         assert!(get_task_files(&conn, &task.uuid).unwrap().is_empty());
         assert!(get_links(&conn, &task.uuid).unwrap().is_empty());
         assert!(get_annotations(&conn, &task.uuid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rename_project_rewrites_tasks_profile_and_history() {
+        let mut conn = mem();
+        let task = seed_task(&conn); // project "tk"
+        save_project_profile(
+            &conn,
+            &crate::model::Project {
+                name: "tk".into(),
+                path: None,
+                goal: Some("g".into()),
+                stack: None,
+                conventions: None,
+                notes: None,
+                initialized_at: None,
+                last_seen: None,
+                github_repo: None,
+                github_login: None,
+                github_sync_scope: None,
+            },
+        )
+        .unwrap();
+
+        let updated = rename_project(&mut conn, "tk", "sara").unwrap();
+        assert_eq!(updated, 1);
+
+        // Tasks and the profile moved to the new name; the old name is gone.
+        assert_eq!(count_project_tasks(&conn, "tk").unwrap(), 0);
+        assert_eq!(count_project_tasks(&conn, "sara").unwrap(), 1);
+        assert!(get_project(&conn, "tk").unwrap().is_none());
+        let moved = get_project(&conn, "sara").unwrap().unwrap();
+        assert_eq!(moved.goal.as_deref(), Some("g"));
+
+        // A project-change history entry was recorded for the task.
+        let history = get_history(&conn, &task.uuid).unwrap();
+        assert!(history.iter().any(|h| h.field == "project"
+            && h.old_value.as_deref() == Some("tk")
+            && h.new_value.as_deref() == Some("sara")));
+    }
+
+    #[test]
+    fn rename_project_rejects_empty_and_collisions() {
+        let mut conn = mem();
+        let mut a = crate::model::Task::new("a".into(), "alpha".into());
+        insert_task(&conn, &mut a).unwrap();
+        let mut b = crate::model::Task::new("b".into(), "beta".into());
+        insert_task(&conn, &mut b).unwrap();
+
+        assert!(rename_project(&mut conn, "alpha", "  ").is_err());
+        assert!(rename_project(&mut conn, "alpha", "beta").is_err());
+        // Renaming to the same name is an accepted no-op.
+        assert_eq!(rename_project(&mut conn, "alpha", "alpha").unwrap(), 0);
+        // The collisions left everything untouched.
+        assert_eq!(count_project_tasks(&conn, "alpha").unwrap(), 1);
+        assert_eq!(count_project_tasks(&conn, "beta").unwrap(), 1);
     }
 
     #[test]

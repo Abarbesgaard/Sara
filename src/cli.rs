@@ -172,7 +172,8 @@ pub enum Command {
         project: Option<String>,
     },
 
-    /// Browse all projects in a TUI; select one to open its board
+    /// Browse all projects in a TUI: open a project's board, edit its profile
+    /// (incl. rename), or delete it
     Projects,
 
     /// List pending tasks
