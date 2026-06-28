@@ -1803,6 +1803,17 @@ pub fn count_project_tasks(conn: &Connection, name: &str) -> Result<usize> {
     Ok(n as usize)
 }
 
+/// The most recent task-modification time across a project's tasks, if any.
+/// Used by the project browser to show each project's last activity.
+pub fn project_last_activity(conn: &Connection, name: &str) -> Result<Option<DateTime<Utc>>> {
+    let raw: Option<String> = conn.query_row(
+        "SELECT MAX(modified) FROM tasks WHERE project=?1",
+        [name],
+        |row| row.get(0),
+    )?;
+    Ok(raw.and_then(|s| str_to_dt(&s).ok()))
+}
+
 /// Nuke a project: delete all of its tasks (cascading to their dependencies,
 /// files, links, annotations and history), purge undo-log rows for those tasks,
 /// and remove the project profile itself. Returns the number of tasks deleted.
@@ -3368,6 +3379,27 @@ mod tests {
         let mut task = Task::new("demo".into(), "tk".into());
         insert_task(conn, &mut task).unwrap();
         task
+    }
+
+    #[test]
+    fn project_last_activity_returns_latest_modified() {
+        let conn = mem();
+        let older = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap();
+        let newer = Utc.with_ymd_and_hms(2021, 6, 1, 0, 0, 0).unwrap();
+
+        let mut t1 = Task::new("a".into(), "demo".into());
+        t1.modified = older;
+        insert_task(&conn, &mut t1).unwrap();
+        let mut t2 = Task::new("b".into(), "demo".into());
+        t2.modified = newer;
+        insert_task(&conn, &mut t2).unwrap();
+
+        assert_eq!(project_last_activity(&conn, "demo").unwrap(), Some(newer));
+        assert!(
+            project_last_activity(&conn, "nonexistent")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
