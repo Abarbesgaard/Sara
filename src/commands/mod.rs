@@ -15,6 +15,7 @@ pub mod list;
 pub mod modify;
 pub mod move_task;
 pub mod plan;
+pub mod projects;
 pub mod recall;
 pub mod reset;
 pub mod sync;

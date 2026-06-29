@@ -194,6 +194,10 @@ fn run() -> Result<()> {
             commands::board::run(&conn, &cfg, project.as_deref())?;
         }
 
+        Command::Projects => {
+            commands::projects::run(&conn, &cfg)?;
+        }
+
         Command::List { all, project, json } => {
             commands::list::run(&conn, &cfg, all, project.as_deref(), json)?;
         }
