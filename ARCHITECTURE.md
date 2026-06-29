@@ -27,13 +27,15 @@ src/
   commands/
     mod.rs                  # pub mod declarations — one entry per command slice
     activity/
-      mod.rs                # `sara activity` — recent task activity log
+      mod.rs                # `sara activity` — entry point
+      render.rs             # TUI event loop and rendering
     add/
       mod.rs                # `sara add` — create a new task
     annotate/
       mod.rs                # `sara annotate` / `sara attach` / `sara link` — attach metadata
     board/
-      mod.rs                # `sara board` — TUI kanban board
+      mod.rs                # `sara board` — entry point + state builder
+      render.rs             # TUI event loop and rendering
     branch/
       mod.rs                # `sara addbranch` — tie a git branch to a task
     delete/
@@ -49,7 +51,11 @@ src/
     import/
       mod.rs                # `sara import` — deserialise tasks from a file
     info/
-      mod.rs                # `sara info` — show full task detail
+      mod.rs                # `sara info` — entry points (run, run_json)
+      types.rs              # Detail, EditState, EditField, Focusable, and constants
+      edit.rs               # Interactive TUI edit loop
+      render.rs             # TUI rendering (render + panel helpers)
+      plain.rs              # Plain-text and markdown output
     init/
       mod.rs                # `sara init` — initialise a project in the current repo
     list/
@@ -61,13 +67,16 @@ src/
     plan/
       mod.rs                # `sara plan` — import/show a structured plan
     projects/
-      mod.rs                # `sara projects` — list all known projects
+      mod.rs                # `sara projects` — entry point + state builder
+      render.rs             # TUI event loop and rendering
     recall/
       mod.rs                # `sara recall` — full-text search across tasks
     reset/
       mod.rs                # `sara reset` — wipe a project's tasks
     sync/
-      mod.rs                # `sara sync` — sync tasks with GitHub Issues
+      mod.rs                # `sara sync` — entry point + token resolution
+      github.rs             # GitHub REST API types and fetch functions
+      import.rs             # Task creation / update / comment reconciliation
     timer/
       mod.rs                # `sara start` / `sara stop` — time tracking
     undo/
@@ -80,6 +89,25 @@ src/
 |------|----------|------|
 | **Infrastructure** | `src/infrastructure/` | May be imported by anything. Never imports from `src/commands/`. |
 | **Command slice** | `src/commands/<name>/mod.rs` | Imports only from `crate::infrastructure`. Never imports another command slice or `crate::cli`. |
+
+## Intra-slice file convention
+
+Large command slices are split into focused sub-files within the same directory.
+`mod.rs` is always the public entry point; the other files are private to the slice.
+
+| File | Contents |
+|------|----------|
+| `mod.rs` | `pub fn` entry points + `mod` declarations — nothing else |
+| `render.rs` | All TUI rendering and display functions |
+| `handler.rs` | Business logic (for commands with no TUI) |
+| `github.rs` | External API client code (e.g. GitHub REST calls) |
+| `import.rs` | Data ingestion / reconciliation logic |
+| `types.rs` | Command-specific structs, enums, and constants |
+| `edit.rs` | Interactive edit loop and related helpers |
+
+**Threshold:** Only split commands that are large enough to benefit — roughly > 200 lines
+with at least two distinct concerns. Small commands (< ~200 lines or a single concern)
+stay as a single `mod.rs`.
 
 ## The five invariants
 
