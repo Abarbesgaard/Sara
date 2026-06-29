@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.5] - 2026-06-29
+
+### Features
+
+- **Project-browser TUI** — `sara` now ships a project-browser TUI so you can switch between projects without leaving the terminal. ([#35](https://github.com/Abarbesgaard/Sara/pull/35))
+
+### Internal
+
+- **Vertical-slice architecture** — all 23 commands were migrated to isolated subdirectory slices (`src/commands/<cmd>/`), each owning its own handler, types, and SQL. Shared plumbing lives in a new `src/infrastructure/` module. ([#39](https://github.com/Abarbesgaard/Sara/pull/39), [#41](https://github.com/Abarbesgaard/Sara/pull/41), [#42](https://github.com/Abarbesgaard/Sara/pull/42))
+- **Architecture enforcement tests** — a suite of compile-time invariant tests catches cross-slice coupling, naming-convention drift, and SQL leaking out of the infrastructure layer. ([#43](https://github.com/Abarbesgaard/Sara/pull/43), [#44](https://github.com/Abarbesgaard/Sara/pull/44))
+- **`info` command split** — the 3 600-line `info/mod.rs` was broken into 5 focused sub-modules (render, input, state, actions, layout). ([#46](https://github.com/Abarbesgaard/Sara/pull/46))
+
 ## [0.5.0] - 2026-06-27
 
 ### Features
