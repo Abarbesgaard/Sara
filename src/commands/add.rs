@@ -46,19 +46,20 @@ pub fn run(
         detect_current_project(conn, cfg)?
     };
 
-    let project_profile = db::get_project(conn, &project_name)?.unwrap_or(crate::infrastructure::model::Project {
-        name: project_name.clone(),
-        path: None,
-        goal: None,
-        stack: None,
-        conventions: None,
-        notes: None,
-        initialized_at: None,
-        last_seen: None,
-        github_repo: None,
-        github_login: None,
-        github_sync_scope: None,
-    });
+    let project_profile =
+        db::get_project(conn, &project_name)?.unwrap_or(crate::infrastructure::model::Project {
+            name: project_name.clone(),
+            path: None,
+            goal: None,
+            stack: None,
+            conventions: None,
+            notes: None,
+            initialized_at: None,
+            last_seen: None,
+            github_repo: None,
+            github_login: None,
+            github_sync_scope: None,
+        });
 
     // Check if we're in a TTY
     let is_tty = atty_check();

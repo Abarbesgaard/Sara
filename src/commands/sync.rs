@@ -300,7 +300,8 @@ fn import_issue_comments(
     comments: &[GhComment],
 ) -> Result<(usize, usize)> {
     let mut added = 0usize;
-    let mut meta_comments: Vec<crate::infrastructure::model::GithubComment> = Vec::with_capacity(comments.len());
+    let mut meta_comments: Vec<crate::infrastructure::model::GithubComment> =
+        Vec::with_capacity(comments.len());
 
     for c in comments {
         let gh_comment = crate::infrastructure::model::GithubComment {

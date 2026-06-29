@@ -49,7 +49,10 @@ pub fn project_name_from_root(root: &Path) -> String {
 /// `$HOME` (and anything above it) is never treated as a project root: a
 /// dotfiles repo living at `$HOME` would otherwise capture every non-git
 /// subfolder (e.g. `~/workspace`) as a project named after the home folder.
-pub fn project_identity_for_dir(dir: &Path, cfg: &crate::infrastructure::config::Config) -> (String, String) {
+pub fn project_identity_for_dir(
+    dir: &Path,
+    cfg: &crate::infrastructure::config::Config,
+) -> (String, String) {
     let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     let git_root = find_git_root(&dir).map(|r| r.canonicalize().unwrap_or(r));
     let home = home_dir();

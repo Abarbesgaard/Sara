@@ -56,7 +56,8 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
     if let Some(ref interval) = task.recur.clone() {
         let base = task.due.unwrap_or_else(Utc::now);
         let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
-        let mut next = crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
+        let mut next =
+            crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
         next.priority = task.priority.clone();
         next.tags = task.tags.clone();
         next.due = Some(next_due);

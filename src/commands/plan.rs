@@ -51,7 +51,8 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
         anyhow::bail!("plan contains no tasks");
     }
 
-    let (default_project, _path) = crate::infrastructure::project::detect_current_project(conn, cfg)?;
+    let (default_project, _path) =
+        crate::infrastructure::project::detect_current_project(conn, cfg)?;
     let project = plan.project.clone().unwrap_or(default_project);
 
     let tx = conn.unchecked_transaction()?;

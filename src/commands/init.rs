@@ -87,7 +87,8 @@ pub fn run(
 
     // Resolve the project from the current folder: a git repo is its own
     // project; otherwise the folder itself is initialized as the project.
-    let (resolved_name, resolved_path) = crate::infrastructure::project::project_identity_for_dir(&cwd, cfg);
+    let (resolved_name, resolved_path) =
+        crate::infrastructure::project::project_identity_for_dir(&cwd, cfg);
     let project_name = name_override.map(str::to_string).unwrap_or(resolved_name);
     let project_path = Some(resolved_path);
 

@@ -3140,9 +3140,9 @@ pub fn get_github_provenance(
         return Ok(None);
     };
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
-    let prov = obj
-        .get("github")
-        .and_then(|v| serde_json::from_value::<crate::infrastructure::model::GithubProvenance>(v.clone()).ok());
+    let prov = obj.get("github").and_then(|v| {
+        serde_json::from_value::<crate::infrastructure::model::GithubProvenance>(v.clone()).ok()
+    });
     Ok(prov)
 }
 
@@ -3283,7 +3283,10 @@ pub fn get_github_comments(
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
     let comments = obj
         .get("github_comments")
-        .and_then(|v| serde_json::from_value::<Vec<crate::infrastructure::model::GithubComment>>(v.clone()).ok())
+        .and_then(|v| {
+            serde_json::from_value::<Vec<crate::infrastructure::model::GithubComment>>(v.clone())
+                .ok()
+        })
         .unwrap_or_default();
     Ok(comments)
 }
@@ -4454,7 +4457,11 @@ mod tests {
 
     // ── GitHub issue comments ────────────────────────────────────────────────
 
-    fn make_gh_comment(id: i64, author: &str, body: &str) -> crate::infrastructure::model::GithubComment {
+    fn make_gh_comment(
+        id: i64,
+        author: &str,
+        body: &str,
+    ) -> crate::infrastructure::model::GithubComment {
         crate::infrastructure::model::GithubComment {
             comment_id: id,
             author: author.to_string(),

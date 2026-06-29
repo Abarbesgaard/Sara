@@ -880,7 +880,8 @@ fn edit_loop<B: Backend>(
                     st.editor.input(key);
                     if field == EditField::Due {
                         let v = st.editor.lines().join("");
-                        st.due_error = !v.trim().is_empty() && !crate::infrastructure::dates::is_valid_due(&v);
+                        st.due_error =
+                            !v.trim().is_empty() && !crate::infrastructure::dates::is_valid_due(&v);
                     }
                 }
             }
@@ -3491,7 +3492,12 @@ mod tests {
         assert_eq!(current_value(&t, EditField::Tags), "a, b");
     }
 
-    fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::infrastructure::db::ChecklistItem {
+    fn step(
+        id: i64,
+        text: &str,
+        kind: &str,
+        done: bool,
+    ) -> crate::infrastructure::db::ChecklistItem {
         crate::infrastructure::db::ChecklistItem {
             id,
             text: text.into(),
@@ -3507,7 +3513,11 @@ mod tests {
         }
     }
 
-    fn history(field: &str, old: Option<&str>, new: Option<&str>) -> crate::infrastructure::db::HistoryEntry {
+    fn history(
+        field: &str,
+        old: Option<&str>,
+        new: Option<&str>,
+    ) -> crate::infrastructure::db::HistoryEntry {
         crate::infrastructure::db::HistoryEntry {
             field: field.into(),
             old_value: old.map(Into::into),
