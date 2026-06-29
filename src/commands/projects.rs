@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
-use crate::config::Config;
-use crate::db;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
 
 enum ProjectAction {
     Quit,
@@ -56,9 +56,9 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
             rows,
         };
 
-        let mut terminal = crate::tui::init_terminal()?;
+        let mut terminal = crate::infrastructure::tui::init_terminal()?;
         let action = list_loop(&mut terminal, &mut st)?;
-        crate::tui::restore_terminal()?;
+        crate::infrastructure::tui::restore_terminal()?;
 
         selected = st.selected;
         scroll = st.scroll;

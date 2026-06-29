@@ -1,12 +1,12 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::{Priority, Task};
-use crate::project::{detect_current_project, parse_add_tokens};
-use crate::tui;
-use crate::tui::review_form::{FormContext, FormInput, run_form};
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::{Priority, Task};
+use crate::infrastructure::project::{detect_current_project, parse_add_tokens};
+use crate::infrastructure::tui;
+use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
 pub fn run(
     conn: &Connection,
@@ -46,19 +46,20 @@ pub fn run(
         detect_current_project(conn, cfg)?
     };
 
-    let project_profile = db::get_project(conn, &project_name)?.unwrap_or(crate::model::Project {
-        name: project_name.clone(),
-        path: None,
-        goal: None,
-        stack: None,
-        conventions: None,
-        notes: None,
-        initialized_at: None,
-        last_seen: None,
-        github_repo: None,
-        github_login: None,
-        github_sync_scope: None,
-    });
+    let project_profile =
+        db::get_project(conn, &project_name)?.unwrap_or(crate::infrastructure::model::Project {
+            name: project_name.clone(),
+            path: None,
+            goal: None,
+            stack: None,
+            conventions: None,
+            notes: None,
+            initialized_at: None,
+            last_seen: None,
+            github_repo: None,
+            github_login: None,
+            github_sync_scope: None,
+        });
 
     // Check if we're in a TTY
     let is_tty = atty_check();
@@ -93,7 +94,7 @@ pub fn run(
         let project_files: Vec<String> = project_profile
             .path
             .as_deref()
-            .map(|p| crate::files::collect_project_entries(std::path::Path::new(p)))
+            .map(|p| crate::infrastructure::files::collect_project_entries(std::path::Path::new(p)))
             .unwrap_or_default();
 
         let priority_init = parsed
@@ -182,5 +183,5 @@ fn atty_check() -> bool {
 }
 
 pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>> {
-    crate::dates::parse_due(s, &cfg.date_dialect)
+    crate::infrastructure::dates::parse_due(s, &cfg.date_dialect)
 }

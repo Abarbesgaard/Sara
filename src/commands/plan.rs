@@ -3,9 +3,9 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::Task;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::Task;
 
 #[derive(Debug, Deserialize)]
 struct PlanInput {
@@ -29,7 +29,7 @@ struct PlanTask {
     acceptance: Vec<String>,
     findings: Vec<String>,
     constraints: Vec<String>,
-    files: Vec<crate::model::RelevantFile>,
+    files: Vec<crate::infrastructure::model::RelevantFile>,
     /// Local keys (or existing task ids/uuids) this task depends on.
     depends_on: Vec<String>,
 }
@@ -51,7 +51,8 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
         anyhow::bail!("plan contains no tasks");
     }
 
-    let (default_project, _path) = crate::project::detect_current_project(conn, cfg)?;
+    let (default_project, _path) =
+        crate::infrastructure::project::detect_current_project(conn, cfg)?;
     let project = plan.project.clone().unwrap_or(default_project);
 
     let tx = conn.unchecked_transaction()?;

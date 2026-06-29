@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::{Priority, Status};
+use crate::infrastructure::model::{Priority, Status};
 
 /// Marker + version prefix for the copy-paste blob.
 pub const BLOB_PREFIX: &str = "sara-task-v1:";

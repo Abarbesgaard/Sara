@@ -49,7 +49,10 @@ pub fn project_name_from_root(root: &Path) -> String {
 /// `$HOME` (and anything above it) is never treated as a project root: a
 /// dotfiles repo living at `$HOME` would otherwise capture every non-git
 /// subfolder (e.g. `~/workspace`) as a project named after the home folder.
-pub fn project_identity_for_dir(dir: &Path, cfg: &crate::config::Config) -> (String, String) {
+pub fn project_identity_for_dir(
+    dir: &Path,
+    cfg: &crate::infrastructure::config::Config,
+) -> (String, String) {
     let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     let git_root = find_git_root(&dir).map(|r| r.canonicalize().unwrap_or(r));
     let home = home_dir();
@@ -160,20 +163,20 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
 /// this path do we fall back to the name derived from the folder.
 pub fn detect_current_project(
     conn: &rusqlite::Connection,
-    cfg: &crate::config::Config,
+    cfg: &crate::infrastructure::config::Config,
 ) -> Result<(String, Option<String>)> {
     let cwd = std::env::current_dir()?;
     let (derived_name, path_str) = project_identity_for_dir(&cwd, cfg);
 
     // Honor a project registered at this exact path, whatever it is named.
-    if let Some(existing) = crate::db::get_project_by_path(conn, &path_str)? {
-        crate::db::upsert_project_seen(conn, &existing.name, Some(&path_str))?;
+    if let Some(existing) = crate::infrastructure::db::get_project_by_path(conn, &path_str)? {
+        crate::infrastructure::db::upsert_project_seen(conn, &existing.name, Some(&path_str))?;
         return Ok((existing.name, Some(path_str)));
     }
 
     // No profile at this path — fall back to the derived name, warning if that
     // name is already registered at a *different* path (an ambiguous collision).
-    if let Some(existing) = crate::db::get_project(conn, &derived_name)?
+    if let Some(existing) = crate::infrastructure::db::get_project(conn, &derived_name)?
         && let Some(ref existing_path) = existing.path
         && existing_path != &path_str
     {
@@ -184,7 +187,7 @@ pub fn detect_current_project(
         );
     }
 
-    crate::db::upsert_project_seen(conn, &derived_name, Some(&path_str))?;
+    crate::infrastructure::db::upsert_project_seen(conn, &derived_name, Some(&path_str))?;
     Ok((derived_name, Some(path_str)))
 }
 

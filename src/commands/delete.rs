@@ -3,8 +3,8 @@ use chrono::Utc;
 use rusqlite::Connection;
 use std::io::{self, Write};
 
-use crate::db;
-use crate::model::Status;
+use crate::infrastructure::db;
+use crate::infrastructure::model::Status;
 
 pub fn run(conn: &Connection, id_or_uuid: &str, yes: bool) -> Result<()> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;

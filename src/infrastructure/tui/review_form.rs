@@ -10,8 +10,8 @@ use ratatui::{
 };
 use tui_textarea::TextArea;
 
-use crate::model::Priority;
-use crate::tui::fzf;
+use crate::infrastructure::model::Priority;
+use crate::infrastructure::tui::fzf;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -294,7 +294,7 @@ impl<'a> FormState<'a> {
 
     fn validate_due(&mut self) {
         let text = self.due_area.lines().join("");
-        self.due_error = !crate::dates::is_valid_due(&text);
+        self.due_error = !crate::infrastructure::dates::is_valid_due(&text);
     }
 
     fn set_due_text(&mut self, value: &str) {
@@ -305,7 +305,7 @@ impl<'a> FormState<'a> {
     }
 
     fn cycle_due(&mut self, forward: bool) {
-        let presets = crate::dates::DUE_PRESETS;
+        let presets = crate::infrastructure::dates::DUE_PRESETS;
         // Find the current preset index if the text matches one, else start fresh
         let current = self.due_area.lines().join("");
         let cur_idx = presets
@@ -526,9 +526,9 @@ pub fn run_form<B: Backend>(
             state.fzf_requested = false;
             let candidates = state.fzf_candidates();
             // Hand the terminal back to fzf, then reclaim and force a redraw.
-            crate::tui::suspend()?;
+            crate::infrastructure::tui::suspend()?;
             let picked = fzf::run_fzf(&candidates, &state.file_filter);
-            crate::tui::resume()?;
+            crate::infrastructure::tui::resume()?;
             terminal.clear()?;
             if let Some(paths) = picked {
                 for p in paths {

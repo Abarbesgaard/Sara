@@ -2,8 +2,8 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use crate::config::Config;
-use crate::db;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
 
 /// `sara recall <query>` — cross-task memory. Uses the FTS5 index over task
 /// descriptions/rationale/assignment, annotations (findings/decisions/…), and

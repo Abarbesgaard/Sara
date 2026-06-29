@@ -2,9 +2,9 @@ use anyhow::Result;
 use rusqlite::Connection;
 use std::io::{self, Write};
 
-use crate::config::Config;
-use crate::model::Project;
-use crate::project::find_git_root;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::model::Project;
+use crate::infrastructure::project::find_git_root;
 
 /// Detect which tech stacks are present in the project root.
 pub fn detect_stack(path: &str) -> String {
@@ -87,7 +87,8 @@ pub fn run(
 
     // Resolve the project from the current folder: a git repo is its own
     // project; otherwise the folder itself is initialized as the project.
-    let (resolved_name, resolved_path) = crate::project::project_identity_for_dir(&cwd, cfg);
+    let (resolved_name, resolved_path) =
+        crate::infrastructure::project::project_identity_for_dir(&cwd, cfg);
     let project_name = name_override.map(str::to_string).unwrap_or(resolved_name);
     let project_path = Some(resolved_path);
 
@@ -108,7 +109,7 @@ pub fn run(
     println!("Detected stack: {}", detected_stack);
 
     // Load existing profile if any
-    let existing = crate::db::get_project(conn, &project_name)?;
+    let existing = crate::infrastructure::db::get_project(conn, &project_name)?;
 
     // Stack: explicit --stack wins, else preserve an existing value, else use detection.
     let resolved_stack = stack_override
@@ -163,7 +164,7 @@ pub fn run(
         github_sync_scope: None,
     };
 
-    crate::db::save_project_profile(conn, &project)?;
+    crate::infrastructure::db::save_project_profile(conn, &project)?;
     println!("✔ Project '{}' profile saved.", project_name);
 
     if let Some(g) = &project.goal {

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::db;
+use crate::infrastructure::db;
 
 /// Parse an `--on` reference (`step:N`, `acceptance:N`, `anchor:ID`, `note:ID`)
 /// into a stable (target_kind, target_id) pair, resolving step/acceptance

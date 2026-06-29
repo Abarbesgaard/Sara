@@ -12,10 +12,10 @@ use ratatui::{
 use rusqlite::Connection;
 use tui_textarea::TextArea;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::{Priority, Task, format_duration};
-use crate::tui;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::{Priority, Task, format_duration};
+use crate::infrastructure::tui;
 
 struct Detail {
     task: Task,
@@ -28,35 +28,35 @@ struct Detail {
     manual_files: Vec<String>,
     /// Files attached as suggestions.
     suggested_files: Vec<String>,
-    links: Vec<crate::db::Link>,
-    annotations: Vec<crate::db::Annotation>,
-    history: Vec<crate::db::HistoryEntry>,
+    links: Vec<crate::infrastructure::db::Link>,
+    annotations: Vec<crate::infrastructure::db::Annotation>,
+    history: Vec<crate::infrastructure::db::HistoryEntry>,
     /// Absolute project root, used to open relative file paths.
     project_root: Option<std::path::PathBuf>,
     /// Persisted branch snapshot (set via `sara addbranch`, populated on `sara stop`).
-    branch: Option<crate::db::BranchRecord>,
+    branch: Option<crate::infrastructure::db::BranchRecord>,
     /// Tasks in the same project whose snapshot files overlap with this task's.
     overlaps: Vec<BranchOverlap>,
     /// Other pending tasks in the same project sharing at least one tag.
     similar: Vec<(i64, String, f64)>,
     /// Checklist items for this task.
-    checklist: Vec<crate::db::ChecklistItem>,
+    checklist: Vec<crate::infrastructure::db::ChecklistItem>,
     /// Urgency score components.
-    urgency_breakdown: Option<crate::db::UrgencyBreakdown>,
+    urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
     /// Daily activity counts for the task's project (last ~16 weeks).
     activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     /// Aggregated stats for the project.
-    stats: Option<crate::db::ProjectStats>,
+    stats: Option<crate::infrastructure::db::ProjectStats>,
     /// Guide fields: assignment, rationale, freshness, meta.
-    guide: crate::db::TaskGuideFields,
+    guide: crate::infrastructure::db::TaskGuideFields,
     /// Code anchors (relevant files with reasons / symbols / lines).
-    anchors: Vec<crate::db::Anchor>,
+    anchors: Vec<crate::infrastructure::db::Anchor>,
     /// AI run audit trail.
-    ai_runs: Vec<crate::db::AiRun>,
+    ai_runs: Vec<crate::infrastructure::db::AiRun>,
     /// Current project HEAD commit, for the freshness banner.
     head_commit: Option<String>,
     /// Project-level setup/test/lint/run commands (verification context).
-    project_commands: crate::db::ProjectCommands,
+    project_commands: crate::infrastructure::db::ProjectCommands,
     /// The dependency chain (feature) this task belongs to, in blockers-first
     /// order. Empty when the task has no linked tasks. Used by the right-hand
     /// "Feature chain" panel to show progress and highlight the current task.
@@ -309,7 +309,7 @@ fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     let ai_runs = db::get_ai_runs(conn, &task.uuid).unwrap_or_default();
     let head_commit = project_root
         .as_ref()
-        .and_then(|p| crate::git::head_commit(p));
+        .and_then(|p| crate::infrastructure::git::head_commit(p));
     let project_commands = db::get_project_commands(conn, &task.project).unwrap_or_default();
     let chain = db::feature_chain(conn, &task.uuid).unwrap_or_default();
 
@@ -384,7 +384,7 @@ fn guide_is_stale(d: &Detail) -> bool {
 }
 
 /// Annotations of a given kind (findings, constraints, …) authored on the task.
-fn notes_of_kind<'a>(d: &'a Detail, kind: &str) -> Vec<&'a crate::db::Annotation> {
+fn notes_of_kind<'a>(d: &'a Detail, kind: &str) -> Vec<&'a crate::infrastructure::db::Annotation> {
     d.annotations.iter().filter(|a| a.kind == kind).collect()
 }
 
@@ -399,7 +399,7 @@ const NOTE_KINDS: [&str; 8] = [
     "risk",
     "pattern",
 ];
-fn typed_notes(d: &Detail) -> Vec<&crate::db::Annotation> {
+fn typed_notes(d: &Detail) -> Vec<&crate::infrastructure::db::Annotation> {
     let mut out = Vec::new();
     for kind in NOTE_KINDS {
         for n in notes_of_kind(d, kind) {
@@ -572,7 +572,7 @@ pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()
         .ok()
         .flatten()
         .and_then(|p| p.path)
-        .and_then(|path| crate::git::head_commit(std::path::Path::new(&path)));
+        .and_then(|path| crate::infrastructure::git::head_commit(std::path::Path::new(&path)));
     let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
     let stale = match (&head, &validated) {
         (Some(h), Some(v)) => h != v,
@@ -690,7 +690,7 @@ fn comment_target(d: &Detail, focus: &Option<Focusable>) -> (Option<String>, Opt
         }
         Some(Focusable::Comment(i)) => {
             // Replying to a comment: anchor to the note itself.
-            let comments: Vec<&crate::db::Annotation> = d
+            let comments: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
                 .filter(|a| a.kind == "comment")
@@ -708,10 +708,10 @@ fn comment_target(d: &Detail, focus: &Option<Focusable>) -> (Option<String>, Opt
 fn feedback_for_focus<'a>(
     d: &'a Detail,
     focus: &Option<Focusable>,
-) -> Vec<&'a crate::db::Annotation> {
+) -> Vec<&'a crate::infrastructure::db::Annotation> {
     // When the cursor is ON a comment, r/x act on that comment directly.
     if let Some(Focusable::Comment(i)) = focus {
-        let comments: Vec<&crate::db::Annotation> = d
+        let comments: Vec<&crate::infrastructure::db::Annotation> = d
             .annotations
             .iter()
             .filter(|a| a.kind == "comment")
@@ -723,7 +723,7 @@ fn feedback_for_focus<'a>(
             .unwrap_or_default();
     }
     let (tk, tid) = comment_target(d, focus);
-    let mut v: Vec<&crate::db::Annotation> = d
+    let mut v: Vec<&crate::infrastructure::db::Annotation> = d
         .annotations
         .iter()
         .filter(|a| {
@@ -861,7 +861,7 @@ fn edit_loop<B: Backend>(
                     }
                     if field == EditField::Due
                         && !value.trim().is_empty()
-                        && !crate::dates::is_valid_due(&value)
+                        && !crate::infrastructure::dates::is_valid_due(&value)
                     {
                         st.due_error = true;
                         continue;
@@ -880,7 +880,8 @@ fn edit_loop<B: Backend>(
                     st.editor.input(key);
                     if field == EditField::Due {
                         let v = st.editor.lines().join("");
-                        st.due_error = !v.trim().is_empty() && !crate::dates::is_valid_due(&v);
+                        st.due_error =
+                            !v.trim().is_empty() && !crate::infrastructure::dates::is_valid_due(&v);
                     }
                 }
             }
@@ -1470,7 +1471,7 @@ fn render(f: &mut Frame, st: &EditState) {
 
             // Open comments targeting this note.
             let note_id_str = n.id.to_string();
-            let note_fb: Vec<&crate::db::Annotation> = d
+            let note_fb: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
                 .filter(|a| {
@@ -1620,7 +1621,7 @@ fn render(f: &mut Frame, st: &EditState) {
             };
 
             // Threaded comments anchored to this file.
-            let anchor_fb: Vec<&crate::db::Annotation> = d
+            let anchor_fb: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
                 .filter(|a| {
@@ -1772,7 +1773,7 @@ fn render(f: &mut Frame, st: &EditState) {
                 "step"
             };
             let item_id_str = item.id.to_string();
-            let fb: Vec<&crate::db::Annotation> = d
+            let fb: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
                 .filter(|a| {
@@ -1921,12 +1922,12 @@ fn render(f: &mut Frame, st: &EditState) {
         }
     }
     // ── Comments section: task-level + replies only (anchored ones shown inline above) ─
-    let all_comments: Vec<&crate::db::Annotation> = d
+    let all_comments: Vec<&crate::infrastructure::db::Annotation> = d
         .annotations
         .iter()
         .filter(|a| a.kind == "comment")
         .collect();
-    let unthreaded: Vec<&crate::db::Annotation> = all_comments
+    let unthreaded: Vec<&crate::infrastructure::db::Annotation> = all_comments
         .iter()
         .copied()
         .filter(|a| a.target_kind.as_deref() != Some("anchor"))
@@ -1937,7 +1938,7 @@ fn render(f: &mut Frame, st: &EditState) {
             "Comments  (↑/↓ select · c add · r reconsider · x resolve)",
         ));
         // Build an index: comment-id -> annotation, for resolving note: replies.
-        let id_map: std::collections::HashMap<i64, &crate::db::Annotation> =
+        let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =
             all_comments.iter().map(|a| (a.id, *a)).collect();
         // Build an index: checklist-item-id -> text, for resolving step/acceptance replies.
         let checklist_map: std::collections::HashMap<i64, &str> = d
@@ -2210,7 +2211,7 @@ fn render_chain_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
     let done = d
         .chain
         .iter()
-        .filter(|t| t.status == crate::model::Status::Completed)
+        .filter(|t| t.status == crate::infrastructure::model::Status::Completed)
         .count();
     let all_done = total > 0 && done == total;
 
@@ -2245,7 +2246,7 @@ fn render_chain_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
     let current_idx = d.chain.iter().position(|t| t.uuid == d.task.uuid);
     let desc_w = inner.width.saturating_sub(8) as usize;
     for (i, t) in d.chain.iter().enumerate() {
-        let completed = t.status == crate::model::Status::Completed;
+        let completed = t.status == crate::infrastructure::model::Status::Completed;
         let is_current = Some(i) == current_idx;
         let id_str =
             t.id.map(|n| format!("{n:>3}"))
@@ -2617,7 +2618,7 @@ fn heat_color_mini(count: u32, max: u32) -> Color {
     }
 }
 
-fn history_lines(history: &[crate::db::HistoryEntry]) -> Vec<Line<'static>> {
+fn history_lines(history: &[crate::infrastructure::db::HistoryEntry]) -> Vec<Line<'static>> {
     let mut lines = vec![];
     for h in history.iter().rev() {
         let date = h
@@ -3024,7 +3025,7 @@ fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     }
 
     // Steps (with intent + result).
-    let steps: Vec<&crate::db::ChecklistItem> = d
+    let steps: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
@@ -3060,7 +3061,7 @@ fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     }
 
     // Acceptance criteria.
-    let acceptance: Vec<&crate::db::ChecklistItem> = d
+    let acceptance: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
@@ -3104,7 +3105,7 @@ fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     }
 
     // Code anchors (relevant files with reasons).
-    let suggested: Vec<&crate::db::Anchor> = d
+    let suggested: Vec<&crate::infrastructure::db::Anchor> = d
         .anchors
         .iter()
         .filter(|a| a.source == db::SOURCE_SUGGESTED)
@@ -3203,7 +3204,7 @@ fn render_plain(d: &Detail, opts: RenderOpts) -> String {
 }
 
 /// Format a single history entry's timestamp for the readable digest.
-fn history_changed_at(h: &crate::db::HistoryEntry) -> String {
+fn history_changed_at(h: &crate::infrastructure::db::HistoryEntry) -> String {
     h.changed_at
         .with_timezone(&Local)
         .format("%Y-%m-%d %H:%M")
@@ -3211,7 +3212,7 @@ fn history_changed_at(h: &crate::db::HistoryEntry) -> String {
 }
 
 /// Describe a single history entry as a one-line change summary.
-fn history_change(h: &crate::db::HistoryEntry) -> String {
+fn history_change(h: &crate::infrastructure::db::HistoryEntry) -> String {
     if h.field == "created" {
         h.new_value.clone().unwrap_or_default()
     } else if h.field == "annotation" {
@@ -3288,7 +3289,7 @@ fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         w!("{r}");
     }
 
-    let steps: Vec<&crate::db::ChecklistItem> = d
+    let steps: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
@@ -3303,7 +3304,7 @@ fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let acceptance: Vec<&crate::db::ChecklistItem> = d
+    let acceptance: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
@@ -3340,7 +3341,7 @@ fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let anchors: Vec<&crate::db::Anchor> = d
+    let anchors: Vec<&crate::infrastructure::db::Anchor> = d
         .anchors
         .iter()
         .filter(|a| a.source == db::SOURCE_SUGGESTED)
@@ -3491,8 +3492,13 @@ mod tests {
         assert_eq!(current_value(&t, EditField::Tags), "a, b");
     }
 
-    fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::db::ChecklistItem {
-        crate::db::ChecklistItem {
+    fn step(
+        id: i64,
+        text: &str,
+        kind: &str,
+        done: bool,
+    ) -> crate::infrastructure::db::ChecklistItem {
+        crate::infrastructure::db::ChecklistItem {
             id,
             text: text.into(),
             done,
@@ -3507,8 +3513,12 @@ mod tests {
         }
     }
 
-    fn history(field: &str, old: Option<&str>, new: Option<&str>) -> crate::db::HistoryEntry {
-        crate::db::HistoryEntry {
+    fn history(
+        field: &str,
+        old: Option<&str>,
+        new: Option<&str>,
+    ) -> crate::infrastructure::db::HistoryEntry {
+        crate::infrastructure::db::HistoryEntry {
             field: field.into(),
             old_value: old.map(Into::into),
             new_value: new.map(Into::into),
@@ -3517,8 +3527,8 @@ mod tests {
     }
 
     fn detail(
-        checklist: Vec<crate::db::ChecklistItem>,
-        hist: Vec<crate::db::HistoryEntry>,
+        checklist: Vec<crate::infrastructure::db::ChecklistItem>,
+        hist: Vec<crate::infrastructure::db::HistoryEntry>,
     ) -> Detail {
         Detail {
             task: task(),
@@ -3538,11 +3548,11 @@ mod tests {
             urgency_breakdown: None,
             activity: std::collections::HashMap::new(),
             stats: None,
-            guide: crate::db::TaskGuideFields::default(),
+            guide: crate::infrastructure::db::TaskGuideFields::default(),
             anchors: vec![],
             ai_runs: vec![],
             head_commit: None,
-            project_commands: crate::db::ProjectCommands::default(),
+            project_commands: crate::infrastructure::db::ProjectCommands::default(),
             chain: vec![],
         }
     }

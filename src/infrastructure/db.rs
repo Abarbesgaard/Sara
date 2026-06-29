@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use rusqlite_migration::{M, Migrations};
 
-use crate::config;
-use crate::model::{Item, Priority, Project, Status, Task};
+use crate::infrastructure::config;
+use crate::infrastructure::model::{Item, Priority, Project, Status, Task};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -1844,7 +1844,7 @@ pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
 
 pub fn compute_urgency(
     task: &Task,
-    cfg: &crate::config::UrgencyConfig,
+    cfg: &crate::infrastructure::config::UrgencyConfig,
     is_blocked: bool,
     blocking_count: usize,
 ) -> f64 {
@@ -1892,7 +1892,7 @@ pub fn compute_urgency(
 
 pub fn refresh_urgency(
     conn: &Connection,
-    cfg: &crate::config::UrgencyConfig,
+    cfg: &crate::infrastructure::config::UrgencyConfig,
     task_uuid: &Uuid,
 ) -> Result<()> {
     let task = {
@@ -1929,7 +1929,7 @@ pub struct UrgencyBreakdown {
 
 pub fn compute_urgency_breakdown(
     task: &Task,
-    cfg: &crate::config::UrgencyConfig,
+    cfg: &crate::infrastructure::config::UrgencyConfig,
     is_blocked: bool,
     blocking_count: usize,
 ) -> UrgencyBreakdown {
@@ -3134,15 +3134,15 @@ pub fn get_github_sync(conn: &Connection, project: &str) -> Result<GithubSyncSet
 pub fn get_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
-) -> Result<Option<crate::model::GithubProvenance>> {
+) -> Result<Option<crate::infrastructure::model::GithubProvenance>> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let Some(raw) = fields.meta_json else {
         return Ok(None);
     };
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
-    let prov = obj
-        .get("github")
-        .and_then(|v| serde_json::from_value::<crate::model::GithubProvenance>(v.clone()).ok());
+    let prov = obj.get("github").and_then(|v| {
+        serde_json::from_value::<crate::infrastructure::model::GithubProvenance>(v.clone()).ok()
+    });
     Ok(prov)
 }
 
@@ -3187,7 +3187,7 @@ pub fn find_github_task_uuid(
 pub fn set_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
-    prov: &crate::model::GithubProvenance,
+    prov: &crate::infrastructure::model::GithubProvenance,
 ) -> Result<()> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let mut obj: serde_json::Map<String, serde_json::Value> = fields
@@ -3218,7 +3218,7 @@ pub const NOTE_KIND_GITHUB_COMMENT: &str = "github_comment";
 pub fn upsert_github_comment_annotation(
     conn: &Connection,
     task_uuid: &Uuid,
-    comment: &crate::model::GithubComment,
+    comment: &crate::infrastructure::model::GithubComment,
 ) -> Result<bool> {
     let id_str = comment.comment_id.to_string();
     let exists: bool = conn
@@ -3255,7 +3255,7 @@ pub fn upsert_github_comment_annotation(
 pub fn set_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,
-    comments: &[crate::model::GithubComment],
+    comments: &[crate::infrastructure::model::GithubComment],
 ) -> Result<()> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let mut obj: serde_json::Map<String, serde_json::Value> = fields
@@ -3275,7 +3275,7 @@ pub fn set_github_comments(
 pub fn get_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,
-) -> Result<Vec<crate::model::GithubComment>> {
+) -> Result<Vec<crate::infrastructure::model::GithubComment>> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let Some(raw) = fields.meta_json else {
         return Ok(Vec::new());
@@ -3283,7 +3283,10 @@ pub fn get_github_comments(
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
     let comments = obj
         .get("github_comments")
-        .and_then(|v| serde_json::from_value::<Vec<crate::model::GithubComment>>(v.clone()).ok())
+        .and_then(|v| {
+            serde_json::from_value::<Vec<crate::infrastructure::model::GithubComment>>(v.clone())
+                .ok()
+        })
         .unwrap_or_default();
     Ok(comments)
 }
@@ -3528,7 +3531,7 @@ mod tests {
         add_annotation(&conn, &task.uuid, "a note").unwrap();
         save_project_profile(
             &conn,
-            &crate::model::Project {
+            &crate::infrastructure::model::Project {
                 name: "tk".into(),
                 path: None,
                 goal: Some("g".into()),
@@ -4232,7 +4235,7 @@ mod tests {
         let conn = mem();
         save_project_profile(
             &conn,
-            &crate::model::Project {
+            &crate::infrastructure::model::Project {
                 name: "myrepo".into(),
                 path: Some("/home/u/myrepo".into()),
                 goal: Some("g".into()),
@@ -4333,7 +4336,7 @@ mod tests {
         let conn = mem();
         let task = seed_task(&conn);
 
-        let prov = crate::model::GithubProvenance {
+        let prov = crate::infrastructure::model::GithubProvenance {
             repo: "acme/widgets".into(),
             issue_id: Some(42),
             node_id: Some("NODE42".into()),
@@ -4368,7 +4371,7 @@ mod tests {
         // Pre-populate meta_json with some other data.
         set_meta_json(&conn, &task.uuid, r#"{"my_key":"keep_me"}"#).unwrap();
 
-        let prov = crate::model::GithubProvenance {
+        let prov = crate::infrastructure::model::GithubProvenance {
             repo: "org/repo".into(),
             issue_id: None,
             node_id: None,
@@ -4399,7 +4402,7 @@ mod tests {
     #[test]
     fn github_provenance_contains_no_secret_fields() {
         // GithubProvenance only stores remote identity and sync metadata.
-        let prov = crate::model::GithubProvenance {
+        let prov = crate::infrastructure::model::GithubProvenance {
             repo: "org/repo".into(),
             issue_id: Some(7),
             node_id: Some("NODE7".into()),
@@ -4424,7 +4427,7 @@ mod tests {
     fn find_github_task_uuid_matches_repo_and_number_or_node_id() {
         let conn = mem();
         let task = seed_task(&conn);
-        let prov = crate::model::GithubProvenance {
+        let prov = crate::infrastructure::model::GithubProvenance {
             repo: "acme/widgets".into(),
             issue_id: Some(100),
             node_id: Some("NODE100".into()),
@@ -4454,8 +4457,12 @@ mod tests {
 
     // ── GitHub issue comments ────────────────────────────────────────────────
 
-    fn make_gh_comment(id: i64, author: &str, body: &str) -> crate::model::GithubComment {
-        crate::model::GithubComment {
+    fn make_gh_comment(
+        id: i64,
+        author: &str,
+        body: &str,
+    ) -> crate::infrastructure::model::GithubComment {
+        crate::infrastructure::model::GithubComment {
             comment_id: id,
             author: author.to_string(),
             body: body.to_string(),

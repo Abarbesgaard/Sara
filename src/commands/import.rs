@@ -6,10 +6,10 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use uuid::Uuid;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::Task;
-use crate::portable::Bundle;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::Task;
+use crate::infrastructure::portable::Bundle;
 
 /// Import a task bundle from a portable copy-paste blob.
 ///

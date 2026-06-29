@@ -13,11 +13,11 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use uuid::Uuid;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::{Priority, Status, Task};
-use crate::project::detect_current_project;
-use crate::tui;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::{Priority, Status, Task};
+use crate::infrastructure::project::detect_current_project;
+use crate::infrastructure::tui;
 
 enum BoardAction {
     Quit,
