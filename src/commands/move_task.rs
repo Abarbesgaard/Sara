@@ -1,8 +1,8 @@
 use anyhow::{Result, bail};
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
 
 /// Move a task to another project (non-interactive reassignment).
 ///

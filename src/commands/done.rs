@@ -2,9 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::Status;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::Status;
 
 pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<()> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
@@ -55,8 +55,8 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
     // Spawn next occurrence for recurring tasks
     if let Some(ref interval) = task.recur.clone() {
         let base = task.due.unwrap_or_else(Utc::now);
-        let next_due = crate::model::advance_by_interval(base, interval);
-        let mut next = crate::model::Task::new(task.description.clone(), task.project.clone());
+        let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
+        let mut next = crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
         next.priority = task.priority.clone();
         next.tags = task.tags.clone();
         next.due = Some(next_due);

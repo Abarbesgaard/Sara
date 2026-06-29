@@ -2,14 +2,14 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use crate::config::Config;
-use crate::db;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
 
 /// Resolve the git HEAD for the task's project, if it lives in a repo.
 fn project_head(conn: &Connection, project: &str) -> Option<String> {
     let proj = db::get_project(conn, project).ok().flatten()?;
     let path = proj.path?;
-    crate::git::head_commit(std::path::Path::new(&path))
+    crate::infrastructure::git::head_commit(std::path::Path::new(&path))
 }
 
 fn kind_arg(kind: Option<&str>) -> &str {

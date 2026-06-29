@@ -2,8 +2,8 @@ use anyhow::Result;
 use rusqlite::Connection;
 use std::io::{self, Write};
 
-use crate::config::Config;
-use crate::project::project_identity_for_dir;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::project::project_identity_for_dir;
 
 /// Resolve the project name for the current directory *without* registering it
 /// (unlike `detect_current_project`, which upserts a `last_seen` row).
@@ -23,8 +23,8 @@ pub fn run(
     yes: bool,
 ) -> Result<()> {
     let name = resolve_name(cfg, project_override)?;
-    let task_count = crate::db::count_project_tasks(conn, &name)?;
-    let profile = crate::db::get_project(conn, &name)?;
+    let task_count = crate::infrastructure::db::count_project_tasks(conn, &name)?;
+    let profile = crate::infrastructure::db::get_project(conn, &name)?;
 
     if task_count == 0 && profile.is_none() {
         println!("Nothing to reset: project '{name}' has no tasks or profile.");
@@ -47,7 +47,7 @@ pub fn run(
         }
     }
 
-    let deleted = crate::db::reset_project(conn, &name)?;
+    let deleted = crate::infrastructure::db::reset_project(conn, &name)?;
     println!("✔ Reset project '{name}': removed {deleted} task(s) and its profile.");
     println!("Run `sara init` to set it up again.");
     Ok(())

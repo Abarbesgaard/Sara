@@ -3,11 +3,11 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde::Deserialize;
 
-use crate::config::Config;
-use crate::db;
-use crate::git::github_repo_from_remote;
-use crate::model::Task;
-use crate::project::find_git_root;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::git::github_repo_from_remote;
+use crate::infrastructure::model::Task;
+use crate::infrastructure::project::find_git_root;
 
 #[derive(Debug, Deserialize)]
 struct GhUser {
@@ -162,8 +162,8 @@ fn issue_provenance(
     repo: &str,
     sync_login: &str,
     issue: &GhIssue,
-) -> crate::model::GithubProvenance {
-    crate::model::GithubProvenance {
+) -> crate::infrastructure::model::GithubProvenance {
+    crate::infrastructure::model::GithubProvenance {
         repo: repo.to_string(),
         issue_id: Some(issue.id),
         node_id: issue.node_id.clone(),
@@ -300,10 +300,10 @@ fn import_issue_comments(
     comments: &[GhComment],
 ) -> Result<(usize, usize)> {
     let mut added = 0usize;
-    let mut meta_comments: Vec<crate::model::GithubComment> = Vec::with_capacity(comments.len());
+    let mut meta_comments: Vec<crate::infrastructure::model::GithubComment> = Vec::with_capacity(comments.len());
 
     for c in comments {
-        let gh_comment = crate::model::GithubComment {
+        let gh_comment = crate::infrastructure::model::GithubComment {
             comment_id: c.id,
             author: c.user.login.clone(),
             body: c.body.clone().unwrap_or_default(),
@@ -332,7 +332,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     let (owner, repo) = github_repo_from_remote(&git_root)?;
     let token = resolve_github_token()?;
     let login = github_login(&token)?;
-    let (project_name, _) = crate::project::detect_current_project(conn, cfg)?;
+    let (project_name, _) = crate::infrastructure::project::detect_current_project(conn, cfg)?;
     let repo_full_name = format!("{owner}/{repo}");
 
     println!("Syncing issues for {owner}/{repo} assigned to @{login}…");

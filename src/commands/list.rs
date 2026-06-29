@@ -2,10 +2,10 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::{Priority, Task};
-use crate::project::detect_current_project;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::{Priority, Task};
+use crate::infrastructure::project::detect_current_project;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";

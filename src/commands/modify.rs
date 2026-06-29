@@ -2,11 +2,11 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
-use crate::model::Task;
-use crate::tui;
-use crate::tui::review_form::{FormContext, FormInput, run_form};
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::model::Task;
+use crate::infrastructure::tui;
+use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -57,7 +57,7 @@ pub fn run(
 
     let project_files: Vec<String> = db::get_project(conn, &task.project)?
         .and_then(|p| p.path)
-        .map(|p| crate::files::collect_project_entries(std::path::Path::new(&p)))
+        .map(|p| crate::infrastructure::files::collect_project_entries(std::path::Path::new(&p)))
         .unwrap_or_default();
 
     let current_files = db::get_task_files(conn, &task.uuid)?;
@@ -216,7 +216,7 @@ fn merge_task_fields(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Priority, Status, Task};
+    use crate::infrastructure::model::{Priority, Status, Task};
     use uuid::Uuid;
 
     fn sample() -> Task {

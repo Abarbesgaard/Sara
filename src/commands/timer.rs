@@ -2,10 +2,10 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 
-use crate::config::Config;
-use crate::db;
-use crate::git;
-use crate::model::format_duration;
+use crate::infrastructure::config::Config;
+use crate::infrastructure::db;
+use crate::infrastructure::git;
+use crate::infrastructure::model::format_duration;
 
 pub fn start(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use crate::db;
-use crate::git;
+use crate::infrastructure::db;
+use crate::infrastructure::git;
 
 pub fn run(conn: &Connection, id_or_uuid: &str, clear: bool) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;

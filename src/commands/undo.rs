@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::db;
+use crate::infrastructure::db;
 
 pub fn run(conn: &Connection) -> Result<()> {
     match db::undo(conn)? {

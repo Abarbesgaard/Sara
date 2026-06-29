@@ -11,7 +11,7 @@ use ratatui::{
 use rusqlite::Connection;
 use std::collections::HashMap;
 
-use crate::{db, tui};
+use crate::infrastructure::{db, tui};
 
 // ── colour levels (GitHub dark-theme-ish palette) ────────────────────────────
 

@@ -4,15 +4,7 @@
 mod cli;
 mod commands;
 mod completion;
-mod config;
-mod dates;
-mod db;
-mod files;
-mod git;
-mod model;
-mod portable;
-mod project;
-mod tui;
+mod infrastructure;
 
 use anyhow::Result;
 use clap::CommandFactory;
@@ -21,6 +13,7 @@ use std::io;
 use std::process::ExitCode;
 
 use cli::{Cli, Command, DepAction, ProjectAction};
+use infrastructure::{config, db};
 
 fn run() -> Result<()> {
     // Dynamic shell completion: when invoked as `COMPLETE=<shell> sara …`
@@ -377,8 +370,8 @@ fn run() -> Result<()> {
                 Some(p)
             } else {
                 let cwd = std::env::current_dir().unwrap_or_default();
-                crate::project::find_git_root(&cwd)
-                    .map(|root| crate::project::project_name_from_root(&root))
+                crate::infrastructure::project::find_git_root(&cwd)
+                    .map(|root| crate::infrastructure::project::project_name_from_root(&root))
             };
             commands::activity::run(&conn, proj.as_deref())?;
         }
