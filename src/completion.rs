@@ -15,14 +15,14 @@ use rusqlite::Connection;
 /// Candidates for a task id/uuid argument: every pending task's display id,
 /// helped by its description.
 pub fn task_ids() -> Vec<CompletionCandidate> {
-    crate::db::open()
+    crate::infrastructure::db::open()
         .ok()
         .map(|conn| task_ids_from(&conn))
         .unwrap_or_default()
 }
 
 fn task_ids_from(conn: &Connection) -> Vec<CompletionCandidate> {
-    crate::db::list_tasks(conn, None)
+    crate::infrastructure::db::list_tasks(conn, None)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|t| {
@@ -33,14 +33,14 @@ fn task_ids_from(conn: &Connection) -> Vec<CompletionCandidate> {
 
 /// Candidates for a project argument: every known project name.
 pub fn projects() -> Vec<CompletionCandidate> {
-    crate::db::open()
+    crate::infrastructure::db::open()
         .ok()
         .map(|conn| projects_from(&conn))
         .unwrap_or_default()
 }
 
 fn projects_from(conn: &Connection) -> Vec<CompletionCandidate> {
-    crate::db::project_names(conn)
+    crate::infrastructure::db::project_names(conn)
         .unwrap_or_default()
         .into_iter()
         .map(CompletionCandidate::new)
