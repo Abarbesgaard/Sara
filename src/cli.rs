@@ -277,6 +277,15 @@ pub enum Command {
         project: Option<String>,
     },
 
+    /// Import a batch of tasks from a human-friendly JSON graph (see --help for schema)
+    ImportGraph {
+        /// Path to a JSON file, or a JSON string; omit to read stdin
+        source: Option<String>,
+        /// Assign all imported tasks to this project (defaults to current git project)
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Option<String>,
+    },
+
     /// Delete a task (soft-delete)
     Delete {
         /// Task id or uuid prefix
