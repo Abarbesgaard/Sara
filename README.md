@@ -1,8 +1,13 @@
 # Sara — a folder-aware task manager
 
-`Sara` is a personal assistant with a folder-aware task manager at its core. She
-knows which Git project you're standing in, ranks your work with a transparent
-urgency model, tracks time, and links tasks to branches.
+`Sara` is what plan mode would be if it kept its memory. She's built primarily
+as a tool for an LLM agent, not the human at the keyboard: instead of a plan
+that disappears when the conversation ends, an agent can persist it in Sara
+and pick up where it left off in the next session. She knows which Git
+project the agent is standing in, ranks work with a transparent urgency
+model, tracks time, and links tasks to branches. She's LLM-agnostic — any
+agent can drive her through a plain local CLI, and a human can still poke
+around by hand.
 
 Task data lives in a single SQLite database in your home directory — **nothing
 is ever written into your repositories.**
