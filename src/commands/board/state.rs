@@ -1,5 +1,4 @@
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{HashMap, VecDeque};
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -15,63 +14,75 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
     let all = db::list_tasks_for_board(conn, &project)?;
     let edges = db::dependency_edges_for_project(conn, &project)?;
 
-    // uuid -> position in `all`
     let pos: HashMap<Uuid, usize> = all.iter().enumerate().map(|(i, t)| (t.uuid, i)).collect();
     let n = all.len();
 
-    // Union-find over task positions; union the two endpoints of every edge.
-    let mut parent: Vec<usize> = (0..n).collect();
-    // Execution-order adjacency (blocker -> dependent) + in-degree for topo sort.
+    // Build directed adjacency (blocker → dependents) and undirected neighbors for BFS.
     let mut dependents: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut indeg = vec![0usize; n];
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (task, dep) in &edges {
         if let (Some(&ti), Some(&di)) = (pos.get(task), pos.get(dep)) {
-            union(&mut parent, ti, di);
             dependents.entry(di).or_default().push(ti);
             indeg[ti] += 1;
+            neighbors[di].push(ti);
+            neighbors[ti].push(di);
         }
     }
 
-    // Bucket task positions by their connected-component root.
-    let mut comps: HashMap<usize, Vec<usize>> = HashMap::new();
-    for i in 0..n {
-        let r = find(&mut parent, i);
-        comps.entry(r).or_default().push(i);
+    // Find connected components via BFS.
+    let mut visited = vec![false; n];
+    let mut components: Vec<Vec<usize>> = Vec::new();
+    for start in 0..n {
+        if visited[start] {
+            continue;
+        }
+        let mut comp = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+        visited[start] = true;
+        while let Some(node) = queue.pop_back() {
+            comp.push(node);
+            for &nb in &neighbors[node] {
+                if !visited[nb] {
+                    visited[nb] = true;
+                    queue.push_back(nb);
+                }
+            }
+        }
+        components.push(comp);
     }
 
-    // Split into multi-task features and singleton (ungrouped) tasks.
+    // Split into multi-task features and standalone singletons.
     let mut features_nodes: Vec<Vec<usize>> = Vec::new();
     let mut ungrouped: Vec<usize> = Vec::new();
-    for nodes in comps.into_values() {
-        if nodes.len() >= 2 {
-            features_nodes.push(topo_order(&nodes, &dependents, &indeg));
+    for comp in components {
+        if comp.len() >= 2 {
+            features_nodes.push(topo_order(&comp, &dependents, &indeg));
         } else {
-            ungrouped.push(nodes[0]);
+            ungrouped.push(comp[0]);
         }
     }
 
-    // Order features: active (has pending work) first, by best pending urgency.
+    // Sort features: active (has pending) first, then by highest pending urgency.
     features_nodes.sort_by(|a, b| {
-        feature_sort_key(b, &all)
-            .partial_cmp(&feature_sort_key(a, &all))
+        sort_key(b, &all)
+            .partial_cmp(&sort_key(a, &all))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    // Singletons keep `all` order: pending by urgency, then completed by end.
     ungrouped.sort_unstable();
 
-    // Flatten into the render order, tagging each task with its feature index.
+    // Flatten into render order, tagging each task with its feature index.
     let mut tasks: Vec<Task> = Vec::with_capacity(n);
     let mut feature_of: Vec<usize> = Vec::with_capacity(n);
     let mut features: Vec<Feature> = Vec::new();
 
     for nodes in &features_nodes {
         let fi = features.len();
-        let total = nodes.len();
         let done = nodes
             .iter()
             .filter(|&&i| all[i].status == Status::Completed)
             .count();
-        // Name the feature after its final (goal) task — last in chain order.
         let title = nodes
             .last()
             .map(|&i| truncate(&all[i].description, 56))
@@ -79,7 +90,7 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
         features.push(Feature {
             title,
             done,
-            total,
+            total: nodes.len(),
             grouped: true,
         });
         for &i in nodes {
@@ -90,7 +101,6 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
 
     if !ungrouped.is_empty() {
         let fi = features.len();
-        let total = ungrouped.len();
         let done = ungrouped
             .iter()
             .filter(|&&i| all[i].status == Status::Completed)
@@ -98,7 +108,7 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
         features.push(Feature {
             title: "Standalone tasks".to_string(),
             done,
-            total,
+            total: ungrouped.len(),
             grouped: false,
         });
         for &i in &ungrouped {
@@ -107,8 +117,14 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
         }
     }
 
+    let pending = tasks.iter().filter(|t| t.status == Status::Pending).count();
+    let feature_count = features.iter().filter(|f| f.grouped).count();
+
     Ok(BoardState {
         project,
+        done: tasks.len() - pending,
+        pending,
+        feature_count,
         tasks,
         feature_of,
         features,
@@ -117,75 +133,45 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
     })
 }
 
-fn feature_sort_key(nodes: &[usize], all: &[Task]) -> (i32, f64) {
-    let mut best = f64::MIN;
-    let mut any_pending = 0;
-    for &i in nodes {
-        if all[i].status == Status::Pending {
-            any_pending = 1;
-            best = best.max(all[i].urgency);
-        }
-    }
-    (any_pending, if any_pending == 1 { best } else { 0.0 })
-}
-
-/// Kahn topological sort over the component so blockers come before dependents.
-/// Ties are broken by original position (urgency order) for stable output.
+/// Topological sort (blockers first). Ties broken by original position for stable output.
 fn topo_order(
     nodes: &[usize],
     dependents: &HashMap<usize, Vec<usize>>,
-    indeg: &[usize],
+    global_indeg: &[usize],
 ) -> Vec<usize> {
-    use std::collections::HashSet;
-    let set: HashSet<usize> = nodes.iter().copied().collect();
-    let mut remaining: HashMap<usize, usize> = nodes.iter().map(|&i| (i, indeg[i])).collect();
-    // Min-heap on position => earliest/most-urgent ready node first.
-    let mut ready: BinaryHeap<Reverse<usize>> = remaining
-        .iter()
-        .filter(|&(_, &d)| d == 0)
-        .map(|(&i, _)| Reverse(i))
-        .collect();
-
+    let mut indeg: HashMap<usize, usize> = nodes.iter().map(|&i| (i, global_indeg[i])).collect();
     let mut out = Vec::with_capacity(nodes.len());
-    while let Some(Reverse(i)) = ready.pop() {
-        out.push(i);
-        if let Some(deps) = dependents.get(&i) {
-            for &j in deps {
-                if !set.contains(&j) {
-                    continue;
-                }
-                if let Some(d) = remaining.get_mut(&j) {
-                    *d -= 1;
-                    if *d == 0 {
-                        ready.push(Reverse(j));
+    while out.len() < nodes.len() {
+        let mut ready: Vec<usize> = indeg
+            .iter()
+            .filter(|&(_, &d)| d == 0)
+            .map(|(&i, _)| i)
+            .collect();
+        if ready.is_empty() {
+            break; // cycle guard (shouldn't happen — graph is acyclic)
+        }
+        ready.sort_unstable();
+        for i in ready {
+            indeg.remove(&i);
+            out.push(i);
+            if let Some(deps) = dependents.get(&i) {
+                for &j in deps {
+                    if let Some(d) = indeg.get_mut(&j) {
+                        *d = d.saturating_sub(1);
                     }
                 }
             }
         }
     }
-    // Any nodes left (shouldn't happen — graph is acyclic) appended in position order.
-    if out.len() < nodes.len() {
-        let mut leftover: Vec<usize> = nodes.iter().copied().filter(|i| !out.contains(i)).collect();
-        leftover.sort_unstable();
-        out.extend(leftover);
-    }
     out
 }
 
-fn find(parent: &mut [usize], mut x: usize) -> usize {
-    while parent[x] != x {
-        parent[x] = parent[parent[x]]; // path halving
-        x = parent[x];
-    }
-    x
-}
-
-fn union(parent: &mut [usize], a: usize, b: usize) {
-    let ra = find(parent, a);
-    let rb = find(parent, b);
-    if ra != rb {
-        parent[ra] = rb;
-    }
+/// Active-first sort key: (has_pending, best_urgency). Compared descending in the caller.
+fn sort_key(nodes: &[usize], all: &[Task]) -> (bool, f64) {
+    nodes
+        .iter()
+        .filter_map(|&i| (all[i].status == Status::Pending).then_some(all[i].urgency))
+        .fold((false, 0.0), |(_, best), u| (true, best.max(u)))
 }
 
 fn truncate(s: &str, max: usize) -> String {

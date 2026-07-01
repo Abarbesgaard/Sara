@@ -22,6 +22,10 @@ pub struct BoardState {
     /// Feature index for each task in `tasks`.
     pub feature_of: Vec<usize>,
     pub features: Vec<Feature>,
+    /// Precomputed counts for the title bar — stable between reloads.
+    pub pending: usize,
+    pub done: usize,
+    pub feature_count: usize,
     pub selected: usize,
     pub scroll: u16,
 }

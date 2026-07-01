@@ -131,25 +131,20 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
         .unwrap_or_else(|| "  -".to_string());
 
     if task.status == Status::Completed {
-        let meta = Style::default()
+        let base = Style::default()
             .fg(if is_sel {
                 Color::White
             } else {
                 Color::DarkGray
             })
             .bg(bg);
-        let done_style = Style::default()
-            .fg(if is_sel {
-                Color::White
-            } else {
-                Color::DarkGray
-            })
-            .bg(bg)
-            .add_modifier(Modifier::CROSSED_OUT);
         Line::from(vec![
-            Span::styled(format!("{prefix}{connector}"), meta),
-            Span::styled(format!("{id_str}  "), meta),
-            Span::styled(task.description.clone(), done_style),
+            Span::styled(format!("{prefix}{connector}"), base),
+            Span::styled(format!("{id_str}  "), base),
+            Span::styled(
+                task.description.clone(),
+                base.add_modifier(Modifier::CROSSED_OUT),
+            ),
         ])
     } else {
         let pri_str = task.priority.as_ref().map(|p| p.label()).unwrap_or("-");
@@ -181,20 +176,13 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
 
 fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     let area = f.area();
-    let pending = st
-        .tasks
-        .iter()
-        .filter(|t| t.status == Status::Pending)
-        .count();
-    let done = st.tasks.len() - pending;
-    let feature_count = st.features.iter().filter(|f| f.grouped).count();
     let title = format!(
         " {} · {} feature{} · {} pending, {} done ",
         st.project,
-        feature_count,
-        if feature_count == 1 { "" } else { "s" },
-        pending,
-        done
+        st.feature_count,
+        if st.feature_count == 1 { "" } else { "s" },
+        st.pending,
+        st.done,
     );
 
     let chunks = Layout::default()
