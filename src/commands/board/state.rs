@@ -79,12 +79,20 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
 
     for nodes in &features_nodes {
         let fi = features.len();
-        let done = nodes.iter().filter(|&&i| all[i].status == Status::Completed).count();
+        let done = nodes
+            .iter()
+            .filter(|&&i| all[i].status == Status::Completed)
+            .count();
         let title = nodes
             .last()
             .map(|&i| truncate(&all[i].description, 56))
             .unwrap_or_else(|| format!("Feature {}", fi + 1));
-        features.push(Feature { title, done, total: nodes.len(), grouped: true });
+        features.push(Feature {
+            title,
+            done,
+            total: nodes.len(),
+            grouped: true,
+        });
         for &i in nodes {
             tasks.push(all[i].clone());
             feature_of.push(fi);
@@ -93,7 +101,10 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
 
     if !ungrouped.is_empty() {
         let fi = features.len();
-        let done = ungrouped.iter().filter(|&&i| all[i].status == Status::Completed).count();
+        let done = ungrouped
+            .iter()
+            .filter(|&&i| all[i].status == Status::Completed)
+            .count();
         features.push(Feature {
             title: "Standalone tasks".to_string(),
             done,
@@ -128,12 +139,14 @@ fn topo_order(
     dependents: &HashMap<usize, Vec<usize>>,
     global_indeg: &[usize],
 ) -> Vec<usize> {
-    let mut indeg: HashMap<usize, usize> =
-        nodes.iter().map(|&i| (i, global_indeg[i])).collect();
+    let mut indeg: HashMap<usize, usize> = nodes.iter().map(|&i| (i, global_indeg[i])).collect();
     let mut out = Vec::with_capacity(nodes.len());
     while out.len() < nodes.len() {
-        let mut ready: Vec<usize> =
-            indeg.iter().filter(|&(_, &d)| d == 0).map(|(&i, _)| i).collect();
+        let mut ready: Vec<usize> = indeg
+            .iter()
+            .filter(|&(_, &d)| d == 0)
+            .map(|(&i, _)| i)
+            .collect();
         if ready.is_empty() {
             break; // cycle guard (shouldn't happen — graph is acyclic)
         }

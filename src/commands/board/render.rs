@@ -132,12 +132,19 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
 
     if task.status == Status::Completed {
         let base = Style::default()
-            .fg(if is_sel { Color::White } else { Color::DarkGray })
+            .fg(if is_sel {
+                Color::White
+            } else {
+                Color::DarkGray
+            })
             .bg(bg);
         Line::from(vec![
             Span::styled(format!("{prefix}{connector}"), base),
             Span::styled(format!("{id_str}  "), base),
-            Span::styled(task.description.clone(), base.add_modifier(Modifier::CROSSED_OUT)),
+            Span::styled(
+                task.description.clone(),
+                base.add_modifier(Modifier::CROSSED_OUT),
+            ),
         ])
     } else {
         let pri_str = task.priority.as_ref().map(|p| p.label()).unwrap_or("-");
