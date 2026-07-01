@@ -46,9 +46,10 @@ pub(super) fn save(
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
 
     println!(
-        "Created task {} [{}]: {}",
+        "Created task {} [{}] ({}): {}",
         task.id.unwrap_or(0),
         task.project,
+        &task.uuid.to_string()[..8],
         task.description
     );
     Ok(())
