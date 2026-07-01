@@ -1347,7 +1347,7 @@ fn render_mini_heatmap(
         for _ in 0..num_weeks {
             let m = ws.month();
             if m != last_month {
-                let name = &crate::commands::activity::month_abbr(m)[..3];
+                let name = &month_abbr(m)[..3];
                 spans.push(Span::styled(
                     format!("{:<width$}", name, width = cell_w as usize),
                     Style::default().fg(Color::DarkGray),
@@ -1759,4 +1759,22 @@ fn section(k: &str) -> Line<'static> {
             .add_modifier(Modifier::BOLD)
             .fg(Color::Cyan),
     ))
+}
+
+fn month_abbr(m: u32) -> &'static str {
+    match m {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
+        _ => "???",
+    }
 }
