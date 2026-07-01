@@ -56,7 +56,9 @@ pub(super) fn save(
                     db::refresh_urgency(conn, &cfg.urgency, &dep.uuid).ok();
                 }
             }
-            Ok(None) => eprintln!("Warning: no task found for prefix '{prefix}', skipping dependency"),
+            Ok(None) => {
+                eprintln!("Warning: no task found for prefix '{prefix}', skipping dependency")
+            }
             Err(e) => eprintln!("Warning: could not resolve '{prefix}': {e}"),
         }
     }
@@ -64,7 +66,9 @@ pub(super) fn save(
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
 
     for text in annotations {
-        if let Err(e) = db::add_annotation_full(conn, &task.uuid, text, "comment", "ai", None, None, false) {
+        if let Err(e) =
+            db::add_annotation_full(conn, &task.uuid, text, "comment", "ai", None, None, false)
+        {
             eprintln!("Warning: could not add annotation: {e}");
         }
     }

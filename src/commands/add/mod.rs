@@ -35,7 +35,16 @@ pub fn run(
         return Ok(());
     };
 
-    persist::save(conn, cfg, form, recur, annotations, links, checks, depends_on)
+    persist::save(
+        conn,
+        cfg,
+        form,
+        recur,
+        annotations,
+        links,
+        checks,
+        depends_on,
+    )
 }
 
 pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>> {
