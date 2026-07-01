@@ -12,6 +12,7 @@ pub mod import;
 pub mod info;
 pub mod init;
 pub mod list;
+pub mod mcp;
 pub mod modify;
 pub mod move_task;
 pub mod plan;

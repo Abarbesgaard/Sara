@@ -35,8 +35,10 @@ impl<T> ParseCtx<T> for std::result::Result<T, std::num::ParseIntError> {
     }
 }
 
+/// Add an annotation and return a structured record. Shared by the CLI
+/// `annotate`/`comment` command and the MCP `annotate` tool (which cannot print).
 #[allow(clippy::too_many_arguments)]
-pub fn annotate(
+pub fn annotate_value(
     conn: &Connection,
     id_or_uuid: &str,
     words: &[String],
@@ -44,7 +46,7 @@ pub fn annotate(
     author: Option<&str>,
     on: Option<&str>,
     reconsider: bool,
-) -> Result<()> {
+) -> Result<serde_json::Value> {
     let text = words
         .iter()
         .filter(|w| !w.starts_with("--"))
@@ -64,17 +66,41 @@ pub fn annotate(
         None => (None, None),
     };
 
+    let note_kind = kind.unwrap_or(db::NOTE_KIND_COMMENT);
     db::add_annotation_full(
         conn,
         &task.uuid,
         text.trim(),
-        kind.unwrap_or(db::NOTE_KIND_COMMENT),
+        note_kind,
         author.unwrap_or("human"),
         target_kind.as_deref(),
         target_id.as_deref(),
         reconsider,
     )?;
-    println!("Annotated task {}: {}", task.id.unwrap_or(0), text.trim());
+    Ok(serde_json::json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "kind": note_kind,
+        "text": text.trim(),
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn annotate(
+    conn: &Connection,
+    id_or_uuid: &str,
+    words: &[String],
+    kind: Option<&str>,
+    author: Option<&str>,
+    on: Option<&str>,
+    reconsider: bool,
+) -> Result<()> {
+    let v = annotate_value(conn, id_or_uuid, words, kind, author, on, reconsider)?;
+    println!(
+        "Annotated task {}: {}",
+        v.get("task").and_then(|t| t.as_i64()).unwrap_or(0),
+        v.get("text").and_then(|t| t.as_str()).unwrap_or("")
+    );
     Ok(())
 }
 

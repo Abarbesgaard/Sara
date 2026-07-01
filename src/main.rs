@@ -398,6 +398,10 @@ fn run() -> Result<()> {
             commands::sync::run(&conn, &cfg)?;
         }
 
+        Command::Mcp => {
+            commands::mcp::run(conn, &cfg)?;
+        }
+
         Command::Paths => {
             let cfg_path = config::config_path()?;
             let db_path = config::db_path()?;

@@ -17,6 +17,58 @@ const CYAN: &str = "\x1b[36m";
 const GRAY: &str = "\x1b[90m";
 const MAGENTA: &str = "\x1b[35m";
 
+/// Resolve the project filter for a list request: `None` when `all`, an explicit
+/// override when given, else the current git project.
+fn resolve_filter(
+    conn: &Connection,
+    cfg: &Config,
+    all: bool,
+    project_filter: Option<&str>,
+) -> Result<Option<String>> {
+    if all {
+        Ok(None)
+    } else if let Some(p) = project_filter {
+        Ok(Some(p.to_string()))
+    } else {
+        let (name, _) = detect_current_project(conn, cfg)?;
+        Ok(Some(name))
+    }
+}
+
+/// Serialize a slice of tasks into the `{ "tasks": [...] }` shape. Single source
+/// of truth for the `--json` CLI path and the MCP `list` tool.
+fn tasks_to_value(tasks: &[Task]) -> serde_json::Value {
+    let arr: Vec<_> = tasks
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "id": t.id,
+                "uuid": t.uuid.to_string(),
+                "description": t.description,
+                "project": t.project,
+                "priority": t.priority.as_ref().map(|p| p.label()),
+                "due": t.due.map(|d| d.to_rfc3339()),
+                "urgency": t.urgency,
+                "status": t.status.to_string(),
+                "tags": t.tags,
+            })
+        })
+        .collect();
+    serde_json::json!({ "tasks": arr })
+}
+
+/// Structured task list for the MCP `list` tool.
+pub fn list_value(
+    conn: &Connection,
+    cfg: &Config,
+    all: bool,
+    project_filter: Option<&str>,
+) -> Result<serde_json::Value> {
+    let filter = resolve_filter(conn, cfg, all, project_filter)?;
+    let tasks = db::list_tasks(conn, filter.as_deref())?;
+    Ok(tasks_to_value(&tasks))
+}
+
 pub fn run(
     conn: &Connection,
     cfg: &Config,
@@ -26,40 +78,14 @@ pub fn run(
 ) -> Result<()> {
     let no_color = std::env::var("NO_COLOR").is_ok();
 
-    let filter = if all {
-        None
-    } else if let Some(p) = project_filter {
-        Some(p.to_string())
-    } else {
-        let (name, _) = detect_current_project(conn, cfg)?;
-        Some(name)
-    };
+    let filter = resolve_filter(conn, cfg, all, project_filter)?;
 
     let tasks = db::list_tasks(conn, filter.as_deref())?;
     let link_flags = db::link_flags_by_task(conn).unwrap_or_default();
     let dep_info = db::dep_info_by_task(conn).unwrap_or_default();
 
     if as_json {
-        let arr: Vec<_> = tasks
-            .iter()
-            .map(|t| {
-                serde_json::json!({
-                    "id": t.id,
-                    "uuid": t.uuid.to_string(),
-                    "description": t.description,
-                    "project": t.project,
-                    "priority": t.priority.as_ref().map(|p| p.label()),
-                    "due": t.due.map(|d| d.to_rfc3339()),
-                    "urgency": t.urgency,
-                    "status": t.status.to_string(),
-                    "tags": t.tags,
-                })
-            })
-            .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({ "tasks": arr }))?
-        );
+        println!("{}", serde_json::to_string_pretty(&tasks_to_value(&tasks))?);
         return Ok(());
     }
 

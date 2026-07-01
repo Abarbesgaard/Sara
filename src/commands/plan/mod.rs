@@ -46,7 +46,21 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
             .with_context(|| format!("could not read plan file: {source}"))?
     };
 
-    let plan: PlanInput = serde_json::from_str(&raw).context("plan JSON was invalid")?;
+    let v = import_raw(conn, cfg, &raw)?;
+    println!(
+        "Imported {} task(s) into project '{}'.",
+        v.get("created").and_then(|c| c.as_u64()).unwrap_or(0),
+        v.get("project").and_then(|p| p.as_str()).unwrap_or("")
+    );
+    Ok(())
+}
+
+/// Ingest a task graph from a raw JSON string and return a structured summary.
+/// The print-free core shared by the CLI `plan import` command and the MCP
+/// `plan_import` tool — the latter passes JSON inline (never via stdin, which is
+/// the MCP transport's channel).
+pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_json::Value> {
+    let plan: PlanInput = serde_json::from_str(raw).context("plan JSON was invalid")?;
     if plan.tasks.is_empty() {
         anyhow::bail!("plan contains no tasks");
     }
@@ -153,8 +167,7 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
     }
 
     tx.commit()?;
-    println!("Imported {created} task(s) into project '{project}'.");
-    Ok(())
+    Ok(json!({ "created": created, "project": project }))
 }
 
 /// `sara plan show <id>` — dependency-ordered briefing for a task + its blockers.

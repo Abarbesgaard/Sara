@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+- **`sara mcp` — MCP server** — a stdio JSON-RPC [Model Context Protocol](https://modelcontextprotocol.io) server (built on the official `rmcp` SDK) exposing sara's agent loop as ten typed tools (`list`, `info`, `add`, `next`, `steps`, `step_done`, `verify`, `recall`, `annotate`, `plan_import`). Any MCP client (Claude, Codex, Copilot, …) can drive sara with structured JSON instead of the CLI's flag-ordering / UUID / TUI footguns. Every tool takes an optional `project_path` so a long-running server stays folder-aware. Implemented as a thin adapter over the existing command/db layer (new print-free `*_value` cores shared with the CLI's `--json` paths — one serializer), with the async runtime confined to this subcommand so the rest of the CLI stays synchronous.
+
 ## [0.5.6] - 2026-07-01
 
 ### Features

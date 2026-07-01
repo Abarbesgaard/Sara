@@ -57,3 +57,10 @@ toml = "0.8"
 nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
+
+# ── MCP server (`sara mcp`) ──────────────────────────────────────────────────
+# Async runtime is built ONLY inside the `mcp` command; the rest of the CLI stays
+# synchronous. rmcp is the official Rust MCP SDK (stdio transport, tokio-based).
+rmcp = { version = "2", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "io-util", "macros", "sync"] }
+schemars = "1"

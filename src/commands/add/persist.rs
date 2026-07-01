@@ -15,7 +15,7 @@ pub(super) fn save(
     links: &[String],
     checks: &[String],
     depends_on: &[String],
-) -> Result<()> {
+) -> Result<Task> {
     let mut task = Task::new(form.description, form.project.clone());
     task.priority = form.priority;
     task.tags = form
@@ -83,12 +83,5 @@ pub(super) fn save(
         }
     }
 
-    println!(
-        "Created task {} [{}] ({}): {}",
-        task.id.unwrap_or(0),
-        task.project,
-        &task.uuid.to_string()[..8],
-        task.description
-    );
-    Ok(())
+    Ok(task)
 }
