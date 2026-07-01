@@ -218,6 +218,69 @@ struct PlanImportParams {
     plan_json: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct DoneParams {
+    project_path: Option<String>,
+    id: String,
+    /// Complete the task even if it is blocked by unfinished dependencies.
+    force: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct LinkParams {
+    project_path: Option<String>,
+    id: String,
+    /// The URL to attach (e.g. a PR or issue link).
+    url: String,
+    /// Optional human-readable label for the link.
+    label: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct DepParams {
+    project_path: Option<String>,
+    /// The dependent task (the one that gets blocked).
+    id: String,
+    /// "on" (add: `id` depends on `other`), "off" (remove), or "list".
+    action: String,
+    /// The blocker task; required for "on"/"off", ignored for "list".
+    other: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CheckParams {
+    project_path: Option<String>,
+    id: String,
+    /// The step / acceptance-criterion text.
+    text: String,
+    /// Item kind: "step" (default) or "acceptance".
+    kind: Option<String>,
+    /// Optional intent / why-note for the step.
+    intent: Option<String>,
+    /// Optional shell command that verifies this step.
+    verify: Option<String>,
+    /// Author/source of the item: "human" (default) or "ai".
+    source: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ModifyParams {
+    project_path: Option<String>,
+    id: String,
+    /// New description / title.
+    description: Option<String>,
+    /// Priority: H, M, or L.
+    priority: Option<String>,
+    /// Due date (same formats as `add`, e.g. "friday", "2026-07-15").
+    due: Option<String>,
+    /// Clear the due date.
+    clear_due: Option<bool>,
+    /// Tags — REPLACES the whole tag set (not additive).
+    tags: Option<Vec<String>>,
+    /// Clear all tags.
+    clear_tags: Option<bool>,
+}
+
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 #[tool_router]
@@ -367,6 +430,115 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened."
+    )]
+    fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
+                commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Attach a URL (e.g. a PR or issue link) to a task.")]
+    fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp link", |conn, _cfg| {
+                commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref())
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off."
+    )]
+    fn dep(&self, Parameters(p): Parameters<DepParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp dep", |conn, cfg| {
+                match p.action.as_str() {
+                    "on" => {
+                        let other = p
+                            .other
+                            .as_deref()
+                            .ok_or_else(|| anyhow::anyhow!("dep action \"on\" requires `other`"))?;
+                        commands::dep::dep_on_value(conn, cfg, &p.id, other)
+                    }
+                    "off" => {
+                        let other = p.other.as_deref().ok_or_else(|| {
+                            anyhow::anyhow!("dep action \"off\" requires `other`")
+                        })?;
+                        commands::dep::dep_off_value(conn, cfg, &p.id, other)
+                    }
+                    "list" => commands::dep::dep_list_value(conn, &p.id),
+                    other => {
+                        anyhow::bail!(
+                            "unknown dep action `{other}` (expected \"on\", \"off\", or \"list\")"
+                        )
+                    }
+                }
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Add a checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command."
+    )]
+    fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp check", |conn, _cfg| {
+                commands::guide::check_value(
+                    conn,
+                    &p.id,
+                    &p.text,
+                    p.intent.as_deref(),
+                    p.kind.as_deref(),
+                    p.source.as_deref(),
+                    p.verify.as_deref(),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Stamp a task's guide as validated against the project's current git HEAD. Errors if the project is not a git repo."
+    )]
+    fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
+                commands::guide::validate_value(conn, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set."
+    )]
+    fn modify(&self, Parameters(p): Parameters<ModifyParams>) -> Result<String, ErrorData> {
+        let tags = p.tags.clone().unwrap_or_default();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp modify", |conn, cfg| {
+                commands::modify::modify_value(
+                    conn,
+                    cfg,
+                    &p.id,
+                    p.description.as_deref(),
+                    p.priority.as_deref(),
+                    p.due.as_deref(),
+                    p.clear_due.unwrap_or(false),
+                    &tags,
+                    p.clear_tags.unwrap_or(false),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }
 
 #[tool_handler]
@@ -415,24 +587,33 @@ mod tests {
     }
 
     #[test]
-    fn exposes_the_ten_agent_loop_tools() {
+    fn exposes_the_agent_loop_tools() {
         let names: Vec<String> = SaraServer::tool_router()
             .list_all()
             .iter()
             .map(|t| t.name.to_string())
             .collect();
-        assert_eq!(names.len(), 10, "expected 10 tools, got {names:?}");
+        assert_eq!(names.len(), 16, "expected 16 tools, got {names:?}");
         for expected in [
+            // read
             "list",
             "info",
-            "add",
             "next",
             "steps",
-            "step_done",
             "verify",
             "recall",
+            // mutate (create / guide)
+            "add",
+            "step_done",
             "annotate",
             "plan_import",
+            "check",
+            // completion / edit
+            "done",
+            "link",
+            "dep",
+            "validate",
+            "modify",
         ] {
             assert!(
                 names.iter().any(|n| n == expected),
@@ -515,5 +696,105 @@ mod tests {
                 Ok(())
             })
             .expect("seed");
+    }
+
+    /// Seed a task and return its uuid string (for targeting mutate tools).
+    fn seed_returning(server: &SaraServer, project: &str, desc: &str) -> String {
+        server
+            .with_project(None, "seed", |conn, _cfg| {
+                let mut t = Task::new(desc.to_string(), project.to_string());
+                db::insert_task(conn, &mut t)?;
+                Ok(t.uuid.to_string())
+            })
+            .expect("seed")
+    }
+
+    #[test]
+    fn done_value_marks_task_completed() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "finish me");
+        let v = server
+            .with_project(None, "done", |conn, cfg| {
+                commands::done::done_value(conn, cfg, &uuid, false)
+            })
+            .expect("done");
+        assert_eq!(v["status"], "completed");
+        assert_eq!(v["recurrence"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn link_value_attaches_a_url() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let v = server
+            .with_project(None, "link", |conn, _cfg| {
+                commands::annotate::link_value(conn, &uuid, "https://example/pr/1", Some("PR"))
+            })
+            .expect("link");
+        assert_eq!(v["url"], "https://example/pr/1");
+    }
+
+    #[test]
+    fn dep_on_then_list_reports_the_blocker() {
+        let server = server_with(db::open_in_memory_for_test());
+        let a = seed_returning(&server, "p", "dependent");
+        let b = seed_returning(&server, "p", "blocker");
+        server
+            .with_project(None, "dep on", |conn, cfg| {
+                commands::dep::dep_on_value(conn, cfg, &a, &b)
+            })
+            .expect("dep on");
+        let v = server
+            .with_project(None, "dep list", |conn, _cfg| {
+                commands::dep::dep_list_value(conn, &a)
+            })
+            .expect("dep list");
+        assert_eq!(v["blocked_by"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    #[test]
+    fn check_value_adds_a_step() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let v = server
+            .with_project(None, "check", |conn, _cfg| {
+                commands::guide::check_value(conn, &uuid, "do the thing", None, None, None, None)
+            })
+            .expect("check");
+        assert_eq!(v["kind"], db::STEP_KIND_STEP);
+        let steps = server
+            .with_project(None, "steps", |conn, _cfg| {
+                commands::guide::steps_value(conn, &uuid, None)
+            })
+            .expect("steps");
+        assert_eq!(steps["steps"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    #[test]
+    fn modify_value_sets_priority_and_requires_a_field() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let v = server
+            .with_project(None, "modify", |conn, cfg| {
+                commands::modify::modify_value(
+                    conn,
+                    cfg,
+                    &uuid,
+                    None,
+                    Some("H"),
+                    None,
+                    false,
+                    &[],
+                    false,
+                )
+            })
+            .expect("modify");
+        assert_eq!(v["priority"], "H");
+
+        // No field flags → must error, never open the TUI.
+        let empty = server.with_project(None, "modify-empty", |conn, cfg| {
+            commands::modify::modify_value(conn, cfg, &uuid, None, None, None, false, &[], false)
+        });
+        assert!(empty.is_err(), "modify with no fields should error");
     }
 }

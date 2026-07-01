@@ -220,6 +220,31 @@ pub fn step_remove(
     Ok(())
 }
 
+/// Add a checklist step (or acceptance criterion) to a task's guide, returning a
+/// structured record. Print-free core shared by the CLI `check` command and the
+/// MCP `check` tool.
+pub fn check_value(
+    conn: &Connection,
+    id: &str,
+    text: &str,
+    intent: Option<&str>,
+    kind: Option<&str>,
+    source: Option<&str>,
+    verify: Option<&str>,
+) -> Result<serde_json::Value> {
+    let task = db::resolve_task(conn, id)?;
+    let kind = kind_arg(kind);
+    let source = source.unwrap_or("human");
+    let step_id = db::add_step(conn, &task.uuid, text, intent, kind, source, verify)?;
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "kind": kind,
+        "text": text,
+        "step_id": step_id,
+    }))
+}
+
 /// `sara verify [--step N] [--run]` — surface/run verification commands.
 pub fn verify(
     conn: &Connection,
@@ -371,13 +396,29 @@ pub fn rationale(conn: &Connection, id: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// `sara validate <id>` — stamp the guide as fresh against current HEAD.
-pub fn validate(conn: &Connection, id: &str) -> Result<()> {
+/// Stamp the guide as validated against the project's current HEAD, returning a
+/// structured record. Print-free core shared by the CLI `validate` command and
+/// the MCP `validate` tool.
+pub fn validate_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let head = project_head(conn, &task.project)
         .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
     db::set_validated(conn, &task.uuid, &head)?;
-    println!("Stamped task {} validated @ {head}.", task.id.unwrap_or(0));
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "validated_commit": head,
+    }))
+}
+
+/// `sara validate <id>` — stamp the guide as fresh against current HEAD.
+pub fn validate(conn: &Connection, id: &str) -> Result<()> {
+    let v = validate_value(conn, id)?;
+    println!(
+        "Stamped task {} validated @ {}.",
+        v["task"].as_i64().unwrap_or(0),
+        v["validated_commit"].as_str().unwrap_or_default()
+    );
     Ok(())
 }
 

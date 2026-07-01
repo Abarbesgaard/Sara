@@ -4,7 +4,11 @@
 
 ### Features
 
-- **`sara mcp` — MCP server** — a stdio JSON-RPC [Model Context Protocol](https://modelcontextprotocol.io) server (built on the official `rmcp` SDK) exposing sara's agent loop as ten typed tools (`list`, `info`, `add`, `next`, `steps`, `step_done`, `verify`, `recall`, `annotate`, `plan_import`). Any MCP client (Claude, Codex, Copilot, …) can drive sara with structured JSON instead of the CLI's flag-ordering / UUID / TUI footguns. Every tool takes an optional `project_path` so a long-running server stays folder-aware. Implemented as a thin adapter over the existing command/db layer (new print-free `*_value` cores shared with the CLI's `--json` paths — one serializer), with the async runtime confined to this subcommand so the rest of the CLI stays synchronous.
+- **`sara mcp` — MCP server** — a stdio JSON-RPC [Model Context Protocol](https://modelcontextprotocol.io) server (built on the official `rmcp` SDK) exposing sara's agent loop as sixteen typed tools. Any MCP client (Claude, Codex, Copilot, …) can drive sara with structured JSON instead of the CLI's flag-ordering / UUID / TUI footguns. Every tool takes an optional `project_path` so a long-running server stays folder-aware. Implemented as a thin adapter over the existing command/db layer (new print-free `*_value` cores shared with the CLI's `--json` paths — one serializer), with the async runtime confined to this subcommand so the rest of the CLI stays synchronous.
+  - Read: `list`, `info`, `next`, `steps`, `verify` (read-only), `recall`.
+  - Create / guide: `add`, `step_done`, `annotate`, `plan_import`, `check`.
+  - Completion / edit: `done`, `link`, `dep` (on/off/list), `validate`, `modify` (non-interactive setters — requires ≥1 field, never opens the review form).
+  - Interactive-only surfaces (bare `add`/`modify` review form, `board`, `activity`, `projects`) remain CLI-only by design; no tool opens a TUI or reads stdin.
 
 ## [0.5.6] - 2026-07-01
 

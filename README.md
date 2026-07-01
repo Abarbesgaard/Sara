@@ -291,7 +291,8 @@ drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, 
 TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
 single source of truth.
 
-The server exposes ten tools — the non-interactive execution loop:
+The server exposes sixteen tools — the non-interactive agent loop end to end,
+from reading a task through to completing it:
 
 | Tool | Purpose |
 |------|---------|
@@ -305,6 +306,16 @@ The server exposes ten tools — the non-interactive execution loop:
 | `recall` | Cross-task keyword search |
 | `annotate` | Add a comment / finding / decision |
 | `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
+| `check` | Add a checklist step or acceptance criterion (with optional intent / verify command) |
+| `dep` | Manage dependencies — `action` = `on` / `off` / `list` |
+| `link` | Attach a URL (e.g. a PR) to a task |
+| `modify` | Set task fields non-interactively (never opens the review form; at least one field required) |
+| `validate` | Stamp the guide as validated against the project's current git HEAD |
+| `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
+
+Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
+`activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
+blocks on stdin.
 
 **Folder-awareness:** the CLI derives "the project" from the current git folder,
 but a long-running server has no per-call working directory. So **every tool

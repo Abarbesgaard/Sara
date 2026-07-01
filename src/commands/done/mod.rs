@@ -1,12 +1,16 @@
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Status;
 
-pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<()> {
+/// Complete a task and return a structured record of what happened (including any
+/// spawned recurrence). Print-free core shared by the CLI `done` command and the
+/// MCP `done` tool. Errors if the task is blocked and `force` is false.
+pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
     // Check blockers
@@ -44,8 +48,6 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
     // Repack display IDs
     db::repack_ids(conn)?;
 
-    println!("Done: [{}] {}", task.project, task.description);
-
     // Refresh urgency for tasks that were blocking on this one
     let was_blocking = db::get_blocking(conn, &task.uuid)?;
     for dep_uuid in was_blocking {
@@ -53,6 +55,7 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
     }
 
     // Spawn next occurrence for recurring tasks
+    let mut recurrence = Value::Null;
     if let Some(ref interval) = task.recur.clone() {
         let base = task.due.unwrap_or_else(Utc::now);
         let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
@@ -65,12 +68,35 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
         next.estimate_mins = task.estimate_mins;
         next.urgency = db::compute_urgency(&next, &cfg.urgency, false, 0);
         db::insert_task(conn, &mut next)?;
-        println!(
-            "♺  Next recurrence: #{} due {}",
-            next.id.unwrap_or(0),
-            next_due.with_timezone(&chrono::Local).format("%Y-%m-%d")
-        );
+        recurrence = json!({
+            "id": next.id,
+            "due": next_due.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string(),
+        });
     }
 
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "project": task.project,
+        "description": task.description,
+        "status": "completed",
+        "recurrence": recurrence,
+    }))
+}
+
+pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<()> {
+    let v = done_value(conn, cfg, id_or_uuid, force)?;
+    println!(
+        "Done: [{}] {}",
+        v["project"].as_str().unwrap_or_default(),
+        v["description"].as_str().unwrap_or_default()
+    );
+    if let Some(rec) = v.get("recurrence").filter(|r| !r.is_null()) {
+        println!(
+            "♺  Next recurrence: #{} due {}",
+            rec.get("id").and_then(|i| i.as_i64()).unwrap_or(0),
+            rec.get("due").and_then(|d| d.as_str()).unwrap_or_default()
+        );
+    }
     Ok(())
 }

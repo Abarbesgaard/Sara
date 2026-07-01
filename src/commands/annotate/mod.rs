@@ -4,4 +4,4 @@ mod links;
 
 pub use annotations::{annotate, annotate_value, denotate};
 pub use files::attach;
-pub use links::{link, unlink};
+pub use links::{link, link_value, unlink};
