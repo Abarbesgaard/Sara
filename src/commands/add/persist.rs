@@ -14,6 +14,7 @@ pub(super) fn save(
     annotations: &[String],
     links: &[String],
     checks: &[String],
+    depends_on: &[String],
 ) -> Result<()> {
     let mut task = Task::new(form.description, form.project.clone());
     task.priority = form.priority;
@@ -43,6 +44,20 @@ pub(super) fn save(
             && let Err(e) = db::add_dependency(conn, &task.uuid, &dep_task.uuid)
         {
             eprintln!("Warning: could not add dependency: {e}");
+        }
+    }
+
+    for prefix in depends_on {
+        match db::get_task_by_uuid_prefix(conn, prefix) {
+            Ok(Some(dep)) => {
+                if let Err(e) = db::add_dependency(conn, &task.uuid, &dep.uuid) {
+                    eprintln!("Warning: could not add dependency on {prefix}: {e}");
+                } else {
+                    db::refresh_urgency(conn, &cfg.urgency, &dep.uuid).ok();
+                }
+            }
+            Ok(None) => eprintln!("Warning: no task found for prefix '{prefix}', skipping dependency"),
+            Err(e) => eprintln!("Warning: could not resolve '{prefix}': {e}"),
         }
     }
 

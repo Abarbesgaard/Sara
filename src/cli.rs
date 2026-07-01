@@ -83,6 +83,9 @@ pub enum Command {
         /// Checklist step to add (repeatable)
         #[arg(long)]
         check: Vec<String>,
+        /// UUID prefix of a task this task depends on (repeatable)
+        #[arg(long, add = ArgValueCandidates::new(task_ids))]
+        depends_on: Vec<String>,
     },
 
     /// Show full details of a task

@@ -113,6 +113,7 @@ fn run() -> Result<()> {
             annotation,
             link,
             check,
+            depends_on,
         } => {
             if words.is_empty() {
                 anyhow::bail!("Task description cannot be empty");
@@ -129,6 +130,7 @@ fn run() -> Result<()> {
                 &annotation,
                 &link,
                 &check,
+                &depends_on,
             )?;
         }
 
