@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.6] - 2026-07-01
+
+### Features
+
+- **Echo UUID on `sara add`** — creation output now includes an 8-char UUID prefix, so agents/scripts creating tasks don't need a follow-up `sara info` lookup. ([#56](https://github.com/Abarbesgaard/Sara/pull/56))
+- **`--annotation`, `--link`, `--check` flags on `sara add`** — attach notes, URLs, and checklist steps inline at task creation instead of separate follow-up commands. ([#56](https://github.com/Abarbesgaard/Sara/pull/56))
+- **`--depends-on` flag on `sara add`** — wire a dependency at creation time without a separate `sara dep` call. ([#56](https://github.com/Abarbesgaard/Sara/pull/56))
+- **`sara dep chain <id1> <id2> ...`** — wire a full linear dependency sequence in one command. ([#56](https://github.com/Abarbesgaard/Sara/pull/56))
+
+### Internal
+
+- **More vertical-slice splits** — `add`, `annotate`, and `board` were broken into focused sub-modules (input/persist, annotations/files/links, types/state), continuing the pattern from 0.5.5. ([#51](https://github.com/Abarbesgaard/Sara/pull/51), [#52](https://github.com/Abarbesgaard/Sara/pull/52), [#53](https://github.com/Abarbesgaard/Sara/pull/53))
+- **Simplified board graph algorithms** — replaced union-find with a plain BFS and Kahn's-algorithm/heap with a simple indegree-drain loop, and precomputes board stats instead of recounting every frame (124 lines net removed). ([#54](https://github.com/Abarbesgaard/Sara/pull/54))
+- **`activity` command split** — `mod.rs` slimmed to a thin orchestrator; `render.rs` split into focused zone functions (`render_stats`, `render_month_labels`, `render_heatmap`, `render_legend`). ([#55](https://github.com/Abarbesgaard/Sara/pull/55))
+
 ## [0.5.5] - 2026-06-29
 
 ### Features
