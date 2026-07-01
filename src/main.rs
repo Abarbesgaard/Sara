@@ -110,6 +110,9 @@ fn run() -> Result<()> {
             tag,
             yes,
             every,
+            annotation,
+            link,
+            check,
         } => {
             if words.is_empty() {
                 anyhow::bail!("Task description cannot be empty");
@@ -123,6 +126,9 @@ fn run() -> Result<()> {
                 &tag,
                 yes,
                 every.as_deref(),
+                &annotation,
+                &link,
+                &check,
             )?;
         }
 

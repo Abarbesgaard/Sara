@@ -11,6 +11,9 @@ pub(super) fn save(
     cfg: &Config,
     form: FormInput,
     recur: Option<String>,
+    annotations: &[String],
+    links: &[String],
+    checks: &[String],
 ) -> Result<()> {
     let mut task = Task::new(form.description, form.project.clone());
     task.priority = form.priority;
@@ -44,6 +47,22 @@ pub(super) fn save(
     }
 
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
+
+    for text in annotations {
+        if let Err(e) = db::add_annotation_full(conn, &task.uuid, text, "comment", "ai", None, None, false) {
+            eprintln!("Warning: could not add annotation: {e}");
+        }
+    }
+    for url in links {
+        if let Err(e) = db::add_link(conn, &task.uuid, url, None) {
+            eprintln!("Warning: could not add link: {e}");
+        }
+    }
+    for text in checks {
+        if let Err(e) = db::add_step(conn, &task.uuid, text, None, "step", "human", None) {
+            eprintln!("Warning: could not add step: {e}");
+        }
+    }
 
     println!(
         "Created task {} [{}] ({}): {}",

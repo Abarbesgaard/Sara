@@ -74,6 +74,15 @@ pub enum Command {
         /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
         #[arg(long, visible_alias = "recur")]
         every: Option<String>,
+        /// Annotation / note to attach (repeatable)
+        #[arg(long)]
+        annotation: Vec<String>,
+        /// URL to link to the task (repeatable)
+        #[arg(long)]
+        link: Vec<String>,
+        /// Checklist step to add (repeatable)
+        #[arg(long)]
+        check: Vec<String>,
     },
 
     /// Show full details of a task
