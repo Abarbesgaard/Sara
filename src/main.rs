@@ -256,10 +256,6 @@ fn run() -> Result<()> {
             commands::import::run(&mut conn, &cfg, source.as_deref(), project.as_deref())?;
         }
 
-        Command::ImportGraph { source, project } => {
-            commands::import_graph::run(&mut conn, &cfg, source.as_deref(), project.as_deref())?;
-        }
-
         Command::Delete { id, yes } => {
             commands::delete::run(&conn, &id, yes)?;
         }
