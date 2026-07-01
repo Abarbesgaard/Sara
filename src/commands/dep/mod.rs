@@ -37,6 +37,14 @@ pub fn run_off(conn: &Connection, cfg: &Config, id: &str, other: &str) -> Result
     Ok(())
 }
 
+pub fn run_chain(conn: &Connection, cfg: &Config, ids: &[String]) -> Result<()> {
+    anyhow::ensure!(ids.len() >= 2, "dep chain requires at least 2 task ids");
+    for pair in ids.windows(2) {
+        run_on(conn, cfg, &pair[0], &pair[1])?;
+    }
+    Ok(())
+}
+
 pub fn run_list(conn: &Connection, id: &str) -> Result<()> {
     let task = db::resolve_task(conn, id)?;
     let blockers = db::get_blockers(conn, &task.uuid)?;

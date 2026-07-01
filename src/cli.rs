@@ -289,9 +289,9 @@ pub enum Command {
 
     /// Manage task dependencies
     Dep {
-        /// Task id or uuid prefix
+        /// Task id or uuid prefix (not required for `chain`)
         #[arg(add = ArgValueCandidates::new(task_ids))]
-        id: String,
+        id: Option<String>,
         #[command(subcommand)]
         action: DepAction,
     },
@@ -538,6 +538,12 @@ pub enum DepAction {
     },
     /// List dependencies of this task
     List,
+    /// Wire a linear chain: A → B → C → … in one command
+    Chain {
+        /// Task ids or uuid prefixes to chain (at least 2)
+        #[arg(required = true, num_args = 2.., add = ArgValueCandidates::new(task_ids))]
+        ids: Vec<String>,
+    },
 }
 
 #[cfg(test)]
