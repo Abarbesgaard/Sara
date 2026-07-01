@@ -110,6 +110,10 @@ fn run() -> Result<()> {
             tag,
             yes,
             every,
+            annotation,
+            link,
+            check,
+            depends_on,
         } => {
             if words.is_empty() {
                 anyhow::bail!("Task description cannot be empty");
@@ -123,6 +127,10 @@ fn run() -> Result<()> {
                 &tag,
                 yes,
                 every.as_deref(),
+                &annotation,
+                &link,
+                &check,
+                &depends_on,
             )?;
         }
 
@@ -254,13 +262,19 @@ fn run() -> Result<()> {
 
         Command::Dep { id, action } => match action {
             DepAction::On { other } => {
+                let id = id.ok_or_else(|| anyhow::anyhow!("task id required for `dep on`"))?;
                 commands::dep::run_on(&conn, &cfg, &id, &other)?;
             }
             DepAction::Off { other } => {
+                let id = id.ok_or_else(|| anyhow::anyhow!("task id required for `dep off`"))?;
                 commands::dep::run_off(&conn, &cfg, &id, &other)?;
             }
             DepAction::List => {
+                let id = id.ok_or_else(|| anyhow::anyhow!("task id required for `dep list`"))?;
                 commands::dep::run_list(&conn, &id)?;
+            }
+            DepAction::Chain { ids } => {
+                commands::dep::run_chain(&conn, &cfg, &ids)?;
             }
         },
 

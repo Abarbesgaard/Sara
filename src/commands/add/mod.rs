@@ -15,6 +15,10 @@ pub fn run(
     extra_tags: &[String],
     yes: bool,
     recur_override: Option<&str>,
+    annotations: &[String],
+    links: &[String],
+    checks: &[String],
+    depends_on: &[String],
 ) -> Result<()> {
     let Some((form, recur)) = input::resolve(
         conn,
@@ -31,7 +35,16 @@ pub fn run(
         return Ok(());
     };
 
-    persist::save(conn, cfg, form, recur)
+    persist::save(
+        conn,
+        cfg,
+        form,
+        recur,
+        annotations,
+        links,
+        checks,
+        depends_on,
+    )
 }
 
 pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>> {

@@ -74,6 +74,18 @@ pub enum Command {
         /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
         #[arg(long, visible_alias = "recur")]
         every: Option<String>,
+        /// Annotation / note to attach (repeatable)
+        #[arg(long)]
+        annotation: Vec<String>,
+        /// URL to link to the task (repeatable)
+        #[arg(long)]
+        link: Vec<String>,
+        /// Checklist step to add (repeatable)
+        #[arg(long)]
+        check: Vec<String>,
+        /// UUID prefix of a task this task depends on (repeatable)
+        #[arg(long, add = ArgValueCandidates::new(task_ids))]
+        depends_on: Vec<String>,
     },
 
     /// Show full details of a task
@@ -277,9 +289,9 @@ pub enum Command {
 
     /// Manage task dependencies
     Dep {
-        /// Task id or uuid prefix
+        /// Task id or uuid prefix (not required for `chain`)
         #[arg(add = ArgValueCandidates::new(task_ids))]
-        id: String,
+        id: Option<String>,
         #[command(subcommand)]
         action: DepAction,
     },
@@ -526,6 +538,12 @@ pub enum DepAction {
     },
     /// List dependencies of this task
     List,
+    /// Wire a linear chain: A → B → C → … in one command
+    Chain {
+        /// Task ids or uuid prefixes to chain (at least 2)
+        #[arg(required = true, num_args = 2.., add = ArgValueCandidates::new(task_ids))]
+        ids: Vec<String>,
+    },
 }
 
 #[cfg(test)]
