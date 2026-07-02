@@ -228,8 +228,12 @@ pub fn step_remove_value(
     let task = db::resolve_task(conn, id)?;
     let kind = kind_arg(kind);
     let steps = db::get_steps(conn, &task.uuid, kind)?;
+    // Indices are 1-based: reject 0 rather than letting it fall through to item 1.
+    let idx = n
+        .checked_sub(1)
+        .ok_or_else(|| anyhow::anyhow!("{kind} index is 1-based; got 0"))?;
     let item = steps
-        .get(n.saturating_sub(1))
+        .get(idx)
         .ok_or_else(|| anyhow::anyhow!("No {kind} #{n} on this task"))?;
     let text = item.text.clone();
     db::delete_step(conn, item.id)?;
@@ -302,7 +306,10 @@ pub fn verify(
     let mut cmds: Vec<String> = vec![];
 
     if let Some(n) = step {
-        if let Some(s) = steps.get(n.saturating_sub(1)) {
+        let idx = n
+            .checked_sub(1)
+            .ok_or_else(|| anyhow::anyhow!("step index is 1-based; got 0"))?;
+        if let Some(s) = steps.get(idx) {
             if let Some(v) = &s.verify_cmd {
                 cmds.push(v.clone());
             } else {
@@ -381,8 +388,12 @@ pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<
 
     let mut cmds: Vec<String> = vec![];
     if let Some(n) = step {
+        // Indices are 1-based: reject 0 rather than silently returning step 1.
+        let idx = n
+            .checked_sub(1)
+            .ok_or_else(|| anyhow::anyhow!("step index is 1-based; got 0"))?;
         let s = steps
-            .get(n.saturating_sub(1))
+            .get(idx)
             .ok_or_else(|| anyhow::anyhow!("No step #{n}"))?;
         if let Some(v) = &s.verify_cmd {
             cmds.push(v.clone());
