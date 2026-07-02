@@ -281,6 +281,47 @@ struct ModifyParams {
     clear_tags: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ResolveParams {
+    project_path: Option<String>,
+    /// The feedback (annotation) id to resolve — NOT a task id/uuid.
+    feedback_id: i64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct StepEditParams {
+    project_path: Option<String>,
+    id: String,
+    /// 1-based step number.
+    n: usize,
+    /// Item kind: "step" (default) or "acceptance".
+    kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GuideTextParams {
+    project_path: Option<String>,
+    id: String,
+    /// The text to set (assignment / rationale).
+    text: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct AttachParams {
+    project_path: Option<String>,
+    id: String,
+    /// File path or URL to attach. URLs are stored as links.
+    path: String,
+    /// Why this file/anchor matters.
+    reason: Option<String>,
+    /// Symbol (function/type) the anchor points at.
+    symbol: Option<String>,
+    /// Line range, e.g. "10:57" or "10-57".
+    lines: Option<String>,
+    /// Provenance: "ai" marks it suggested; anything else is manual.
+    source: Option<String>,
+}
+
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 #[tool_router]
@@ -539,6 +580,132 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(description = "List a task's open human feedback (items awaiting a response).")]
+    fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
+                commands::guide::feedback_value(conn, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id)."
+    )]
+    fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp resolve", |conn, _cfg| {
+                commands::guide::resolve_value(conn, p.feedback_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by)."
+    )]
+    fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp plan_show", |conn, _cfg| {
+                commands::plan::show_value(conn, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Reopen a previously-completed step (or acceptance criterion) of a task.")]
+    fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp step_undone",
+                |conn, _cfg| {
+                    commands::guide::step_undone_value(conn, &p.id, p.n, p.kind.as_deref())
+                },
+            )
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber."
+    )]
+    fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp step_remove",
+                |conn, _cfg| {
+                    commands::guide::step_remove_value(conn, &p.id, p.n, p.kind.as_deref())
+                },
+            )
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Set a task's assignment (the originating prompt / what to build).")]
+    fn assignment(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp assignment", |conn, _cfg| {
+                commands::guide::assignment_value(conn, &p.id, &p.text)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Set a task's rationale (why it exists / the reasoning behind it).")]
+    fn rationale(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp rationale", |conn, _cfg| {
+                commands::guide::rationale_value(conn, &p.id, &p.text)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`."
+    )]
+    fn attach(&self, Parameters(p): Parameters<AttachParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp attach", |conn, _cfg| {
+                commands::annotate::attach_value(
+                    conn,
+                    &p.id,
+                    &p.path,
+                    p.reason.as_deref(),
+                    p.symbol.as_deref(),
+                    p.lines.as_deref(),
+                    p.source.as_deref(),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Start the time tracker for a task (no-op if it is already active).")]
+    fn start(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp start", |conn, cfg| {
+                commands::timer::start_value(conn, cfg, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Stop the time tracker for a task, recording the session; snapshots a tied branch's changed files if one is set."
+    )]
+    fn stop(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp stop", |conn, cfg| {
+                commands::timer::stop_value(conn, cfg, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }
 
 #[tool_handler]
@@ -593,7 +760,7 @@ mod tests {
             .iter()
             .map(|t| t.name.to_string())
             .collect();
-        assert_eq!(names.len(), 16, "expected 16 tools, got {names:?}");
+        assert_eq!(names.len(), 26, "expected 26 tools, got {names:?}");
         for expected in [
             // read
             "list",
@@ -602,18 +769,28 @@ mod tests {
             "steps",
             "verify",
             "recall",
+            "feedback",
+            "plan_show",
             // mutate (create / guide)
             "add",
             "step_done",
             "annotate",
             "plan_import",
             "check",
-            // completion / edit
+            "step_undone",
+            "step_remove",
+            "assignment",
+            "rationale",
+            "attach",
+            // completion / edit / lifecycle
             "done",
             "link",
             "dep",
             "validate",
             "modify",
+            "resolve",
+            "start",
+            "stop",
         ] {
             assert!(
                 names.iter().any(|n| n == expected),
@@ -796,5 +973,152 @@ mod tests {
             commands::modify::modify_value(conn, cfg, &uuid, None, None, None, false, &[], false)
         });
         assert!(empty.is_err(), "modify with no fields should error");
+    }
+
+    #[test]
+    fn step_undone_then_remove_edit_the_checklist() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        server
+            .with_project(None, "check", |conn, _cfg| {
+                commands::guide::check_value(conn, &uuid, "step one", None, None, None, None)
+            })
+            .expect("check");
+        // done → undone flips it back to not-done.
+        server
+            .with_project(None, "done", |conn, _cfg| {
+                commands::guide::step_done_value(conn, &uuid, 1, None, None)
+            })
+            .expect("step_done");
+        let undone = server
+            .with_project(None, "undone", |conn, _cfg| {
+                commands::guide::step_undone_value(conn, &uuid, 1, None)
+            })
+            .expect("step_undone");
+        assert_eq!(undone["done"], false);
+        // remove drops the item.
+        let removed = server
+            .with_project(None, "remove", |conn, _cfg| {
+                commands::guide::step_remove_value(conn, &uuid, 1, None)
+            })
+            .expect("step_remove");
+        assert_eq!(removed["removed"], "step one");
+        let steps = server
+            .with_project(None, "steps", |conn, _cfg| {
+                commands::guide::steps_value(conn, &uuid, None)
+            })
+            .expect("steps");
+        assert_eq!(steps["steps"].as_array().map(|a| a.len()), Some(0));
+    }
+
+    #[test]
+    fn assignment_and_rationale_set_guide_text() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let a = server
+            .with_project(None, "assignment", |conn, _cfg| {
+                commands::guide::assignment_value(conn, &uuid, "build the thing")
+            })
+            .expect("assignment");
+        assert_eq!(a["assignment"], "build the thing");
+        let r = server
+            .with_project(None, "rationale", |conn, _cfg| {
+                commands::guide::rationale_value(conn, &uuid, "because reasons")
+            })
+            .expect("rationale");
+        assert_eq!(r["rationale"], "because reasons");
+    }
+
+    #[test]
+    fn attach_value_records_a_file_and_an_anchor() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let file = server
+            .with_project(None, "attach", |conn, _cfg| {
+                commands::annotate::attach_value(conn, &uuid, "src/main.rs", None, None, None, None)
+            })
+            .expect("attach file");
+        assert_eq!(file["kind"], "file");
+        let anchor = server
+            .with_project(None, "attach anchor", |conn, _cfg| {
+                commands::annotate::attach_value(
+                    conn,
+                    &uuid,
+                    "src/lib.rs",
+                    Some("core logic"),
+                    None,
+                    Some("10:20"),
+                    None,
+                )
+            })
+            .expect("attach anchor");
+        assert_eq!(anchor["kind"], "anchor");
+        assert_eq!(anchor["line_start"], 10);
+        assert_eq!(anchor["line_end"], 20);
+    }
+
+    #[test]
+    fn start_then_stop_tracks_a_session() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        let started = server
+            .with_project(None, "start", |conn, cfg| {
+                commands::timer::start_value(conn, cfg, &uuid)
+            })
+            .expect("start");
+        assert_eq!(started["started"], true);
+        let stopped = server
+            .with_project(None, "stop", |conn, cfg| {
+                commands::timer::stop_value(conn, cfg, &uuid)
+            })
+            .expect("stop");
+        assert_eq!(stopped["stopped"], true);
+        assert!(stopped["session_seconds"].as_i64().is_some());
+    }
+
+    #[test]
+    fn feedback_and_resolve_round_trip() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "task");
+        // Seed an open feedback item via a human annotation flagged for revision.
+        server
+            .with_project(None, "annotate", |conn, _cfg| {
+                commands::annotate::annotate_value(
+                    conn,
+                    &uuid,
+                    &["please fix".to_string()],
+                    None,
+                    Some("human"),
+                    None,
+                    true,
+                )
+            })
+            .expect("annotate");
+        let fb = server
+            .with_project(None, "feedback", |conn, _cfg| {
+                commands::guide::feedback_value(conn, &uuid)
+            })
+            .expect("feedback");
+        let items = fb["open_feedback"].as_array().expect("open_feedback array");
+        assert_eq!(items.len(), 1);
+        let fb_id = items[0]["id"].as_i64().expect("feedback id");
+        let resolved = server
+            .with_project(None, "resolve", |conn, _cfg| {
+                commands::guide::resolve_value(conn, fb_id)
+            })
+            .expect("resolve");
+        assert_eq!(resolved["resolved"], true);
+    }
+
+    #[test]
+    fn plan_show_value_returns_a_briefing() {
+        let server = server_with(db::open_in_memory_for_test());
+        let uuid = seed_returning(&server, "p", "solo task");
+        let v = server
+            .with_project(None, "plan_show", |conn, _cfg| {
+                commands::plan::show_value(conn, &uuid)
+            })
+            .expect("plan_show");
+        assert_eq!(v["briefing"].as_array().map(|a| a.len()), Some(1));
     }
 }

@@ -291,8 +291,8 @@ drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, 
 TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
 single source of truth.
 
-The server exposes sixteen tools — the non-interactive agent loop end to end,
-from reading a task through to completing it:
+The server exposes twenty-six tools — the non-interactive agent loop end to end,
+from reading and planning a task through to completing it:
 
 | Tool | Purpose |
 |------|---------|
@@ -306,16 +306,26 @@ from reading a task through to completing it:
 | `recall` | Cross-task keyword search |
 | `annotate` | Add a comment / finding / decision |
 | `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
+| `plan_show` | Dependency-ordered briefing (the task plus everything it is blocked by) |
 | `check` | Add a checklist step or acceptance criterion (with optional intent / verify command) |
+| `step_undone` | Reopen a completed step / acceptance criterion |
+| `step_remove` | Delete step N (remaining items renumber) |
 | `dep` | Manage dependencies — `action` = `on` / `off` / `list` |
 | `link` | Attach a URL (e.g. a PR) to a task |
+| `attach` | Attach a file or code anchor (`reason`, `symbol`, `lines`, `source`); a URL becomes a link |
+| `assignment` | Set the task's assignment (the originating prompt / what to build) |
+| `rationale` | Set the task's rationale (why it exists) |
 | `modify` | Set task fields non-interactively (never opens the review form; at least one field required) |
 | `validate` | Stamp the guide as validated against the project's current git HEAD |
+| `feedback` | List a task's open human feedback |
+| `resolve` | Resolve a feedback item by its id |
+| `start` / `stop` | Time tracking (`stop` snapshots a tied branch's changed files) |
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
 
 Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
 `activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
-blocks on stdin.
+blocks on stdin. So do a few niche/destructive/setup commands (`init`, `move`,
+`delete`, `reset`, `undo`, `sync`, `export`/`import`).
 
 **Folder-awareness:** the CLI derives "the project" from the current git folder,
 but a long-running server has no per-call working directory. So **every tool

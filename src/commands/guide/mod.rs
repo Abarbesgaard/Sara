@@ -178,6 +178,27 @@ pub fn step_done(
     Ok(())
 }
 
+/// Reopen step `n` and return a structured record. Print-free core shared by the
+/// CLI `step undone` command and the MCP `step_undone` tool.
+pub fn step_undone_value(
+    conn: &Connection,
+    id: &str,
+    n: usize,
+    kind: Option<&str>,
+) -> Result<serde_json::Value> {
+    let task = db::resolve_task(conn, id)?;
+    let kind = kind_arg(kind);
+    let step_id = db::step_id_by_index(conn, &task.uuid, kind, n)?;
+    db::set_step_done(conn, step_id, false, None, None)?;
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "kind": kind,
+        "index": n,
+        "done": false,
+    }))
+}
+
 /// `sara step undone <id> <n>` — reopen a step.
 pub fn step_undone(
     conn: &Connection,
@@ -186,12 +207,39 @@ pub fn step_undone(
     n: usize,
     kind: Option<&str>,
 ) -> Result<()> {
+    let v = step_undone_value(conn, id, n, kind)?;
+    println!(
+        "Reopened {} {} of task {}.",
+        v["kind"].as_str().unwrap_or("step"),
+        n,
+        v["task"].as_i64().unwrap_or(0)
+    );
+    Ok(())
+}
+
+/// Delete checklist item `n` and return a structured record. Print-free core
+/// shared by the CLI `step remove` command and the MCP `step_remove` tool.
+pub fn step_remove_value(
+    conn: &Connection,
+    id: &str,
+    n: usize,
+    kind: Option<&str>,
+) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let kind = kind_arg(kind);
-    let step_id = db::step_id_by_index(conn, &task.uuid, kind, n)?;
-    db::set_step_done(conn, step_id, false, None, None)?;
-    println!("Reopened {} {} of task {}.", kind, n, task.id.unwrap_or(0));
-    Ok(())
+    let steps = db::get_steps(conn, &task.uuid, kind)?;
+    let item = steps
+        .get(n.saturating_sub(1))
+        .ok_or_else(|| anyhow::anyhow!("No {kind} #{n} on this task"))?;
+    let text = item.text.clone();
+    db::delete_step(conn, item.id)?;
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "kind": kind,
+        "index": n,
+        "removed": text,
+    }))
 }
 
 /// `sara step remove <id> <N> [--kind acceptance]` — delete a checklist item.
@@ -202,20 +250,13 @@ pub fn step_remove(
     n: usize,
     kind: Option<&str>,
 ) -> Result<()> {
-    let task = db::resolve_task(conn, id)?;
-    let kind = kind_arg(kind);
-    let steps = db::get_steps(conn, &task.uuid, kind)?;
-    let item = steps
-        .get(n.saturating_sub(1))
-        .ok_or_else(|| anyhow::anyhow!("No {kind} #{n} on this task"))?;
-    let text = item.text.clone();
-    db::delete_step(conn, item.id)?;
+    let v = step_remove_value(conn, id, n, kind)?;
     println!(
         "Removed {} {} of task {}: {}",
-        kind,
+        v["kind"].as_str().unwrap_or("step"),
         n,
-        task.id.unwrap_or(0),
-        text
+        v["task"].as_i64().unwrap_or(0),
+        v["removed"].as_str().unwrap_or_default()
     );
     Ok(())
 }
@@ -380,19 +421,37 @@ pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<
     Ok(json!({ "task": task.id, "commands": cmds, "acceptance": acc }))
 }
 
-/// `sara assignment <id> <text>`
-pub fn assignment(conn: &Connection, id: &str, text: &str) -> Result<()> {
+/// Set a task's assignment text; print-free core shared by the CLI and MCP tool.
+pub fn assignment_value(conn: &Connection, id: &str, text: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     db::set_assignment(conn, &task.uuid, text)?;
-    println!("Set assignment for task {}.", task.id.unwrap_or(0));
+    Ok(json!({ "task": task.id, "uuid": task.uuid.to_string(), "assignment": text }))
+}
+
+/// `sara assignment <id> <text>`
+pub fn assignment(conn: &Connection, id: &str, text: &str) -> Result<()> {
+    let v = assignment_value(conn, id, text)?;
+    println!(
+        "Set assignment for task {}.",
+        v["task"].as_i64().unwrap_or(0)
+    );
     Ok(())
+}
+
+/// Set a task's rationale text; print-free core shared by the CLI and MCP tool.
+pub fn rationale_value(conn: &Connection, id: &str, text: &str) -> Result<serde_json::Value> {
+    let task = db::resolve_task(conn, id)?;
+    db::set_rationale(conn, &task.uuid, text)?;
+    Ok(json!({ "task": task.id, "uuid": task.uuid.to_string(), "rationale": text }))
 }
 
 /// `sara rationale <id> <text>`
 pub fn rationale(conn: &Connection, id: &str, text: &str) -> Result<()> {
-    let task = db::resolve_task(conn, id)?;
-    db::set_rationale(conn, &task.uuid, text)?;
-    println!("Set rationale for task {}.", task.id.unwrap_or(0));
+    let v = rationale_value(conn, id, text)?;
+    println!(
+        "Set rationale for task {}.",
+        v["task"].as_i64().unwrap_or(0)
+    );
     Ok(())
 }
 
@@ -470,12 +529,18 @@ pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
     Ok(())
 }
 
-/// `sara resolve <feedback-id>`
-pub fn resolve(conn: &Connection, feedback_id: i64) -> Result<()> {
-    if db::resolve_annotation(conn, feedback_id, None)? {
-        println!("Resolved feedback #{feedback_id}.");
-    } else {
+/// Resolve a feedback (annotation) item by its id; print-free core shared by the
+/// CLI `resolve` command and the MCP `resolve` tool. Errors if no such feedback.
+pub fn resolve_value(conn: &Connection, feedback_id: i64) -> Result<serde_json::Value> {
+    if !db::resolve_annotation(conn, feedback_id, None)? {
         anyhow::bail!("No feedback with id {feedback_id}");
     }
+    Ok(json!({ "feedback_id": feedback_id, "resolved": true }))
+}
+
+/// `sara resolve <feedback-id>`
+pub fn resolve(conn: &Connection, feedback_id: i64) -> Result<()> {
+    resolve_value(conn, feedback_id)?;
+    println!("Resolved feedback #{feedback_id}.");
     Ok(())
 }

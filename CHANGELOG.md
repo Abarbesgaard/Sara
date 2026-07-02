@@ -4,11 +4,11 @@
 
 ### Features
 
-- **`sara mcp` — MCP server** — a stdio JSON-RPC [Model Context Protocol](https://modelcontextprotocol.io) server (built on the official `rmcp` SDK) exposing sara's agent loop as sixteen typed tools. Any MCP client (Claude, Codex, Copilot, …) can drive sara with structured JSON instead of the CLI's flag-ordering / UUID / TUI footguns. Every tool takes an optional `project_path` so a long-running server stays folder-aware. Implemented as a thin adapter over the existing command/db layer (new print-free `*_value` cores shared with the CLI's `--json` paths — one serializer), with the async runtime confined to this subcommand so the rest of the CLI stays synchronous.
-  - Read: `list`, `info`, `next`, `steps`, `verify` (read-only), `recall`.
-  - Create / guide: `add`, `step_done`, `annotate`, `plan_import`, `check`.
-  - Completion / edit: `done`, `link`, `dep` (on/off/list), `validate`, `modify` (non-interactive setters — requires ≥1 field, never opens the review form).
-  - Interactive-only surfaces (bare `add`/`modify` review form, `board`, `activity`, `projects`) remain CLI-only by design; no tool opens a TUI or reads stdin.
+- **`sara mcp` — MCP server** — a stdio JSON-RPC [Model Context Protocol](https://modelcontextprotocol.io) server (built on the official `rmcp` SDK) exposing sara's agent loop as twenty-six typed tools. Any MCP client (Claude, Codex, Copilot, …) can drive sara with structured JSON instead of the CLI's flag-ordering / UUID / TUI footguns. Every tool takes an optional `project_path` so a long-running server stays folder-aware. Implemented as a thin adapter over the existing command/db layer (new print-free `*_value` cores shared with the CLI's `--json` paths — one serializer), with the async runtime confined to this subcommand so the rest of the CLI stays synchronous.
+  - Read: `list`, `info`, `next`, `steps`, `verify` (read-only), `recall`, `feedback`, `plan_show`.
+  - Create / guide: `add`, `step_done`, `annotate`, `plan_import`, `check`, `step_undone`, `step_remove`, `assignment`, `rationale`, `attach`.
+  - Completion / edit / lifecycle: `done`, `link`, `dep` (on/off/list), `validate`, `modify` (non-interactive setters — requires ≥1 field, never opens the review form), `resolve`, `start`, `stop`.
+  - Interactive-only surfaces (bare `add`/`modify` review form, `board`, `activity`, `projects`) and niche/destructive/setup commands (`init`, `move`, `delete`, `reset`, `undo`, `sync`, `export`/`import`) remain CLI-only by design; no tool opens a TUI or reads stdin.
 
 ## [0.5.6] - 2026-07-01
 

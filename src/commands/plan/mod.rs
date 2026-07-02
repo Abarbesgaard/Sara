@@ -171,23 +171,28 @@ pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_js
 }
 
 /// `sara plan show <id>` — dependency-ordered briefing for a task + its blockers.
-pub fn show(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result<()> {
+/// Dependency-ordered briefing as structured JSON (each task's full guide, in
+/// dependency order). Shared by the `--json` CLI path and the MCP `plan_show` tool.
+pub fn show_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let order = db::dependency_closure(conn, &task.uuid)?;
-
-    if as_json {
-        let mut arr = vec![];
-        for uuid in &order {
-            if let Ok(g) = db::guide_json(conn, uuid) {
-                arr.push(g);
-            }
+    let mut arr = vec![];
+    for uuid in &order {
+        if let Ok(g) = db::guide_json(conn, uuid) {
+            arr.push(g);
         }
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({ "briefing": arr }))?
-        );
+    }
+    Ok(json!({ "briefing": arr }))
+}
+
+pub fn show(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result<()> {
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&show_value(conn, id)?)?);
         return Ok(());
     }
+
+    let task = db::resolve_task(conn, id)?;
+    let order = db::dependency_closure(conn, &task.uuid)?;
 
     println!(
         "Briefing for task {} (dependency-ordered):\n",
