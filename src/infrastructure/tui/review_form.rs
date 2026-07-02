@@ -891,7 +891,7 @@ mod tests {
     #[test]
     #[ignore = "capture helper: run with --ignored to (re)write snapshot files"]
     fn write_render_snapshots() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/tui/snapshots");
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/infrastructure/tui/snapshots");
         std::fs::create_dir_all(dir).unwrap();
 
         let mut state = FormState::new(ctx_with_deps());
