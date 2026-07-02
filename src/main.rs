@@ -294,22 +294,20 @@ fn run() -> Result<()> {
             source,
             verify,
         } => {
-            let task = db::resolve_task(&conn, &id)?;
-            let kind = match kind.as_deref() {
-                Some("acceptance") => db::STEP_KIND_ACCEPTANCE,
-                _ => db::STEP_KIND_STEP,
-            };
-            let source = source.as_deref().unwrap_or("human");
-            db::add_step(
+            let v = commands::guide::check_value(
                 &conn,
-                &task.uuid,
+                &id,
                 &text,
                 intent.as_deref(),
-                kind,
-                source,
+                kind.as_deref(),
+                source.as_deref(),
                 verify.as_deref(),
             )?;
-            println!("Added {kind} to task {}", task.id.unwrap_or(0));
+            println!(
+                "Added {} to task {}",
+                v["kind"].as_str().unwrap_or("step"),
+                v["task"].as_i64().unwrap_or(0)
+            );
         }
 
         Command::Next { id, json } => {
@@ -396,6 +394,10 @@ fn run() -> Result<()> {
 
         Command::Sync => {
             commands::sync::run(&conn, &cfg)?;
+        }
+
+        Command::Mcp => {
+            commands::mcp::run(conn, &cfg)?;
         }
 
         Command::Paths => {

@@ -15,9 +15,10 @@ use edit::edit_loop;
 use handler::load_detail;
 use plain::{RenderOpts, render_markdown, render_plain};
 
-/// `sara info --json` — emit the full guide (assembled by the `task_guide` view)
-/// plus freshness + open-feedback, in one machine-readable document.
-pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
+/// Assemble the full guide (from the `task_guide` view) plus freshness +
+/// open-feedback into one machine-readable document. Single source of truth for
+/// the `--json` CLI path and the MCP `info` tool.
+pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     let mut guide = db::guide_json(conn, &task.uuid)?;
 
@@ -64,7 +65,16 @@ pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()
         );
     }
 
-    println!("{}", serde_json::to_string_pretty(&guide)?);
+    Ok(guide)
+}
+
+/// `sara info --json` — emit the full guide (assembled by the `task_guide` view)
+/// plus freshness + open-feedback, in one machine-readable document.
+pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&guide_value(conn, id_or_uuid)?)?
+    );
     Ok(())
 }
 

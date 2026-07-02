@@ -27,6 +27,15 @@ pub fn open() -> Result<Connection> {
     Ok(conn)
 }
 
+/// Test-only: an in-memory database with the full schema applied. Shared by
+/// unit tests that need a real connection without touching the on-disk DB.
+#[cfg(test)]
+pub fn open_in_memory_for_test() -> Connection {
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    apply_migrations(&mut conn).expect("apply migrations");
+    conn
+}
+
 fn apply_migrations(conn: &mut Connection) -> Result<()> {
     let migrations = Migrations::new(vec![
         M::up(

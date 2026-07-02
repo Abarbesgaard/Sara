@@ -11,7 +11,46 @@ use crate::infrastructure::db;
 ///
 /// When the `embeddings` table has been populated, semantic hits are blended in
 /// (hybrid keyword + vector recall); today FTS5 is the active engine.
-pub fn run(conn: &Connection, _cfg: &Config, query: &str, limit: i64, as_json: bool) -> Result<()> {
+/// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
+/// path: keyword (FTS5) hits plus any semantic hits.
+pub fn recall_value(
+    conn: &Connection,
+    _cfg: &Config,
+    query: &str,
+    limit: i64,
+) -> Result<serde_json::Value> {
+    let hits = db::search_fts(conn, query, limit)?;
+    let keyword: Vec<_> = hits
+        .iter()
+        .map(|h| {
+            let (id, desc) = match db::resolve_task(conn, &h.task_uuid) {
+                Ok(task) => (task.id.unwrap_or(0), task.description.clone()),
+                Err(_) => (0, String::new()),
+            };
+            json!({
+                "task": id,
+                "task_description": desc,
+                "ref_kind": h.ref_kind,
+                "text": h.text,
+            })
+        })
+        .collect();
+    let sem: Vec<_> = semantic_hits(conn, query, limit)
+        .iter()
+        .map(|(id, desc, score)| json!({ "task": id, "task_description": desc, "score": score }))
+        .collect();
+    Ok(json!({ "query": query, "keyword": keyword, "semantic": sem }))
+}
+
+pub fn run(conn: &Connection, cfg: &Config, query: &str, limit: i64, as_json: bool) -> Result<()> {
+    if as_json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&recall_value(conn, cfg, query, limit)?)?
+        );
+        return Ok(());
+    }
+
     let hits = db::search_fts(conn, query, limit)?;
 
     let mut results = vec![];
@@ -24,35 +63,6 @@ pub fn run(conn: &Connection, _cfg: &Config, query: &str, limit: i64, as_json: b
     }
 
     let semantic = semantic_hits(conn, query, limit);
-
-    if as_json {
-        let keyword: Vec<_> = results
-            .iter()
-            .map(|(id, desc, h)| {
-                json!({
-                    "task": id,
-                    "task_description": desc,
-                    "ref_kind": h.ref_kind,
-                    "text": h.text,
-                })
-            })
-            .collect();
-        let sem: Vec<_> = semantic
-            .iter()
-            .map(
-                |(id, desc, score)| json!({ "task": id, "task_description": desc, "score": score }),
-            )
-            .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "query": query,
-                "keyword": keyword,
-                "semantic": sem,
-            }))?
-        );
-        return Ok(());
-    }
 
     if results.is_empty() && semantic.is_empty() {
         println!("No matches for \"{query}\".");

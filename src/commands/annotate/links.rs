@@ -1,12 +1,30 @@
 use anyhow::Result;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
-pub fn link(conn: &Connection, id_or_uuid: &str, url: &str, label: Option<&str>) -> Result<()> {
+/// Attach a URL to a task and return a structured record. Print-free core shared
+/// by the CLI `link` command and the MCP `link` tool.
+pub fn link_value(
+    conn: &Connection,
+    id_or_uuid: &str,
+    url: &str,
+    label: Option<&str>,
+) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     db::add_link(conn, &task.uuid, url, label)?;
-    println!("Linked task {}: {}", task.id.unwrap_or(0), url);
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "url": url,
+        "label": label,
+    }))
+}
+
+pub fn link(conn: &Connection, id_or_uuid: &str, url: &str, label: Option<&str>) -> Result<()> {
+    let v = link_value(conn, id_or_uuid, url, label)?;
+    println!("Linked task {}: {}", v["task"].as_i64().unwrap_or(0), url);
     Ok(())
 }
 

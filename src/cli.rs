@@ -442,6 +442,9 @@ pub enum Command {
     /// Sync open GitHub issues assigned to you for the current repo
     Sync,
 
+    /// Run an MCP server (stdio JSON-RPC) exposing sara's agent loop as typed tools
+    Mcp,
+
     /// Print config and data directory paths
     Paths,
 
@@ -566,6 +569,12 @@ mod tests {
                 "missing subcommand: {name}"
             );
         }
+    }
+
+    #[test]
+    fn mcp_subcommand_parses() {
+        let cli = Cli::try_parse_from(["sara", "mcp"]).expect("mcp should parse");
+        assert!(matches!(cli.command, Command::Mcp));
     }
 
     #[test]

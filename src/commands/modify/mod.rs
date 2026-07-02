@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
@@ -127,19 +128,33 @@ pub fn run(
     Ok(())
 }
 
-/// Apply field changes non-interactively (no TUI), reusing `db::update_task`.
+/// Apply field setters non-interactively and return a structured record. Requires
+/// at least one field flag — it NEVER opens the review-form TUI. Print-free core
+/// shared by the CLI `modify` field-flags path and the MCP `modify` tool.
 #[allow(clippy::too_many_arguments)]
-fn apply_fields(
+pub fn modify_value(
     conn: &Connection,
     cfg: &Config,
-    task: Task,
+    id_or_uuid: &str,
     description: Option<&str>,
     priority: Option<&str>,
     due: Option<&str>,
     clear_due: bool,
     tags: &[String],
     clear_tags: bool,
-) -> Result<()> {
+) -> Result<Value> {
+    let has_field = description.is_some()
+        || priority.is_some()
+        || due.is_some()
+        || clear_due
+        || !tags.is_empty()
+        || clear_tags;
+    anyhow::ensure!(
+        has_field,
+        "modify requires at least one field to change (description, priority, due, clear_due, tags, or clear_tags)"
+    );
+
+    let task = db::resolve_task(conn, id_or_uuid)?;
     let mut updated = merge_task_fields(
         task,
         cfg,
@@ -155,10 +170,45 @@ fn apply_fields(
     db::update_task(conn, &updated)?;
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
 
+    Ok(json!({
+        "task": updated.id,
+        "uuid": updated.uuid.to_string(),
+        "description": updated.description,
+        "priority": updated.priority.as_ref().map(|p| p.label()),
+        "due": updated.due.map(|d| d.format("%Y-%m-%d").to_string()),
+        "tags": updated.tags,
+    }))
+}
+
+/// Apply field changes non-interactively (no TUI), reusing [`modify_value`].
+#[allow(clippy::too_many_arguments)]
+fn apply_fields(
+    conn: &Connection,
+    cfg: &Config,
+    task: Task,
+    description: Option<&str>,
+    priority: Option<&str>,
+    due: Option<&str>,
+    clear_due: bool,
+    tags: &[String],
+    clear_tags: bool,
+) -> Result<()> {
+    let uuid = task.uuid.to_string();
+    let v = modify_value(
+        conn,
+        cfg,
+        &uuid,
+        description,
+        priority,
+        due,
+        clear_due,
+        tags,
+        clear_tags,
+    )?;
     println!(
         "Updated task {}: {}",
-        updated.id.unwrap_or(0),
-        updated.description
+        v["task"].as_i64().unwrap_or(0),
+        v["description"].as_str().unwrap_or_default()
     );
     Ok(())
 }

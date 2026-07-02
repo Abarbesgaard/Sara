@@ -4,6 +4,6 @@ mod off;
 mod on;
 
 pub use chain::run_chain;
-pub use list::run_list;
-pub use off::run_off;
-pub use on::run_on;
+pub use list::{dep_list_value, run_list};
+pub use off::{dep_off_value, run_off};
+pub use on::{dep_on_value, run_on};

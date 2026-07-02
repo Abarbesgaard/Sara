@@ -31,6 +31,7 @@ is ever written into your repositories.**
 - [Core concepts](#core-concepts)
 - [The task list](#the-task-list)
 - [The detail view (`sara info`)](#the-detail-view-sara-info)
+- [MCP server (`sara mcp`)](#mcp-server-sara-mcp)
 - [Working with tasks](#working-with-tasks)
   - [Adding tasks](#adding-tasks)
   - [Dependencies](#dependencies)
@@ -283,6 +284,117 @@ sara info 7 --json | jq .steps   # structured access
 
 The Markdown digest is the recommended way to feed a task to an AI agent: it's
 stable, omits the unbounded History log by default, and needs no reshaping.
+
+---
+
+## MCP server (`sara mcp`)
+
+`sara mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio, exposing sara's agent loop as typed tools. Any MCP client
+(Claude Code / Claude Desktop, OpenAI Codex, GitHub Copilot, Cursor, …) can then
+drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, or
+TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
+single source of truth.
+
+The server exposes twenty-six tools — the non-interactive agent loop end to end,
+from reading and planning a task through to completing it:
+
+| Tool | Purpose |
+|------|---------|
+| `list` | Pending tasks for a project (or all) |
+| `info` | Full task guide: steps, acceptance, notes, links, freshness, feedback |
+| `add` | Create a task (never opens the review form) |
+| `next` | The execution cursor — first not-done step |
+| `steps` | Ordered steps (optionally up to step N) |
+| `step_done` | Mark a step done, recording result + commit |
+| `verify` | Read-only: the verification commands + acceptance criteria (does **not** run them) |
+| `recall` | Cross-task keyword search |
+| `annotate` | Add a comment / finding / decision |
+| `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
+| `plan_show` | Dependency-ordered briefing (the task plus everything it is blocked by) |
+| `check` | Add a checklist step or acceptance criterion (with optional intent / verify command) |
+| `step_undone` | Reopen a completed step / acceptance criterion |
+| `step_remove` | Delete step N (remaining items renumber) |
+| `dep` | Manage dependencies — `action` = `on` / `off` / `list` |
+| `link` | Attach a URL (e.g. a PR) to a task |
+| `attach` | Attach a file or code anchor (`reason`, `symbol`, `lines`, `source`); a URL becomes a link |
+| `assignment` | Set the task's assignment (the originating prompt / what to build) |
+| `rationale` | Set the task's rationale (why it exists) |
+| `modify` | Set task fields non-interactively (never opens the review form; at least one field required) |
+| `validate` | Stamp the guide as validated against the project's current git HEAD |
+| `feedback` | List a task's open human feedback |
+| `resolve` | Resolve a feedback item by its id |
+| `start` / `stop` | Time tracking (`stop` snapshots a tied branch's changed files) |
+| `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
+
+Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
+`activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
+blocks on stdin. So do a few niche/destructive/setup commands (`init`, `move`,
+`delete`, `reset`, `undo`, `sync`, `export`/`import`).
+
+**Folder-awareness:** the CLI derives "the project" from the current git folder,
+but a long-running server has no per-call working directory. So **every tool
+takes an optional `project_path`** — set it to the absolute path of the target
+repo and the tool operates on that project. Omit it to use the directory the
+server was launched in.
+
+### Client configuration
+
+The server is launched as a subprocess over stdio — every client needs the same
+two ingredients: **`command: sara`, `args: ["mcp"]`**. If `sara` isn't on the
+client's `PATH`, point `command` at the absolute path (e.g. `~/.cargo/bin/sara`).
+
+**Quickest — Claude Code** (`--scope user` makes sara available in every project):
+
+```bash
+claude mcp add --scope user --transport stdio sara -- sara mcp
+# repo-local instead:  claude mcp add --scope project --transport stdio sara -- sara mcp
+```
+
+For any other client, drop in the same `command` + `args`:
+
+**Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{ "mcpServers": { "sara": { "command": "sara", "args": ["mcp"] } } }
+```
+
+**OpenAI Codex** (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.sara]
+command = "sara"
+args = ["mcp"]
+```
+
+**GitHub Copilot / VS Code** (`.vscode/mcp.json`):
+
+```json
+{ "servers": { "sara": { "type": "stdio", "command": "sara", "args": ["mcp"] } } }
+```
+
+> On stdio transport, stdout is the JSON-RPC channel: run `sara mcp` directly (no
+> wrapper that writes to stdout). Diagnostics go to stderr.
+
+### Instructing your agent to use it
+
+Once connected, the tools show up in the client automatically, and the server
+sends usage **`instructions`** on `initialize` — the `project_path` model, UUID
+targeting, and the execution loop through to the PR/completion discipline. Clients
+like Claude Code surface those to the model, so often no extra prompting is needed.
+
+For stronger, always-on steering, add a short rule to your agent's own persistent
+instructions (Claude Code's `CLAUDE.md`, an `AGENTS.md`, Cursor rules, …):
+
+> Use the **sara MCP tools** for task management (prefer them over the `sara` CLI).
+> Pass **`project_path`** — the absolute path of the repo you're working in — on
+> every call. Target tasks by their **8-char UUID prefix**, not the recycled
+> display id. Mirror multi-step work into sara: tick steps with `step_done` as you
+> finish them, `link` the PR when you open it, and call `done` only once that PR
+> has merged.
+
+Keep it short — the tool descriptions and the server's `instructions` carry the
+mechanics; your rule just says *prefer sara, pass `project_path`, follow the loop*.
 
 ---
 
@@ -607,6 +719,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
 | `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
+| `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |
 | `sara reset`                       | Delete a project's tasks and profile (`-p`, `-y`)        |
 | `sara paths`                       | Print config and data paths                              |

@@ -1,9 +1,13 @@
 use anyhow::Result;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
-pub fn attach(
+/// Attach a file / code anchor (or a URL, which becomes a link) to a task,
+/// returning a structured record. Print-free core shared by the CLI `attach`
+/// command and the MCP `attach` tool.
+pub fn attach_value(
     conn: &Connection,
     id_or_uuid: &str,
     path: &str,
@@ -11,11 +15,11 @@ pub fn attach(
     symbol: Option<&str>,
     lines: Option<&str>,
     source: Option<&str>,
-) -> Result<()> {
+) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     // URLs become navigable/openable links; everything else is a file.
     if db::is_url(path) {
-        return super::link(conn, id_or_uuid, path, None);
+        return super::link_value(conn, id_or_uuid, path, None);
     }
 
     // A plain attach with no anchor metadata keeps the simple file-list behavior.
@@ -26,8 +30,12 @@ pub fn attach(
             files.push(path.to_string());
         }
         db::set_task_files(conn, &task.uuid, &files)?;
-        println!("Attached to task {}: {}", task.id.unwrap_or(0), path);
-        return Ok(());
+        return Ok(json!({
+            "task": task.id,
+            "uuid": task.uuid.to_string(),
+            "attached": path,
+            "kind": "file",
+        }));
     }
 
     let (line_start, line_end) = match lines {
@@ -46,6 +54,42 @@ pub fn attach(
     db::add_task_file(
         conn, &task.uuid, path, provenance, reason, symbol, line_start, line_end,
     )?;
-    println!("Attached anchor to task {}: {}", task.id.unwrap_or(0), path);
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "attached": path,
+        "kind": "anchor",
+        "reason": reason,
+        "symbol": symbol,
+        "line_start": line_start,
+        "line_end": line_end,
+    }))
+}
+
+pub fn attach(
+    conn: &Connection,
+    id_or_uuid: &str,
+    path: &str,
+    reason: Option<&str>,
+    symbol: Option<&str>,
+    lines: Option<&str>,
+    source: Option<&str>,
+) -> Result<()> {
+    let v = attach_value(conn, id_or_uuid, path, reason, symbol, lines, source)?;
+    let id = v["task"].as_i64().unwrap_or(0);
+    if let Some(url) = v.get("url").and_then(|u| u.as_str()) {
+        // Delegated to link_value (URL path).
+        println!("Linked task {id}: {url}");
+    } else if v["kind"] == "anchor" {
+        println!(
+            "Attached anchor to task {id}: {}",
+            v["attached"].as_str().unwrap_or_default()
+        );
+    } else {
+        println!(
+            "Attached to task {id}: {}",
+            v["attached"].as_str().unwrap_or_default()
+        );
+    }
     Ok(())
 }
