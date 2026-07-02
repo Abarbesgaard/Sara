@@ -397,6 +397,9 @@ fn run() -> Result<()> {
         }
 
         Command::Mcp => {
+            // This terminal arm moves `conn` (the server owns it for its lifetime).
+            // That's fine even though other arms borrow `&conn`/`&mut conn`: match
+            // arms are mutually exclusive, and `conn` is not used after the match.
             commands::mcp::run(conn, &cfg)?;
         }
 
