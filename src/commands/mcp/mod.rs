@@ -33,12 +33,19 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
 const INSTRUCTIONS: &str = "\
-sara is a folder-aware task manager. A git repo == a project. Because this server \
-is long-running and has no per-call working directory, EVERY tool takes an optional \
-`project_path` — set it to the absolute path of the target git repo so the tool \
-resolves/creates tasks in that project. Omit it to use the directory the server was \
-launched in. Target tasks by their 8-char UUID prefix (stable) rather than the \
-recycled numeric display id. Typical loop: add → list/info → next → step_done → verify.";
+sara is a folder-aware task manager: a git repo == a project, and each task carries \
+a rich guide (ordered steps, acceptance criteria, notes, links, dependencies) meant \
+for an agent to execute. This server exposes the whole non-interactive task \
+lifecycle as typed tools — read, plan, guide, edit, track, and complete; nothing \
+opens a TUI or blocks on stdin.\n\n\
+Because the server is long-running and has no per-call working directory, EVERY \
+tool takes an optional `project_path` — set it to the absolute path of the target \
+git repo so the tool resolves/creates tasks there; omit it to use the directory the \
+server was launched in. Target tasks by their 8-char UUID prefix (stable), not the \
+recycled numeric display id. Never read the sara SQLite DB directly.\n\n\
+Typical execution loop: list/info to load a task → next for the current step → do \
+the work → step_done (with a result) → verify. To finish, link the PR (link) and \
+call done only once that PR has merged — opening a PR is not completion.";
 
 /// Restores the process working directory on drop. Only changes cwd when a
 /// non-empty `project_path` is supplied.

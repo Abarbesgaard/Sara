@@ -340,15 +340,18 @@ server was launched in.
 
 ### Client configuration
 
-The server is launched as a subprocess; every client uses the same
-`command` + `args`. Point `command` at the installed `sara` binary.
+The server is launched as a subprocess over stdio — every client needs the same
+two ingredients: **`command: sara`, `args: ["mcp"]`**. If `sara` isn't on the
+client's `PATH`, point `command` at the absolute path (e.g. `~/.cargo/bin/sara`).
 
-**Claude Code:**
+**Quickest — Claude Code** (`--scope user` makes sara available in every project):
 
 ```bash
-claude mcp add --transport stdio sara -- sara mcp
-# or, shared with a repo:  claude mcp add --scope project --transport stdio sara -- sara mcp
+claude mcp add --scope user --transport stdio sara -- sara mcp
+# repo-local instead:  claude mcp add --scope project --transport stdio sara -- sara mcp
 ```
+
+For any other client, drop in the same `command` + `args`:
 
 **Claude Desktop** (`claude_desktop_config.json`):
 
@@ -372,6 +375,26 @@ args = ["mcp"]
 
 > On stdio transport, stdout is the JSON-RPC channel: run `sara mcp` directly (no
 > wrapper that writes to stdout). Diagnostics go to stderr.
+
+### Instructing your agent to use it
+
+Once connected, the tools show up in the client automatically, and the server
+sends usage **`instructions`** on `initialize` — the `project_path` model, UUID
+targeting, and the execution loop through to the PR/completion discipline. Clients
+like Claude Code surface those to the model, so often no extra prompting is needed.
+
+For stronger, always-on steering, add a short rule to your agent's own persistent
+instructions (Claude Code's `CLAUDE.md`, an `AGENTS.md`, Cursor rules, …):
+
+> Use the **sara MCP tools** for task management (prefer them over the `sara` CLI).
+> Pass **`project_path`** — the absolute path of the repo you're working in — on
+> every call. Target tasks by their **8-char UUID prefix**, not the recycled
+> display id. Mirror multi-step work into sara: tick steps with `step_done` as you
+> finish them, `link` the PR when you open it, and call `done` only once that PR
+> has merged.
+
+Keep it short — the tool descriptions and the server's `instructions` carry the
+mechanics; your rule just says *prefer sara, pass `project_path`, follow the loop*.
 
 ---
 
