@@ -14,6 +14,13 @@ readme = "README.md"
 keywords = ["task", "cli", "tui", "productivity", "todo"]
 categories = ["command-line-utilities"]
 
+[lib]
+# Internal-only: exists so `tests/*.rs` integration tests can reach crate
+# internals (db, commands, etc). Pre-1.0, no known library consumers — the
+# published artifact is the `sara` binary below, installed via `cargo install`.
+name = "sara_tasks"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sara"
 path = "src/main.rs"

@@ -69,7 +69,7 @@ pub fn project_identity_for_dir(
 /// Pick the project root for `dir`: the detected `git_root`, unless that root is
 /// `$HOME` or an ancestor of it (too broad to be a project), in which case fall
 /// back to `dir` itself. All inputs are assumed already canonicalized.
-fn project_root_for(dir: &Path, git_root: Option<&Path>, home: Option<&Path>) -> PathBuf {
+pub fn project_root_for(dir: &Path, git_root: Option<&Path>, home: Option<&Path>) -> PathBuf {
     match git_root {
         Some(root) if home.is_none_or(|h| !h.starts_with(root)) => root.to_path_buf(),
         _ => dir.to_path_buf(),
@@ -189,62 +189,4 @@ pub fn detect_current_project(
 
     crate::infrastructure::db::upsert_project_seen(conn, &derived_name, Some(&path_str))?;
     Ok((derived_name, Some(path_str)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::{Path, PathBuf};
-
-    #[test]
-    fn home_dotfiles_repo_does_not_capture_subfolder() {
-        // $HOME is itself a git repo (dotfiles); a non-git subfolder must
-        // resolve to the subfolder, not to $HOME.
-        let home = Path::new("/home/u");
-        let dir = Path::new("/home/u/workspace");
-        assert_eq!(
-            project_root_for(dir, Some(home), Some(home)),
-            PathBuf::from("/home/u/workspace")
-        );
-    }
-
-    #[test]
-    fn real_repo_under_home_is_used_as_root() {
-        let home = Path::new("/home/u");
-        let repo = Path::new("/home/u/projects/myrepo");
-        let dir = Path::new("/home/u/projects/myrepo/src");
-        assert_eq!(
-            project_root_for(dir, Some(repo), Some(home)),
-            PathBuf::from("/home/u/projects/myrepo")
-        );
-    }
-
-    #[test]
-    fn no_git_root_falls_back_to_dir() {
-        let dir = Path::new("/home/u/workspace");
-        assert_eq!(
-            project_root_for(dir, None, Some(Path::new("/home/u"))),
-            PathBuf::from("/home/u/workspace")
-        );
-    }
-
-    #[test]
-    fn git_root_above_home_is_rejected() {
-        // A repo at the filesystem root (or any ancestor of $HOME) is too broad.
-        let dir = Path::new("/home/u/workspace");
-        assert_eq!(
-            project_root_for(dir, Some(Path::new("/")), Some(Path::new("/home/u"))),
-            PathBuf::from("/home/u/workspace")
-        );
-    }
-
-    #[test]
-    fn git_root_equal_to_dir_is_used() {
-        let home = Path::new("/home/u");
-        let dir = Path::new("/home/u/projects/myrepo");
-        assert_eq!(
-            project_root_for(dir, Some(dir), Some(home)),
-            PathBuf::from("/home/u/projects/myrepo")
-        );
-    }
 }

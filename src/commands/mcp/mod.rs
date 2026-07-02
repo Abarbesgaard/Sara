@@ -21,13 +21,10 @@
 //! composes into one.
 
 mod params;
-mod server;
+pub mod server;
 
 mod guide;
 mod lifecycle;
 mod read;
 
 pub use server::run;
-
-#[cfg(test)]
-mod tests;

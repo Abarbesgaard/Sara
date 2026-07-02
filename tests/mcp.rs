@@ -1,14 +1,23 @@
+//! Integration tests for `sara_tasks::commands::mcp`.
+//! Moved out of src/commands/mcp/tests.rs (already its own file, just not
+//! under tests/).
+//!
+//! Mutates the process-wide working directory via CwdGuard, guarded by a
+//! local mutex -- keep all such tests in this one file so the mutex keeps
+//! working (each tests/*.rs file is compiled as its own separate test
+//! binary/process).
+
 use std::sync::Mutex;
 
 use rmcp::ServerHandler;
 use rusqlite::Connection;
 
-use crate::commands;
-use crate::infrastructure::config::Config;
-use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
+use sara_tasks::commands;
+use sara_tasks::infrastructure::config::Config;
+use sara_tasks::infrastructure::db;
+use sara_tasks::infrastructure::model::Task;
 
-use super::server::{CwdGuard, SaraServer};
+use sara_tasks::commands::mcp::server::{CwdGuard, SaraServer};
 
 // cwd is process-global; serialize the tests that mutate it.
 static CWD_LOCK: Mutex<()> = Mutex::new(());

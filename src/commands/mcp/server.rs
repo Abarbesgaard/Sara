@@ -35,12 +35,12 @@ call done only once that PR has merged — opening a PR is not completion.";
 
 /// Restores the process working directory on drop. Only changes cwd when a
 /// non-empty `project_path` is supplied.
-pub(crate) struct CwdGuard {
+pub struct CwdGuard {
     prev: Option<PathBuf>,
 }
 
 impl CwdGuard {
-    pub(crate) fn enter(project_path: Option<&str>) -> anyhow::Result<Self> {
+    pub fn enter(project_path: Option<&str>) -> anyhow::Result<Self> {
         match project_path {
             Some(p) if !p.trim().is_empty() => {
                 let prev = std::env::current_dir().ok();
@@ -69,7 +69,7 @@ pub struct SaraServer {
 }
 
 impl SaraServer {
-    pub(crate) fn new(conn: Connection, cfg: Config) -> Self {
+    pub fn new(conn: Connection, cfg: Config) -> Self {
         Self {
             conn: Arc::new(Mutex::new(conn)),
             cfg,
@@ -79,7 +79,7 @@ impl SaraServer {
 
     /// The full tool set: the three capability routers combined. Shared by `new`
     /// (to populate the dispatch field) and the tool-count test.
-    pub(crate) fn all_router() -> ToolRouter<Self> {
+    pub fn all_router() -> ToolRouter<Self> {
         Self::read_router() + Self::guide_router() + Self::lifecycle_router()
     }
 
@@ -87,7 +87,7 @@ impl SaraServer {
     /// connection (serializing all tool calls), sets the process cwd to the
     /// project, and opens an undo batch — all on one thread, so both the cwd and
     /// the thread-local undo context are coherent for the enclosed call.
-    pub(crate) fn with_project<T>(
+    pub fn with_project<T>(
         &self,
         project_path: Option<&str>,
         label: &str,

@@ -343,7 +343,7 @@ pub(super) fn editor_for(task: &Task, field: EditField) -> TextArea<'static> {
     ta
 }
 
-pub(super) fn current_value(task: &Task, field: EditField) -> String {
+pub fn current_value(task: &Task, field: EditField) -> String {
     match field {
         EditField::Description => task.description.clone(),
         EditField::Project => task.project.clone(),
@@ -379,7 +379,7 @@ pub(super) fn current_value(task: &Task, field: EditField) -> String {
     }
 }
 
-pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &Config) {
+pub fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &Config) {
     match field {
         EditField::Description => {
             if !value.trim().is_empty() {
@@ -418,7 +418,7 @@ pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &
     }
 }
 
-pub(super) fn cycle_priority(task: &mut Task, forward: bool) {
+pub fn cycle_priority(task: &mut Task, forward: bool) {
     task.priority = match (&task.priority, forward) {
         (None, true) => Some(Priority::L),
         (Some(Priority::L), true) => Some(Priority::M),
