@@ -413,6 +413,19 @@ fields before saving. `--yes` saves immediately without the form. See
 [inline tokens](#inline-taskwarrior-style-tokens) for the `project:` / `+tag` /
 `pri:` shorthand.
 
+Creation output echoes the new task's UUID prefix, so scripts/agents never need
+a follow-up lookup: `Created task 5 [Sara] (3f458474): write tests`.
+
+Attach notes, links, checklist steps, and a dependency **inline at creation**
+instead of separate follow-up commands (all repeatable except `--depends-on`,
+which chains onto an existing task by uuid prefix):
+
+```bash
+sara add --priority H -t api --annotation "amounts in minor units" \
+  --link "https://…/Controller.cs" --check "Add model" --check "Wire route" \
+  --depends-on 3f458474 --yes "Implement payment client"
+```
+
 ```bash
 sara modify 2        # edit via the review form
 # …or set fields non-interactively (no TUI):
@@ -431,6 +444,7 @@ sink in urgency; blocking tasks rise.
 sara dep 4 on 5      # task 4 now depends on (is blocked by) task 5
 sara dep 4 off 5     # remove that dependency
 sara dep 4 list      # show what 4 is blocked by / blocking
+sara dep chain 1 2 3 # wire a linear sequence in one command: 1 → 2 → 3
 ```
 
 You can also edit dependencies interactively in the **Depends on** field of
@@ -702,14 +716,14 @@ Run `sara paths` to see the exact locations on your machine.
 | Command                            | Description                                              |
 |------------------------------------|----------------------------------------------------------|
 | `sara init`                        | Initialize/update the current folder as a project (`--goal`, `--stack`, `--conventions`, `--notes`, `-y`) |
-| `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`) |
+| `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`, `--annotation`, `--link`, `--check`, `--depends-on`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |
 | `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |
-| `sara dep <id> on\|off\|list`       | Manage dependencies                                     |
+| `sara dep <id> on\|off\|list` / `sara dep chain <id>...` | Manage dependencies, or wire a linear chain in one command |
 | `sara check <id> <text>`           | Add a checklist item                                     |
 | `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`)|
 | `sara annotate <id> <text>`        | Add a comment (alias `comment`); `sara denotate <n>` removes |
