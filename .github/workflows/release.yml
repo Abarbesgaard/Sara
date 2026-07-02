@@ -50,6 +50,7 @@ jobs:
           bin: sara
           target: ${{ matrix.target }}
           archive: sara-$target
+          checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}
           use-cross: ${{ matrix.use-cross }}
 
@@ -71,7 +72,8 @@ jobs:
         run: |
           deb="$(ls target/debian/*.deb | head -n1)"
           cp "$deb" sara_amd64.deb
-          gh release upload "${GITHUB_REF_NAME}" "$deb" sara_amd64.deb --clobber
+          sha256sum "$deb" sara_amd64.deb > sara_amd64.deb.sha256
+          gh release upload "${GITHUB_REF_NAME}" "$deb" sara_amd64.deb sara_amd64.deb.sha256 --clobber
 
   # Publish to crates.io. No-op unless the CARGO_REGISTRY_TOKEN secret is set.
   crates-io:
