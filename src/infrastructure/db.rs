@@ -1440,6 +1440,13 @@ pub fn derive_link_label(url: &str) -> Option<String> {
     None
 }
 
+/// Does this URL point at a GitHub issue (as opposed to a PR or anything else)?
+pub fn is_issue_link(url: &str) -> bool {
+    derive_link_label(url)
+        .map(|l| l.starts_with("Issue "))
+        .unwrap_or(false)
+}
+
 pub fn add_link(conn: &Connection, task_uuid: &Uuid, url: &str, label: Option<&str>) -> Result<()> {
     conn.execute(
         "INSERT INTO task_links (task_uuid, url, label, entry) VALUES (?1,?2,?3,?4)",
@@ -1479,6 +1486,8 @@ pub struct LinkFlags {
     pub any: bool,
     /// Task has at least one GitHub PR link.
     pub pr: bool,
+    /// Task has at least one GitHub issue link.
+    pub issue: bool,
 }
 
 /// Build a per-task link-flag map in a single query (keyed by task uuid string).
@@ -1495,9 +1504,11 @@ pub fn link_flags_by_task(
         let is_pr = derive_link_label(&url)
             .map(|l| l.starts_with("PR "))
             .unwrap_or(false);
+        let is_issue = is_issue_link(&url);
         let entry = map.entry(uuid).or_default();
         entry.any = true;
         entry.pr = entry.pr || is_pr;
+        entry.issue = entry.issue || is_issue;
     }
     Ok(map)
 }
@@ -3578,6 +3589,48 @@ mod tests {
             Some("Issue #7 · acme/widgets".to_string())
         );
         assert_eq!(derive_link_label("https://example.com/foo"), None);
+    }
+
+    #[test]
+    fn is_issue_link_distinguishes_issues_from_prs_and_others() {
+        assert!(is_issue_link("https://github.com/acme/widgets/issues/7"));
+        assert!(!is_issue_link("https://github.com/acme/widgets/pull/42"));
+        assert!(!is_issue_link("https://example.com/foo"));
+    }
+
+    #[test]
+    fn link_flags_by_task_distinguishes_pr_issue_and_generic_links() {
+        let conn = mem();
+        let pr_task = seed_task(&conn);
+        let issue_task = seed_task(&conn);
+        let generic_task = seed_task(&conn);
+
+        add_link(
+            &conn,
+            &pr_task.uuid,
+            "https://github.com/acme/widgets/pull/42",
+            None,
+        )
+        .unwrap();
+        add_link(
+            &conn,
+            &issue_task.uuid,
+            "https://github.com/acme/widgets/issues/7",
+            None,
+        )
+        .unwrap();
+        add_link(&conn, &generic_task.uuid, "https://example.com/foo", None).unwrap();
+
+        let flags = link_flags_by_task(&conn).unwrap();
+
+        let pr_flags = flags[&pr_task.uuid.to_string()];
+        assert!(pr_flags.any && pr_flags.pr && !pr_flags.issue);
+
+        let issue_flags = flags[&issue_task.uuid.to_string()];
+        assert!(issue_flags.any && issue_flags.issue && !issue_flags.pr);
+
+        let generic_flags = flags[&generic_task.uuid.to_string()];
+        assert!(generic_flags.any && !generic_flags.pr && !generic_flags.issue);
     }
 
     #[test]

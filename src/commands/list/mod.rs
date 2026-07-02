@@ -164,12 +164,12 @@ pub fn run(
             _ => " ",
         };
         let dep_text = truncate(&dep_column_text(dep), DEP_COL_W);
-        let pr_badge_plain = if flags.pr {
-            "[PR] "
-        } else if flags.any {
-            "[link] "
-        } else {
-            ""
+        let link_badge = LinkBadge::from_flags(flags);
+        let pr_badge_plain = match link_badge {
+            LinkBadge::Pr => "[PR] ",
+            LinkBadge::Issue => "[ISSUE] ",
+            LinkBadge::Link => "[link] ",
+            LinkBadge::None => "",
         };
 
         // Colorize
@@ -218,12 +218,11 @@ pub fn run(
                 Some(d) if d.blocking > 0 => format!("{GRAY}{dep_padded}{RESET}"),
                 _ => dep_padded,
             };
-            let pr_badge = if flags.pr {
-                format!("{MAGENTA}{BOLD}PR{RESET} ")
-            } else if flags.any {
-                format!("{CYAN}↗{RESET} ")
-            } else {
-                String::new()
+            let pr_badge = match link_badge {
+                LinkBadge::Pr => format!("{MAGENTA}{BOLD}PR{RESET} "),
+                LinkBadge::Issue => format!("{GREEN}{BOLD}ISS{RESET} "),
+                LinkBadge::Link => format!("{CYAN}↗{RESET} "),
+                LinkBadge::None => String::new(),
             };
             println!(
                 "{active}{recur}{dep} {CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {deptext}  {pr}{desc}",
@@ -259,6 +258,30 @@ pub fn run(
     }
 
     Ok(())
+}
+
+/// Which link badge a task should show at a glance, in priority order.
+/// PR outranks Issue, which outranks a plain/generic link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkBadge {
+    Pr,
+    Issue,
+    Link,
+    None,
+}
+
+impl LinkBadge {
+    fn from_flags(flags: db::LinkFlags) -> Self {
+        if flags.pr {
+            LinkBadge::Pr
+        } else if flags.issue {
+            LinkBadge::Issue
+        } else if flags.any {
+            LinkBadge::Link
+        } else {
+            LinkBadge::None
+        }
+    }
 }
 
 /// Width of the DEPS column in the task list.
@@ -308,4 +331,41 @@ fn color_due(task: &Task, due_str: &str, no_color: bool) -> String {
         RESET
     };
     format!("{color}{due_str:<12}{RESET}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_badge_precedence_pr_beats_issue_beats_generic_link() {
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: true,
+                issue: true,
+            }),
+            LinkBadge::Pr
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: false,
+                issue: true,
+            }),
+            LinkBadge::Issue
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: false,
+                issue: false,
+            }),
+            LinkBadge::Link
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags::default()),
+            LinkBadge::None
+        );
+    }
 }
