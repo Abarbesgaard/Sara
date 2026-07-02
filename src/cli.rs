@@ -198,6 +198,9 @@ pub enum Command {
         /// Emit the list as JSON
         #[arg(long)]
         json: bool,
+        /// Group tasks by their linked GitHub issue, for at-a-glance tracing
+        #[arg(long)]
+        by_issue: bool,
     },
 
     /// Start working on a task (begins time tracking, marks it active)

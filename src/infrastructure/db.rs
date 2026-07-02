@@ -1447,6 +1447,62 @@ pub fn is_issue_link(url: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// If `url` is a GitHub issue link, return `(owner/repo, issue number)` so
+/// tasks linking the same issue can be grouped together.
+pub fn parse_issue_link(url: &str) -> Option<(String, u64)> {
+    let rest = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+        .or_else(|| url.strip_prefix("github.com/"))?;
+    let parts: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() < 4 || parts[2] != "issues" {
+        return None;
+    }
+    let num_str = parts[3]
+        .split(|c: char| !c.is_ascii_digit())
+        .next()
+        .unwrap_or("");
+    let number: u64 = num_str.parse().ok()?;
+    Some((format!("{}/{}", parts[0], parts[1]), number))
+}
+
+/// A GitHub issue and the tasks (from a given set) that link to it.
+#[derive(Debug, Clone)]
+pub struct IssueGroup {
+    pub owner_repo: String,
+    pub number: u64,
+    pub tasks: Vec<Task>,
+}
+
+/// Group `tasks` by the GitHub issue they link to, sorted by (owner/repo, number).
+/// Returns `(groups, tasks_without_an_issue_link)`; every input task appears exactly once.
+pub fn group_tasks_by_issue(
+    conn: &Connection,
+    tasks: &[Task],
+) -> Result<(Vec<IssueGroup>, Vec<Task>)> {
+    let mut groups: std::collections::BTreeMap<(String, u64), Vec<Task>> =
+        std::collections::BTreeMap::new();
+    let mut ungrouped = Vec::new();
+
+    for task in tasks {
+        let links = get_links(conn, &task.uuid)?;
+        match links.iter().find_map(|l| parse_issue_link(&l.url)) {
+            Some(key) => groups.entry(key).or_default().push(task.clone()),
+            None => ungrouped.push(task.clone()),
+        }
+    }
+
+    let groups = groups
+        .into_iter()
+        .map(|((owner_repo, number), tasks)| IssueGroup {
+            owner_repo,
+            number,
+            tasks,
+        })
+        .collect();
+    Ok((groups, ungrouped))
+}
+
 pub fn add_link(conn: &Connection, task_uuid: &Uuid, url: &str, label: Option<&str>) -> Result<()> {
     conn.execute(
         "INSERT INTO task_links (task_uuid, url, label, entry) VALUES (?1,?2,?3,?4)",
@@ -3631,6 +3687,70 @@ mod tests {
 
         let generic_flags = flags[&generic_task.uuid.to_string()];
         assert!(generic_flags.any && !generic_flags.pr && !generic_flags.issue);
+    }
+
+    #[test]
+    fn parse_issue_link_extracts_owner_repo_and_number() {
+        assert_eq!(
+            parse_issue_link("https://github.com/acme/widgets/issues/7"),
+            Some(("acme/widgets".to_string(), 7))
+        );
+        assert_eq!(
+            parse_issue_link("https://github.com/acme/widgets/pull/42"),
+            None
+        );
+        assert_eq!(parse_issue_link("https://example.com/foo"), None);
+    }
+
+    #[test]
+    fn group_tasks_by_issue_groups_shared_issues_and_buckets_the_rest() {
+        let conn = mem();
+        let t1 = seed_task(&conn);
+        let t2 = seed_task(&conn);
+        let t3 = seed_task(&conn);
+        let unlinked = seed_task(&conn);
+
+        // t1 and t2 both trace back to the same issue; t3 to a different one.
+        add_link(
+            &conn,
+            &t1.uuid,
+            "https://github.com/acme/widgets/issues/7",
+            None,
+        )
+        .unwrap();
+        add_link(
+            &conn,
+            &t2.uuid,
+            "https://github.com/acme/widgets/issues/7",
+            None,
+        )
+        .unwrap();
+        add_link(
+            &conn,
+            &t3.uuid,
+            "https://github.com/acme/widgets/issues/9",
+            None,
+        )
+        .unwrap();
+
+        let tasks = vec![t1.clone(), t2.clone(), t3.clone(), unlinked.clone()];
+        let (groups, ungrouped) = group_tasks_by_issue(&conn, &tasks).unwrap();
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].owner_repo, "acme/widgets");
+        assert_eq!(groups[0].number, 7);
+        assert_eq!(
+            groups[0].tasks.iter().map(|t| t.uuid).collect::<Vec<_>>(),
+            vec![t1.uuid, t2.uuid]
+        );
+        assert_eq!(groups[1].number, 9);
+        assert_eq!(
+            groups[1].tasks.iter().map(|t| t.uuid).collect::<Vec<_>>(),
+            vec![t3.uuid]
+        );
+
+        assert_eq!(ungrouped.len(), 1);
+        assert_eq!(ungrouped[0].uuid, unlinked.uuid);
     }
 
     #[test]

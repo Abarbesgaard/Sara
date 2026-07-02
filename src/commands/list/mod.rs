@@ -75,6 +75,7 @@ pub fn run(
     all: bool,
     project_filter: Option<&str>,
     as_json: bool,
+    by_issue: bool,
 ) -> Result<()> {
     let no_color = std::env::var("NO_COLOR").is_ok();
 
@@ -87,6 +88,10 @@ pub fn run(
     if as_json {
         println!("{}", serde_json::to_string_pretty(&tasks_to_value(&tasks))?);
         return Ok(());
+    }
+
+    if by_issue {
+        return print_by_issue(conn, &tasks, no_color);
     }
 
     if tasks.is_empty() {
@@ -255,6 +260,50 @@ pub fn run(
         println!("{summary}");
     } else {
         println!("{DIM}{summary}{RESET}");
+    }
+
+    Ok(())
+}
+
+/// `sara list --by-issue`: trace tasks back to the GitHub issue they link to,
+/// so a broken-down issue and its concrete tasks read together at a glance.
+fn print_by_issue(conn: &Connection, tasks: &[Task], no_color: bool) -> Result<()> {
+    let (groups, ungrouped) = db::group_tasks_by_issue(conn, tasks)?;
+
+    if groups.is_empty() && ungrouped.is_empty() {
+        println!("No pending tasks.");
+        return Ok(());
+    }
+
+    let print_group_rows = |tasks: &[Task]| {
+        for task in tasks {
+            let id_str = task
+                .id
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            println!("   {:>3}  {}", id_str, truncate(&task.description, 60));
+        }
+    };
+
+    for group in &groups {
+        let header = format!("Issue #{} · {}", group.number, group.owner_repo);
+        if no_color {
+            println!("{header}");
+        } else {
+            println!("{BOLD}{CYAN}{header}{RESET}");
+        }
+        print_group_rows(&group.tasks);
+        println!();
+    }
+
+    if !ungrouped.is_empty() {
+        if no_color {
+            println!("No linked issue");
+        } else {
+            println!("{DIM}No linked issue{RESET}");
+        }
+        print_group_rows(&ungrouped);
+        println!();
     }
 
     Ok(())
