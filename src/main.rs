@@ -1,19 +1,12 @@
-#![allow(dead_code)]
-#![allow(clippy::too_many_arguments)]
-
-mod cli;
-mod commands;
-mod completion;
-mod infrastructure;
-
 use anyhow::Result;
 use clap::CommandFactory;
 use clap::Parser;
 use std::io;
 use std::process::ExitCode;
 
-use cli::{Cli, Command, DepAction, ProjectAction};
-use infrastructure::{config, db};
+use sara_tasks::cli::{self, Cli, Command, DepAction, ProjectAction};
+use sara_tasks::commands;
+use sara_tasks::infrastructure::{self, config, db};
 
 fn run() -> Result<()> {
     // Dynamic shell completion: when invoked as `COMPLETE=<shell> sara …`
@@ -391,8 +384,8 @@ fn run() -> Result<()> {
                 Some(p)
             } else {
                 let cwd = std::env::current_dir().unwrap_or_default();
-                crate::infrastructure::project::find_git_root(&cwd)
-                    .map(|root| crate::infrastructure::project::project_name_from_root(&root))
+                infrastructure::project::find_git_root(&cwd)
+                    .map(|root| infrastructure::project::project_name_from_root(&root))
             };
             commands::activity::run(&conn, proj.as_deref())?;
         }
