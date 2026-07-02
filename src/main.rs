@@ -206,8 +206,13 @@ fn run() -> Result<()> {
             commands::projects::run(&conn, &cfg)?;
         }
 
-        Command::List { all, project, json } => {
-            commands::list::run(&conn, &cfg, all, project.as_deref(), json)?;
+        Command::List {
+            all,
+            project,
+            json,
+            by_issue,
+        } => {
+            commands::list::run(&conn, &cfg, all, project.as_deref(), json, by_issue)?;
         }
 
         Command::Start { id } => {

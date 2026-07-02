@@ -75,6 +75,7 @@ pub fn run(
     all: bool,
     project_filter: Option<&str>,
     as_json: bool,
+    by_issue: bool,
 ) -> Result<()> {
     let no_color = std::env::var("NO_COLOR").is_ok();
 
@@ -87,6 +88,10 @@ pub fn run(
     if as_json {
         println!("{}", serde_json::to_string_pretty(&tasks_to_value(&tasks))?);
         return Ok(());
+    }
+
+    if by_issue {
+        return print_by_issue(conn, &tasks, no_color);
     }
 
     if tasks.is_empty() {
@@ -164,12 +169,12 @@ pub fn run(
             _ => " ",
         };
         let dep_text = truncate(&dep_column_text(dep), DEP_COL_W);
-        let pr_badge_plain = if flags.pr {
-            "[PR] "
-        } else if flags.any {
-            "[link] "
-        } else {
-            ""
+        let link_badge = LinkBadge::from_flags(flags);
+        let pr_badge_plain = match link_badge {
+            LinkBadge::Pr => "[PR] ",
+            LinkBadge::Issue => "[ISSUE] ",
+            LinkBadge::Link => "[link] ",
+            LinkBadge::None => "",
         };
 
         // Colorize
@@ -218,12 +223,11 @@ pub fn run(
                 Some(d) if d.blocking > 0 => format!("{GRAY}{dep_padded}{RESET}"),
                 _ => dep_padded,
             };
-            let pr_badge = if flags.pr {
-                format!("{MAGENTA}{BOLD}PR{RESET} ")
-            } else if flags.any {
-                format!("{CYAN}↗{RESET} ")
-            } else {
-                String::new()
+            let pr_badge = match link_badge {
+                LinkBadge::Pr => format!("{MAGENTA}{BOLD}PR{RESET} "),
+                LinkBadge::Issue => format!("{GREEN}{BOLD}ISS{RESET} "),
+                LinkBadge::Link => format!("{CYAN}↗{RESET} "),
+                LinkBadge::None => String::new(),
             };
             println!(
                 "{active}{recur}{dep} {CYAN}{id:>3}{RESET}  {pri}  {GRAY}{proj:<16}{RESET}  {due:<12}  {GRAY}{urg:>6}{RESET}  {deptext}  {pr}{desc}",
@@ -259,6 +263,74 @@ pub fn run(
     }
 
     Ok(())
+}
+
+/// `sara list --by-issue`: trace tasks back to the GitHub issue they link to,
+/// so a broken-down issue and its concrete tasks read together at a glance.
+fn print_by_issue(conn: &Connection, tasks: &[Task], no_color: bool) -> Result<()> {
+    let (groups, ungrouped) = db::group_tasks_by_issue(conn, tasks)?;
+
+    if groups.is_empty() && ungrouped.is_empty() {
+        println!("No pending tasks.");
+        return Ok(());
+    }
+
+    let print_group_rows = |tasks: &[Task]| {
+        for task in tasks {
+            let id_str = task
+                .id
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            println!("   {:>3}  {}", id_str, truncate(&task.description, 60));
+        }
+    };
+
+    for group in &groups {
+        let header = format!("Issue #{} · {}", group.number, group.owner_repo);
+        if no_color {
+            println!("{header}");
+        } else {
+            println!("{BOLD}{CYAN}{header}{RESET}");
+        }
+        print_group_rows(&group.tasks);
+        println!();
+    }
+
+    if !ungrouped.is_empty() {
+        if no_color {
+            println!("No linked issue");
+        } else {
+            println!("{DIM}No linked issue{RESET}");
+        }
+        print_group_rows(&ungrouped);
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Which link badge a task should show at a glance, in priority order.
+/// PR outranks Issue, which outranks a plain/generic link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkBadge {
+    Pr,
+    Issue,
+    Link,
+    None,
+}
+
+impl LinkBadge {
+    fn from_flags(flags: db::LinkFlags) -> Self {
+        if flags.pr {
+            LinkBadge::Pr
+        } else if flags.issue {
+            LinkBadge::Issue
+        } else if flags.any {
+            LinkBadge::Link
+        } else {
+            LinkBadge::None
+        }
+    }
 }
 
 /// Width of the DEPS column in the task list.
@@ -308,4 +380,41 @@ fn color_due(task: &Task, due_str: &str, no_color: bool) -> String {
         RESET
     };
     format!("{color}{due_str:<12}{RESET}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_badge_precedence_pr_beats_issue_beats_generic_link() {
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: true,
+                issue: true,
+            }),
+            LinkBadge::Pr
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: false,
+                issue: true,
+            }),
+            LinkBadge::Issue
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags {
+                any: true,
+                pr: false,
+                issue: false,
+            }),
+            LinkBadge::Link
+        );
+        assert_eq!(
+            LinkBadge::from_flags(db::LinkFlags::default()),
+            LinkBadge::None
+        );
+    }
 }
