@@ -15,16 +15,23 @@ pub fn open() -> Result<Connection> {
     let mut conn = Connection::open(&path)
         .with_context(|| format!("Failed to open database: {}", path.display()))?;
 
-    // PRAGMAs must be set outside migrations
+    set_pragmas(&conn)?;
+    apply_migrations(&mut conn)?;
+    Ok(conn)
+}
+
+/// Session PRAGMAs, applied to every connection outside the migration transaction.
+/// `foreign_keys=ON` in particular must be set on the in-memory test connection
+/// too, or test behaviour (FK enforcement, `ON DELETE CASCADE`) diverges from
+/// production. `journal_mode=WAL` is a harmless no-op on an in-memory database.
+fn set_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          PRAGMA foreign_keys=ON;
          PRAGMA synchronous=NORMAL;
          PRAGMA busy_timeout=5000;",
     )?;
-
-    apply_migrations(&mut conn)?;
-    Ok(conn)
+    Ok(())
 }
 
 /// Test-only: an in-memory database with the full schema applied. Shared by
@@ -32,6 +39,7 @@ pub fn open() -> Result<Connection> {
 #[cfg(test)]
 pub fn open_in_memory_for_test() -> Connection {
     let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    set_pragmas(&conn).expect("set pragmas");
     apply_migrations(&mut conn).expect("apply migrations");
     conn
 }
@@ -3347,6 +3355,21 @@ mod tests {
         for col in ["github_repo", "github_login", "github_sync_scope"] {
             assert!(cols.contains(col), "fresh DB missing column {col}");
         }
+    }
+
+    #[test]
+    fn in_memory_test_db_enforces_foreign_keys() {
+        // Regression for PR #58 review: open_in_memory_for_test must set the same
+        // PRAGMAs as open(), notably foreign_keys=ON, so FK enforcement / cascade
+        // behaviour matches production. A child row referencing a non-existent
+        // task must be rejected.
+        let conn = open_in_memory_for_test();
+        let missing = Uuid::new_v4();
+        let res = add_link(&conn, &missing, "https://example.com/pr/1", None);
+        assert!(
+            res.is_err(),
+            "foreign_keys should be ON: linking to a non-existent task must fail"
+        );
     }
 
     #[test]

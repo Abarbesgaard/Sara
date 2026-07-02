@@ -17,9 +17,14 @@ pub fn attach_value(
     source: Option<&str>,
 ) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
-    // URLs become navigable/openable links; everything else is a file.
+    // URLs become navigable/openable links; everything else is a file. Tag the
+    // link result with `kind` so every `attach` shape carries one (file/anchor/link).
     if db::is_url(path) {
-        return super::link_value(conn, id_or_uuid, path, None);
+        let mut v = super::link_value(conn, id_or_uuid, path, None)?;
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("kind".to_string(), json!("link"));
+        }
+        return Ok(v);
     }
 
     // A plain attach with no anchor metadata keeps the simple file-list behavior.

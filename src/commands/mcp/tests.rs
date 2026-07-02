@@ -348,6 +348,29 @@ fn attach_value_records_a_file_and_an_anchor() {
 }
 
 #[test]
+fn attach_value_tags_a_url_as_link() {
+    // PR #58 review: the URL branch delegates to link_value but must still carry a
+    // `kind`, so every attach result shape is discriminable (file / anchor / link).
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let v = server
+        .with_project(None, "attach url", |conn, _cfg| {
+            commands::annotate::attach_value(
+                conn,
+                &uuid,
+                "https://example.com/pr/1",
+                None,
+                None,
+                None,
+                None,
+            )
+        })
+        .expect("attach url");
+    assert_eq!(v["kind"], "link");
+    assert_eq!(v["url"], "https://example.com/pr/1");
+}
+
+#[test]
 fn start_then_stop_tracks_a_session() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
