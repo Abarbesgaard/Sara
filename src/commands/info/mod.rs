@@ -1,8 +1,8 @@
-mod edit;
+pub mod edit;
 mod handler;
-mod plain;
+pub mod plain;
 mod render;
-mod types;
+pub mod types;
 
 use anyhow::Result;
 use rusqlite::Connection;

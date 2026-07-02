@@ -6,7 +6,7 @@ use crate::infrastructure::db;
 use crate::infrastructure::git::github_repo_from_remote;
 use crate::infrastructure::project::find_git_root;
 
-mod github;
+pub mod github;
 mod import;
 
 /// Resolve a GitHub token for the sync API calls.

@@ -312,7 +312,7 @@ fn print_by_issue(conn: &Connection, tasks: &[Task], no_color: bool) -> Result<(
 /// Which link badge a task should show at a glance, in priority order.
 /// PR outranks Issue, which outranks a plain/generic link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LinkBadge {
+pub enum LinkBadge {
     Pr,
     Issue,
     Link,
@@ -320,7 +320,7 @@ enum LinkBadge {
 }
 
 impl LinkBadge {
-    fn from_flags(flags: db::LinkFlags) -> Self {
+    pub fn from_flags(flags: db::LinkFlags) -> Self {
         if flags.pr {
             LinkBadge::Pr
         } else if flags.issue {
@@ -380,41 +380,4 @@ fn color_due(task: &Task, due_str: &str, no_color: bool) -> String {
         RESET
     };
     format!("{color}{due_str:<12}{RESET}")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn link_badge_precedence_pr_beats_issue_beats_generic_link() {
-        assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: true,
-                issue: true,
-            }),
-            LinkBadge::Pr
-        );
-        assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: false,
-                issue: true,
-            }),
-            LinkBadge::Issue
-        );
-        assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: false,
-                issue: false,
-            }),
-            LinkBadge::Link
-        );
-        assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags::default()),
-            LinkBadge::None
-        );
-    }
 }

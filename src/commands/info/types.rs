@@ -2,61 +2,61 @@ use tui_textarea::TextArea;
 
 use crate::infrastructure::model::Task;
 
-pub(super) struct Detail {
-    pub(super) task: Task,
-    pub(super) blocked_by: Vec<String>,
-    pub(super) blocking: Vec<String>,
+pub struct Detail {
+    pub task: Task,
+    pub blocked_by: Vec<String>,
+    pub blocking: Vec<String>,
     /// Display IDs of the tasks this task currently depends on (pending
     /// blockers). Used to pre-fill and reconcile the editable "Depends on" field.
-    pub(super) depends_on_ids: Vec<i64>,
+    pub depends_on_ids: Vec<i64>,
     /// Files the user attached themselves.
-    pub(super) manual_files: Vec<String>,
+    pub manual_files: Vec<String>,
     /// Files attached as suggestions.
-    pub(super) suggested_files: Vec<String>,
-    pub(super) links: Vec<crate::infrastructure::db::Link>,
-    pub(super) annotations: Vec<crate::infrastructure::db::Annotation>,
-    pub(super) history: Vec<crate::infrastructure::db::HistoryEntry>,
+    pub suggested_files: Vec<String>,
+    pub links: Vec<crate::infrastructure::db::Link>,
+    pub annotations: Vec<crate::infrastructure::db::Annotation>,
+    pub history: Vec<crate::infrastructure::db::HistoryEntry>,
     /// Absolute project root, used to open relative file paths.
-    pub(super) project_root: Option<std::path::PathBuf>,
+    pub project_root: Option<std::path::PathBuf>,
     /// Persisted branch snapshot (set via `sara addbranch`, populated on `sara stop`).
-    pub(super) branch: Option<crate::infrastructure::db::BranchRecord>,
+    pub branch: Option<crate::infrastructure::db::BranchRecord>,
     /// Tasks in the same project whose snapshot files overlap with this task's.
-    pub(super) overlaps: Vec<BranchOverlap>,
+    pub overlaps: Vec<BranchOverlap>,
     /// Other pending tasks in the same project sharing at least one tag.
-    pub(super) similar: Vec<(i64, String, f64)>,
+    pub similar: Vec<(i64, String, f64)>,
     /// Checklist items for this task.
-    pub(super) checklist: Vec<crate::infrastructure::db::ChecklistItem>,
+    pub checklist: Vec<crate::infrastructure::db::ChecklistItem>,
     /// Urgency score components.
-    pub(super) urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
+    pub urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
     /// Daily activity counts for the task's project (last ~16 weeks).
-    pub(super) activity: std::collections::HashMap<chrono::NaiveDate, u32>,
+    pub activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     /// Aggregated stats for the project.
-    pub(super) stats: Option<crate::infrastructure::db::ProjectStats>,
+    pub stats: Option<crate::infrastructure::db::ProjectStats>,
     /// Guide fields: assignment, rationale, freshness, meta.
-    pub(super) guide: crate::infrastructure::db::TaskGuideFields,
+    pub guide: crate::infrastructure::db::TaskGuideFields,
     /// Code anchors (relevant files with reasons / symbols / lines).
-    pub(super) anchors: Vec<crate::infrastructure::db::Anchor>,
+    pub anchors: Vec<crate::infrastructure::db::Anchor>,
     /// AI run audit trail.
-    pub(super) ai_runs: Vec<crate::infrastructure::db::AiRun>,
+    pub ai_runs: Vec<crate::infrastructure::db::AiRun>,
     /// Current project HEAD commit, for the freshness banner.
-    pub(super) head_commit: Option<String>,
+    pub head_commit: Option<String>,
     /// Project-level setup/test/lint/run commands (verification context).
-    pub(super) project_commands: crate::infrastructure::db::ProjectCommands,
+    pub project_commands: crate::infrastructure::db::ProjectCommands,
     /// The dependency chain (feature) this task belongs to, in blockers-first
     /// order. Empty when the task has no linked tasks. Used by the right-hand
     /// "Feature chain" panel to show progress and highlight the current task.
-    pub(super) chain: Vec<Task>,
+    pub chain: Vec<Task>,
 }
 
-pub(super) struct BranchOverlap {
-    pub(super) id: i64,
-    pub(super) description: String,
-    pub(super) branch: String,
-    pub(super) shared_files: Vec<String>,
+pub struct BranchOverlap {
+    pub id: i64,
+    pub description: String,
+    pub branch: String,
+    pub shared_files: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum EditField {
+pub enum EditField {
     Description,
     Project,
     Priority,

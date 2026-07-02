@@ -14,13 +14,13 @@ pub(super) enum ProjectAction {
 }
 
 /// One row in the project browser: a project plus the metadata shown for it.
-pub(super) struct ProjectRow {
-    pub(super) name: String,
-    pub(super) goal: Option<String>,
-    pub(super) stack: Option<String>,
-    pub(super) pending: u32,
-    pub(super) done: u32,
-    pub(super) last_activity: Option<DateTime<Utc>>,
+pub struct ProjectRow {
+    pub name: String,
+    pub goal: Option<String>,
+    pub stack: Option<String>,
+    pub pending: u32,
+    pub done: u32,
+    pub last_activity: Option<DateTime<Utc>>,
 }
 
 pub(super) struct ProjectListState {
@@ -91,7 +91,7 @@ fn build_rows(conn: &Connection) -> Result<Vec<ProjectRow>> {
 
 /// Most-recently-active project first; projects with no activity (`None`) sort
 /// last; ties broken by name for stable output.
-fn sort_rows(rows: &mut [ProjectRow]) {
+pub fn sort_rows(rows: &mut [ProjectRow]) {
     rows.sort_by(|a, b| {
         b.last_activity
             .cmp(&a.last_activity)
@@ -99,7 +99,7 @@ fn sort_rows(rows: &mut [ProjectRow]) {
     });
 }
 
-pub(super) fn truncate(s: &str, max: usize) -> String {
+pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
@@ -110,7 +110,7 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
 }
 
 /// Compact relative age, e.g. "just now", "5m ago", "3h ago", "2d ago".
-pub(super) fn rel_time(dt: DateTime<Utc>) -> String {
+pub fn rel_time(dt: DateTime<Utc>) -> String {
     let secs = (Utc::now() - dt).num_seconds().max(0);
     const MIN: i64 = 60;
     const HOUR: i64 = 60 * MIN;
@@ -122,51 +122,5 @@ pub(super) fn rel_time(dt: DateTime<Utc>) -> String {
         s if s < 30 * DAY => format!("{}d ago", s / DAY),
         s if s < 365 * DAY => format!("{}mo ago", s / (30 * DAY)),
         s => format!("{}y ago", s / (365 * DAY)),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn row(name: &str, last: Option<DateTime<Utc>>) -> ProjectRow {
-        ProjectRow {
-            name: name.to_string(),
-            goal: None,
-            stack: None,
-            pending: 0,
-            done: 0,
-            last_activity: last,
-        }
-    }
-
-    #[test]
-    fn sort_rows_orders_by_recent_activity_then_name() {
-        let now = Utc::now();
-        let mut rows = vec![
-            row("zeta", Some(now - chrono::Duration::days(5))),
-            row("alpha", None),
-            row("beta", Some(now)),
-            row("gamma", None),
-        ];
-        sort_rows(&mut rows);
-        let order: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-        // beta (newest) first, then zeta (older), then None-activity by name.
-        assert_eq!(order, ["beta", "zeta", "alpha", "gamma"]);
-    }
-
-    #[test]
-    fn rel_time_buckets() {
-        let now = Utc::now();
-        assert_eq!(rel_time(now), "just now");
-        assert_eq!(rel_time(now - chrono::Duration::minutes(5)), "5m ago");
-        assert_eq!(rel_time(now - chrono::Duration::hours(3)), "3h ago");
-        assert_eq!(rel_time(now - chrono::Duration::days(2)), "2d ago");
-    }
-
-    #[test]
-    fn truncate_adds_ellipsis_only_when_needed() {
-        assert_eq!(truncate("short", 10), "short");
-        assert_eq!(truncate("abcdefgh", 4), "abc…");
     }
 }
