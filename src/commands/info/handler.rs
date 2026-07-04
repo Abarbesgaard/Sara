@@ -454,7 +454,10 @@ pub(super) fn edit_text_via_external_editor(initial: &str) -> std::io::Result<Op
     let editor = editor_command();
     let mut parts = editor.split_whitespace();
     let bin = parts.next().unwrap_or("vi");
-    let status = std::process::Command::new(bin).args(parts).arg(&path).status();
+    let status = std::process::Command::new(bin)
+        .args(parts)
+        .arg(&path)
+        .status();
 
     let result = match status {
         Ok(s) if s.success() => match std::fs::read_to_string(&path) {
@@ -624,10 +627,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn external_editor_returns_none_when_editor_exits_nonzero() {
-        let script = fake_editor(
-            "fails",
-            "echo 'should be ignored' > \"$1\"\nexit 1",
-        );
+        let script = fake_editor("fails", "echo 'should be ignored' > \"$1\"\nexit 1");
         with_editor(&script, || {
             let result = edit_text_via_external_editor("original").unwrap();
             assert_eq!(result, None);

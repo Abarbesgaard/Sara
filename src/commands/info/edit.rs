@@ -295,12 +295,16 @@ pub(super) fn edit_loop<B: Backend>(
                     Action::ExternalEdit => {
                         if current_field == Some(EditField::Description) {
                             tui::suspend()?;
-                            let result =
-                                edit_text_via_external_editor(&st.detail.task.description);
+                            let result = edit_text_via_external_editor(&st.detail.task.description);
                             tui::resume()?;
                             terminal.clear()?;
                             if let Ok(Some(edited)) = result {
-                                apply_field(&mut st.detail.task, EditField::Description, &edited, cfg);
+                                apply_field(
+                                    &mut st.detail.task,
+                                    EditField::Description,
+                                    &edited,
+                                    cfg,
+                                );
                                 save(conn, cfg, &mut st.detail)?;
                             }
                         } else {
@@ -382,11 +386,9 @@ pub(super) fn edit_loop<B: Backend>(
                             // Resolve the focused element's latest open feedback.
                             if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
                                 let _ = db::resolve_annotation(conn, fb.id, None);
-                                st.detail.annotations = db::get_annotations(
-                                    conn,
-                                    &st.detail.task.uuid,
-                                )
-                                .unwrap_or_default();
+                                st.detail.annotations =
+                                    db::get_annotations(conn, &st.detail.task.uuid)
+                                        .unwrap_or_default();
                             }
                         }
                         _ => {}
