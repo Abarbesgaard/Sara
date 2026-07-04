@@ -12,9 +12,9 @@ use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 
 use super::handler::{
-    checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
-    edit_text_via_external_editor, feedback_for_focus, focusables, open_in_editor, open_url,
-    reconcile_dependencies, reorder_focused_step,
+    build_dependency_graph, checklist_focus_index, comment_target, compute_overlaps,
+    depends_on_display, edit_text_via_external_editor, feedback_for_focus, focusables,
+    full_impact_blockers, open_in_editor, open_url, reconcile_dependencies, reorder_focused_step,
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
@@ -35,6 +35,10 @@ pub(super) fn edit_loop<B: Backend>(
         due_error: false,
         dep_error: None,
         scroll: 0,
+        show_graph: false,
+        graph_expanded: false,
+        graph_full_impact: false,
+        full_impact: Vec::new(),
     };
     let mut dispatcher = KeyDispatcher::new();
 
@@ -295,12 +299,16 @@ pub(super) fn edit_loop<B: Backend>(
                     Action::ExternalEdit => {
                         if current_field == Some(EditField::Description) {
                             tui::suspend()?;
-                            let result =
-                                edit_text_via_external_editor(&st.detail.task.description);
+                            let result = edit_text_via_external_editor(&st.detail.task.description);
                             tui::resume()?;
                             terminal.clear()?;
                             if let Ok(Some(edited)) = result {
-                                apply_field(&mut st.detail.task, EditField::Description, &edited, cfg);
+                                apply_field(
+                                    &mut st.detail.task,
+                                    EditField::Description,
+                                    &edited,
+                                    cfg,
+                                );
                                 save(conn, cfg, &mut st.detail)?;
                             }
                         } else {
@@ -343,6 +351,38 @@ pub(super) fn edit_loop<B: Backend>(
                             st.editor = TextArea::default();
                             st.adding_step = true;
                         }
+                        // ── Dependency graph panel ──────────────────────────
+                        // 'd' cycles: chain panel -> depth-1 graph -> expanded
+                        // graph (all neighbors, not just the capped "+N more")
+                        // -> back to the chain panel. A dedicated filtered-list
+                        // screen for the overflow felt like a lot of new UI for
+                        // an edge case that only bites past ~4 neighbors on a
+                        // side; showing everything inline covers the same need.
+                        KeyCode::Char('d') => {
+                            if !st.show_graph {
+                                st.show_graph = true;
+                                st.graph_expanded = false;
+                            } else if !st.graph_expanded {
+                                st.graph_expanded = true;
+                            } else {
+                                st.show_graph = false;
+                                st.graph_expanded = false;
+                                st.graph_full_impact = false;
+                            }
+                        }
+                        // 'D': opt-in "full impact" — every transitive blocker,
+                        // not just the depth-1 ones the graph panel shows by
+                        // default (per the issue's "glanceable by default"
+                        // constraint, this is explicit and separate).
+                        KeyCode::Char('D') => {
+                            st.show_graph = true;
+                            st.graph_full_impact = !st.graph_full_impact;
+                            st.full_impact = if st.graph_full_impact {
+                                full_impact_blockers(conn, &st.detail.task)
+                            } else {
+                                Vec::new()
+                            };
+                        }
                         // ── Review & comment loop ───────────────────────────
                         KeyCode::Char('c') => {
                             st.editor = TextArea::default();
@@ -382,11 +422,9 @@ pub(super) fn edit_loop<B: Backend>(
                             // Resolve the focused element's latest open feedback.
                             if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
                                 let _ = db::resolve_annotation(conn, fb.id, None);
-                                st.detail.annotations = db::get_annotations(
-                                    conn,
-                                    &st.detail.task.uuid,
-                                )
-                                .unwrap_or_default();
+                                st.detail.annotations =
+                                    db::get_annotations(conn, &st.detail.task.uuid)
+                                        .unwrap_or_default();
                             }
                         }
                         _ => {}
@@ -528,6 +566,9 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
     ));
     // A project change can move the task into a different feature chain.
     detail.chain = db::feature_chain(conn, &detail.task.uuid).unwrap_or_default();
+    // Dependencies may have just changed (DependsOn edit) — refresh the graph too.
+    let all_blockers = db::get_dependency_uuids(conn, &detail.task.uuid).unwrap_or_default();
+    detail.graph = build_dependency_graph(conn, &all_blockers, &blocking_tasks);
     Ok(())
 }
 

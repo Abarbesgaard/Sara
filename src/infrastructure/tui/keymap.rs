@@ -187,9 +187,15 @@ mod tests {
     #[test]
     fn normal_mode_hjkl_moves() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('j')), Mode::Normal), Action::Down);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('j')), Mode::Normal),
+            Action::Down
+        );
         assert_eq!(d.dispatch(key(KeyCode::Down), Mode::Normal), Action::Down);
-        assert_eq!(d.dispatch(key(KeyCode::Char('k')), Mode::Normal), Action::Up);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('k')), Mode::Normal),
+            Action::Up
+        );
         assert_eq!(d.dispatch(key(KeyCode::Up), Mode::Normal), Action::Up);
     }
 
@@ -200,7 +206,10 @@ mod tests {
             d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
             Action::Raw(key(KeyCode::Char('g')))
         );
-        assert_eq!(d.dispatch(key(KeyCode::Char('g')), Mode::Normal), Action::Top);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
+            Action::Top
+        );
     }
 
     #[test]
@@ -209,40 +218,79 @@ mod tests {
         let _ = d.dispatch(key(KeyCode::Char('g')), Mode::Normal);
         // Second key isn't 'g' — pending prefix drops, and this key still
         // gets its normal meaning (not silently eaten).
-        assert_eq!(d.dispatch(key(KeyCode::Char('j')), Mode::Normal), Action::Down);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('j')), Mode::Normal),
+            Action::Down
+        );
     }
 
     #[test]
     fn normal_mode_capital_g_is_bottom() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('G')), Mode::Normal), Action::Bottom);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('G')), Mode::Normal),
+            Action::Bottom
+        );
     }
 
     #[test]
     fn normal_mode_reorder_via_capital_letter_or_shift_arrow() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('K')), Mode::Normal), Action::ReorderUp);
-        assert_eq!(d.dispatch(key(KeyCode::Char('J')), Mode::Normal), Action::ReorderDown);
-        assert_eq!(d.dispatch(shift(KeyCode::Up), Mode::Normal), Action::ReorderUp);
-        assert_eq!(d.dispatch(shift(KeyCode::Down), Mode::Normal), Action::ReorderDown);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('K')), Mode::Normal),
+            Action::ReorderUp
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('J')), Mode::Normal),
+            Action::ReorderDown
+        );
+        assert_eq!(
+            d.dispatch(shift(KeyCode::Up), Mode::Normal),
+            Action::ReorderUp
+        );
+        assert_eq!(
+            d.dispatch(shift(KeyCode::Down), Mode::Normal),
+            Action::ReorderDown
+        );
     }
 
     #[test]
     fn normal_mode_quit_paging_confirm_and_space() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('q')), Mode::Normal), Action::Quit);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('q')), Mode::Normal),
+            Action::Quit
+        );
         assert_eq!(d.dispatch(key(KeyCode::Esc), Mode::Normal), Action::Quit);
-        assert_eq!(d.dispatch(key(KeyCode::PageUp), Mode::Normal), Action::PageUp);
-        assert_eq!(d.dispatch(key(KeyCode::PageDown), Mode::Normal), Action::PageDown);
-        assert_eq!(d.dispatch(key(KeyCode::Enter), Mode::Normal), Action::Confirm);
-        assert_eq!(d.dispatch(key(KeyCode::Char(' ')), Mode::Normal), Action::ToggleMark);
+        assert_eq!(
+            d.dispatch(key(KeyCode::PageUp), Mode::Normal),
+            Action::PageUp
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::PageDown), Mode::Normal),
+            Action::PageDown
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Enter), Mode::Normal),
+            Action::Confirm
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char(' ')), Mode::Normal),
+            Action::ToggleMark
+        );
     }
 
     #[test]
     fn ctrl_s_is_save_in_either_mode() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(ctrl(KeyCode::Char('s')), Mode::Normal), Action::Save);
-        assert_eq!(d.dispatch(ctrl(KeyCode::Char('s')), Mode::Insert), Action::Save);
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('s')), Mode::Normal),
+            Action::Save
+        );
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('s')), Mode::Insert),
+            Action::Save
+        );
     }
 
     #[test]
@@ -258,7 +306,10 @@ mod tests {
             d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
             Action::Raw(key(KeyCode::Char('g')))
         );
-        assert_eq!(d.dispatch(ctrl(KeyCode::Char('e')), Mode::Insert), Action::ExternalEdit);
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('e')), Mode::Insert),
+            Action::ExternalEdit
+        );
     }
 
     #[test]
@@ -274,9 +325,18 @@ mod tests {
     fn insert_mode_only_intercepts_control_keys() {
         let mut d = KeyDispatcher::new();
         assert_eq!(d.dispatch(key(KeyCode::Esc), Mode::Insert), Action::Cancel);
-        assert_eq!(d.dispatch(key(KeyCode::Enter), Mode::Insert), Action::Confirm);
-        assert_eq!(d.dispatch(key(KeyCode::Tab), Mode::Insert), Action::NextFocus);
-        assert_eq!(d.dispatch(key(KeyCode::BackTab), Mode::Insert), Action::PrevFocus);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Enter), Mode::Insert),
+            Action::Confirm
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Tab), Mode::Insert),
+            Action::NextFocus
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::BackTab), Mode::Insert),
+            Action::PrevFocus
+        );
         // Letters that mean something in Normal mode (g/q/j/k) must pass
         // through untouched here — they're being typed into a field.
         for c in ['g', 'q', 'j', 'k', ' '] {
@@ -297,7 +357,10 @@ mod tests {
             d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
             Action::Raw(key(KeyCode::Char('g')))
         );
-        assert_eq!(d.dispatch(key(KeyCode::Char('g')), Mode::Normal), Action::Top);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
+            Action::Top
+        );
     }
 
     #[test]
@@ -305,7 +368,10 @@ mod tests {
         assert_eq!(control_action(key(KeyCode::Esc)), Some(Action::Cancel));
         assert_eq!(control_action(ctrl(KeyCode::Char('s'))), Some(Action::Save));
         assert_eq!(control_action(key(KeyCode::Tab)), Some(Action::NextFocus));
-        assert_eq!(control_action(key(KeyCode::BackTab)), Some(Action::PrevFocus));
+        assert_eq!(
+            control_action(key(KeyCode::BackTab)),
+            Some(Action::PrevFocus)
+        );
         for c in ['h', 'j', 'k', 'l', 'g', 'q', ' '] {
             assert_eq!(control_action(key(KeyCode::Char(c))), None);
         }
