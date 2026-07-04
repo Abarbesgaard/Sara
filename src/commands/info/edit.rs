@@ -341,11 +341,9 @@ pub(super) fn edit_loop<B: Backend>(
                             // Resolve the focused element's latest open feedback.
                             if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
                                 let _ = db::resolve_annotation(conn, fb.id, None);
-                                st.detail.annotations = db::get_annotations(
-                                    conn,
-                                    &st.detail.task.uuid,
-                                )
-                                .unwrap_or_default();
+                                st.detail.annotations =
+                                    db::get_annotations(conn, &st.detail.task.uuid)
+                                        .unwrap_or_default();
                             }
                         }
                         _ => {}
