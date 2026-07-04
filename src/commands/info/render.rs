@@ -1027,7 +1027,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     } else if st.editing {
         " type to edit  •  Enter confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • q close "
+        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • ? help • q close "
             .to_string()
     };
     let footer_idx = chunks.len() - 1;

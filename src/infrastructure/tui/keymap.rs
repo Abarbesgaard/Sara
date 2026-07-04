@@ -86,6 +86,34 @@ pub fn control_action(key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// Named (key label, description) pairs for the shared vocabulary, for the
+/// `?` help overlay. Kept as individual constants rather than one blanket
+/// list because not every screen acts on every shared `Action` (e.g. board
+/// ignores `ReorderUp`/`ReorderDown` — it has nothing to reorder) — a screen
+/// picks only the entries it actually handles, so the overlay never lists a
+/// binding that's a silent no-op. Each pair mirrors a real arm in
+/// `dispatch_normal` below; keep them in sync.
+pub mod help {
+    pub const MOVE: (&str, &str) = ("j/k, ↓/↑", "move down / up");
+    pub const TOP_BOTTOM: (&str, &str) = ("gg / G", "jump to top / bottom");
+    pub const PAGE: (&str, &str) = ("PageDown / PageUp", "scroll a page");
+    pub const CONFIRM: (&str, &str) = ("Enter", "confirm / open");
+    pub const QUIT: (&str, &str) = ("q / Esc", "quit / close");
+    pub const SAVE: (&str, &str) = ("Ctrl+S", "save");
+    pub const REORDER: (&str, &str) = ("K/J, Shift+↓/↑", "reorder");
+    pub const TOGGLE_MARK: (&str, &str) = ("Space", "toggle");
+    pub const HELP: (&str, &str) = ("?", "toggle this help");
+
+    /// Mirrors `control_action`'s own arms — the subset safe to intercept in
+    /// screens (like `review_form`) whose text fields need every other key
+    /// as literal input.
+    pub const CONTROL_ACTION_BINDINGS: &[(&str, &str)] = &[
+        ("Esc", "cancel"),
+        ("Ctrl+S", "submit"),
+        ("Tab / Shift+Tab", "next / previous field"),
+    ];
+}
+
 /// Stateful translator: owns the one bit of cross-keystroke state the shared
 /// vocabulary needs (whether a lone `g` is awaiting a second `g` to become
 /// `gg` == Top). A screen keeps one instance for the lifetime of its event
@@ -175,9 +203,15 @@ mod tests {
     #[test]
     fn normal_mode_hjkl_moves() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('j')), Mode::Normal), Action::Down);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('j')), Mode::Normal),
+            Action::Down
+        );
         assert_eq!(d.dispatch(key(KeyCode::Down), Mode::Normal), Action::Down);
-        assert_eq!(d.dispatch(key(KeyCode::Char('k')), Mode::Normal), Action::Up);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('k')), Mode::Normal),
+            Action::Up
+        );
         assert_eq!(d.dispatch(key(KeyCode::Up), Mode::Normal), Action::Up);
     }
 
@@ -188,7 +222,10 @@ mod tests {
             d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
             Action::Raw(key(KeyCode::Char('g')))
         );
-        assert_eq!(d.dispatch(key(KeyCode::Char('g')), Mode::Normal), Action::Top);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
+            Action::Top
+        );
     }
 
     #[test]
@@ -197,49 +234,97 @@ mod tests {
         let _ = d.dispatch(key(KeyCode::Char('g')), Mode::Normal);
         // Second key isn't 'g' — pending prefix drops, and this key still
         // gets its normal meaning (not silently eaten).
-        assert_eq!(d.dispatch(key(KeyCode::Char('j')), Mode::Normal), Action::Down);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('j')), Mode::Normal),
+            Action::Down
+        );
     }
 
     #[test]
     fn normal_mode_capital_g_is_bottom() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('G')), Mode::Normal), Action::Bottom);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('G')), Mode::Normal),
+            Action::Bottom
+        );
     }
 
     #[test]
     fn normal_mode_reorder_via_capital_letter_or_shift_arrow() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('K')), Mode::Normal), Action::ReorderUp);
-        assert_eq!(d.dispatch(key(KeyCode::Char('J')), Mode::Normal), Action::ReorderDown);
-        assert_eq!(d.dispatch(shift(KeyCode::Up), Mode::Normal), Action::ReorderUp);
-        assert_eq!(d.dispatch(shift(KeyCode::Down), Mode::Normal), Action::ReorderDown);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('K')), Mode::Normal),
+            Action::ReorderUp
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('J')), Mode::Normal),
+            Action::ReorderDown
+        );
+        assert_eq!(
+            d.dispatch(shift(KeyCode::Up), Mode::Normal),
+            Action::ReorderUp
+        );
+        assert_eq!(
+            d.dispatch(shift(KeyCode::Down), Mode::Normal),
+            Action::ReorderDown
+        );
     }
 
     #[test]
     fn normal_mode_quit_paging_confirm_and_space() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(key(KeyCode::Char('q')), Mode::Normal), Action::Quit);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('q')), Mode::Normal),
+            Action::Quit
+        );
         assert_eq!(d.dispatch(key(KeyCode::Esc), Mode::Normal), Action::Quit);
-        assert_eq!(d.dispatch(key(KeyCode::PageUp), Mode::Normal), Action::PageUp);
-        assert_eq!(d.dispatch(key(KeyCode::PageDown), Mode::Normal), Action::PageDown);
-        assert_eq!(d.dispatch(key(KeyCode::Enter), Mode::Normal), Action::Confirm);
-        assert_eq!(d.dispatch(key(KeyCode::Char(' ')), Mode::Normal), Action::ToggleMark);
+        assert_eq!(
+            d.dispatch(key(KeyCode::PageUp), Mode::Normal),
+            Action::PageUp
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::PageDown), Mode::Normal),
+            Action::PageDown
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Enter), Mode::Normal),
+            Action::Confirm
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char(' ')), Mode::Normal),
+            Action::ToggleMark
+        );
     }
 
     #[test]
     fn ctrl_s_is_save_in_either_mode() {
         let mut d = KeyDispatcher::new();
-        assert_eq!(d.dispatch(ctrl(KeyCode::Char('s')), Mode::Normal), Action::Save);
-        assert_eq!(d.dispatch(ctrl(KeyCode::Char('s')), Mode::Insert), Action::Save);
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('s')), Mode::Normal),
+            Action::Save
+        );
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('s')), Mode::Insert),
+            Action::Save
+        );
     }
 
     #[test]
     fn insert_mode_only_intercepts_control_keys() {
         let mut d = KeyDispatcher::new();
         assert_eq!(d.dispatch(key(KeyCode::Esc), Mode::Insert), Action::Cancel);
-        assert_eq!(d.dispatch(key(KeyCode::Enter), Mode::Insert), Action::Confirm);
-        assert_eq!(d.dispatch(key(KeyCode::Tab), Mode::Insert), Action::NextFocus);
-        assert_eq!(d.dispatch(key(KeyCode::BackTab), Mode::Insert), Action::PrevFocus);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Enter), Mode::Insert),
+            Action::Confirm
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::Tab), Mode::Insert),
+            Action::NextFocus
+        );
+        assert_eq!(
+            d.dispatch(key(KeyCode::BackTab), Mode::Insert),
+            Action::PrevFocus
+        );
         // Letters that mean something in Normal mode (g/q/j/k) must pass
         // through untouched here — they're being typed into a field.
         for c in ['g', 'q', 'j', 'k', ' '] {
@@ -260,7 +345,10 @@ mod tests {
             d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
             Action::Raw(key(KeyCode::Char('g')))
         );
-        assert_eq!(d.dispatch(key(KeyCode::Char('g')), Mode::Normal), Action::Top);
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
+            Action::Top
+        );
     }
 
     #[test]
@@ -268,7 +356,10 @@ mod tests {
         assert_eq!(control_action(key(KeyCode::Esc)), Some(Action::Cancel));
         assert_eq!(control_action(ctrl(KeyCode::Char('s'))), Some(Action::Save));
         assert_eq!(control_action(key(KeyCode::Tab)), Some(Action::NextFocus));
-        assert_eq!(control_action(key(KeyCode::BackTab)), Some(Action::PrevFocus));
+        assert_eq!(
+            control_action(key(KeyCode::BackTab)),
+            Some(Action::PrevFocus)
+        );
         for c in ['h', 'j', 'k', 'l', 'g', 'q', ' '] {
             assert_eq!(control_action(key(KeyCode::Char(c))), None);
         }

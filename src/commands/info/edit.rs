@@ -9,7 +9,7 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Priority, Task};
 use crate::infrastructure::tui;
-use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
+use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::handler::{
     checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
@@ -37,9 +37,15 @@ pub(super) fn edit_loop<B: Backend>(
         scroll: 0,
     };
     let mut dispatcher = KeyDispatcher::new();
+    let mut showing_help = false;
 
     loop {
-        terminal.draw(|f| render(f, &st))?;
+        terminal.draw(|f| {
+            render(f, &st);
+            if showing_help {
+                tui::render_help_overlay(f, "Task detail", &help_bindings());
+            }
+        })?;
 
         if !event::poll(std::time::Duration::from_millis(100))? {
             continue;
@@ -48,6 +54,12 @@ pub(super) fn edit_loop<B: Backend>(
             continue;
         };
         if key.kind == KeyEventKind::Release {
+            continue;
+        }
+
+        // Any key dismisses the overlay without otherwise acting on it.
+        if showing_help {
+            showing_help = false;
             continue;
         }
 
@@ -341,12 +353,13 @@ pub(super) fn edit_loop<B: Backend>(
                             // Resolve the focused element's latest open feedback.
                             if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
                                 let _ = db::resolve_annotation(conn, fb.id, None);
-                                st.detail.annotations = db::get_annotations(
-                                    conn,
-                                    &st.detail.task.uuid,
-                                )
-                                .unwrap_or_default();
+                                st.detail.annotations =
+                                    db::get_annotations(conn, &st.detail.task.uuid)
+                                        .unwrap_or_default();
                             }
+                        }
+                        KeyCode::Char('?') => {
+                            showing_help = true;
                         }
                         _ => {}
                     },
@@ -357,6 +370,29 @@ pub(super) fn edit_loop<B: Backend>(
     }
 
     Ok(())
+}
+
+/// Info/edit's help overlay: the shared bindings it acts on (all of them —
+/// unlike board, this screen reorders steps, saves fields, and toggles
+/// checklist items) plus its own domain letters.
+fn help_bindings() -> Vec<(&'static str, &'static str)> {
+    use keymap::help::*;
+    vec![
+        MOVE,
+        TOP_BOTTOM,
+        PAGE,
+        REORDER,
+        TOGGLE_MARK,
+        CONFIRM,
+        ("e", "edit the focused field"),
+        ("a", "add a checklist step"),
+        ("c", "comment on the focused element"),
+        ("r", "flag the focused element for reconsideration"),
+        ("x", "resolve the focused element's feedback"),
+        SAVE,
+        QUIT,
+        HELP,
+    ]
 }
 
 pub(super) fn editor_for(task: &Task, field: EditField) -> TextArea<'static> {
@@ -514,4 +550,32 @@ pub(super) fn parse_duration_to_mins(s: &str) -> Option<i64> {
     // "Ym" or bare number (minutes)
     let m_part = rest.trim_end_matches('m').trim();
     m_part.parse::<i64>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_bindings_cover_shared_vocab_and_domain_letters() {
+        let bindings = help_bindings();
+        let labels: Vec<&str> = bindings.iter().map(|(k, _)| *k).collect();
+        // Shared vocab this screen actually acts on.
+        for shared in [
+            "j/k, ↓/↑",
+            "gg / G",
+            "K/J, Shift+↓/↑",
+            "Space",
+            "Enter",
+            "Ctrl+S",
+            "q / Esc",
+            "?",
+        ] {
+            assert!(labels.contains(&shared), "missing shared binding {shared}");
+        }
+        // Domain letters not part of the shared keymap vocabulary.
+        for domain in ["e", "a", "c", "r", "x"] {
+            assert!(labels.contains(&domain), "missing domain binding {domain}");
+        }
+    }
 }
