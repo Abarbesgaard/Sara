@@ -7,12 +7,59 @@ use uuid::Uuid;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Status, Task};
 
-use super::types::{BoardState, Feature};
+use super::types::{BoardState, Feature, GroupMode};
 
-/// Load tasks for the project and group them into features (dependency chains).
-pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardState> {
+/// Load tasks for the project and group them per `mode` (feature/dependency
+/// chains by default, or by linked GitHub issue when toggled).
+pub(super) fn build_state(
+    conn: &Connection,
+    project: String,
+    mode: GroupMode,
+) -> Result<BoardState> {
     let all = db::list_tasks_for_board(conn, &project)?;
-    let edges = db::dependency_edges_for_project(conn, &project)?;
+
+    let (tasks, feature_of, features) = match mode {
+        GroupMode::Feature => build_feature_grouping(conn, &project, &all)?,
+        GroupMode::Issue => build_issue_grouping(conn, &all)?,
+    };
+
+    let flags_by_task = db::link_flags_by_task(conn).unwrap_or_default();
+    let badges = tasks
+        .iter()
+        .map(|t| {
+            flags_by_task
+                .get(&t.uuid.to_string())
+                .copied()
+                .unwrap_or_default()
+        })
+        .collect();
+
+    let pending = tasks.iter().filter(|t| t.status == Status::Pending).count();
+    let feature_count = features.iter().filter(|f| f.grouped).count();
+
+    Ok(BoardState {
+        project,
+        done: tasks.len() - pending,
+        pending,
+        feature_count,
+        tasks,
+        feature_of,
+        features,
+        badges,
+        mode,
+        selected: 0,
+        scroll: 0,
+    })
+}
+
+/// Group by dependency chain (connected component of the `sara dep` graph) —
+/// the original/default board grouping.
+fn build_feature_grouping(
+    conn: &Connection,
+    project: &str,
+    all: &[Task],
+) -> Result<(Vec<Task>, Vec<usize>, Vec<Feature>)> {
+    let edges = db::dependency_edges_for_project(conn, project)?;
 
     let pos: HashMap<Uuid, usize> = all.iter().enumerate().map(|(i, t)| (t.uuid, i)).collect();
     let n = all.len();
@@ -66,8 +113,8 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
 
     // Sort features: active (has pending) first, then by highest pending urgency.
     features_nodes.sort_by(|a, b| {
-        sort_key(b, &all)
-            .partial_cmp(&sort_key(a, &all))
+        sort_key(b, all)
+            .partial_cmp(&sort_key(a, all))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     ungrouped.sort_unstable();
@@ -117,20 +164,59 @@ pub(super) fn build_state(conn: &Connection, project: String) -> Result<BoardSta
         }
     }
 
-    let pending = tasks.iter().filter(|t| t.status == Status::Pending).count();
-    let feature_count = features.iter().filter(|f| f.grouped).count();
+    Ok((tasks, feature_of, features))
+}
 
-    Ok(BoardState {
-        project,
-        done: tasks.len() - pending,
-        pending,
-        feature_count,
-        tasks,
-        feature_of,
-        features,
-        selected: 0,
-        scroll: 0,
-    })
+/// Group by linked GitHub issue, reusing `group_tasks_by_issue` (already
+/// shipped for `sara list --by-issue`) instead of a new query.
+fn build_issue_grouping(
+    conn: &Connection,
+    all: &[Task],
+) -> Result<(Vec<Task>, Vec<usize>, Vec<Feature>)> {
+    let (groups, ungrouped) = db::group_tasks_by_issue(conn, all)?;
+
+    let mut tasks: Vec<Task> = Vec::with_capacity(all.len());
+    let mut feature_of: Vec<usize> = Vec::with_capacity(all.len());
+    let mut features: Vec<Feature> = Vec::new();
+
+    for group in &groups {
+        let fi = features.len();
+        let done = group
+            .tasks
+            .iter()
+            .filter(|t| t.status == Status::Completed)
+            .count();
+        features.push(Feature {
+            title: format!("Issue #{} · {}", group.number, group.owner_repo),
+            done,
+            total: group.tasks.len(),
+            grouped: true,
+        });
+        for t in &group.tasks {
+            tasks.push(t.clone());
+            feature_of.push(fi);
+        }
+    }
+
+    if !ungrouped.is_empty() {
+        let fi = features.len();
+        let done = ungrouped
+            .iter()
+            .filter(|t| t.status == Status::Completed)
+            .count();
+        features.push(Feature {
+            title: "No linked issue".to_string(),
+            done,
+            total: ungrouped.len(),
+            grouped: false,
+        });
+        for t in ungrouped {
+            tasks.push(t);
+            feature_of.push(fi);
+        }
+    }
+
+    Ok((tasks, feature_of, features))
 }
 
 /// Topological sort (blockers first). Ties broken by original position for stable output.
@@ -181,5 +267,100 @@ fn truncate(s: &str, max: usize) -> String {
         let mut out: String = s.chars().take(max - 1).collect();
         out.push('…');
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task(conn: &Connection, desc: &str) -> Task {
+        let mut t = Task::new(desc.to_string(), "tk".to_string());
+        db::insert_task(conn, &mut t).unwrap();
+        t
+    }
+
+    #[test]
+    fn feature_mode_groups_dependent_tasks_and_leaves_others_standalone() {
+        let conn = db::open_in_memory_for_test();
+        let a = task(&conn, "a");
+        let b = task(&conn, "b");
+        let standalone = task(&conn, "standalone");
+        db::add_dependency(&conn, &b.uuid, &a.uuid).unwrap(); // b depends on a
+
+        let st = build_state(&conn, "tk".to_string(), GroupMode::Feature).unwrap();
+
+        assert_eq!(st.mode, GroupMode::Feature);
+        assert_eq!(st.tasks.len(), 3);
+        // a and b share a feature (grouped); the standalone task doesn't.
+        let fi_a = st.feature_of[st.tasks.iter().position(|t| t.uuid == a.uuid).unwrap()];
+        let fi_b = st.feature_of[st.tasks.iter().position(|t| t.uuid == b.uuid).unwrap()];
+        let fi_standalone = st.feature_of[st
+            .tasks
+            .iter()
+            .position(|t| t.uuid == standalone.uuid)
+            .unwrap()];
+        assert_eq!(fi_a, fi_b);
+        assert_ne!(fi_a, fi_standalone);
+        assert!(st.features[fi_a].grouped);
+        assert!(!st.features[fi_standalone].grouped);
+    }
+
+    #[test]
+    fn issue_mode_groups_by_linked_github_issue_and_buckets_the_rest() {
+        let conn = db::open_in_memory_for_test();
+        let a = task(&conn, "a");
+        let b = task(&conn, "b");
+        let unlinked = task(&conn, "unlinked");
+        db::add_link(&conn, &a.uuid, "https://github.com/o/r/issues/5", None).unwrap();
+        db::add_link(&conn, &b.uuid, "https://github.com/o/r/issues/5", None).unwrap();
+
+        let st = build_state(&conn, "tk".to_string(), GroupMode::Issue).unwrap();
+
+        assert_eq!(st.mode, GroupMode::Issue);
+        assert_eq!(st.tasks.len(), 3);
+        let fi_a = st.feature_of[st.tasks.iter().position(|t| t.uuid == a.uuid).unwrap()];
+        let fi_b = st.feature_of[st.tasks.iter().position(|t| t.uuid == b.uuid).unwrap()];
+        let fi_unlinked = st.feature_of[st
+            .tasks
+            .iter()
+            .position(|t| t.uuid == unlinked.uuid)
+            .unwrap()];
+        assert_eq!(fi_a, fi_b);
+        assert_ne!(fi_a, fi_unlinked);
+        assert!(st.features[fi_a].title.contains("#5"));
+        assert_eq!(st.features[fi_unlinked].title, "No linked issue");
+    }
+
+    #[test]
+    fn badges_reflect_pr_and_issue_links_per_task() {
+        let conn = db::open_in_memory_for_test();
+        let with_pr = task(&conn, "has a pr");
+        let with_issue = task(&conn, "has an issue");
+        let with_nothing = task(&conn, "has nothing");
+        db::add_link(&conn, &with_pr.uuid, "https://github.com/o/r/pull/9", None).unwrap();
+        db::add_link(
+            &conn,
+            &with_issue.uuid,
+            "https://github.com/o/r/issues/3",
+            None,
+        )
+        .unwrap();
+
+        let st = build_state(&conn, "tk".to_string(), GroupMode::Feature).unwrap();
+
+        let badge_of = |uuid: uuid::Uuid| {
+            let i = st.tasks.iter().position(|t| t.uuid == uuid).unwrap();
+            st.badges[i]
+        };
+        assert!(badge_of(with_pr.uuid).pr);
+        assert!(badge_of(with_issue.uuid).issue);
+        assert!(!badge_of(with_nothing.uuid).any);
+    }
+
+    #[test]
+    fn toggled_flips_between_feature_and_issue() {
+        assert_eq!(GroupMode::Feature.toggled(), GroupMode::Issue);
+        assert_eq!(GroupMode::Issue.toggled(), GroupMode::Feature);
     }
 }

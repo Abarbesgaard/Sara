@@ -2,7 +2,7 @@ mod render;
 mod state;
 mod types;
 
-pub(super) use types::{BoardAction, BoardState, Feature};
+pub(super) use types::{BoardAction, BoardState, Feature, GroupMode};
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -19,7 +19,7 @@ pub fn run(conn: &Connection, cfg: &Config, project_arg: Option<&str>) -> Result
         name
     };
 
-    let mut st = state::build_state(conn, project)?;
+    let mut st = state::build_state(conn, project, GroupMode::Feature)?;
     if st.tasks.is_empty() {
         println!("No tasks for project '{}'.", st.project);
         return Ok(());
@@ -37,11 +37,20 @@ pub fn run(conn: &Connection, cfg: &Config, project_arg: Option<&str>) -> Result
                 // Reload — status/dependencies may have changed in the detail view.
                 let project = std::mem::take(&mut st.project);
                 let sel = st.selected;
-                st = state::build_state(conn, project)?;
+                st = state::build_state(conn, project, st.mode)?;
                 if st.tasks.is_empty() {
                     break;
                 }
                 st.selected = sel.min(st.tasks.len() - 1);
+            }
+            BoardAction::ToggleGrouping => {
+                // Regrouping the same task set can't make it empty (every
+                // task lands in a group or the trailing "ungrouped" bucket
+                // either way), so there's no emptiness check here unlike the
+                // other two branches.
+                let project = std::mem::take(&mut st.project);
+                let mode = st.mode.toggled();
+                st = state::build_state(conn, project, mode)?;
             }
         }
     }
