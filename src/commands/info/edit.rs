@@ -13,8 +13,8 @@ use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 
 use super::handler::{
     checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
-    feedback_for_focus, focusables, open_in_editor, open_url, reconcile_dependencies,
-    reorder_focused_step,
+    edit_text_via_external_editor, feedback_for_focus, focusables, open_in_editor, open_url,
+    reconcile_dependencies, reorder_focused_step,
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
@@ -286,6 +286,47 @@ pub(super) fn edit_loop<B: Backend>(
                             let _ = db::toggle_checklist_item(conn, item.id);
                             st.detail.checklist =
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                        }
+                    }
+                    // Ctrl+E: hand the current long text field to $EDITOR
+                    // instead of the in-TUI textarea. On the Description
+                    // field, edit it directly; anywhere else, compose a new
+                    // comment (mirroring 'c', which is unconditional on focus).
+                    Action::ExternalEdit => {
+                        if current_field == Some(EditField::Description) {
+                            tui::suspend()?;
+                            let result =
+                                edit_text_via_external_editor(&st.detail.task.description);
+                            tui::resume()?;
+                            terminal.clear()?;
+                            if let Ok(Some(edited)) = result {
+                                apply_field(&mut st.detail.task, EditField::Description, &edited, cfg);
+                                save(conn, cfg, &mut st.detail)?;
+                            }
+                        } else {
+                            tui::suspend()?;
+                            let result = edit_text_via_external_editor("");
+                            tui::resume()?;
+                            terminal.clear()?;
+                            if let Ok(Some(text)) = result {
+                                let text = text.trim();
+                                if !text.is_empty() {
+                                    let (tk, tid) = comment_target(&st.detail, &current);
+                                    let _ = db::add_annotation_full(
+                                        conn,
+                                        &st.detail.task.uuid,
+                                        text,
+                                        db::NOTE_KIND_COMMENT,
+                                        "human",
+                                        tk.as_deref(),
+                                        tid.as_deref(),
+                                        false,
+                                    );
+                                    st.detail.annotations =
+                                        db::get_annotations(conn, &st.detail.task.uuid)
+                                            .unwrap_or_default();
+                                }
+                            }
                         }
                     }
                     Action::Raw(k) => match k.code {
