@@ -57,6 +57,10 @@ pub enum Action {
     ReorderUp,
     /// `J` / `Shift+Down` in Normal mode.
     ReorderDown,
+    /// `Ctrl+E` — hand off the current long text field to $EDITOR instead of
+    /// the in-TUI textarea. Works in Normal mode (both modes recognize it,
+    /// same as Save, but only Normal-mode screens currently use it).
+    ExternalEdit,
     /// Not recognized as a shared action in this mode — hand the raw key to
     /// the caller's own mode- or domain-specific handling (e.g. a text
     /// widget, or a screen-specific letter binding like `a`/`c`/`r`/`x`).
@@ -65,6 +69,10 @@ pub enum Action {
 
 fn is_ctrl_s(key: &KeyEvent) -> bool {
     key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL)
+}
+
+fn is_ctrl_e(key: &KeyEvent) -> bool {
+    key.code == KeyCode::Char('e') && key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
 fn is_shift(key: &KeyEvent) -> bool {
@@ -132,6 +140,10 @@ impl KeyDispatcher {
         if is_ctrl_s(&key) {
             self.pending_g = false;
             return Action::Save;
+        }
+        if is_ctrl_e(&key) {
+            self.pending_g = false;
+            return Action::ExternalEdit;
         }
         match mode {
             Mode::Normal => self.dispatch_normal(key),
@@ -306,6 +318,34 @@ mod tests {
         assert_eq!(
             d.dispatch(ctrl(KeyCode::Char('s')), Mode::Insert),
             Action::Save
+        );
+    }
+
+    #[test]
+    fn ctrl_e_is_external_edit_in_either_mode_and_does_not_leak_g_state() {
+        let mut d = KeyDispatcher::new();
+        let _ = d.dispatch(key(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('e')), Mode::Normal),
+            Action::ExternalEdit
+        );
+        // The pending 'g' from before Ctrl+E must not survive into this gg check.
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
+            Action::Raw(key(KeyCode::Char('g')))
+        );
+        assert_eq!(
+            d.dispatch(ctrl(KeyCode::Char('e')), Mode::Insert),
+            Action::ExternalEdit
+        );
+    }
+
+    #[test]
+    fn plain_e_is_not_external_edit() {
+        let mut d = KeyDispatcher::new();
+        assert_eq!(
+            d.dispatch(key(KeyCode::Char('e')), Mode::Normal),
+            Action::Raw(key(KeyCode::Char('e')))
         );
     }
 
