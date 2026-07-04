@@ -198,8 +198,8 @@ fn run() -> Result<()> {
             commands::annotate::unlink(&conn, link_id)?;
         }
 
-        Command::Board { project } => {
-            commands::board::run(&conn, &cfg, project.as_deref())?;
+        Command::Board { project, finished } => {
+            commands::board::run(&conn, &cfg, project.as_deref(), finished)?;
         }
 
         Command::Projects => {
