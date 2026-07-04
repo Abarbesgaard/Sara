@@ -5,7 +5,13 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
-use super::types::{BranchOverlap, Detail, EDIT_FIELDS, EditState, Focusable, NOTE_KINDS};
+use super::types::{
+    BranchOverlap, DependencyGraph, Detail, EDIT_FIELDS, EditState, Focusable, GraphNode,
+    NOTE_KINDS,
+};
+
+/// Depth-1 neighbors shown per side before collapsing to "+N more".
+pub(super) const GRAPH_NEIGHBOR_CAP: usize = 4;
 
 pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     let resolve_ids = |uuids: Vec<uuid::Uuid>| -> Vec<String> {
@@ -70,6 +76,12 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         .and_then(|p| crate::infrastructure::git::head_commit(p));
     let project_commands = db::get_project_commands(conn, &task.project).unwrap_or_default();
     let chain = db::feature_chain(conn, &task.uuid).unwrap_or_default();
+    // `blocking_tasks` above is already all-status (get_blocking has no status
+    // filter), so it's reused as-is for the graph's dependents side; blockers
+    // need a fresh all-status fetch since `blockers` (above) is pending-only
+    // (it feeds urgency, which only cares about what's still outstanding).
+    let all_blockers = db::get_dependency_uuids(conn, &task.uuid).unwrap_or_default();
+    let graph = build_dependency_graph(conn, &all_blockers, &blocking_tasks);
 
     Ok(Detail {
         depends_on_ids: dep_ids(conn, &blockers),
@@ -94,8 +106,58 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         head_commit,
         project_commands,
         chain,
+        graph,
         task,
     })
+}
+
+/// Build the depth-1 dependency graph (every blocker + dependent, uncapped —
+/// the render layer decides how many to show; badges reuse the already-shared
+/// `link_flags_by_task` rather than recomputing PR/issue precedence).
+pub(super) fn build_dependency_graph(
+    conn: &Connection,
+    blocker_uuids: &[uuid::Uuid],
+    dependent_uuids: &[uuid::Uuid],
+) -> DependencyGraph {
+    let flags = db::link_flags_by_task(conn).unwrap_or_default();
+    DependencyGraph {
+        blockers: graph_nodes(conn, blocker_uuids, &flags),
+        dependents: graph_nodes(conn, dependent_uuids, &flags),
+    }
+}
+
+/// Opt-in "full impact" expansion: every transitive blocker (not just
+/// depth-1), via `dependency_closure` — excludes the task itself, which the
+/// closure includes as its own last (depth-0) entry.
+pub(super) fn full_impact_blockers(conn: &Connection, task: &Task) -> Vec<GraphNode> {
+    let flags = db::link_flags_by_task(conn).unwrap_or_default();
+    let uuids: Vec<uuid::Uuid> = db::dependency_closure(conn, &task.uuid)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|u| *u != task.uuid)
+        .collect();
+    graph_nodes(conn, &uuids, &flags)
+}
+
+fn graph_nodes(
+    conn: &Connection,
+    uuids: &[uuid::Uuid],
+    flags: &std::collections::HashMap<String, db::LinkFlags>,
+) -> Vec<GraphNode> {
+    uuids
+        .iter()
+        .filter_map(|u| {
+            db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
+                .ok()
+                .flatten()
+        })
+        .map(|t| GraphNode {
+            uuid: t.uuid,
+            id: t.id,
+            status: t.status,
+            badge: flags.get(&t.uuid.to_string()).copied(),
+        })
+        .collect()
 }
 
 /// Verification/execution commands an executor should run, gathered from the
