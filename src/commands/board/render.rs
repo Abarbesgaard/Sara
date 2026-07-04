@@ -14,7 +14,33 @@ use crate::infrastructure::model::{Priority, Status, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
-use super::{BoardAction, BoardState, Feature, GroupMode};
+use super::{BoardAction, BoardState, IssueNode};
+
+/// One selectable row in the flattened, expansion-aware tree.
+#[derive(Clone, Copy)]
+pub(super) enum Row {
+    Issue(usize),
+    Task(usize, usize),
+    Standalone(usize),
+}
+
+/// Flatten the tree into the rows currently on screen: every issue header,
+/// plus its child tasks only when expanded, followed by standalone tasks.
+pub(super) fn visible_rows(st: &BoardState) -> Vec<Row> {
+    let mut rows = Vec::new();
+    for (gi, issue) in st.issues.iter().enumerate() {
+        rows.push(Row::Issue(gi));
+        if issue.expanded {
+            for ti in 0..issue.tasks.len() {
+                rows.push(Row::Task(gi, ti));
+            }
+        }
+    }
+    for si in 0..st.standalone.len() {
+        rows.push(Row::Standalone(si));
+    }
+    rows
+}
 
 pub(super) fn board_loop<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -26,8 +52,9 @@ pub(super) fn board_loop<B: Backend>(
         // Keep the selected row inside the viewport (content height = total - borders - footer).
         let size = terminal.size()?;
         let viewport = size.height.saturating_sub(3);
-        let (lines, task_line) = build_lines(st);
-        if let Some(&line) = task_line.get(st.selected) {
+        let rows = visible_rows(st);
+        let (lines, row_line) = build_lines(st, &rows);
+        if let Some(&line) = row_line.get(st.selected) {
             if line < st.scroll {
                 st.scroll = line;
             } else if viewport > 0 && line >= st.scroll + viewport {
@@ -61,8 +88,8 @@ pub(super) fn board_loop<B: Backend>(
         match dispatcher.dispatch(key, Mode::Normal) {
             Action::Quit => return Ok(BoardAction::Quit),
             Action::Down => {
-                if !st.tasks.is_empty() {
-                    st.selected = (st.selected + 1).min(st.tasks.len() - 1);
+                if !rows.is_empty() {
+                    st.selected = (st.selected + 1).min(rows.len() - 1);
                 }
             }
             Action::Up => {
@@ -70,19 +97,56 @@ pub(super) fn board_loop<B: Backend>(
             }
             Action::Top => st.selected = 0,
             Action::Bottom => {
-                if !st.tasks.is_empty() {
-                    st.selected = st.tasks.len() - 1;
+                if !rows.is_empty() {
+                    st.selected = rows.len() - 1;
                 }
             }
             Action::PageDown => st.scroll = st.scroll.saturating_add(10),
             Action::PageUp => st.scroll = st.scroll.saturating_sub(10),
-            Action::Confirm => {
-                if let Some(task) = st.tasks.get(st.selected) {
-                    return Ok(BoardAction::OpenTask(task.uuid.to_string()));
+            // Space — neotree-style toggle of the selected issue node.
+            Action::ToggleMark => {
+                if let Some(Row::Issue(gi)) = rows.get(st.selected).copied() {
+                    st.issues[gi].expanded = !st.issues[gi].expanded;
                 }
             }
-            Action::Raw(k) if k.code == KeyCode::Char('i') => {
-                return Ok(BoardAction::ToggleGrouping);
+            Action::Confirm => match rows.get(st.selected).copied() {
+                Some(Row::Issue(gi)) => st.issues[gi].expanded = !st.issues[gi].expanded,
+                Some(Row::Task(gi, ti)) => {
+                    let task = &st.issues[gi].tasks[ti];
+                    return Ok(BoardAction::OpenTask(task.uuid.to_string()));
+                }
+                Some(Row::Standalone(si)) => {
+                    let task = &st.standalone[si];
+                    return Ok(BoardAction::OpenTask(task.uuid.to_string()));
+                }
+                None => {}
+            },
+            // 'o' — neotree-familiar toggle synonym for Space/Enter on a node.
+            Action::Raw(k) if k.code == KeyCode::Char('o') => {
+                if let Some(Row::Issue(gi)) = rows.get(st.selected).copied() {
+                    st.issues[gi].expanded = !st.issues[gi].expanded;
+                }
+            }
+            Action::Raw(k) if k.code == KeyCode::Right || k.code == KeyCode::Char('l') => {
+                if let Some(Row::Issue(gi)) = rows.get(st.selected).copied() {
+                    st.issues[gi].expanded = true;
+                }
+            }
+            Action::Raw(k) if k.code == KeyCode::Left || k.code == KeyCode::Char('h') => {
+                match rows.get(st.selected).copied() {
+                    Some(Row::Issue(gi)) => st.issues[gi].expanded = false,
+                    Some(Row::Task(gi, _)) => {
+                        // Collapse the parent and land the cursor back on its header.
+                        st.issues[gi].expanded = false;
+                        if let Some(pos) = rows
+                            .iter()
+                            .position(|r| matches!(r, Row::Issue(i) if *i == gi))
+                        {
+                            st.selected = pos;
+                        }
+                    }
+                    _ => {}
+                }
             }
             Action::Raw(k) if k.code == KeyCode::Char('?') => {
                 showing_help = true;
@@ -92,46 +156,63 @@ pub(super) fn board_loop<B: Backend>(
     }
 }
 
-/// Board's help overlay: the shared bindings it actually acts on (no
-/// reorder/save/toggle — board has nothing to reorder, save, or check off)
-/// plus '?' itself.
+/// Board's help overlay: the shared bindings it actually acts on, plus its
+/// own tree expand/collapse keys and '?' itself.
 fn help_bindings() -> Vec<(&'static str, &'static str)> {
     use keymap::help::*;
-    vec![MOVE, TOP_BOTTOM, PAGE, CONFIRM, QUIT, HELP]
+    vec![
+        MOVE,
+        TOP_BOTTOM,
+        PAGE,
+        ("o / Space / Enter", "expand / collapse an issue"),
+        ("l / →", "expand an issue"),
+        ("h / ←", "collapse an issue (or its parent)"),
+        CONFIRM,
+        QUIT,
+        HELP,
+    ]
 }
 
-/// Build the rendered lines and a map from task index -> its line number, so the
+/// Build the rendered lines and a map from row index -> its line number, so the
 /// scroll math and the renderer agree on layout.
-fn build_lines(st: &BoardState) -> (Vec<Line<'static>>, Vec<u16>) {
-    let mut lines: Vec<Line> = Vec::new();
-    let mut task_line: Vec<u16> = vec![0; st.tasks.len()];
-    let mut prev_feature: Option<usize> = None;
+fn build_lines(st: &BoardState, rows: &[Row]) -> (Vec<Line<'static>>, Vec<u16>) {
+    let mut lines: Vec<Line> = Vec::with_capacity(rows.len());
+    let mut row_line: Vec<u16> = vec![0; rows.len()];
 
-    for (idx, task) in st.tasks.iter().enumerate() {
-        let fi = st.feature_of[idx];
-        if prev_feature != Some(fi) {
-            if prev_feature.is_some() {
-                lines.push(Line::from(""));
+    for (i, row) in rows.iter().enumerate() {
+        row_line[i] = lines.len() as u16;
+        let is_sel = i == st.selected;
+        match *row {
+            Row::Issue(gi) => lines.push(issue_header(&st.issues[gi], is_sel)),
+            Row::Task(gi, ti) => {
+                let task = &st.issues[gi].tasks[ti];
+                lines.push(task_line_for(task, is_sel, true, badge_for(st, task)));
             }
-            let feat = &st.features[fi];
-            lines.push(feature_header(feat));
-            prev_feature = Some(fi);
+            Row::Standalone(si) => {
+                let task = &st.standalone[si];
+                lines.push(task_line_for(task, is_sel, false, badge_for(st, task)));
+            }
         }
-
-        task_line[idx] = lines.len() as u16;
-        let is_sel = idx == st.selected;
-        let grouped = st.features[fi].grouped;
-        let badge = st.badges.get(idx).copied().unwrap_or_default();
-        lines.push(task_line_for(task, is_sel, grouped, badge));
     }
-    (lines, task_line)
+    (lines, row_line)
+}
+
+fn badge_for(st: &BoardState, task: &Task) -> Option<Span<'static>> {
+    let uuid = task.uuid.to_string();
+    let flags = st.badges.get(&uuid).copied().unwrap_or_default();
+    let synced = st.imported.contains(&uuid);
+    board_badge_span(flags, synced)
 }
 
 /// Badge span for a task's PR/issue links, mirroring `sara list`'s badge
-/// precedence (PR > issue > generic link). Kept local rather than reusing
-/// `commands::list`'s private `LinkBadge` type — command slices don't import
-/// each other; only the underlying data (`link_flags_by_task`) is shared.
-fn board_badge_span(flags: LinkFlags) -> Option<Span<'static>> {
+/// precedence (PR > issue > generic link). `synced` gates the ISS badge to
+/// the task that *is* the `sara sync`-imported issue — every task nested
+/// under an issue header already links back to it for traceability, so a raw
+/// `flags.issue` check would tag all of them, not just the imported one.
+/// Kept local rather than reusing `commands::list`'s private `LinkBadge`
+/// type — command slices don't import each other; only the underlying data
+/// (`link_flags_by_task` / `github_synced_task_uuids`) is shared.
+fn board_badge_span(flags: LinkFlags, synced: bool) -> Option<Span<'static>> {
     if flags.pr {
         Some(Span::styled(
             "PR ",
@@ -139,7 +220,7 @@ fn board_badge_span(flags: LinkFlags) -> Option<Span<'static>> {
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
         ))
-    } else if flags.issue {
+    } else if flags.issue && synced {
         Some(Span::styled(
             "ISS ",
             Style::default()
@@ -153,46 +234,65 @@ fn board_badge_span(flags: LinkFlags) -> Option<Span<'static>> {
     }
 }
 
-fn feature_header(feat: &Feature) -> Line<'static> {
-    let complete = feat.total > 0 && feat.done == feat.total;
-    let icon = if !feat.grouped {
-        "•"
+fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
+    let total = issue.total;
+    let done = issue.done;
+    let complete = total > 0 && done == total;
+    let icon = if issue.expanded { "▾" } else { "▸" };
+    let bg = if is_sel { Color::Blue } else { Color::Reset };
+    let title_color = if is_sel {
+        Color::White
     } else if complete {
-        "✓"
-    } else {
-        "▸"
-    };
-    let title_color = if complete {
         Color::Green
-    } else if feat.grouped {
-        Color::Cyan
     } else {
-        Color::Gray
+        Color::Cyan
     };
+
+    let label = match &issue.title {
+        Some(t) => format!(
+            " {icon} #{} {}  {}  ",
+            issue.number,
+            issue.owner_repo,
+            truncate(t, 50)
+        ),
+        None => format!(" {icon} #{} {}  ", issue.number, issue.owner_repo),
+    };
+
     Line::from(vec![
         Span::styled(
-            format!(" {icon} {}  ", feat.title),
+            label,
             Style::default()
                 .fg(title_color)
+                .bg(bg)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!("{}/{} done", feat.done, feat.total),
-            Style::default().fg(Color::DarkGray),
+            format!("{done}/{total} done"),
+            Style::default()
+                .fg(if is_sel {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                })
+                .bg(bg),
         ),
     ])
 }
 
-fn task_line_for(task: &Task, is_sel: bool, grouped: bool, badge: LinkFlags) -> Line<'static> {
+fn task_line_for(
+    task: &Task,
+    is_sel: bool,
+    nested: bool,
+    badge_span: Option<Span<'static>>,
+) -> Line<'static> {
     let bg = if is_sel { Color::Blue } else { Color::Reset };
     let prefix = if is_sel { " ▶ " } else { "   " };
-    // Chain connector for tasks that belong to a feature.
-    let connector = if grouped { "└ " } else { "" };
+    // Tree connector for tasks nested under an issue header.
+    let connector = if nested { "└ " } else { "" };
     let id_str = task
         .id
         .map(|i| format!("{i:>3}"))
         .unwrap_or_else(|| "  -".to_string());
-    let badge_span = board_badge_span(badge);
 
     if task.status == Status::Completed {
         let base = Style::default()
@@ -244,18 +344,14 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool, badge: LinkFlags) -> 
 
 fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     let area = f.area();
-    let group_word = match st.mode {
-        GroupMode::Feature => "feature",
-        GroupMode::Issue => "issue",
-    };
-    let group_label = format!(
-        "{} {group_word}{}",
-        st.feature_count,
-        if st.feature_count == 1 { "" } else { "s" }
-    );
+    let issue_count = st.issues.len();
     let title = format!(
-        " {} · {} · {} pending, {} done ",
-        st.project, group_label, st.pending, st.done,
+        " {} · {} issue{} · {} pending, {} done ",
+        st.project,
+        issue_count,
+        if issue_count == 1 { "" } else { "s" },
+        st.pending,
+        st.done,
     );
 
     let chunks = Layout::default()
@@ -275,10 +371,20 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     f.render_widget(para, chunks[0]);
 
     let footer = Paragraph::new(Line::from(Span::styled(
-        " j/k navigate  gg/G top/bottom  Enter open  i group-by-issue  PgDn/PgUp scroll  ? help  q quit",
+        " j/k navigate  o/Space/Enter toggle  h/l collapse/expand  ? help  q quit",
         Style::default().fg(Color::DarkGray),
     )));
     f.render_widget(footer, chunks[1]);
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('…');
+        out
+    }
 }
 
 #[cfg(test)]
@@ -286,32 +392,49 @@ mod tests {
     use super::*;
     use crate::infrastructure::model::Task;
     use ratatui::{Terminal, backend::TestBackend};
+    use std::collections::{HashMap, HashSet};
 
-    fn board_state(tasks: Vec<Task>, badges: Vec<LinkFlags>, mode: GroupMode) -> BoardState {
-        let feature_of = vec![0; tasks.len()];
-        let features = vec![Feature {
-            title: "Feature 1".to_string(),
-            done: 0,
-            total: tasks.len(),
-            grouped: true,
-        }];
+    fn board_state(issues: Vec<IssueNode>, standalone: Vec<Task>) -> BoardState {
+        let pending = issues
+            .iter()
+            .flat_map(|i| &i.tasks)
+            .chain(standalone.iter())
+            .filter(|t| t.status != Status::Completed)
+            .count();
         BoardState {
             project: "tk".to_string(),
-            pending: tasks.len(),
+            pending,
             done: 0,
-            feature_count: 1,
-            tasks,
-            feature_of,
-            features,
-            badges,
-            mode,
+            issues,
+            standalone,
+            badges: HashMap::new(),
+            show_finished: false,
+            imported: HashSet::new(),
             selected: 0,
             scroll: 0,
         }
     }
 
+    fn issue_node(number: u64, tasks: Vec<Task>, expanded: bool) -> IssueNode {
+        let total = tasks.len();
+        let done = tasks
+            .iter()
+            .filter(|t| t.status == Status::Completed)
+            .count();
+        IssueNode {
+            owner_repo: "o/r".to_string(),
+            number,
+            title: None,
+            tasks,
+            done,
+            total,
+            expanded,
+        }
+    }
+
     fn draw(st: &BoardState) -> String {
-        let (lines, _) = build_lines(st);
+        let rows = visible_rows(st);
+        let (lines, _) = build_lines(st, &rows);
         let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
         terminal.draw(|f| render(f, st, &lines)).unwrap();
         let buf = terminal.backend().buffer();
@@ -329,55 +452,87 @@ mod tests {
     }
 
     #[test]
+    fn collapsed_issue_hides_its_tasks() {
+        let t = Task::new("child".into(), "tk".into());
+        let st = board_state(vec![issue_node(5, vec![t], false)], vec![]);
+        let out = draw(&st);
+        assert!(out.contains("#5"));
+        assert!(!out.contains("child"));
+    }
+
+    #[test]
+    fn expanded_issue_shows_its_tasks() {
+        let t = Task::new("child".into(), "tk".into());
+        let st = board_state(vec![issue_node(5, vec![t], true)], vec![]);
+        let out = draw(&st);
+        assert!(out.contains("#5"));
+        assert!(out.contains("child"));
+    }
+
+    #[test]
     fn pr_badge_renders_on_the_row() {
         let t = Task::new("has a pr".into(), "tk".into());
-        let flags = LinkFlags {
-            any: true,
-            pr: true,
-            issue: false,
-        };
-        let st = board_state(vec![t], vec![flags], GroupMode::Feature);
+        let uuid = t.uuid.to_string();
+        let mut st = board_state(vec![issue_node(5, vec![t], true)], vec![]);
+        st.badges.insert(
+            uuid,
+            LinkFlags {
+                any: true,
+                pr: true,
+                issue: false,
+            },
+        );
         assert!(draw(&st).contains("PR"));
     }
 
     #[test]
-    fn issue_badge_renders_on_the_row() {
+    fn issue_badge_only_renders_for_synced_tasks() {
         let t = Task::new("has an issue".into(), "tk".into());
-        let flags = LinkFlags {
-            any: true,
-            pr: false,
-            issue: true,
-        };
-        let st = board_state(vec![t], vec![flags], GroupMode::Feature);
+        let uuid = t.uuid.to_string();
+        let mut st = board_state(vec![issue_node(5, vec![t], true)], vec![]);
+        st.badges.insert(
+            uuid.clone(),
+            LinkFlags {
+                any: true,
+                pr: false,
+                issue: true,
+            },
+        );
+        // Not synced yet — every task under an issue header links back to
+        // it for traceability, so the badge must not fire on that alone.
+        assert!(!draw(&st).contains("ISS"));
+
+        st.imported.insert(uuid);
         assert!(draw(&st).contains("ISS"));
     }
 
     #[test]
     fn no_badge_for_task_without_links() {
         let t = Task::new("plain".into(), "tk".into());
-        let st = board_state(vec![t], vec![LinkFlags::default()], GroupMode::Feature);
+        let st = board_state(vec![issue_node(5, vec![t], true)], vec![]);
         let out = draw(&st);
         assert!(!out.contains("PR"));
         assert!(!out.contains("ISS"));
     }
 
     #[test]
-    fn title_reflects_grouping_mode() {
+    fn standalone_tasks_render_without_an_issue_header() {
+        let t = Task::new("loose".into(), "tk".into());
+        let st = board_state(vec![], vec![t]);
+        let out = draw(&st);
+        assert!(out.contains("loose"));
+        assert!(!out.contains('#'));
+    }
+
+    #[test]
+    fn title_reports_issue_count() {
         let t = Task::new("x".into(), "tk".into());
-        let feature_st = board_state(
-            vec![t.clone()],
-            vec![LinkFlags::default()],
-            GroupMode::Feature,
-        );
-        let issue_st = board_state(vec![t], vec![LinkFlags::default()], GroupMode::Issue);
-        assert!(draw(&feature_st).contains("feature"));
-        assert!(draw(&issue_st).contains("issue"));
+        let st = board_state(vec![issue_node(5, vec![t], false)], vec![]);
+        assert!(draw(&st).contains("1 issue"));
     }
 
     #[test]
     fn help_bindings_are_all_things_this_screen_actually_handles() {
-        // Every listed key must correspond to an Action arm board_loop's
-        // match actually acts on (not a shared-vocab no-op like reorder).
         let bindings = help_bindings();
         let labels: Vec<&str> = bindings.iter().map(|(k, _)| *k).collect();
         assert!(labels.contains(&"j/k, ↓/↑"));
@@ -385,6 +540,8 @@ mod tests {
         assert!(labels.contains(&"Enter"));
         assert!(labels.contains(&"q / Esc"));
         assert!(labels.contains(&"?"));
+        let descriptions: Vec<&str> = bindings.iter().map(|(_, d)| *d).collect();
+        assert!(descriptions.iter().any(|d| d.contains("expand")));
         // Board has nothing to reorder or save — these would be silent
         // no-ops here, so they must not be listed.
         assert!(!labels.iter().any(|l| l.contains("Ctrl+S")));

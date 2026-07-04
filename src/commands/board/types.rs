@@ -1,60 +1,54 @@
+use std::collections::HashSet;
+
 use crate::infrastructure::db::LinkFlags;
 use crate::infrastructure::model::Task;
 
 pub enum BoardAction {
     Quit,
     OpenTask(String),
-    /// Rebuild the board with the other grouping mode ('i' pressed).
-    ToggleGrouping,
 }
 
-/// How board rows are grouped. Feature (dependency-chain) grouping is the
-/// default; issue grouping is opt-in via 'i', reusing `group_tasks_by_issue`
-/// (already shipped for `sara list --by-issue`) so a broken-down issue and
-/// its tasks read together on the board too.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GroupMode {
-    #[default]
-    Feature,
-    Issue,
-}
-
-impl GroupMode {
-    pub fn toggled(self) -> Self {
-        match self {
-            GroupMode::Feature => GroupMode::Issue,
-            GroupMode::Issue => GroupMode::Feature,
-        }
-    }
-}
-
-/// A feature = a chain of tasks linked by `sara dep` dependencies (one connected
-/// component of the dependency graph). Standalone tasks land in a trailing
-/// pseudo-feature with `grouped == false`.
-pub struct Feature {
-    pub title: String,
+/// Tasks tracing back to the same GitHub issue — a collapsible tree node.
+/// Collapsed by default so the board opens as a compact list of issues; `o`
+/// / `Space` / `Enter` / arrows expand a node to reveal its tasks, neotree-style.
+pub struct IssueNode {
+    pub owner_repo: String,
+    pub number: u64,
+    /// Best-effort remote issue title (only known for tasks imported via `sara sync`).
+    pub title: Option<String>,
+    /// Tasks actually shown as rows — completed ones are pre-filtered out unless
+    /// `BoardState::show_finished` is set (see `state::build_state`).
+    pub tasks: Vec<Task>,
+    /// Completed / total counts across *all* of this issue's tasks, independent
+    /// of whether completed ones are currently filtered out of `tasks`.
     pub done: usize,
     pub total: usize,
-    pub grouped: bool,
+    pub expanded: bool,
 }
 
 pub struct BoardState {
     pub project: String,
-    /// Tasks in feature-grouped, dependency (blockers-first) order.
-    pub tasks: Vec<Task>,
-    /// Feature index for each task in `tasks`.
-    pub feature_of: Vec<usize>,
-    pub features: Vec<Feature>,
-    /// PR/issue/link flags for each task in `tasks`, same index alignment —
-    /// reuses `link_flags_by_task`'s already-computed data (not recomputed).
-    pub badges: Vec<LinkFlags>,
-    /// Current grouping — preserved across reloads (returning from a task's
-    /// detail view) until explicitly toggled with 'i'.
-    pub mode: GroupMode,
+    /// Issue-linked tasks, grouped into collapsible nodes (sorted by owner/repo, number).
+    /// An issue whose tasks are all completed is omitted entirely when
+    /// `show_finished` is false.
+    pub issues: Vec<IssueNode>,
+    /// Tasks with no linked issue — rendered as flat top-level leaves. Completed
+    /// ones are omitted unless `show_finished` is set.
+    pub standalone: Vec<Task>,
+    /// PR/issue/link flags per task, keyed by uuid string — reuses
+    /// `link_flags_by_task`'s already-computed data (not recomputed per row).
+    pub badges: std::collections::HashMap<String, LinkFlags>,
+    /// Whether completed tasks are included (`sara board --finished`).
+    pub show_finished: bool,
+    /// Uuids (as strings) of tasks imported by `sara sync` — carry GitHub
+    /// provenance, as opposed to tasks that merely link back to an issue for
+    /// traceability. Gates the ISS badge so it marks the task that *is* the
+    /// synced issue, not every subtask that just traces back to it.
+    pub imported: HashSet<String>,
+    /// Index into the flattened, expansion-aware row list (see `render::visible_rows`).
+    pub selected: usize,
+    pub scroll: u16,
     /// Precomputed counts for the title bar — stable between reloads.
     pub pending: usize,
     pub done: usize,
-    pub feature_count: usize,
-    pub selected: usize,
-    pub scroll: u16,
 }

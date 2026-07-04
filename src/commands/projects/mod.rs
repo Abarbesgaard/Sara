@@ -60,7 +60,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
             ProjectAction::Open(name) => {
                 // Reuse the existing per-project board as the drill-in target,
                 // then loop back to a freshly rebuilt project list.
-                crate::commands::board::run(conn, cfg, Some(&name))?;
+                crate::commands::board::run(conn, cfg, Some(&name), false)?;
             }
         }
     }

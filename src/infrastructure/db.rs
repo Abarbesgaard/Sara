@@ -1577,6 +1577,47 @@ pub fn link_flags_by_task(
     Ok(map)
 }
 
+/// Uuids (as strings) of tasks that were themselves imported by `sara sync`
+/// (i.e. carry GitHub provenance in `meta_json`), as opposed to tasks that
+/// merely link back to an issue for traceability (see `group_tasks_by_issue`).
+pub fn github_synced_task_uuids(conn: &Connection) -> Result<std::collections::HashSet<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid FROM tasks
+         WHERE meta_json IS NOT NULL
+           AND json_extract(meta_json, '$.github') IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut set = std::collections::HashSet::new();
+    for row in rows {
+        set.insert(row?);
+    }
+    Ok(set)
+}
+
+/// Best-effort GitHub issue titles for a project's tasks, keyed by task uuid
+/// (string). Only populated for tasks synced via `sara sync`, which carry the
+/// remote issue title in `meta_json.github.title` — used to label `sara board`
+/// issue tree nodes with more than a bare number when available.
+pub fn github_issue_titles_for_project(
+    conn: &Connection,
+    project: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid, json_extract(meta_json, '$.github.title')
+         FROM tasks
+         WHERE project = ?1 AND json_extract(meta_json, '$.github.title') IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([project], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        let (uuid, title) = row?;
+        map.insert(uuid, title);
+    }
+    Ok(map)
+}
+
 pub fn delete_link(conn: &Connection, link_id: i64) -> Result<bool> {
     let existing: Option<(String, String, Option<String>)> = conn
         .query_row(
