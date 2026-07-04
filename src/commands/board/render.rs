@@ -372,6 +372,16 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     f.render_widget(footer, chunks[1]);
 }
 
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('…');
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,7 +532,8 @@ mod tests {
         assert!(labels.contains(&"Enter"));
         assert!(labels.contains(&"q / Esc"));
         assert!(labels.contains(&"?"));
-        assert!(labels.iter().any(|l| l.contains("expand")));
+        let descriptions: Vec<&str> = bindings.iter().map(|(_, d)| *d).collect();
+        assert!(descriptions.iter().any(|d| d.contains("expand")));
         // Board has nothing to reorder or save — these would be silent
         // no-ops here, so they must not be listed.
         assert!(!labels.iter().any(|l| l.contains("Ctrl+S")));
