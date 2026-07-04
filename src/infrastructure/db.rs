@@ -1577,6 +1577,23 @@ pub fn link_flags_by_task(
     Ok(map)
 }
 
+/// Uuids (as strings) of tasks that were themselves imported by `sara sync`
+/// (i.e. carry GitHub provenance in `meta_json`), as opposed to tasks that
+/// merely link back to an issue for traceability (see `group_tasks_by_issue`).
+pub fn github_synced_task_uuids(conn: &Connection) -> Result<std::collections::HashSet<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid FROM tasks
+         WHERE meta_json IS NOT NULL
+           AND json_extract(meta_json, '$.github') IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut set = std::collections::HashSet::new();
+    for row in rows {
+        set.insert(row?);
+    }
+    Ok(set)
+}
+
 pub fn delete_link(conn: &Connection, link_id: i64) -> Result<bool> {
     let existing: Option<(String, String, Option<String>)> = conn
         .query_row(

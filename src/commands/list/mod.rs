@@ -83,6 +83,7 @@ pub fn run(
 
     let tasks = db::list_tasks(conn, filter.as_deref())?;
     let link_flags = db::link_flags_by_task(conn).unwrap_or_default();
+    let github_synced = db::github_synced_task_uuids(conn).unwrap_or_default();
     let dep_info = db::dep_info_by_task(conn).unwrap_or_default();
 
     if as_json {
@@ -169,7 +170,8 @@ pub fn run(
             _ => " ",
         };
         let dep_text = truncate(&dep_column_text(dep), DEP_COL_W);
-        let link_badge = LinkBadge::from_flags(flags);
+        let is_synced = github_synced.contains(&task.uuid.to_string());
+        let link_badge = LinkBadge::from_flags(flags, is_synced);
         let pr_badge_plain = match link_badge {
             LinkBadge::Pr => "[PR] ",
             LinkBadge::Issue => "[ISSUE] ",
@@ -320,10 +322,13 @@ enum LinkBadge {
 }
 
 impl LinkBadge {
-    fn from_flags(flags: db::LinkFlags) -> Self {
+    /// `synced` means the task itself was imported by `sara sync` (has GitHub
+    /// provenance) — not merely that it links back to an issue for
+    /// traceability, which every task in a broken-down issue does.
+    fn from_flags(flags: db::LinkFlags, synced: bool) -> Self {
         if flags.pr {
             LinkBadge::Pr
-        } else if flags.issue {
+        } else if flags.issue && synced {
             LinkBadge::Issue
         } else if flags.any {
             LinkBadge::Link
@@ -389,32 +394,59 @@ mod tests {
     #[test]
     fn link_badge_precedence_pr_beats_issue_beats_generic_link() {
         assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: true,
-                issue: true,
-            }),
+            LinkBadge::from_flags(
+                db::LinkFlags {
+                    any: true,
+                    pr: true,
+                    issue: true,
+                },
+                true,
+            ),
             LinkBadge::Pr
         );
         assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: false,
-                issue: true,
-            }),
+            LinkBadge::from_flags(
+                db::LinkFlags {
+                    any: true,
+                    pr: false,
+                    issue: true,
+                },
+                true,
+            ),
             LinkBadge::Issue
         );
         assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags {
-                any: true,
-                pr: false,
-                issue: false,
-            }),
+            LinkBadge::from_flags(
+                db::LinkFlags {
+                    any: true,
+                    pr: false,
+                    issue: false,
+                },
+                true,
+            ),
             LinkBadge::Link
         );
         assert_eq!(
-            LinkBadge::from_flags(db::LinkFlags::default()),
+            LinkBadge::from_flags(db::LinkFlags::default(), true),
             LinkBadge::None
+        );
+    }
+
+    #[test]
+    fn link_badge_issue_link_without_sync_provenance_is_generic_link() {
+        // A task that merely links back to an issue for traceability (e.g. a
+        // subtask generated while breaking down an issue) is not itself an
+        // imported task, so it should not wear the ISS badge.
+        assert_eq!(
+            LinkBadge::from_flags(
+                db::LinkFlags {
+                    any: true,
+                    pr: false,
+                    issue: true,
+                },
+                false,
+            ),
+            LinkBadge::Link
         );
     }
 }
