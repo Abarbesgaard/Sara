@@ -1,6 +1,38 @@
 use tui_textarea::TextArea;
 
-use crate::infrastructure::model::Task;
+use crate::infrastructure::db::LinkFlags;
+use crate::infrastructure::model::{Status, Task};
+
+/// One node in the depth-1 dependency graph view: only what's needed for a
+/// glanceable row (id, status glyph, PR/issue badge) — no description or
+/// other metadata, per the "less is more" design goal for overview screens.
+#[derive(Clone)]
+pub(super) struct GraphNode {
+    pub(super) uuid: uuid::Uuid,
+    pub(super) id: Option<i64>,
+    pub(super) status: Status,
+    pub(super) badge: Option<LinkFlags>,
+}
+
+/// Depth-1 dependency graph data for the current task: every immediate
+/// blocker and dependent, any status (so completed neighbors still show,
+/// crossed out) — deliberately not the transitive closure. Kept uncapped
+/// here; the render layer decides how many to actually show (capped by
+/// default, all of them when the panel is "expanded") so toggling expand
+/// doesn't need a re-fetch.
+#[derive(Default, Clone)]
+pub(super) struct DependencyGraph {
+    /// "← blocked by".
+    pub(super) blockers: Vec<GraphNode>,
+    /// "blocks →".
+    pub(super) dependents: Vec<GraphNode>,
+}
+
+impl DependencyGraph {
+    pub(super) fn is_empty(&self) -> bool {
+        self.blockers.is_empty() && self.dependents.is_empty()
+    }
+}
 
 pub(super) struct Detail {
     pub(super) task: Task,
@@ -46,6 +78,9 @@ pub(super) struct Detail {
     /// order. Empty when the task has no linked tasks. Used by the right-hand
     /// "Feature chain" panel to show progress and highlight the current task.
     pub(super) chain: Vec<Task>,
+    /// Depth-1 blockers/dependents for the dependency graph panel (toggled
+    /// with 'd', replacing the chain panel when active).
+    pub(super) graph: DependencyGraph,
 }
 
 pub(super) struct BranchOverlap {
@@ -121,6 +156,17 @@ pub(super) struct EditState {
     /// Error from the last "Depends on" commit, shown until the next edit.
     pub(super) dep_error: Option<String>,
     pub(super) scroll: u16,
+    /// True while the dependency-graph panel is shown instead of the chain panel.
+    pub(super) show_graph: bool,
+    /// True to show every neighbor on the graph's overflowing side(s) instead
+    /// of the capped "+N more" summary row.
+    pub(super) graph_expanded: bool,
+    /// True while showing the opt-in "full impact" (transitive blockers) view.
+    pub(super) graph_full_impact: bool,
+    /// Transitive blockers for the "full impact" view, computed on demand
+    /// when `graph_full_impact` is toggled on (not kept in `Detail` — it's a
+    /// UI-triggered expansion, not part of the always-current snapshot).
+    pub(super) full_impact: Vec<GraphNode>,
 }
 
 /// All typed notes in render order (finding, constraint, assumption, …).

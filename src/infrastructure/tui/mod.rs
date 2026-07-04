@@ -1,4 +1,5 @@
 pub mod fzf;
+pub mod keymap;
 pub mod review_form;
 
 use anyhow::Result;

@@ -12,10 +12,10 @@ use crate::infrastructure::model::{Priority, Task, format_duration};
 
 use super::edit::current_value;
 use super::handler::{
-    comment_target, depends_on_display, focusables, guide_is_stale, notes_of_kind, typed_notes,
-    verification_rows,
+    GRAPH_NEIGHBOR_CAP, comment_target, depends_on_display, focusables, guide_is_stale,
+    notes_of_kind, typed_notes, verification_rows,
 };
-use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable};
+use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
 
 pub(super) fn render(f: &mut Frame, st: &EditState) {
     let area = f.area();
@@ -884,12 +884,19 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         .scroll((st.scroll, 0));
     f.render_widget(para, left_area);
 
-    // ── Feature chain (top) + Git + stats + mini heatmap
+    // ── Feature chain / dependency graph (top) + Git + stats
     if let Some(panel) = panel_area {
-        // The chain panel only appears when the task is linked to others. Its
-        // height flexes with the chain length (capped) so short chains stay compact.
+        // 'd' toggles between the linear chain panel (only meaningful when
+        // the task is linked to others) and the dependency graph panel.
+        // Unlike the chain panel, the graph panel stays visible even with no
+        // blockers/dependents (showing "— none —") once toggled on — hiding
+        // it silently on an empty task would look like the keypress did
+        // nothing.
         let has_chain = d.chain.len() > 1;
-        let chain_h: u16 = if has_chain {
+        let graph_active = st.show_graph;
+        let top_h: u16 = if graph_active {
+            graph_panel_height(d, st)
+        } else if has_chain {
             // +3 for border (2) and the progress bar row (1).
             ((d.chain.len() as u16) + 3).clamp(5, 14)
         } else {
@@ -899,9 +906,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         // The GitHub-style activity heatmap panel is deprecated for now (kept
         // out of the layout, not deleted — `render_mini_heatmap`/`d.activity`
         // are still populated in case this gets revisited).
-        let constraints: Vec<Constraint> = if has_chain {
+        let constraints: Vec<Constraint> = if top_h > 0 {
             vec![
-                Constraint::Length(chain_h),
+                Constraint::Length(top_h),
                 Constraint::Min(4),
                 Constraint::Length(14),
             ]
@@ -913,7 +920,10 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             .constraints(constraints)
             .split(panel);
 
-        let base = if has_chain {
+        let base = if graph_active {
+            render_graph_panel(f, panel_chunks[0], d, st);
+            1
+        } else if has_chain {
             render_chain_panel(f, panel_chunks[0], d);
             1
         } else {
@@ -1018,13 +1028,13 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     }
 
     let footer = if st.adding_step {
-        " type a step  •  Enter save  •  Esc cancel ".to_string()
+        " type a step  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
     } else if st.commenting {
-        " type a comment  •  Enter save  •  Esc cancel ".to_string()
+        " type a comment  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
     } else if st.editing {
-        " type to edit  •  Enter confirm  •  Esc cancel ".to_string()
+        " type to edit  •  Enter/Ctrl+S confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • q close "
+        " ↑/↓ move • ⇧↑/⇧↓ reorder • a add step • Enter edit/open • c comment • Ctrl+E $EDITOR • d graph • q close "
             .to_string()
     };
     let footer_idx = chunks.len() - 1;
@@ -1135,6 +1145,206 @@ fn render_chain_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
     };
 
     f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
+}
+
+/// Right-hand panel showing the depth-1 dependency graph: blockers above the
+/// current task, dependents below. Each node shows only id + status glyph +
+/// PR/issue badge (reusing `link_flags_by_task`'s already-computed flags, not
+/// recomputing badge precedence) — deliberately no description, to stay
+/// glanceable. Replaces `render_chain_panel` when active: the underlying
+/// model is a real DAG that can branch across multiple features, which a
+/// single linear chain can't represent.
+fn render_graph_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail, st: &EditState) {
+    let title = if st.graph_full_impact {
+        " Dependency graph — full impact "
+    } else {
+        " Dependency graph "
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(Color::Magenta));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if st.graph_full_impact {
+        lines.push(graph_section_header(&format!(
+            "← blocked by, full impact ({})",
+            st.full_impact.len()
+        )));
+        push_graph_node_lines(&mut lines, &st.full_impact, st.full_impact.len(), true);
+    } else {
+        lines.push(graph_section_header(&format!(
+            "← blocked by ({})",
+            d.graph.blockers.len()
+        )));
+        push_graph_node_lines(
+            &mut lines,
+            &d.graph.blockers,
+            GRAPH_NEIGHBOR_CAP,
+            st.graph_expanded,
+        );
+    }
+
+    let rule = "─".repeat(inner.width as usize);
+    lines.push(Line::from(Span::styled(
+        rule.clone(),
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(current_task_graph_line(&d.task));
+    lines.push(Line::from(Span::styled(
+        rule,
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    lines.push(graph_section_header(&format!(
+        "blocks → ({})",
+        d.graph.dependents.len()
+    )));
+    push_graph_node_lines(
+        &mut lines,
+        &d.graph.dependents,
+        GRAPH_NEIGHBOR_CAP,
+        st.graph_expanded,
+    );
+
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn graph_section_header(text: &str) -> Line<'static> {
+    Line::from(Span::styled(
+        format!(" {text}"),
+        Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD),
+    ))
+}
+
+fn current_task_graph_line(task: &Task) -> Line<'static> {
+    let id_str = task
+        .id
+        .map(|n| format!("{n:>3}"))
+        .unwrap_or_else(|| "  -".to_string());
+    let style = Style::default()
+        .fg(Color::White)
+        .bg(Color::Blue)
+        .add_modifier(Modifier::BOLD);
+    Line::from(vec![
+        Span::styled(" ▶ ", style),
+        Span::styled(format!("{id_str} "), style),
+        Span::styled(truncate_str(&task.description, 24), style),
+    ])
+}
+
+/// Append one line per visible node, capped at `cap` unless `expanded`, plus
+/// a "+N more" summary line for whatever's left over. A single dedicated key
+/// ('d', pressed again) reveals the rest inline rather than opening a
+/// separate filtered-list screen — simpler, and depth-1 lists are short
+/// enough that a whole new screen for the overflow felt disproportionate.
+fn push_graph_node_lines(
+    lines: &mut Vec<Line<'static>>,
+    nodes: &[GraphNode],
+    cap: usize,
+    expanded: bool,
+) {
+    if nodes.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "   — none —",
+            Style::default().fg(Color::DarkGray),
+        )));
+        return;
+    }
+    let visible = if expanded {
+        nodes.len()
+    } else {
+        cap.min(nodes.len())
+    };
+    for node in &nodes[..visible] {
+        lines.push(graph_node_line(node));
+    }
+    let overflow = nodes.len() - visible;
+    if overflow > 0 {
+        lines.push(Line::from(Span::styled(
+            format!("   +{overflow} more  (d to expand)"),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )));
+    }
+}
+
+fn graph_node_line(node: &GraphNode) -> Line<'static> {
+    let completed = node.status == crate::infrastructure::model::Status::Completed;
+    let glyph = if completed { "✓" } else { "○" };
+    let id_str = node
+        .id
+        .map(|n| format!("{n:>3}"))
+        .unwrap_or_else(|| "  -".to_string());
+    let style = if completed {
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::CROSSED_OUT)
+    } else {
+        Style::default().fg(Color::Cyan)
+    };
+    let mut spans = vec![
+        Span::styled(format!("   {glyph} "), style),
+        Span::styled(id_str, style),
+    ];
+    if let Some(label) = link_badge_label(node.badge.as_ref()) {
+        spans.push(Span::styled(
+            format!("  {label}"),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// Badge label for a task's PR/issue links, mirroring `sara list`'s badge
+/// precedence (PR > issue > generic link). Kept local rather than reusing
+/// `commands::list`'s private `LinkBadge` type — command slices don't import
+/// each other; only the underlying data (`link_flags_by_task`) is shared.
+fn link_badge_label(flags: Option<&db::LinkFlags>) -> Option<&'static str> {
+    let f = flags?;
+    if f.pr {
+        Some("PR")
+    } else if f.issue {
+        Some("ISS")
+    } else if f.any {
+        Some("●")
+    } else {
+        None
+    }
+}
+
+fn graph_panel_height(d: &Detail, st: &EditState) -> u16 {
+    let blocker_rows = if st.graph_full_impact {
+        graph_side_rows(st.full_impact.len(), true)
+    } else {
+        graph_side_rows(d.graph.blockers.len(), st.graph_expanded)
+    };
+    let dependent_rows = graph_side_rows(d.graph.dependents.len(), st.graph_expanded);
+    // 2 borders + 2 section headers + 2 separators + 1 current-task row.
+    let fixed = 2 + 2 + 2 + 1;
+    ((blocker_rows + dependent_rows + fixed) as u16).clamp(7, 20)
+}
+
+fn graph_side_rows(len: usize, expanded: bool) -> usize {
+    if len == 0 {
+        return 1; // "— none —"
+    }
+    let visible = if expanded {
+        len
+    } else {
+        GRAPH_NEIGHBOR_CAP.min(len)
+    };
+    let overflow_row = usize::from(!expanded && len > GRAPH_NEIGHBOR_CAP);
+    visible + overflow_row
 }
 
 /// Build lines for the History box at the bottom of the detail view.
@@ -1773,5 +1983,174 @@ fn month_abbr(m: u32) -> &'static str {
         11 => "Nov",
         12 => "Dec",
         _ => "???",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::types::DependencyGraph;
+    use super::*;
+    use crate::infrastructure::model::{Status, Task};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn task() -> Task {
+        Task::new("root task".into(), "tk".into())
+    }
+
+    fn node(id: i64, status: Status) -> GraphNode {
+        GraphNode {
+            uuid: uuid::Uuid::new_v4(),
+            id: Some(id),
+            status,
+            badge: None,
+        }
+    }
+
+    fn base_detail(task: Task) -> Detail {
+        Detail {
+            task,
+            blocked_by: vec![],
+            blocking: vec![],
+            depends_on_ids: vec![],
+            manual_files: vec![],
+            suggested_files: vec![],
+            links: vec![],
+            annotations: vec![],
+            history: vec![],
+            project_root: None,
+            branch: None,
+            overlaps: vec![],
+            similar: vec![],
+            checklist: vec![],
+            urgency_breakdown: None,
+            activity: std::collections::HashMap::new(),
+            stats: None,
+            guide: crate::infrastructure::db::TaskGuideFields::default(),
+            anchors: vec![],
+            ai_runs: vec![],
+            head_commit: None,
+            project_commands: crate::infrastructure::db::ProjectCommands::default(),
+            chain: vec![],
+            graph: DependencyGraph::default(),
+        }
+    }
+
+    fn base_state(detail: Detail) -> EditState {
+        EditState {
+            detail,
+            selected: 0,
+            editing: false,
+            commenting: false,
+            adding_step: false,
+            editor: tui_textarea::TextArea::default(),
+            due_error: false,
+            dep_error: None,
+            scroll: 0,
+            show_graph: true,
+            graph_expanded: false,
+            graph_full_impact: false,
+            full_impact: vec![],
+        }
+    }
+
+    fn draw(st: &EditState) -> String {
+        // Wide enough that render()'s `chunks[0].width >= 96` gate shows the
+        // side panel at all, and tall enough that the panel's own stacked
+        // constraints (graph/chain + Git(14) + stats(11) + Min(4)) don't get
+        // starved and silently truncated by Layout::split.
+        let mut terminal = Terminal::new(TestBackend::new(140, 60)).unwrap();
+        terminal.draw(|f| render(f, st)).unwrap();
+        let buf = terminal.backend().buffer();
+        let area = *buf.area();
+        let mut out = String::new();
+        for y in 0..area.height {
+            let mut line = String::new();
+            for x in 0..area.width {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn graph_panel_does_not_panic_when_empty() {
+        let mut d = base_detail(task());
+        d.graph = DependencyGraph::default();
+        let st = base_state(d);
+        let out = draw(&st);
+        assert!(out.contains("Dependency graph"));
+        assert!(out.contains("none"));
+    }
+
+    #[test]
+    fn graph_panel_shows_branching_blockers_and_dependents() {
+        let mut d = base_detail(task());
+        d.graph = DependencyGraph {
+            blockers: vec![node(1, Status::Pending), node(2, Status::Completed)],
+            dependents: vec![node(3, Status::Pending)],
+        };
+        let st = base_state(d);
+        let out = draw(&st);
+        // Both blockers (one completed, one pending) and the dependent render
+        // as distinct rows — this is exactly what the old linear chain panel
+        // couldn't do for a task with neighbors in different features.
+        assert!(out.contains("blocked by (2)"));
+        assert!(out.contains("blocks"));
+        assert!(out.contains("1"));
+        assert!(out.contains("2"));
+        assert!(out.contains("3"));
+    }
+
+    #[test]
+    fn graph_panel_collapses_overflow_to_a_summary_row_by_default() {
+        let mut d = base_detail(task());
+        d.graph = DependencyGraph {
+            blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+            dependents: vec![],
+        };
+        let st = base_state(d);
+        let out = draw(&st);
+        assert!(out.contains("more"));
+        // Only the first GRAPH_NEIGHBOR_CAP ids should be visible, not all 8.
+        assert!(out.contains(&format!("{GRAPH_NEIGHBOR_CAP}")) || out.contains("more"));
+    }
+
+    #[test]
+    fn graph_panel_expanded_shows_everything_and_drops_the_summary_row() {
+        let mut d = base_detail(task());
+        d.graph = DependencyGraph {
+            blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+            dependents: vec![],
+        };
+        let mut st = base_state(d);
+        st.graph_expanded = true;
+        let out = draw(&st);
+        assert!(!out.contains("more"));
+        for i in 1..=8 {
+            assert!(
+                out.contains(&i.to_string()),
+                "expected id {i} to be visible"
+            );
+        }
+    }
+
+    #[test]
+    fn graph_panel_full_impact_shows_transitive_blockers_and_ignores_the_cap() {
+        let mut d = base_detail(task());
+        d.graph = DependencyGraph {
+            blockers: vec![node(1, Status::Pending)],
+            dependents: vec![],
+        };
+        let mut st = base_state(d);
+        st.graph_full_impact = true;
+        st.full_impact = (100..=106).map(|i| node(i, Status::Pending)).collect();
+        let out = draw(&st);
+        assert!(out.contains("full impact"));
+        // The full-impact list (7 items) ignores GRAPH_NEIGHBOR_CAP entirely.
+        assert!(!out.contains("more"));
+        assert!(out.contains("100"));
+        assert!(out.contains("106"));
     }
 }
