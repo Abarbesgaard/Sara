@@ -15,7 +15,12 @@ fn is_empty(st: &BoardState) -> bool {
     st.issues.is_empty() && st.standalone.is_empty()
 }
 
-pub fn run(conn: &Connection, cfg: &Config, project_arg: Option<&str>, finished: bool) -> Result<()> {
+pub fn run(
+    conn: &Connection,
+    cfg: &Config,
+    project_arg: Option<&str>,
+    finished: bool,
+) -> Result<()> {
     let project = if let Some(p) = project_arg {
         p.to_string()
     } else {

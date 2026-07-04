@@ -138,8 +138,9 @@ pub(super) fn board_loop<B: Backend>(
                     Some(Row::Task(gi, _)) => {
                         // Collapse the parent and land the cursor back on its header.
                         st.issues[gi].expanded = false;
-                        if let Some(pos) =
-                            rows.iter().position(|r| matches!(r, Row::Issue(i) if *i == gi))
+                        if let Some(pos) = rows
+                            .iter()
+                            .position(|r| matches!(r, Row::Issue(i) if *i == gi))
                         {
                             st.selected = pos;
                         }
@@ -268,7 +269,11 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
         Span::styled(
             format!("{done}/{total} done"),
             Style::default()
-                .fg(if is_sel { Color::White } else { Color::DarkGray })
+                .fg(if is_sel {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                })
                 .bg(bg),
         ),
     ])
@@ -412,7 +417,10 @@ mod tests {
 
     fn issue_node(number: u64, tasks: Vec<Task>, expanded: bool) -> IssueNode {
         let total = tasks.len();
-        let done = tasks.iter().filter(|t| t.status == Status::Completed).count();
+        let done = tasks
+            .iter()
+            .filter(|t| t.status == Status::Completed)
+            .count();
         IssueNode {
             owner_repo: "o/r".to_string(),
             number,
