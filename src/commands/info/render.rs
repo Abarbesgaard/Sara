@@ -1021,13 +1021,13 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     }
 
     let footer = if st.adding_step {
-        " type a step  •  Enter save  •  Esc cancel ".to_string()
+        " type a step  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
     } else if st.commenting {
-        " type a comment  •  Enter save  •  Esc cancel ".to_string()
+        " type a comment  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
     } else if st.editing {
-        " type to edit  •  Enter confirm  •  Esc cancel ".to_string()
+        " type to edit  •  Enter/Ctrl+S confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • q close "
+        " ↑/↓ move • ⇧↑/⇧↓ reorder step • a add step • Enter edit/open • c comment • Ctrl+E $EDITOR • q close "
             .to_string()
     };
     let footer_idx = chunks.len() - 1;
