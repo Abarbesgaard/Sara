@@ -884,7 +884,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         .scroll((st.scroll, 0));
     f.render_widget(para, left_area);
 
-    // ── Feature chain / dependency graph (top) + Git + stats + mini heatmap
+    // ── Feature chain / dependency graph (top) + Git + stats
     if let Some(panel) = panel_area {
         // 'd' toggles between the linear chain panel (only meaningful when
         // the task is linked to others) and the dependency graph panel.
@@ -903,19 +903,17 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             0
         };
 
+        // The GitHub-style activity heatmap panel is deprecated for now (kept
+        // out of the layout, not deleted — `render_mini_heatmap`/`d.activity`
+        // are still populated in case this gets revisited).
         let constraints: Vec<Constraint> = if top_h > 0 {
             vec![
                 Constraint::Length(top_h),
                 Constraint::Min(4),
                 Constraint::Length(14),
-                Constraint::Length(11),
             ]
         } else {
-            vec![
-                Constraint::Min(4),
-                Constraint::Length(14),
-                Constraint::Length(11),
-            ]
+            vec![Constraint::Min(4), Constraint::Length(14)]
         };
         let panel_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -944,7 +942,6 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         f.render_widget(git_para, panel_chunks[base]);
 
         render_project_stats(f, panel_chunks[base + 1], d);
-        render_mini_heatmap(f, panel_chunks[base + 2], &d.activity, &d.task.project);
     }
 
     // ── History box (pinned to bottom, above edit bar and footer)
