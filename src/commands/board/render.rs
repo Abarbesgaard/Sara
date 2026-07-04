@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use crate::infrastructure::model::{Priority, Status, Task};
+use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 
 use super::{BoardAction, BoardState, Feature};
 
@@ -17,6 +18,7 @@ pub(super) fn board_loop<B: Backend>(
     terminal: &mut Terminal<B>,
     st: &mut BoardState,
 ) -> Result<BoardAction> {
+    let mut dispatcher = KeyDispatcher::new();
     loop {
         // Keep the selected row inside the viewport (content height = total - borders - footer).
         let size = terminal.size()?;
@@ -42,19 +44,25 @@ pub(super) fn board_loop<B: Backend>(
             continue;
         }
 
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return Ok(BoardAction::Quit),
-            KeyCode::Down | KeyCode::Char('j') => {
+        match dispatcher.dispatch(key, Mode::Normal) {
+            Action::Quit => return Ok(BoardAction::Quit),
+            Action::Down => {
                 if !st.tasks.is_empty() {
                     st.selected = (st.selected + 1).min(st.tasks.len() - 1);
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            Action::Up => {
                 st.selected = st.selected.saturating_sub(1);
             }
-            KeyCode::PageDown => st.scroll = st.scroll.saturating_add(10),
-            KeyCode::PageUp => st.scroll = st.scroll.saturating_sub(10),
-            KeyCode::Enter => {
+            Action::Top => st.selected = 0,
+            Action::Bottom => {
+                if !st.tasks.is_empty() {
+                    st.selected = st.tasks.len() - 1;
+                }
+            }
+            Action::PageDown => st.scroll = st.scroll.saturating_add(10),
+            Action::PageUp => st.scroll = st.scroll.saturating_sub(10),
+            Action::Confirm => {
                 if let Some(task) = st.tasks.get(st.selected) {
                     return Ok(BoardAction::OpenTask(task.uuid.to_string()));
                 }
@@ -202,7 +210,7 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     f.render_widget(para, chunks[0]);
 
     let footer = Paragraph::new(Line::from(Span::styled(
-        " j/k navigate  Enter open  PgDn/PgUp scroll  q quit",
+        " j/k navigate  gg/G top/bottom  Enter open  PgDn/PgUp scroll  q quit",
         Style::default().fg(Color::DarkGray),
     )));
     f.render_widget(footer, chunks[1]);
