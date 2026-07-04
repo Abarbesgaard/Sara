@@ -9,11 +9,12 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
+use crate::infrastructure::db::LinkFlags;
 use crate::infrastructure::model::{Priority, Status, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
-use super::{BoardAction, BoardState, Feature};
+use super::{BoardAction, BoardState, Feature, GroupMode};
 
 pub(super) fn board_loop<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -80,6 +81,9 @@ pub(super) fn board_loop<B: Backend>(
                     return Ok(BoardAction::OpenTask(task.uuid.to_string()));
                 }
             }
+            Action::Raw(k) if k.code == KeyCode::Char('i') => {
+                return Ok(BoardAction::ToggleGrouping);
+            }
             Action::Raw(k) if k.code == KeyCode::Char('?') => {
                 showing_help = true;
             }
@@ -117,9 +121,36 @@ fn build_lines(st: &BoardState) -> (Vec<Line<'static>>, Vec<u16>) {
         task_line[idx] = lines.len() as u16;
         let is_sel = idx == st.selected;
         let grouped = st.features[fi].grouped;
-        lines.push(task_line_for(task, is_sel, grouped));
+        let badge = st.badges.get(idx).copied().unwrap_or_default();
+        lines.push(task_line_for(task, is_sel, grouped, badge));
     }
     (lines, task_line)
+}
+
+/// Badge span for a task's PR/issue links, mirroring `sara list`'s badge
+/// precedence (PR > issue > generic link). Kept local rather than reusing
+/// `commands::list`'s private `LinkBadge` type — command slices don't import
+/// each other; only the underlying data (`link_flags_by_task`) is shared.
+fn board_badge_span(flags: LinkFlags) -> Option<Span<'static>> {
+    if flags.pr {
+        Some(Span::styled(
+            "PR ",
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ))
+    } else if flags.issue {
+        Some(Span::styled(
+            "ISS ",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ))
+    } else if flags.any {
+        Some(Span::styled("↗ ", Style::default().fg(Color::Cyan)))
+    } else {
+        None
+    }
 }
 
 fn feature_header(feat: &Feature) -> Line<'static> {
@@ -152,7 +183,7 @@ fn feature_header(feat: &Feature) -> Line<'static> {
     ])
 }
 
-fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
+fn task_line_for(task: &Task, is_sel: bool, grouped: bool, badge: LinkFlags) -> Line<'static> {
     let bg = if is_sel { Color::Blue } else { Color::Reset };
     let prefix = if is_sel { " ▶ " } else { "   " };
     // Chain connector for tasks that belong to a feature.
@@ -161,6 +192,7 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
         .id
         .map(|i| format!("{i:>3}"))
         .unwrap_or_else(|| "  -".to_string());
+    let badge_span = board_badge_span(badge);
 
     if task.status == Status::Completed {
         let base = Style::default()
@@ -170,14 +202,16 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
                 Color::DarkGray
             })
             .bg(bg);
-        Line::from(vec![
+        let mut spans = vec![
             Span::styled(format!("{prefix}{connector}"), base),
             Span::styled(format!("{id_str}  "), base),
-            Span::styled(
-                task.description.clone(),
-                base.add_modifier(Modifier::CROSSED_OUT),
-            ),
-        ])
+        ];
+        spans.extend(badge_span);
+        spans.push(Span::styled(
+            task.description.clone(),
+            base.add_modifier(Modifier::CROSSED_OUT),
+        ));
+        Line::from(spans)
     } else {
         let pri_str = task.priority.as_ref().map(|p| p.label()).unwrap_or("-");
         let pri_color = match &task.priority {
@@ -197,24 +231,31 @@ fn task_line_for(task: &Task, is_sel: bool, grouped: bool) -> Line<'static> {
                 Style::default(),
             )
         };
-        Line::from(vec![
+        let mut spans = vec![
             Span::styled(format!("{prefix}{connector}"), meta_style),
             Span::styled(format!("{id_str}  "), id_style),
             Span::styled(format!("{pri_str:<4}  "), pri_style),
-            Span::styled(task.description.clone(), desc_style),
-        ])
+        ];
+        spans.extend(badge_span);
+        spans.push(Span::styled(task.description.clone(), desc_style));
+        Line::from(spans)
     }
 }
 
 fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     let area = f.area();
-    let title = format!(
-        " {} · {} feature{} · {} pending, {} done ",
-        st.project,
+    let group_word = match st.mode {
+        GroupMode::Feature => "feature",
+        GroupMode::Issue => "issue",
+    };
+    let group_label = format!(
+        "{} {group_word}{}",
         st.feature_count,
-        if st.feature_count == 1 { "" } else { "s" },
-        st.pending,
-        st.done,
+        if st.feature_count == 1 { "" } else { "s" }
+    );
+    let title = format!(
+        " {} · {} · {} pending, {} done ",
+        st.project, group_label, st.pending, st.done,
     );
 
     let chunks = Layout::default()
@@ -234,7 +275,7 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     f.render_widget(para, chunks[0]);
 
     let footer = Paragraph::new(Line::from(Span::styled(
-        " j/k navigate  gg/G top/bottom  Enter open  PgDn/PgUp scroll  ? help  q quit",
+        " j/k navigate  gg/G top/bottom  Enter open  i group-by-issue  PgDn/PgUp scroll  ? help  q quit",
         Style::default().fg(Color::DarkGray),
     )));
     f.render_widget(footer, chunks[1]);
@@ -243,7 +284,95 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::model::Task;
     use ratatui::{Terminal, backend::TestBackend};
+
+    fn board_state(tasks: Vec<Task>, badges: Vec<LinkFlags>, mode: GroupMode) -> BoardState {
+        let feature_of = vec![0; tasks.len()];
+        let features = vec![Feature {
+            title: "Feature 1".to_string(),
+            done: 0,
+            total: tasks.len(),
+            grouped: true,
+        }];
+        BoardState {
+            project: "tk".to_string(),
+            pending: tasks.len(),
+            done: 0,
+            feature_count: 1,
+            tasks,
+            feature_of,
+            features,
+            badges,
+            mode,
+            selected: 0,
+            scroll: 0,
+        }
+    }
+
+    fn draw(st: &BoardState) -> String {
+        let (lines, _) = build_lines(st);
+        let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+        terminal.draw(|f| render(f, st, &lines)).unwrap();
+        let buf = terminal.backend().buffer();
+        let area = *buf.area();
+        let mut out = String::new();
+        for y in 0..area.height {
+            let mut line = String::new();
+            for x in 0..area.width {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn pr_badge_renders_on_the_row() {
+        let t = Task::new("has a pr".into(), "tk".into());
+        let flags = LinkFlags {
+            any: true,
+            pr: true,
+            issue: false,
+        };
+        let st = board_state(vec![t], vec![flags], GroupMode::Feature);
+        assert!(draw(&st).contains("PR"));
+    }
+
+    #[test]
+    fn issue_badge_renders_on_the_row() {
+        let t = Task::new("has an issue".into(), "tk".into());
+        let flags = LinkFlags {
+            any: true,
+            pr: false,
+            issue: true,
+        };
+        let st = board_state(vec![t], vec![flags], GroupMode::Feature);
+        assert!(draw(&st).contains("ISS"));
+    }
+
+    #[test]
+    fn no_badge_for_task_without_links() {
+        let t = Task::new("plain".into(), "tk".into());
+        let st = board_state(vec![t], vec![LinkFlags::default()], GroupMode::Feature);
+        let out = draw(&st);
+        assert!(!out.contains("PR"));
+        assert!(!out.contains("ISS"));
+    }
+
+    #[test]
+    fn title_reflects_grouping_mode() {
+        let t = Task::new("x".into(), "tk".into());
+        let feature_st = board_state(
+            vec![t.clone()],
+            vec![LinkFlags::default()],
+            GroupMode::Feature,
+        );
+        let issue_st = board_state(vec![t], vec![LinkFlags::default()], GroupMode::Issue);
+        assert!(draw(&feature_st).contains("feature"));
+        assert!(draw(&issue_st).contains("issue"));
+    }
 
     #[test]
     fn help_bindings_are_all_things_this_screen_actually_handles() {
