@@ -11,7 +11,8 @@ use ratatui::{
 
 use crate::infrastructure::db::LinkFlags;
 use crate::infrastructure::model::{Priority, Status, Task};
-use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
+use crate::infrastructure::tui;
+use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::{BoardAction, BoardState, Feature, GroupMode};
 
@@ -20,6 +21,7 @@ pub(super) fn board_loop<B: Backend>(
     st: &mut BoardState,
 ) -> Result<BoardAction> {
     let mut dispatcher = KeyDispatcher::new();
+    let mut showing_help = false;
     loop {
         // Keep the selected row inside the viewport (content height = total - borders - footer).
         let size = terminal.size()?;
@@ -33,7 +35,12 @@ pub(super) fn board_loop<B: Backend>(
             }
         }
 
-        terminal.draw(|f| render(f, st, &lines))?;
+        terminal.draw(|f| {
+            render(f, st, &lines);
+            if showing_help {
+                tui::render_help_overlay(f, "Board", &help_bindings());
+            }
+        })?;
 
         if !event::poll(std::time::Duration::from_millis(100))? {
             continue;
@@ -42,6 +49,12 @@ pub(super) fn board_loop<B: Backend>(
             continue;
         };
         if key.kind == KeyEventKind::Release {
+            continue;
+        }
+
+        // Any key dismisses the overlay without otherwise acting on it.
+        if showing_help {
+            showing_help = false;
             continue;
         }
 
@@ -71,9 +84,20 @@ pub(super) fn board_loop<B: Backend>(
             Action::Raw(k) if k.code == KeyCode::Char('i') => {
                 return Ok(BoardAction::ToggleGrouping);
             }
+            Action::Raw(k) if k.code == KeyCode::Char('?') => {
+                showing_help = true;
+            }
             _ => {}
         }
     }
+}
+
+/// Board's help overlay: the shared bindings it actually acts on (no
+/// reorder/save/toggle — board has nothing to reorder, save, or check off)
+/// plus '?' itself.
+fn help_bindings() -> Vec<(&'static str, &'static str)> {
+    use keymap::help::*;
+    vec![MOVE, TOP_BOTTOM, PAGE, CONFIRM, QUIT, HELP]
 }
 
 /// Build the rendered lines and a map from task index -> its line number, so the
@@ -251,7 +275,7 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     f.render_widget(para, chunks[0]);
 
     let footer = Paragraph::new(Line::from(Span::styled(
-        " j/k navigate  gg/G top/bottom  Enter open  i group-by-issue  PgDn/PgUp scroll  q quit",
+        " j/k navigate  gg/G top/bottom  Enter open  i group-by-issue  PgDn/PgUp scroll  ? help  q quit",
         Style::default().fg(Color::DarkGray),
     )));
     f.render_widget(footer, chunks[1]);
@@ -348,5 +372,40 @@ mod tests {
         let issue_st = board_state(vec![t], vec![LinkFlags::default()], GroupMode::Issue);
         assert!(draw(&feature_st).contains("feature"));
         assert!(draw(&issue_st).contains("issue"));
+    }
+
+    #[test]
+    fn help_bindings_are_all_things_this_screen_actually_handles() {
+        // Every listed key must correspond to an Action arm board_loop's
+        // match actually acts on (not a shared-vocab no-op like reorder).
+        let bindings = help_bindings();
+        let labels: Vec<&str> = bindings.iter().map(|(k, _)| *k).collect();
+        assert!(labels.contains(&"j/k, ↓/↑"));
+        assert!(labels.contains(&"gg / G"));
+        assert!(labels.contains(&"Enter"));
+        assert!(labels.contains(&"q / Esc"));
+        assert!(labels.contains(&"?"));
+        // Board has nothing to reorder or save — these would be silent
+        // no-ops here, so they must not be listed.
+        assert!(!labels.iter().any(|l| l.contains("Ctrl+S")));
+        assert!(!labels.iter().any(|l| l.contains("Shift")));
+    }
+
+    #[test]
+    fn help_overlay_renders_without_panicking() {
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|f| tui::render_help_overlay(f, "Board", &help_bindings()))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let area = *buf.area();
+        let mut out = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(out.contains("Board"));
+        assert!(out.contains("any key closes"));
     }
 }

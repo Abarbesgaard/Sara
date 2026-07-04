@@ -88,6 +88,8 @@ struct FormState<'a> {
     fzf_available: bool,
     /// Set by `handle_key` to ask `run_form` to launch fzf for file picking.
     fzf_requested: bool,
+    /// True while the `?` keybinding overlay is shown.
+    showing_help: bool,
 }
 
 /// A row shown in the (filtered) Files list.
@@ -153,6 +155,7 @@ impl<'a> FormState<'a> {
             due_preset_idx: 0,
             fzf_available: false,
             fzf_requested: false,
+            showing_help: false,
         }
     }
 
@@ -355,6 +358,23 @@ impl<'a> FormState<'a> {
     /// Extracted from the event loop so it can be exercised in unit tests
     /// without a live terminal.
     fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
+        // Any key dismisses the overlay without otherwise acting on it.
+        if self.showing_help {
+            self.showing_help = false;
+            return;
+        }
+        // '?' opens the overlay, but only when it isn't valid input for the
+        // focused field — Description/Project/Due/Tags must keep it as a
+        // literal character (e.g. a description ending in a question mark).
+        if key.code == KeyCode::Char('?')
+            && !matches!(
+                self.focus,
+                Focus::Description | Focus::Project | Focus::Due | Focus::Tags
+            )
+        {
+            self.showing_help = true;
+            return;
+        }
         // Esc/Ctrl+S/Tab/BackTab behave the same regardless of focus, via the
         // shared keymap module. Everything else must still reach whichever
         // text field is focused verbatim (h/j/k/l/g/q/space are all valid
@@ -587,6 +607,33 @@ fn render(f: &mut Frame, state: &mut FormState) {
 
     render_fields(f, state, fields_area);
     render_footer(f, state, footer);
+
+    if state.showing_help {
+        crate::infrastructure::tui::render_help_overlay(f, "Review task", &help_bindings());
+    }
+}
+
+/// Review form's help overlay. Unlike board/info, this screen can't use the
+/// full shared Normal-mode vocabulary at all (its text fields need every key
+/// as literal input), so only the four `control_action` bindings come from
+/// the shared module; everything else (Enter/Space/arrows/Left-Right) is
+/// inherently per-focus behavior with no equivalent in the generic keymap.
+fn help_bindings() -> Vec<(&'static str, &'static str)> {
+    let mut v = keymap::help::CONTROL_ACTION_BINDINGS.to_vec();
+    v.extend([
+        (
+            "↑ / ↓",
+            "move within a field, or to the previous/next field",
+        ),
+        (
+            "Enter",
+            "toggle / open fzf / submit / cancel (depends on focus)",
+        ),
+        ("Space", "toggle a dependency or file"),
+        ("← / →", "cycle priority or a due-date preset"),
+        ("?", "toggle this help"),
+    ]);
+    v
 }
 
 fn shrink(r: Rect, n: u16) -> Rect {
@@ -839,7 +886,7 @@ fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
 }
 
 fn render_footer(f: &mut Frame, _state: &FormState, area: Rect) {
-    let text = " Tab/Shift+Tab: move  •  ←/→: cycle priority  •  Space: toggle  •  Ctrl+S: save  •  Esc: cancel ";
+    let text = " Tab/Shift+Tab: move  •  ←/→: cycle priority  •  Space: toggle  •  Ctrl+S: save  •  ?: help  •  Esc: cancel ";
     f.render_widget(
         Paragraph::new(text).style(Style::default().fg(Color::DarkGray)),
         area,
@@ -908,7 +955,10 @@ mod tests {
     #[test]
     #[ignore = "capture helper: run with --ignored to (re)write snapshot files"]
     fn write_render_snapshots() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/tui/snapshots");
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/infrastructure/tui/snapshots"
+        );
         std::fs::create_dir_all(dir).unwrap();
 
         let mut state = FormState::new(ctx_with_deps());
@@ -1226,6 +1276,38 @@ mod tests {
         state.handle_key(key(KeyCode::Char(' ')));
         state.handle_key(key(KeyCode::Esc));
         assert!(state.cancelled);
+    }
+
+    #[test]
+    fn question_mark_opens_help_when_not_on_a_text_field() {
+        let mut state = FormState::new(ctx_with_deps());
+        tab_to(&mut state, Focus::Priority);
+        assert!(!state.showing_help);
+        state.handle_key(key(KeyCode::Char('?')));
+        assert!(state.showing_help);
+    }
+
+    #[test]
+    fn question_mark_is_literal_text_on_description() {
+        let mut state = FormState::new(ctx_with_deps());
+        assert_eq!(state.focus, Focus::Description);
+        state.handle_key(key(KeyCode::Char('?')));
+        assert!(!state.showing_help);
+        assert!(state.desc_area.lines().join("").ends_with('?'));
+    }
+
+    #[test]
+    fn any_key_dismisses_help_without_acting_on_it() {
+        let mut state = FormState::new(ctx_with_deps());
+        tab_to(&mut state, Focus::Priority);
+        state.handle_key(key(KeyCode::Char('?')));
+        assert!(state.showing_help);
+        let priority_before = state.priority.clone();
+        // Would normally cycle priority — while help is open it should only
+        // dismiss the overlay, not also act on the underlying screen.
+        state.handle_key(key(KeyCode::Right));
+        assert!(!state.showing_help);
+        assert_eq!(state.priority, priority_before);
     }
 
     /// Regression: a space inside a text field must insert a space, not be
