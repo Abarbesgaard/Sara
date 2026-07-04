@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -12,6 +12,7 @@ use tui_textarea::TextArea;
 
 use crate::infrastructure::model::Priority;
 use crate::infrastructure::tui::fzf;
+use crate::infrastructure::tui::keymap::{self, Action};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -354,17 +355,33 @@ impl<'a> FormState<'a> {
     /// Extracted from the event loop so it can be exercised in unit tests
     /// without a live terminal.
     fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
-        match (key.code, key.modifiers) {
-            (KeyCode::Esc, _) => {
+        // Esc/Ctrl+S/Tab/BackTab behave the same regardless of focus, via the
+        // shared keymap module. Everything else must still reach whichever
+        // text field is focused verbatim (h/j/k/l/g/q/space are all valid
+        // characters to type into Description etc.), so this form can't use
+        // the full Normal/Insert vocabulary — see keymap.rs's module docs.
+        match keymap::control_action(key) {
+            Some(Action::Cancel) => {
                 self.cancelled = true;
+                return;
             }
-            (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+            Some(Action::Save) => {
                 if self.can_submit() {
                     self.submitted = true;
                 }
+                return;
             }
-            (KeyCode::Tab, _) => self.next_focus(),
-            (KeyCode::BackTab, _) => self.prev_focus(),
+            Some(Action::NextFocus) => {
+                self.next_focus();
+                return;
+            }
+            Some(Action::PrevFocus) => {
+                self.prev_focus();
+                return;
+            }
+            _ => {}
+        }
+        match (key.code, key.modifiers) {
             (KeyCode::Enter, _) => match self.focus {
                 Focus::Submit => {
                     if self.can_submit() {

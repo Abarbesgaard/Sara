@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{Local, Utc};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{Terminal, backend::Backend};
 use rusqlite::Connection;
 use tui_textarea::TextArea;
@@ -9,6 +9,7 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Priority, Task};
 use crate::infrastructure::tui;
+use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 
 use super::handler::{
     checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
@@ -35,6 +36,7 @@ pub(super) fn edit_loop<B: Backend>(
         dep_error: None,
         scroll: 0,
     };
+    let mut dispatcher = KeyDispatcher::new();
 
     loop {
         terminal.draw(|f| render(f, &st))?;
@@ -61,8 +63,8 @@ pub(super) fn edit_loop<B: Backend>(
         };
 
         if st.adding_step {
-            match key.code {
-                KeyCode::Enter => {
+            match dispatcher.dispatch(key, Mode::Insert) {
+                Action::Confirm | Action::Save => {
                     let text = st.editor.lines().join(" ");
                     if !text.trim().is_empty() {
                         // Add to the kind of the focused checklist row (so adding
@@ -97,14 +99,15 @@ pub(super) fn edit_loop<B: Backend>(
                     }
                     st.adding_step = false;
                 }
-                KeyCode::Esc => st.adding_step = false,
-                _ => {
-                    st.editor.input(key);
+                Action::Cancel => st.adding_step = false,
+                Action::Raw(k) => {
+                    st.editor.input(k);
                 }
+                _ => {}
             }
         } else if st.commenting {
-            match key.code {
-                KeyCode::Enter => {
+            match dispatcher.dispatch(key, Mode::Insert) {
+                Action::Confirm | Action::Save => {
                     let text = st.editor.lines().join(" ");
                     if !text.trim().is_empty() {
                         let (tk, tid) = comment_target(&st.detail, &current);
@@ -123,15 +126,16 @@ pub(super) fn edit_loop<B: Backend>(
                     }
                     st.commenting = false;
                 }
-                KeyCode::Esc => st.commenting = false,
-                _ => {
-                    st.editor.input(key);
+                Action::Cancel => st.commenting = false,
+                Action::Raw(k) => {
+                    st.editor.input(k);
                 }
+                _ => {}
             }
         } else if st.editing {
             let field = current_field.unwrap_or(EditField::Description);
-            match key.code {
-                KeyCode::Enter => {
+            match dispatcher.dispatch(key, Mode::Insert) {
+                Action::Confirm | Action::Save => {
                     let value = st.editor.lines().join("");
                     if field == EditField::DependsOn {
                         match reconcile_dependencies(conn, cfg, &mut st.detail, &value) {
@@ -155,52 +159,30 @@ pub(super) fn edit_loop<B: Backend>(
                     st.editing = false;
                     st.due_error = false;
                 }
-                KeyCode::Esc => {
+                Action::Cancel => {
                     st.editing = false;
                     st.due_error = false;
                     st.dep_error = None;
                 }
-                _ => {
-                    st.editor.input(key);
+                Action::Raw(k) => {
+                    st.editor.input(k);
                     if field == EditField::Due {
                         let v = st.editor.lines().join("");
                         st.due_error =
                             !v.trim().is_empty() && !crate::infrastructure::dates::is_valid_due(&v);
                     }
                 }
+                _ => {}
             }
         } else {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => break,
-                // Reorder the focused checklist step within its kind.
-                // Uppercase J/K are inherently shifted; Shift+Arrow is the alias.
-                KeyCode::Char('K') => reorder_focused_step(conn, &mut st, &current, true),
-                KeyCode::Char('J') => reorder_focused_step(conn, &mut st, &current, false),
-                KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                    reorder_focused_step(conn, &mut st, &current, true);
-                }
-                KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
-                    reorder_focused_step(conn, &mut st, &current, false);
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if !items.is_empty() {
-                        st.selected = (st.selected + 1).min(items.len() - 1);
-                    }
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    st.selected = st.selected.saturating_sub(1);
-                }
-                KeyCode::PageDown => st.scroll = st.scroll.saturating_add(5),
-                KeyCode::PageUp => st.scroll = st.scroll.saturating_sub(5),
-                KeyCode::Left if current_field == Some(EditField::Priority) => {
-                    cycle_priority(&mut st.detail.task, false);
-                    save(conn, cfg, &mut st.detail)?;
-                }
-                KeyCode::Right if current_field == Some(EditField::Priority) => {
-                    cycle_priority(&mut st.detail.task, true);
-                    save(conn, cfg, &mut st.detail)?;
-                }
-                KeyCode::Enter | KeyCode::Char('e') => match current {
+            let action = dispatcher.dispatch(key, Mode::Normal);
+            // Enter and 'e' both open/confirm the focused item — 'e' isn't
+            // part of the shared vocabulary (it's a domain letter, not a
+            // navigation key), so it comes back as Action::Raw.
+            let confirmed = matches!(action, Action::Confirm)
+                || matches!(&action, Action::Raw(k) if k.code == KeyCode::Char('e'));
+            if confirmed {
+                match current {
                     Some(Focusable::Field(EditField::Priority)) => {
                         cycle_priority(&mut st.detail.task, true);
                         save(conn, cfg, &mut st.detail)?;
@@ -274,61 +256,102 @@ pub(super) fn edit_loop<B: Backend>(
                         st.commenting = true;
                     }
                     None => {}
-                },
-                KeyCode::Char(' ') => {
-                    if let Some(Focusable::Checklist(i)) = &current
-                        && let Some(item) = st.detail.checklist.get(*i)
-                    {
-                        let _ = db::toggle_checklist_item(conn, item.id);
-                        st.detail.checklist =
-                            db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                }
+            } else {
+                match action {
+                    Action::Quit => break,
+                    // Reorder the focused checklist step within its kind.
+                    Action::ReorderUp => reorder_focused_step(conn, &mut st, &current, true),
+                    Action::ReorderDown => reorder_focused_step(conn, &mut st, &current, false),
+                    Action::Down => {
+                        if !items.is_empty() {
+                            st.selected = (st.selected + 1).min(items.len() - 1);
+                        }
                     }
-                }
-                // ── Add a new checklist step ────────────────────────────────
-                KeyCode::Char('a') => {
-                    st.editor = TextArea::default();
-                    st.adding_step = true;
-                }
-                // ── Review & comment loop ────────────────────────────────────
-                KeyCode::Char('c') => {
-                    st.editor = TextArea::default();
-                    st.commenting = true;
-                }
-                KeyCode::Char('r') => {
-                    // Mark the focused element for reconsideration.
-                    // If it already has an open comment, toggle the flag on it.
-                    // If not, create a new comment with request_revision=true so
-                    // the element is flagged even without a written note.
-                    let fb = feedback_for_focus(&st.detail, &current);
-                    if let Some(existing) = fb.first() {
-                        let _ =
-                            db::set_request_revision(conn, existing.id, !existing.request_revision);
-                    } else {
-                        // No existing comment — auto-create a reconsider marker.
-                        let (tk, tid) = comment_target(&st.detail, &current);
-                        let _ = db::add_annotation_full(
-                            conn,
-                            &st.detail.task.uuid,
-                            "⟳ reconsider this",
-                            db::NOTE_KIND_COMMENT,
-                            "human",
-                            tk.as_deref(),
-                            tid.as_deref(),
-                            true, // request_revision = true
-                        );
+                    Action::Up => {
+                        st.selected = st.selected.saturating_sub(1);
                     }
-                    st.detail.annotations =
-                        db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
-                }
-                KeyCode::Char('x') => {
-                    // Resolve the focused element's latest open feedback.
-                    if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
-                        let _ = db::resolve_annotation(conn, fb.id, None);
-                        st.detail.annotations =
-                            db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
+                    Action::Top => st.selected = 0,
+                    Action::Bottom => {
+                        if !items.is_empty() {
+                            st.selected = items.len() - 1;
+                        }
                     }
+                    Action::PageDown => st.scroll = st.scroll.saturating_add(5),
+                    Action::PageUp => st.scroll = st.scroll.saturating_sub(5),
+                    Action::ToggleMark => {
+                        if let Some(Focusable::Checklist(i)) = &current
+                            && let Some(item) = st.detail.checklist.get(*i)
+                        {
+                            let _ = db::toggle_checklist_item(conn, item.id);
+                            st.detail.checklist =
+                                db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                        }
+                    }
+                    Action::Raw(k) => match k.code {
+                        KeyCode::Left if current_field == Some(EditField::Priority) => {
+                            cycle_priority(&mut st.detail.task, false);
+                            save(conn, cfg, &mut st.detail)?;
+                        }
+                        KeyCode::Right if current_field == Some(EditField::Priority) => {
+                            cycle_priority(&mut st.detail.task, true);
+                            save(conn, cfg, &mut st.detail)?;
+                        }
+                        // ── Add a new checklist step ────────────────────────
+                        KeyCode::Char('a') => {
+                            st.editor = TextArea::default();
+                            st.adding_step = true;
+                        }
+                        // ── Review & comment loop ───────────────────────────
+                        KeyCode::Char('c') => {
+                            st.editor = TextArea::default();
+                            st.commenting = true;
+                        }
+                        KeyCode::Char('r') => {
+                            // Mark the focused element for reconsideration.
+                            // If it already has an open comment, toggle the flag
+                            // on it. If not, create a new comment with
+                            // request_revision=true so the element is flagged
+                            // even without a written note.
+                            let fb = feedback_for_focus(&st.detail, &current);
+                            if let Some(existing) = fb.first() {
+                                let _ = db::set_request_revision(
+                                    conn,
+                                    existing.id,
+                                    !existing.request_revision,
+                                );
+                            } else {
+                                // No existing comment — auto-create a reconsider marker.
+                                let (tk, tid) = comment_target(&st.detail, &current);
+                                let _ = db::add_annotation_full(
+                                    conn,
+                                    &st.detail.task.uuid,
+                                    "⟳ reconsider this",
+                                    db::NOTE_KIND_COMMENT,
+                                    "human",
+                                    tk.as_deref(),
+                                    tid.as_deref(),
+                                    true, // request_revision = true
+                                );
+                            }
+                            st.detail.annotations =
+                                db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
+                        }
+                        KeyCode::Char('x') => {
+                            // Resolve the focused element's latest open feedback.
+                            if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
+                                let _ = db::resolve_annotation(conn, fb.id, None);
+                                st.detail.annotations = db::get_annotations(
+                                    conn,
+                                    &st.detail.task.uuid,
+                                )
+                                .unwrap_or_default();
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
