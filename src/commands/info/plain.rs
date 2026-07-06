@@ -13,6 +13,46 @@ pub(super) struct RenderOpts {
     pub(super) history: bool,
 }
 
+/// Best-effort terminal column width for wrapping long comment bodies; falls
+/// back to a readable default when stdout isn't a real terminal (the common
+/// case for this renderer — piped into an agent or `--plain`).
+fn terminal_width() -> usize {
+    crossterm::terminal::size()
+        .map(|(cols, _)| cols as usize)
+        .unwrap_or(96)
+        .clamp(60, 100)
+}
+
+/// Word-wrap `text` into lines prefixed with `indent`, so a long comment body
+/// reads as a short paragraph instead of one unbroken line. Preserves blank
+/// lines already present in the source as paragraph breaks.
+fn wrap_body(text: &str, indent: &str, width: usize) -> Vec<String> {
+    let avail = width.saturating_sub(indent.len()).max(20);
+    let mut lines = Vec::new();
+    for para in text.split('\n') {
+        if para.trim().is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        for word in para.split_whitespace() {
+            let extra = if current.is_empty() { 0 } else { 1 };
+            if !current.is_empty() && current.len() + extra + word.len() > avail {
+                lines.push(format!("{indent}{current}"));
+                current.clear();
+            }
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        }
+        if !current.is_empty() {
+            lines.push(format!("{indent}{current}"));
+        }
+    }
+    lines
+}
+
 /// Render the readable plain-text digest of a task — the single source of truth
 /// shared by the non-TTY fallback, `sara info --plain`, and (later) the MCP
 /// server. History is collapsed by default to keep agent token usage low.
@@ -193,11 +233,17 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     for file in &d.manual_files {
         w!("{:<14}{}", "File", file);
     }
-    // Comments (human feedback), with anchor + reconsider markers.
+    // Comments (human feedback), with anchor + reconsider markers. Each
+    // comment gets its own header line (id/target/flags/date) followed by
+    // the wrapped body on indented lines, so long text stays scannable.
     let comments = notes_of_kind(d, "comment");
     if !comments.is_empty() {
         w!("\nComments:");
-        for a in comments {
+        let width = terminal_width();
+        for (i, a) in comments.into_iter().enumerate() {
+            if i > 0 {
+                w!();
+            }
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
             let target = match (&a.target_kind, &a.target_id) {
                 (Some(k), Some(idv)) => format!(" [{k}:{idv}]"),
@@ -213,15 +259,10 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
             } else {
                 ""
             };
-            w!(
-                "  #{}{}{}{} {} {}",
-                a.id,
-                target,
-                flag,
-                resolved,
-                date,
-                a.text
-            );
+            w!("  #{}{}{}{}  {}", a.id, target, flag, resolved, date);
+            for line in wrap_body(&a.text, "      ", width) {
+                w!("{}", line);
+            }
         }
     }
     // AI activity footer.
@@ -617,6 +658,59 @@ mod tests {
             chain: vec![],
             graph: DependencyGraph::default(),
         }
+    }
+
+    fn comment(
+        id: i64,
+        text: &str,
+        request_revision: bool,
+    ) -> crate::infrastructure::db::Annotation {
+        crate::infrastructure::db::Annotation {
+            id,
+            text: text.into(),
+            entry: chrono::Utc::now(),
+            kind: "comment".into(),
+            author: "human".into(),
+            target_kind: None,
+            target_id: None,
+            status: "open".into(),
+            request_revision,
+            resolved_by_run: None,
+        }
+    }
+
+    #[test]
+    fn render_plain_wraps_long_comments_onto_indented_lines() {
+        let long_text = "word ".repeat(40).trim().to_string();
+        let d = Detail {
+            annotations: vec![comment(1, &long_text, true)],
+            ..detail(vec![], vec![])
+        };
+        let out = render_plain(&d, RenderOpts::default());
+        assert!(out.contains("Comments:"));
+        assert!(out.contains("#1"));
+        assert!(out.contains("(reconsider)"));
+        // The header line carries no body text — the comment id line is short.
+        let header = out.lines().find(|l| l.contains("#1")).unwrap();
+        assert!(!header.contains("word word word word word word word word"));
+        // The body is wrapped onto its own indented line(s).
+        assert!(out.lines().any(|l| l.starts_with("      word")));
+    }
+
+    #[test]
+    fn render_plain_separates_multiple_comments_with_blank_line() {
+        let d = Detail {
+            annotations: vec![comment(1, "first", false), comment(2, "second", false)],
+            ..detail(vec![], vec![])
+        };
+        let out = render_plain(&d, RenderOpts::default());
+        let idx1 = out.find("#1").unwrap();
+        let idx2 = out.find("#2").unwrap();
+        let between = &out[idx1..idx2];
+        assert!(
+            between.contains("\n\n"),
+            "expected a blank line between comments, got: {between:?}"
+        );
     }
 
     #[test]
