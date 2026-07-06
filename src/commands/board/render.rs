@@ -438,8 +438,8 @@ fn task_line_for(
     let bg = if is_sel { Color::Blue } else { Color::Reset };
     let sel_ch = if is_sel { "▶" } else { " " };
     let tree = match connector {
-        Some(c) => format!(" {c}"),         // nested: extra indent + connector (3 wide)
-        None => " ".repeat(TREE_W),          // standalone: blank (3 wide)
+        Some(c) => format!(" {c}"), // nested: extra indent + connector (3 wide)
+        None => " ".repeat(TREE_W), // standalone: blank (3 wide)
     };
     let id_str = task
         .id
@@ -449,7 +449,11 @@ fn task_line_for(
 
     if task.status == Status::Completed {
         let base = Style::default()
-            .fg(if is_sel { Color::White } else { Color::DarkGray })
+            .fg(if is_sel {
+                Color::White
+            } else {
+                Color::DarkGray
+            })
             .bg(bg);
         let spans = vec![
             Span::styled(format!("{sel_ch}{tree}"), base),
@@ -575,7 +579,7 @@ fn render_stats(f: &mut Frame, st: &BoardState, area: Rect) {
 /// Full-width progress bar: filled/empty blocks with a trailing percentage.
 fn render_progress_bar(f: &mut Frame, st: &BoardState, area: Rect) {
     let total = st.pending + st.done;
-    let pct = if total == 0 { 0 } else { st.done * 100 / total };
+    let pct = st.done.saturating_mul(100).checked_div(total).unwrap_or(0);
     let label = format!(" {pct}%");
     let bar_width = (area.width as usize).saturating_sub(label.len() + 2);
     let filled = bar_width * pct / 100;
@@ -605,10 +609,7 @@ fn render_progress_bar(f: &mut Frame, st: &BoardState, area: Rect) {
 /// by a row of `NAME [swatch] NN%` entries. Each swatch is a small fixed-width
 /// color block (a legend key, not a proportional bar) — matching htop's style.
 fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
-    let label_area = Rect {
-        height: 1,
-        ..area
-    };
+    let label_area = Rect { height: 1, ..area };
     let legend_area = Rect {
         y: area.y + 1,
         height: area.height.saturating_sub(1),
@@ -836,9 +837,7 @@ mod tests {
 
     /// Character column of the first occurrence of any char in `candidates`.
     fn char_col_of_any(line: &str, candidates: &[char]) -> usize {
-        line.chars()
-            .position(|c| candidates.contains(&c))
-            .unwrap()
+        line.chars().position(|c| candidates.contains(&c)).unwrap()
     }
 
     /// A generously sized terminal so the bordered box + header/footer chrome
