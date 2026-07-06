@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-06
+
+### Features
+
+- **Issue-tree board** — `sara board` now groups tasks under the GitHub issue they link to (collapsed by default, expand/collapse with `o`/`Space`/`Enter`/`h`/`l`) instead of the old dependency-chain "Feature" grouping. Tasks with no linked issue show as flat top-level rows, and `sara board --finished` opts into seeing completed tasks (hidden by default, along with any issue whose tasks are all done). ([#73](https://github.com/Abarbesgaard/Sara/pull/73))
+- **Board visual redesign** — bordered rounded-corner task rows, priority shown as a colored background chip instead of dim text, a fixed-width badge slot so descriptions stay aligned, and deeper indent for nested tasks so hierarchy reads at a glance. Long comment bodies in `sara info` now wrap onto indented lines instead of running on unbroken, with blank-line separation between comments.
+- **PR/issue badges + group-by-issue toggle on the board** — board rows now surface the same PR/`ISS` badges `sara list` already computes, and `i` toggles between the dependency-chain view and grouping by issue; the mode persists across navigating into a task and back. ([#72](https://github.com/Abarbesgaard/Sara/pull/72))
+- **`sara list --by-issue`** — groups pending tasks by the GitHub issue they trace back to (e.g. `Issue #47 · owner/repo`), with a trailing bucket for tasks with no issue link; issue-linked tasks also get a distinct `ISS` badge so they're no longer indistinguishable from generic links. ([#63](https://github.com/Abarbesgaard/Sara/pull/63))
+- **Dependency graph view in `sara info`** — `d` toggles a depth-1 dependency graph panel (cycling chain panel → depth-1 graph → expanded graph → off; capital `D` expands to the full transitive-blocker closure), showing id/status/badge for up to 4 neighbors per side with a "+N more" row. ([#68](https://github.com/Abarbesgaard/Sara/pull/68))
+- **Edit description/comments in `$EDITOR`** — `Ctrl+E` in `sara info` opens the Description field or a new comment in your `$VISUAL`/`$EDITOR` instead of the in-TUI textarea. ([#67](https://github.com/Abarbesgaard/Sara/pull/67))
+- **`?` keybinding help overlay** — `board`, `info`, and the add/edit review form now show a help overlay listing active keybindings, sourced from the same dispatch table the keymap actually uses so it can't drift out of sync. ([#71](https://github.com/Abarbesgaard/Sara/pull/71))
+- **Shared TUI keymap** — `board`, `info`, and the review form now share one `Mode`/`Action`/`KeyDispatcher` (`src/infrastructure/tui/keymap.rs`), so `hjkl` navigation and `gg`/`G` (top/bottom) behave identically across screens instead of each hand-rolling its own key loop. ([#66](https://github.com/Abarbesgaard/Sara/pull/66))
+
+### Bug Fixes
+
+- **Issue badges no longer over-applied** — the `ISS` badge on a task row now only appears when the task carries actual `sara sync` provenance, not for every task that merely links back to an issue.
+- **`attach` URL results tagged as `link`** — `attach_value`'s URL branch now reports `kind: "link"` like the standalone `link` tool, and the in-memory test database enforces `foreign_keys=ON` so FK/cascade behavior matches production. ([#62](https://github.com/Abarbesgaard/Sara/pull/62))
+
+### Removed
+
+- **GitHub activity heatmap panel** — removed from `sara info`'s side panel for now; the underlying code is left in place (unused) so it can be re-enabled without a re-implementation. ([#69](https://github.com/Abarbesgaard/Sara/pull/69))
+
 ## [0.7.0] - 2026-07-02
 
 ### Features
