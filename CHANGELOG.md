@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-06
+
+### Features
+
+- **Dependency tree panel in `sara info`** — replaces the old linear "feature chain"/depth-1 graph with a real recursive tree (blockers above, dependents below), each node showing id/status/description, expandable/collapsible with `d`, capped by depth and node count with a "+N more" row on overflow. Moved to a fixed-width panel on the *left* of the screen so the main content stays on the right.
+- **Collapsed AI notes in `sara info`** — findings/constraints/assumptions/open-questions/non-goals/decisions/patterns ("the AI's execution workpaper") now collapse into a one-line count-by-kind summary by default, toggled open with `n`. **Risks** are the exception — always shown in full, since they're the one AI-authored note kind that's actually human-relevant.
+- **Decluttered `sara info`** — Status only shows when it isn't the boring default, Age merges into Entered, the UUID row is dropped from the main view, the urgency breakdown is hidden behind a `u` toggle, long assignment/rationale/comment text truncates behind a `v` (verbose) toggle, checklist items collapse to one line unless selected or verbose, repeated per-section hints are merged into a single legend line, and the unused project-stats panel is gone from the layout.
+- **`sara init --setup-cmd/--test-cmd/--lint-cmd/--run-cmd`** — set per-project verification commands. These now show up in `sara info`'s Verification section *and* are actually executed by `sara verify --run` (previously the section existed but nothing could populate it, and `verify` silently ignored project-level commands even when set).
+- **`sara modify --estimate`/`--clear-estimate` and `--every`/`--recur`/`--clear-recur`** (+ MCP `modify`) — set or clear a task's time estimate and recurrence interval non-interactively, without opening the review-form TUI. Previously these fields were only editable from inside the `sara info` TUI.
+- **`sara record-run`** (+ MCP tool `record_run`) — record an AI/LLM interaction against a task (kind/model/provider/prompt/response), populating `sara info`'s "AI activity" section, which previously had no way to ever be populated.
+- **`sara resolve --run <run-id>`** (+ MCP `resolve` `run_id`) — link a resolved feedback item to the AI run that addressed it.
+- **Capped "Related tasks (shared tags)" in `sara info`** — shows the top 3 by urgency instead of every tag-overlapping task in the project, with a "+N more" summary.
+
+### Bug Fixes
+
+- **`--kind`/`--author`/etc. silently swallowed by `annotate`, `add`, and `recall`** — these commands used a `trailing_var_arg` positional for their free-text argument, which (per clap's documented behavior) consumes everything after it verbatim, including flags that come later on the command line. `sara annotate 19 "text" --kind risk --author ai` silently saved as a plain comment with `risk ai` appended to the text, both `kind`/`author` defaulting to `comment`/`human`. Flags are now parsed correctly regardless of position.
+- **`sara verify`/`verify_value` ignored project-level commands** — only read task-level `verify_cmd`s and a `meta_json` grab-bag that nothing could ever populate; now also pulls `setup`/`test`/`lint` from the project profile (matching what `sara info` already displayed).
+- **Wrong command hint in `sara info`'s Verification section** — said `sara guide <id> --run`, a subcommand that doesn't exist; now says `sara verify <id> --run`.
+
 ## [0.8.0] - 2026-07-06
 
 ### Features
