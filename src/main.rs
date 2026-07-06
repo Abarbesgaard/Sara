@@ -69,6 +69,10 @@ fn run() -> Result<()> {
             stack,
             conventions,
             notes,
+            setup_cmd,
+            test_cmd,
+            lint_cmd,
+            run_cmd,
             yes,
         } => {
             commands::init::run(
@@ -79,6 +83,10 @@ fn run() -> Result<()> {
                 stack.as_deref(),
                 conventions.as_deref(),
                 notes.as_deref(),
+                setup_cmd.as_deref(),
+                test_cmd.as_deref(),
+                lint_cmd.as_deref(),
+                run_cmd.as_deref(),
                 yes,
             )?;
         }
@@ -91,6 +99,10 @@ fn run() -> Result<()> {
                     &cfg,
                     name.as_deref(),
                     goal.as_deref(),
+                    None,
+                    None,
+                    None,
+                    None,
                     None,
                     None,
                     None,
@@ -235,6 +247,10 @@ fn run() -> Result<()> {
             clear_due,
             tag,
             clear_tags,
+            estimate,
+            clear_estimate,
+            every,
+            clear_recur,
         } => {
             commands::modify::run(
                 &conn,
@@ -246,6 +262,10 @@ fn run() -> Result<()> {
                 clear_due,
                 &tag,
                 clear_tags,
+                estimate.as_deref(),
+                clear_estimate,
+                every.as_deref(),
+                clear_recur,
             )?;
         }
 
@@ -371,8 +391,27 @@ fn run() -> Result<()> {
             commands::guide::feedback(&conn, &id, json)?;
         }
 
-        Command::Resolve { feedback_id } => {
-            commands::guide::resolve(&conn, feedback_id)?;
+        Command::Resolve { feedback_id, run } => {
+            commands::guide::resolve(&conn, feedback_id, run)?;
+        }
+
+        Command::RecordRun {
+            id,
+            kind,
+            model,
+            provider,
+            prompt,
+            response,
+        } => {
+            commands::guide::record_run(
+                &conn,
+                &id,
+                &kind,
+                model.as_deref(),
+                provider.as_deref(),
+                prompt.as_deref(),
+                response.as_deref(),
+            )?;
         }
 
         Command::Plan { action } => match action {

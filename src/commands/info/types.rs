@@ -3,32 +3,46 @@ use tui_textarea::TextArea;
 use crate::infrastructure::db::LinkFlags;
 use crate::infrastructure::model::{Status, Task};
 
-/// One node in the depth-1 dependency graph view: only what's needed for a
-/// glanceable row (id, status glyph, PR/issue badge) — no description or
-/// other metadata, per the "less is more" design goal for overview screens.
+/// One node in the task tree: only what's needed for a glanceable row (id,
+/// status glyph, PR/issue badge) — no description, per the "less is more"
+/// design goal for overview screens — plus its own children one hop further
+/// in the same direction, so the tree can actually branch instead of
+/// flattening a DAG into a single line.
 #[derive(Clone)]
 pub(super) struct GraphNode {
     pub(super) uuid: uuid::Uuid,
     pub(super) id: Option<i64>,
     pub(super) status: Status,
     pub(super) badge: Option<LinkFlags>,
+    /// Short label shown next to the id — unlike the old depth-1 graph, the
+    /// tree is now the primary "how does this relate to other tasks" view,
+    /// so it earns back the description the depth-1 version deliberately
+    /// dropped.
+    pub(super) description: String,
+    /// Further blockers-of-blockers / dependents-of-dependents, bounded by
+    /// the depth and node-count caps used when the tree was built.
+    pub(super) children: Vec<GraphNode>,
+    /// Direct children that exist but were cut off by the per-node fan-out
+    /// cap (not by depth) — rendered as a trailing "+N more" leaf.
+    pub(super) hidden_children: usize,
 }
 
-/// Depth-1 dependency graph data for the current task: every immediate
-/// blocker and dependent, any status (so completed neighbors still show,
-/// crossed out) — deliberately not the transitive closure. Kept uncapped
-/// here; the render layer decides how many to actually show (capped by
-/// default, all of them when the panel is "expanded") so toggling expand
-/// doesn't need a re-fetch.
+/// The full task-relationship tree for the current task: every hop of
+/// blockers ("← blocked by", recursively) and every hop of dependents
+/// ("blocks →", recursively). This is the primary answer to "how is this
+/// task tied to others" — replacing the old flat "feature chain" list, which
+/// flattened a branching DAG into a single line and lost the structure.
 #[derive(Default, Clone)]
-pub(super) struct DependencyGraph {
-    /// "← blocked by".
+pub(super) struct TaskTree {
     pub(super) blockers: Vec<GraphNode>,
-    /// "blocks →".
+    /// Direct blockers beyond the per-node fan-out cap, not included above.
+    pub(super) blockers_hidden: usize,
     pub(super) dependents: Vec<GraphNode>,
+    /// Direct dependents beyond the per-node fan-out cap, not included above.
+    pub(super) dependents_hidden: usize,
 }
 
-impl DependencyGraph {
+impl TaskTree {
     pub(super) fn is_empty(&self) -> bool {
         self.blockers.is_empty() && self.dependents.is_empty()
     }
@@ -74,13 +88,9 @@ pub(super) struct Detail {
     pub(super) head_commit: Option<String>,
     /// Project-level setup/test/lint/run commands (verification context).
     pub(super) project_commands: crate::infrastructure::db::ProjectCommands,
-    /// The dependency chain (feature) this task belongs to, in blockers-first
-    /// order. Empty when the task has no linked tasks. Used by the right-hand
-    /// "Feature chain" panel to show progress and highlight the current task.
-    pub(super) chain: Vec<Task>,
-    /// Depth-1 blockers/dependents for the dependency graph panel (toggled
-    /// with 'd', replacing the chain panel when active).
-    pub(super) graph: DependencyGraph,
+    /// The task tree: full blockers/dependents structure for the right-hand
+    /// "Task tree" panel, always shown (compact by default, 'd' expands it).
+    pub(super) tree: TaskTree,
 }
 
 pub(super) struct BranchOverlap {
@@ -156,27 +166,36 @@ pub(super) struct EditState {
     /// Error from the last "Depends on" commit, shown until the next edit.
     pub(super) dep_error: Option<String>,
     pub(super) scroll: u16,
-    /// True while the dependency-graph panel is shown instead of the chain panel.
-    pub(super) show_graph: bool,
-    /// True to show every neighbor on the graph's overflowing side(s) instead
-    /// of the capped "+N more" summary row.
-    pub(super) graph_expanded: bool,
-    /// True while showing the opt-in "full impact" (transitive blockers) view.
-    pub(super) graph_full_impact: bool,
-    /// Transitive blockers for the "full impact" view, computed on demand
-    /// when `graph_full_impact` is toggled on (not kept in `Detail` — it's a
-    /// UI-triggered expansion, not part of the always-current snapshot).
-    pub(super) full_impact: Vec<GraphNode>,
+    /// True to render the task tree at full depth/fan-out instead of the
+    /// compact default (2 levels, a handful of siblings per node).
+    pub(super) tree_expanded: bool,
+    /// True to show the urgency score's additive breakdown (pri/due/blocking/…)
+    /// instead of just the bare number. Off by default — the formula is
+    /// rarely needed at a glance, only when the score looks surprising.
+    pub(super) show_urgency_breakdown: bool,
+    /// True to show long text in full (assignment/rationale/typed notes) and
+    /// every checklist item's intent/verify/result detail, instead of the
+    /// collapsed default (truncated text, details only on the selected row).
+    pub(super) verbose: bool,
+    /// True to show the AI's execution workpaper (findings, constraints,
+    /// assumptions, decisions, …) in full. Off by default — a human
+    /// reviewing the task wants impact/risk/what's-next, not the AI's own
+    /// scratch notes from working the problem; "risk" notes are the
+    /// exception and always show regardless of this toggle.
+    pub(super) show_notes: bool,
 }
 
-/// All typed notes in render order (finding, constraint, assumption, …).
+/// All typed notes in render order. "risk" is first and deliberately not a
+/// process note: it's the one kind a human reviewer (not the AI executing
+/// the task) actually wants to see by default — the rest are the AI's own
+/// execution workpaper and stay collapsed behind `EditState::show_notes`.
 pub(super) const NOTE_KINDS: [&str; 8] = [
+    "risk",
     "finding",
     "constraint",
     "assumption",
     "open_question",
     "non_goal",
     "decision",
-    "risk",
     "pattern",
 ];

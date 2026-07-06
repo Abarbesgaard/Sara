@@ -6,12 +6,24 @@ use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
 use super::types::{
-    BranchOverlap, DependencyGraph, Detail, EDIT_FIELDS, EditState, Focusable, GraphNode,
-    NOTE_KINDS,
+    BranchOverlap, Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, NOTE_KINDS, TaskTree,
 };
 
-/// Depth-1 neighbors shown per side before collapsing to "+N more".
-pub(super) const GRAPH_NEIGHBOR_CAP: usize = 4;
+/// Safety caps applied while *fetching* the task tree — generous enough that
+/// "compact vs expanded" (the render-time caps below) is almost always the
+/// real limit a user hits, not this one.
+const TREE_FETCH_MAX_DEPTH: usize = 6;
+const TREE_FETCH_MAX_NODES: usize = 40;
+/// Direct children per node kept when fetching; the rest are counted in
+/// `hidden_children` rather than dropped silently.
+const TREE_FETCH_MAX_CHILDREN: usize = 8;
+
+/// Render-time caps for the *compact* (default) task tree — how many levels
+/// and siblings-per-node show before the 'd' expand toggle is needed. The
+/// tree is always fetched at the deeper `TREE_FETCH_*` bounds above, so
+/// toggling expand is instant (no re-query).
+pub(super) const TREE_COMPACT_DEPTH: usize = 2;
+pub(super) const TREE_COMPACT_CHILDREN: usize = 4;
 
 pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result<Detail> {
     let resolve_ids = |uuids: Vec<uuid::Uuid>| -> Vec<String> {
@@ -75,13 +87,7 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         .as_ref()
         .and_then(|p| crate::infrastructure::git::head_commit(p));
     let project_commands = db::get_project_commands(conn, &task.project).unwrap_or_default();
-    let chain = db::feature_chain(conn, &task.uuid).unwrap_or_default();
-    // `blocking_tasks` above is already all-status (get_blocking has no status
-    // filter), so it's reused as-is for the graph's dependents side; blockers
-    // need a fresh all-status fetch since `blockers` (above) is pending-only
-    // (it feeds urgency, which only cares about what's still outstanding).
-    let all_blockers = db::get_dependency_uuids(conn, &task.uuid).unwrap_or_default();
-    let graph = build_dependency_graph(conn, &all_blockers, &blocking_tasks);
+    let tree = build_task_tree(conn, task.uuid);
 
     Ok(Detail {
         depends_on_ids: dep_ids(conn, &blockers),
@@ -105,59 +111,114 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         ai_runs,
         head_commit,
         project_commands,
-        chain,
-        graph,
+        tree,
         task,
     })
 }
 
-/// Build the depth-1 dependency graph (every blocker + dependent, uncapped —
-/// the render layer decides how many to show; badges reuse the already-shared
-/// `link_flags_by_task` rather than recomputing PR/issue precedence).
-pub(super) fn build_dependency_graph(
-    conn: &Connection,
-    blocker_uuids: &[uuid::Uuid],
-    dependent_uuids: &[uuid::Uuid],
-) -> DependencyGraph {
+/// Which direction a hop in the task tree walks: "← blocked by" follows
+/// depends_on edges (any status, so completed blockers still show, crossed
+/// out); "blocks →" follows the reverse (what depends on this).
+#[derive(Clone, Copy)]
+enum TreeDir {
+    Blockers,
+    Dependents,
+}
+
+/// Build the full task-relationship tree for `root`: every blocker
+/// recursively (blockers-of-blockers, …) and every dependent recursively
+/// (dependents-of-dependents, …), each bounded by `TREE_FETCH_MAX_DEPTH`/
+/// `_CHILDREN`/`_NODES` so a pathologically large or cyclic-looking DAG can't
+/// blow up the fetch. Rendered compactly by default; 'd' expands to these
+/// full bounds without a re-query (see `TREE_COMPACT_*`).
+pub(super) fn build_task_tree(conn: &Connection, root: uuid::Uuid) -> TaskTree {
     let flags = db::link_flags_by_task(conn).unwrap_or_default();
-    DependencyGraph {
-        blockers: graph_nodes(conn, blocker_uuids, &flags),
-        dependents: graph_nodes(conn, dependent_uuids, &flags),
+    let mut up_visited = std::collections::HashSet::from([root]);
+    let mut up_budget = TREE_FETCH_MAX_NODES;
+    let (blockers, blockers_hidden) = build_tree_level(
+        conn,
+        root,
+        TreeDir::Blockers,
+        1,
+        &mut up_visited,
+        &mut up_budget,
+        &flags,
+    );
+    let mut down_visited = std::collections::HashSet::from([root]);
+    let mut down_budget = TREE_FETCH_MAX_NODES;
+    let (dependents, dependents_hidden) = build_tree_level(
+        conn,
+        root,
+        TreeDir::Dependents,
+        1,
+        &mut down_visited,
+        &mut down_budget,
+        &flags,
+    );
+    TaskTree {
+        blockers,
+        blockers_hidden,
+        dependents,
+        dependents_hidden,
     }
 }
 
-/// Opt-in "full impact" expansion: every transitive blocker (not just
-/// depth-1), via `dependency_closure` — excludes the task itself, which the
-/// closure includes as its own last (depth-0) entry.
-pub(super) fn full_impact_blockers(conn: &Connection, task: &Task) -> Vec<GraphNode> {
-    let flags = db::link_flags_by_task(conn).unwrap_or_default();
-    let uuids: Vec<uuid::Uuid> = db::dependency_closure(conn, &task.uuid)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|u| *u != task.uuid)
-        .collect();
-    graph_nodes(conn, &uuids, &flags)
-}
-
-fn graph_nodes(
+/// Fetch one level's worth of neighbors (any status) and recurse into each,
+/// returning `(children, hidden_count)` where `hidden_count` is how many
+/// direct neighbors of `parent` exist beyond `TREE_FETCH_MAX_CHILDREN` — the
+/// caller attaches that to the `GraphNode` it's building for `parent` (or,
+/// at the top level, to the tree itself) so the render layer can show a
+/// "+N more" leaf without a synthetic placeholder node.
+fn build_tree_level(
     conn: &Connection,
-    uuids: &[uuid::Uuid],
+    parent: uuid::Uuid,
+    dir: TreeDir,
+    depth: usize,
+    visited: &mut std::collections::HashSet<uuid::Uuid>,
+    budget: &mut usize,
     flags: &std::collections::HashMap<String, db::LinkFlags>,
-) -> Vec<GraphNode> {
-    uuids
-        .iter()
-        .filter_map(|u| {
-            db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
-                .ok()
-                .flatten()
-        })
-        .map(|t| GraphNode {
-            uuid: t.uuid,
+) -> (Vec<GraphNode>, usize) {
+    if depth > TREE_FETCH_MAX_DEPTH {
+        return (Vec::new(), 0);
+    }
+    let neighbors = match dir {
+        // All-status (not just pending) so completed neighbors still show,
+        // crossed out — `get_blockers` is pending-only (it feeds urgency).
+        TreeDir::Blockers => db::get_dependency_uuids(conn, &parent).unwrap_or_default(),
+        TreeDir::Dependents => db::get_blocking(conn, &parent).unwrap_or_default(),
+    };
+    let hidden = neighbors.len().saturating_sub(TREE_FETCH_MAX_CHILDREN);
+    let mut out = Vec::new();
+    for u in neighbors.into_iter().take(TREE_FETCH_MAX_CHILDREN) {
+        if *budget == 0 {
+            break;
+        }
+        // A node reachable via more than one path (diamond in the DAG) is
+        // shown once, at its first occurrence — re-expanding it again lower
+        // down would risk exponential blowup for no new information.
+        if !visited.insert(u) {
+            continue;
+        }
+        let Some(t) = db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+        *budget -= 1;
+        let (children, hidden_children) =
+            build_tree_level(conn, u, dir, depth + 1, visited, budget, flags);
+        out.push(GraphNode {
+            uuid: u,
             id: t.id,
             status: t.status,
-            badge: flags.get(&t.uuid.to_string()).copied(),
-        })
-        .collect()
+            badge: flags.get(&u.to_string()).copied(),
+            description: t.description,
+            children,
+            hidden_children,
+        });
+    }
+    (out, hidden)
 }
 
 /// Verification/execution commands an executor should run, gathered from the
@@ -331,8 +392,8 @@ pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut De
         blocking.len(),
     ));
     detail.history = db::get_history(conn, &uuid).unwrap_or_default();
-    // Dependency edits reshape the feature chain.
-    detail.chain = db::feature_chain(conn, &uuid).unwrap_or_default();
+    // Dependency edits reshape the task tree.
+    detail.tree = build_task_tree(conn, uuid);
 }
 
 pub(super) fn compute_overlaps(
@@ -377,11 +438,15 @@ pub(super) fn compute_overlaps(
 /// Ordered list of focusable items — matches on-screen render order so ↑/↓ feels natural.
 /// Screen order: metadata fields → typed notes (findings/constraints/…) → links →
 ///               manual files → anchors → checklist → task-level comments.
-pub(super) fn focusables(d: &Detail) -> Vec<Focusable> {
+pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
-    // Typed notes appear right after the metadata block in the TUI.
-    for i in 0..typed_notes(d).len() {
-        v.push(Focusable::Note(i));
+    // Typed notes appear right after the metadata block in the TUI. Only
+    // "risk" notes and (when toggled) the rest are actually on screen, so
+    // only those are focusable — a hidden row shouldn't be selectable.
+    for (i, note) in typed_notes(d).iter().enumerate() {
+        if show_notes || note.kind == "risk" {
+            v.push(Focusable::Note(i));
+        }
     }
     for i in 0..d.links.len() {
         v.push(Focusable::Link(i));
@@ -408,8 +473,8 @@ pub(super) fn focusables(d: &Detail) -> Vec<Focusable> {
 }
 
 /// Index in the focusable list of the checklist row with the given item id.
-pub(super) fn checklist_focus_index(d: &Detail, item_id: i64) -> Option<usize> {
-    focusables(d).iter().position(|f| match f {
+pub(super) fn checklist_focus_index(d: &Detail, show_notes: bool, item_id: i64) -> Option<usize> {
+    focusables(d, show_notes).iter().position(|f| match f {
         Focusable::Checklist(i) => d.checklist.get(*i).map(|c| c.id) == Some(item_id),
         _ => false,
     })
@@ -432,7 +497,7 @@ pub(super) fn reorder_focused_step(
     };
     if db::move_step(conn, id, up).unwrap_or(false) {
         st.detail.checklist = db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
-        if let Some(p) = checklist_focus_index(&st.detail, id) {
+        if let Some(p) = checklist_focus_index(&st.detail, st.show_notes, id) {
             st.selected = p;
         }
     }

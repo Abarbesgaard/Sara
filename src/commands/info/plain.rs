@@ -516,7 +516,7 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
 #[cfg(test)]
 mod tests {
     use super::super::edit::{apply_field, current_value, cycle_priority};
-    use super::super::types::{DependencyGraph, Detail, EditField};
+    use super::super::types::{Detail, EditField, TaskTree};
     use super::{RenderOpts, render_markdown, render_plain};
     use crate::infrastructure::config::Config;
     use crate::infrastructure::db;
@@ -655,8 +655,7 @@ mod tests {
             ai_runs: vec![],
             head_commit: None,
             project_commands: crate::infrastructure::db::ProjectCommands::default(),
-            chain: vec![],
-            graph: DependencyGraph::default(),
+            tree: TaskTree::default(),
         }
     }
 

@@ -12,9 +12,9 @@ use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::handler::{
-    build_dependency_graph, checklist_focus_index, comment_target, compute_overlaps,
-    depends_on_display, edit_text_via_external_editor, feedback_for_focus, focusables,
-    full_impact_blockers, open_in_editor, open_url, reconcile_dependencies, reorder_focused_step,
+    build_task_tree, checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
+    edit_text_via_external_editor, feedback_for_focus, focusables, open_in_editor, open_url,
+    reconcile_dependencies, reorder_focused_step,
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
@@ -35,10 +35,10 @@ pub(super) fn edit_loop<B: Backend>(
         due_error: false,
         dep_error: None,
         scroll: 0,
-        show_graph: false,
-        graph_expanded: false,
-        graph_full_impact: false,
-        full_impact: Vec::new(),
+        tree_expanded: false,
+        show_urgency_breakdown: false,
+        verbose: false,
+        show_notes: false,
     };
     let mut dispatcher = KeyDispatcher::new();
     let mut showing_help = false;
@@ -67,7 +67,7 @@ pub(super) fn edit_loop<B: Backend>(
             continue;
         }
 
-        let items = focusables(&st.detail);
+        let items = focusables(&st.detail, st.show_notes);
         // Keep the cursor in range (links/files can disappear after a reload).
         if !items.is_empty() && st.selected >= items.len() {
             st.selected = items.len() - 1;
@@ -108,7 +108,7 @@ pub(super) fn edit_loop<B: Backend>(
                         st.detail.checklist =
                             db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         if let Some(id) = new_id
-                            && let Some(p) = checklist_focus_index(&st.detail, id)
+                            && let Some(p) = checklist_focus_index(&st.detail, st.show_notes, id)
                         {
                             st.selected = p;
                         }
@@ -363,37 +363,14 @@ pub(super) fn edit_loop<B: Backend>(
                             st.editor = TextArea::default();
                             st.adding_step = true;
                         }
-                        // ── Dependency graph panel ──────────────────────────
-                        // 'd' cycles: chain panel -> depth-1 graph -> expanded
-                        // graph (all neighbors, not just the capped "+N more")
-                        // -> back to the chain panel. A dedicated filtered-list
-                        // screen for the overflow felt like a lot of new UI for
-                        // an edge case that only bites past ~4 neighbors on a
-                        // side; showing everything inline covers the same need.
+                        // ── Task tree panel ─────────────────────────────────
+                        // 'd' expands the always-visible task tree from its
+                        // compact default (2 levels, a few siblings per node)
+                        // to its full fetched depth/fan-out — instant, since
+                        // the tree is already fetched that deep (see
+                        // `TREE_FETCH_*` in handler.rs).
                         KeyCode::Char('d') => {
-                            if !st.show_graph {
-                                st.show_graph = true;
-                                st.graph_expanded = false;
-                            } else if !st.graph_expanded {
-                                st.graph_expanded = true;
-                            } else {
-                                st.show_graph = false;
-                                st.graph_expanded = false;
-                                st.graph_full_impact = false;
-                            }
-                        }
-                        // 'D': opt-in "full impact" — every transitive blocker,
-                        // not just the depth-1 ones the graph panel shows by
-                        // default (per the issue's "glanceable by default"
-                        // constraint, this is explicit and separate).
-                        KeyCode::Char('D') => {
-                            st.show_graph = true;
-                            st.graph_full_impact = !st.graph_full_impact;
-                            st.full_impact = if st.graph_full_impact {
-                                full_impact_blockers(conn, &st.detail.task)
-                            } else {
-                                Vec::new()
-                            };
+                            st.tree_expanded = !st.tree_expanded;
                         }
                         // ── Review & comment loop ───────────────────────────
                         KeyCode::Char('c') => {
@@ -439,6 +416,23 @@ pub(super) fn edit_loop<B: Backend>(
                                         .unwrap_or_default();
                             }
                         }
+                        // ── Display density toggles ─────────────────────────
+                        KeyCode::Char('u') => {
+                            st.show_urgency_breakdown = !st.show_urgency_breakdown;
+                        }
+                        KeyCode::Char('v') => {
+                            st.verbose = !st.verbose;
+                        }
+                        KeyCode::Char('n') => {
+                            st.show_notes = !st.show_notes;
+                            // Notes just appeared/disappeared from the focusable
+                            // list — keep the cursor from landing mid-air on a
+                            // row that no longer exists.
+                            let items = focusables(&st.detail, st.show_notes);
+                            if !items.is_empty() && st.selected >= items.len() {
+                                st.selected = items.len() - 1;
+                            }
+                        }
                         KeyCode::Char('?') => {
                             showing_help = true;
                         }
@@ -470,6 +464,13 @@ fn help_bindings() -> Vec<(&'static str, &'static str)> {
         ("c", "comment on the focused element"),
         ("r", "flag the focused element for reconsideration"),
         ("x", "resolve the focused element's feedback"),
+        ("d", "expand/collapse the task tree"),
+        ("u", "show/hide the urgency score breakdown"),
+        ("v", "expand/collapse long text and checklist detail"),
+        (
+            "n",
+            "show/hide the AI's execution notes (findings, decisions, …)",
+        ),
         SAVE,
         QUIT,
         HELP,
@@ -602,11 +603,8 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
         !blockers.is_empty(),
         blocking_tasks.len(),
     ));
-    // A project change can move the task into a different feature chain.
-    detail.chain = db::feature_chain(conn, &detail.task.uuid).unwrap_or_default();
-    // Dependencies may have just changed (DependsOn edit) — refresh the graph too.
-    let all_blockers = db::get_dependency_uuids(conn, &detail.task.uuid).unwrap_or_default();
-    detail.graph = build_dependency_graph(conn, &all_blockers, &blocking_tasks);
+    // Dependencies (or the task itself) may have just changed — refresh the tree too.
+    detail.tree = build_task_tree(conn, detail.task.uuid);
     Ok(())
 }
 

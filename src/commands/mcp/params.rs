@@ -166,6 +166,14 @@ pub(crate) struct ModifyParams {
     pub(crate) tags: Option<Vec<String>>,
     /// Clear all tags.
     pub(crate) clear_tags: Option<bool>,
+    /// Time estimate, e.g. "90m", "2h", "2h30m".
+    pub(crate) estimate: Option<String>,
+    /// Clear the time estimate.
+    pub(crate) clear_estimate: Option<bool>,
+    /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
+    pub(crate) every: Option<String>,
+    /// Clear the recurrence interval.
+    pub(crate) clear_recur: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -173,6 +181,24 @@ pub(crate) struct ResolveParams {
     pub(crate) project_path: Option<String>,
     /// The feedback (annotation) id to resolve — NOT a task id/uuid.
     pub(crate) feedback_id: i64,
+    /// Link this resolution to an AI run id (from `record_run`) that addressed it.
+    pub(crate) run_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RecordRunParams {
+    pub(crate) project_path: Option<String>,
+    pub(crate) id: String,
+    /// What the AI did, e.g. enrich, refine, implement, review.
+    pub(crate) kind: String,
+    /// Model used, e.g. claude-sonnet-5-thinking-high.
+    pub(crate) model: Option<String>,
+    /// Provider/platform, e.g. cursor.
+    pub(crate) provider: Option<String>,
+    /// The prompt/instruction given to the model (stored, not displayed in `sara info`).
+    pub(crate) prompt: Option<String>,
+    /// A summary of the model's response (stored, not displayed in `sara info`).
+    pub(crate) response: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

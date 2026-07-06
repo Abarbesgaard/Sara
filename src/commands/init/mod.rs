@@ -72,6 +72,7 @@ fn prompt(msg: &str, default: Option<&str>) -> Result<String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     conn: &Connection,
     cfg: &Config,
@@ -80,6 +81,10 @@ pub fn run(
     stack_override: Option<&str>,
     conventions_override: Option<&str>,
     notes_override: Option<&str>,
+    setup_cmd: Option<&str>,
+    test_cmd: Option<&str>,
+    lint_cmd: Option<&str>,
+    run_cmd: Option<&str>,
     yes: bool,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
@@ -165,12 +170,38 @@ pub fn run(
     };
 
     crate::infrastructure::db::save_project_profile(conn, &project)?;
+
+    if setup_cmd.is_some() || test_cmd.is_some() || lint_cmd.is_some() || run_cmd.is_some() {
+        crate::infrastructure::db::set_project_commands(
+            conn,
+            &project_name,
+            &crate::infrastructure::db::ProjectCommands {
+                setup_cmd: setup_cmd.map(str::to_string),
+                test_cmd: test_cmd.map(str::to_string),
+                lint_cmd: lint_cmd.map(str::to_string),
+                run_cmd: run_cmd.map(str::to_string),
+            },
+        )?;
+    }
+
     println!("✔ Project '{}' profile saved.", project_name);
 
     if let Some(g) = &project.goal {
         println!("  Goal:  {g}");
     }
     println!("  Stack: {resolved_stack}");
+
+    let commands = crate::infrastructure::db::get_project_commands(conn, &project_name)?;
+    for (label, cmd) in [
+        ("Setup", &commands.setup_cmd),
+        ("Test", &commands.test_cmd),
+        ("Lint", &commands.lint_cmd),
+        ("Run", &commands.run_cmd),
+    ] {
+        if let Some(c) = cmd {
+            println!("  {label}:  {c}");
+        }
+    }
 
     Ok(())
 }

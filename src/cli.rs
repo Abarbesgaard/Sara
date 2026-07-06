@@ -33,6 +33,18 @@ pub enum Command {
         /// Set project notes directly (skips prompt)
         #[arg(long)]
         notes: Option<String>,
+        /// Command that installs/prepares the project (shown in `sara info`'s Verification section)
+        #[arg(long)]
+        setup_cmd: Option<String>,
+        /// Command that runs the test suite (shown in `sara info`'s Verification section)
+        #[arg(long)]
+        test_cmd: Option<String>,
+        /// Command that lints/type-checks the project (shown in `sara info`'s Verification section)
+        #[arg(long)]
+        lint_cmd: Option<String>,
+        /// Command that runs the project locally (shown in `sara info`'s Verification section)
+        #[arg(long)]
+        run_cmd: Option<String>,
         /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
@@ -57,7 +69,6 @@ pub enum Command {
 
     /// Add a task
     Add {
-        #[arg(trailing_var_arg = true)]
         words: Vec<String>,
         /// Override project
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
@@ -114,7 +125,7 @@ pub enum Command {
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
         /// The comment / note text or URL
-        #[arg(trailing_var_arg = true, required = true)]
+        #[arg(required = true)]
         text: Vec<String>,
         /// Note kind: comment|finding|thought|constraint|assumption|open_question|non_goal|decision|risk|pattern
         #[arg(long)]
@@ -253,6 +264,18 @@ pub enum Command {
         /// Clear all tags
         #[arg(long)]
         clear_tags: bool,
+        /// Set the time estimate non-interactively, e.g. "90m", "2h", "2h30m"
+        #[arg(long)]
+        estimate: Option<String>,
+        /// Clear the time estimate
+        #[arg(long)]
+        clear_estimate: bool,
+        /// Set the recurrence interval non-interactively: daily, weekly, monthly, 2w, 3d, 1m, etc.
+        #[arg(long, visible_alias = "recur")]
+        every: Option<String>,
+        /// Clear the recurrence interval
+        #[arg(long)]
+        clear_recur: bool,
     },
 
     /// Move a task to another project (non-interactive)
@@ -379,7 +402,7 @@ pub enum Command {
     /// Cross-task memory: keyword search across tasks/findings/anchors
     Recall {
         /// Search query
-        #[arg(trailing_var_arg = true, required = true)]
+        #[arg(required = true)]
         query: Vec<String>,
         /// Max results
         #[arg(long, default_value_t = 20)]
@@ -426,6 +449,31 @@ pub enum Command {
     Resolve {
         /// Feedback (annotation) id
         feedback_id: i64,
+        /// Link the resolution to an AI run id (see `sara record-run`) that addressed it
+        #[arg(long)]
+        run: Option<i64>,
+    },
+
+    /// Record an AI/LLM interaction against a task (audit trail shown in `sara info`)
+    RecordRun {
+        /// Task id or uuid prefix
+        #[arg(add = ArgValueCandidates::new(task_ids))]
+        id: String,
+        /// What the AI did, e.g. enrich, refine, implement, review
+        #[arg(long)]
+        kind: String,
+        /// Model used, e.g. claude-sonnet-5-thinking-high
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider/platform, e.g. cursor
+        #[arg(long)]
+        provider: Option<String>,
+        /// The prompt/instruction given to the model (stored, not displayed)
+        #[arg(long)]
+        prompt: Option<String>,
+        /// A summary of the model's response (stored, not displayed)
+        #[arg(long)]
+        response: Option<String>,
     },
 
     /// Atomic plan ingestion and dependency-ordered briefings

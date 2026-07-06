@@ -319,12 +319,23 @@ pub fn verify(
             anyhow::bail!("No step #{n}");
         }
     } else {
+        // Project-level setup/test/lint commands (from `sara init`), same
+        // ones shown in `sara info`'s Verification section. `run_cmd` is
+        // deliberately excluded here — it's typically a long-lived server
+        // process, not something safe to execute as a verification step.
+        let pc = db::get_project_commands(conn, &task.project)?;
+        for c in [&pc.setup_cmd, &pc.test_cmd, &pc.lint_cmd]
+            .into_iter()
+            .flatten()
+        {
+            cmds.push(c.clone());
+        }
         for s in steps.iter().chain(acceptance.iter()) {
             if let Some(v) = &s.verify_cmd {
                 cmds.push(v.clone());
             }
         }
-        // Project/task-level test + lint commands from meta_json.
+        // Task-level test + lint command overrides from meta_json.
         if let Some(meta) = meta
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -399,6 +410,13 @@ pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<
             cmds.push(v.clone());
         }
     } else {
+        let pc = db::get_project_commands(conn, &task.project)?;
+        for c in [&pc.setup_cmd, &pc.test_cmd, &pc.lint_cmd]
+            .into_iter()
+            .flatten()
+        {
+            cmds.push(c.clone());
+        }
         for s in steps.iter().chain(acceptance.iter()) {
             if let Some(v) = &s.verify_cmd {
                 cmds.push(v.clone());
@@ -542,16 +560,69 @@ pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
 
 /// Resolve a feedback (annotation) item by its id; print-free core shared by the
 /// CLI `resolve` command and the MCP `resolve` tool. Errors if no such feedback.
-pub fn resolve_value(conn: &Connection, feedback_id: i64) -> Result<serde_json::Value> {
-    if !db::resolve_annotation(conn, feedback_id, None)? {
+/// `run_id` optionally links the resolution to the AI run (see `record_run_value`)
+/// that addressed it, so the provenance is traceable later.
+pub fn resolve_value(
+    conn: &Connection,
+    feedback_id: i64,
+    run_id: Option<i64>,
+) -> Result<serde_json::Value> {
+    if !db::resolve_annotation(conn, feedback_id, run_id)? {
         anyhow::bail!("No feedback with id {feedback_id}");
     }
-    Ok(json!({ "feedback_id": feedback_id, "resolved": true }))
+    Ok(json!({ "feedback_id": feedback_id, "resolved": true, "run_id": run_id }))
 }
 
-/// `sara resolve <feedback-id>`
-pub fn resolve(conn: &Connection, feedback_id: i64) -> Result<()> {
-    resolve_value(conn, feedback_id)?;
+/// `sara resolve <feedback-id> [--run <run-id>]`
+pub fn resolve(conn: &Connection, feedback_id: i64, run_id: Option<i64>) -> Result<()> {
+    resolve_value(conn, feedback_id, run_id)?;
     println!("Resolved feedback #{feedback_id}.");
+    Ok(())
+}
+
+/// Record one AI/LLM interaction against a task (an audit-trail entry shown in
+/// `sara info`'s "AI activity" section); print-free core shared by the CLI
+/// `record-run` command and the MCP `record_run` tool. Returns the new run id
+/// so it can be cited later via `resolve --run <run-id>`.
+#[allow(clippy::too_many_arguments)]
+pub fn record_run_value(
+    conn: &Connection,
+    id: &str,
+    kind: &str,
+    model: Option<&str>,
+    provider: Option<&str>,
+    prompt: Option<&str>,
+    response: Option<&str>,
+) -> Result<serde_json::Value> {
+    anyhow::ensure!(!kind.trim().is_empty(), "kind cannot be empty");
+    let task = db::resolve_task(conn, id)?;
+    let run_id = db::record_ai_run(conn, &task.uuid, kind, model, provider, prompt, response)?;
+    Ok(json!({
+        "task": task.id,
+        "run_id": run_id,
+        "kind": kind,
+        "model": model,
+        "provider": provider,
+    }))
+}
+
+/// `sara record-run <id> --kind <KIND> [--model] [--provider] [--prompt] [--response]`
+#[allow(clippy::too_many_arguments)]
+pub fn record_run(
+    conn: &Connection,
+    id: &str,
+    kind: &str,
+    model: Option<&str>,
+    provider: Option<&str>,
+    prompt: Option<&str>,
+    response: Option<&str>,
+) -> Result<()> {
+    let v = record_run_value(conn, id, kind, model, provider, prompt, response)?;
+    println!(
+        "Recorded {} run #{} on task {}.",
+        v["kind"].as_str().unwrap_or_default(),
+        v["run_id"].as_i64().unwrap_or(0),
+        v["task"].as_i64().unwrap_or(0),
+    );
     Ok(())
 }

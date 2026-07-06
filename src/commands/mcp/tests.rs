@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 26, "expected 26 tools, got {names:?}");
+    assert_eq!(names.len(), 27, "expected 27 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -58,6 +58,7 @@ fn exposes_the_agent_loop_tools() {
         "validate",
         "modify",
         "resolve",
+        "record_run",
         "start",
         "stop",
     ] {
@@ -253,6 +254,10 @@ fn modify_value_sets_priority_and_requires_a_field() {
                 false,
                 &[],
                 false,
+                None,
+                false,
+                None,
+                false,
             )
         })
         .expect("modify");
@@ -260,7 +265,21 @@ fn modify_value_sets_priority_and_requires_a_field() {
 
     // No field flags → must error, never open the TUI.
     let empty = server.with_project(None, "modify-empty", |conn, cfg| {
-        commands::modify::modify_value(conn, cfg, &uuid, None, None, None, false, &[], false)
+        commands::modify::modify_value(
+            conn,
+            cfg,
+            &uuid,
+            None,
+            None,
+            None,
+            false,
+            &[],
+            false,
+            None,
+            false,
+            None,
+            false,
+        )
     });
     assert!(empty.is_err(), "modify with no fields should error");
 }
@@ -417,10 +436,68 @@ fn feedback_and_resolve_round_trip() {
     let fb_id = items[0]["id"].as_i64().expect("feedback id");
     let resolved = server
         .with_project(None, "resolve", |conn, _cfg| {
-            commands::guide::resolve_value(conn, fb_id)
+            commands::guide::resolve_value(conn, fb_id, None)
         })
         .expect("resolve");
     assert_eq!(resolved["resolved"], true);
+}
+
+#[test]
+fn record_run_then_resolve_links_the_run_id() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let run = server
+        .with_project(None, "record_run", |conn, _cfg| {
+            commands::guide::record_run_value(
+                conn,
+                &uuid,
+                "enrich",
+                Some("claude-sonnet-5-thinking-high"),
+                Some("cursor"),
+                None,
+                None,
+            )
+        })
+        .expect("record_run");
+    let run_id = run["run_id"].as_i64().expect("run_id");
+
+    server
+        .with_project(None, "annotate", |conn, _cfg| {
+            commands::annotate::annotate_value(
+                conn,
+                &uuid,
+                &["please fix".to_string()],
+                None,
+                Some("human"),
+                None,
+                true,
+            )
+        })
+        .expect("annotate");
+    let fb = server
+        .with_project(None, "feedback", |conn, _cfg| {
+            commands::guide::feedback_value(conn, &uuid)
+        })
+        .expect("feedback");
+    let fb_id = fb["open_feedback"][0]["id"].as_i64().expect("feedback id");
+
+    server
+        .with_project(None, "resolve", |conn, _cfg| {
+            commands::guide::resolve_value(conn, fb_id, Some(run_id))
+        })
+        .expect("resolve");
+
+    server
+        .with_project(None, "check", |conn, _cfg| {
+            let stored: i64 = conn.query_row(
+                "SELECT resolved_by_run FROM annotations WHERE id=?1",
+                [fb_id],
+                |r| r.get(0),
+            )?;
+            Ok(serde_json::json!({ "resolved_by_run": stored }))
+        })
+        .map(|v| assert_eq!(v["resolved_by_run"].as_i64(), Some(run_id)))
+        .expect("resolved_by_run should be persisted");
 }
 
 #[test]

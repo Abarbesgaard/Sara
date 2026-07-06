@@ -20,6 +20,10 @@ pub fn run(
     clear_due: bool,
     tags: &[String],
     clear_tags: bool,
+    estimate: Option<&str>,
+    clear_estimate: bool,
+    every: Option<&str>,
+    clear_recur: bool,
 ) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
 
@@ -30,7 +34,11 @@ pub fn run(
         || due.is_some()
         || clear_due
         || !tags.is_empty()
-        || clear_tags;
+        || clear_tags
+        || estimate.is_some()
+        || clear_estimate
+        || every.is_some()
+        || clear_recur;
     if has_field_flags {
         return apply_fields(
             conn,
@@ -42,6 +50,10 @@ pub fn run(
             clear_due,
             tags,
             clear_tags,
+            estimate,
+            clear_estimate,
+            every,
+            clear_recur,
         );
     }
 
@@ -142,16 +154,24 @@ pub fn modify_value(
     clear_due: bool,
     tags: &[String],
     clear_tags: bool,
+    estimate: Option<&str>,
+    clear_estimate: bool,
+    every: Option<&str>,
+    clear_recur: bool,
 ) -> Result<Value> {
     let has_field = description.is_some()
         || priority.is_some()
         || due.is_some()
         || clear_due
         || !tags.is_empty()
-        || clear_tags;
+        || clear_tags
+        || estimate.is_some()
+        || clear_estimate
+        || every.is_some()
+        || clear_recur;
     anyhow::ensure!(
         has_field,
-        "modify requires at least one field to change (description, priority, due, clear_due, tags, or clear_tags)"
+        "modify requires at least one field to change (description, priority, due, clear_due, tags, clear_tags, estimate, clear_estimate, every, or clear_recur)"
     );
 
     let task = db::resolve_task(conn, id_or_uuid)?;
@@ -164,6 +184,10 @@ pub fn modify_value(
         clear_due,
         tags,
         clear_tags,
+        estimate,
+        clear_estimate,
+        every,
+        clear_recur,
     )?;
 
     updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
@@ -177,6 +201,8 @@ pub fn modify_value(
         "priority": updated.priority.as_ref().map(|p| p.label()),
         "due": updated.due.map(|d| d.format("%Y-%m-%d").to_string()),
         "tags": updated.tags,
+        "estimate_mins": updated.estimate_mins,
+        "recur": updated.recur,
     }))
 }
 
@@ -192,6 +218,10 @@ fn apply_fields(
     clear_due: bool,
     tags: &[String],
     clear_tags: bool,
+    estimate: Option<&str>,
+    clear_estimate: bool,
+    every: Option<&str>,
+    clear_recur: bool,
 ) -> Result<()> {
     let uuid = task.uuid.to_string();
     let v = modify_value(
@@ -204,6 +234,10 @@ fn apply_fields(
         clear_due,
         tags,
         clear_tags,
+        estimate,
+        clear_estimate,
+        every,
+        clear_recur,
     )?;
     println!(
         "Updated task {}: {}",
@@ -213,8 +247,32 @@ fn apply_fields(
     Ok(())
 }
 
+/// Parse a human duration string like "2h30m", "90m", "1h", "45" (minutes) into minutes.
+fn parse_estimate_mins(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let s_lower = s.to_lowercase();
+    let rest = s_lower.as_str();
+    if let Some(h_pos) = rest.find('h')
+        && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
+    {
+        let mut total = h * 60;
+        let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
+        if !after_h.is_empty()
+            && let Ok(m) = after_h.parse::<i64>()
+        {
+            total += m;
+        }
+        return Some(total);
+    }
+    let m_part = rest.trim_end_matches('m').trim();
+    m_part.parse::<i64>().ok()
+}
+
 /// Pure field-merge: apply the CLI setter flags onto a `Task`. No DB / IO, so it
-/// is unit-testable. Returns an error on an unparseable priority or due date.
+/// is unit-testable. Returns an error on an unparseable priority, due date, or estimate.
 #[allow(clippy::too_many_arguments)]
 fn merge_task_fields(
     task: Task,
@@ -225,6 +283,10 @@ fn merge_task_fields(
     clear_due: bool,
     tags: &[String],
     clear_tags: bool,
+    estimate: Option<&str>,
+    clear_estimate: bool,
+    every: Option<&str>,
+    clear_recur: bool,
 ) -> Result<Task> {
     let mut updated = task;
 
@@ -257,6 +319,27 @@ fn merge_task_fields(
             Some(dt) => updated.due = Some(dt),
             None => anyhow::bail!("Could not parse due date: {d}"),
         }
+    }
+
+    if clear_estimate {
+        updated.estimate_mins = None;
+    } else if let Some(e) = estimate {
+        match parse_estimate_mins(e) {
+            Some(mins) => updated.estimate_mins = Some(mins),
+            None => anyhow::bail!(
+                "Could not parse estimate: {e} (expected e.g. \"90m\", \"2h\", \"2h30m\")"
+            ),
+        }
+    }
+
+    if clear_recur {
+        updated.recur = None;
+    } else if let Some(r) = every {
+        updated.recur = if r.trim().is_empty() {
+            None
+        } else {
+            Some(r.trim().to_string())
+        };
     }
 
     updated.modified = Utc::now();
@@ -302,6 +385,10 @@ mod tests {
             false,
             &["a".into(), "b".into()],
             false,
+            None,
+            false,
+            None,
+            false,
         )
         .unwrap();
         assert_eq!(t.description, "new desc");
@@ -314,7 +401,21 @@ mod tests {
         let cfg = Config::default();
         let mut base = sample();
         base.due = Some(Utc::now());
-        let t = merge_task_fields(base, &cfg, None, None, None, true, &[], true).unwrap();
+        let t = merge_task_fields(
+            base,
+            &cfg,
+            None,
+            None,
+            None,
+            true,
+            &[],
+            true,
+            None,
+            false,
+            None,
+            false,
+        )
+        .unwrap();
         assert!(t.tags.is_empty());
         assert!(t.due.is_none());
     }
@@ -323,7 +424,21 @@ mod tests {
     fn invalid_priority_is_rejected() {
         let cfg = Config::default();
         assert!(
-            merge_task_fields(sample(), &cfg, None, Some("X"), None, false, &[], false).is_err()
+            merge_task_fields(
+                sample(),
+                &cfg,
+                None,
+                Some("X"),
+                None,
+                false,
+                &[],
+                false,
+                None,
+                false,
+                None,
+                false
+            )
+            .is_err()
         );
     }
 
@@ -339,6 +454,10 @@ mod tests {
                 Some("not-a-date"),
                 false,
                 &[],
+                false,
+                None,
+                false,
+                None,
                 false
             )
             .is_err()
@@ -348,9 +467,92 @@ mod tests {
     #[test]
     fn unspecified_fields_are_left_unchanged() {
         let cfg = Config::default();
-        let t = merge_task_fields(sample(), &cfg, None, None, None, false, &[], false).unwrap();
+        let t = merge_task_fields(
+            sample(),
+            &cfg,
+            None,
+            None,
+            None,
+            false,
+            &[],
+            false,
+            None,
+            false,
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(t.description, "orig");
         assert_eq!(t.priority, None);
         assert_eq!(t.tags, vec!["old".to_string()]);
+    }
+
+    #[test]
+    fn sets_estimate_and_recur() {
+        let cfg = Config::default();
+        let t = merge_task_fields(
+            sample(),
+            &cfg,
+            None,
+            None,
+            None,
+            false,
+            &[],
+            false,
+            Some("2h30m"),
+            false,
+            Some("weekly"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(t.estimate_mins, Some(150));
+        assert_eq!(t.recur, Some("weekly".to_string()));
+    }
+
+    #[test]
+    fn clear_estimate_and_clear_recur_unset_fields() {
+        let cfg = Config::default();
+        let mut base = sample();
+        base.estimate_mins = Some(90);
+        base.recur = Some("daily".into());
+        let t = merge_task_fields(
+            base,
+            &cfg,
+            None,
+            None,
+            None,
+            false,
+            &[],
+            false,
+            None,
+            true,
+            None,
+            true,
+        )
+        .unwrap();
+        assert!(t.estimate_mins.is_none());
+        assert!(t.recur.is_none());
+    }
+
+    #[test]
+    fn invalid_estimate_is_rejected() {
+        let cfg = Config::default();
+        assert!(
+            merge_task_fields(
+                sample(),
+                &cfg,
+                None,
+                None,
+                None,
+                false,
+                &[],
+                false,
+                Some("not-a-duration"),
+                false,
+                None,
+                false
+            )
+            .is_err()
+        );
     }
 }

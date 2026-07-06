@@ -96,6 +96,10 @@ impl SaraServer {
                     p.clear_due.unwrap_or(false),
                     &tags,
                     p.clear_tags.unwrap_or(false),
+                    p.estimate.as_deref(),
+                    p.clear_estimate.unwrap_or(false),
+                    p.every.as_deref(),
+                    p.clear_recur.unwrap_or(false),
                 )
             })
             .map_err(mcp_err)?;
@@ -103,12 +107,32 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id)."
+        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id). Optionally cite the `run_id` (from `record_run`) that addressed it."
     )]
     fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp resolve", |conn, _cfg| {
-                commands::guide::resolve_value(conn, p.feedback_id)
+                commands::guide::resolve_value(conn, p.feedback_id, p.run_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
+    )]
+    fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp record_run", |conn, _cfg| {
+                commands::guide::record_run_value(
+                    conn,
+                    &p.id,
+                    &p.kind,
+                    p.model.as_deref(),
+                    p.provider.as_deref(),
+                    p.prompt.as_deref(),
+                    p.response.as_deref(),
+                )
             })
             .map_err(mcp_err)?;
         ok_json(v)

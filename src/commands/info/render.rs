@@ -12,8 +12,8 @@ use crate::infrastructure::model::{Priority, Task, format_duration};
 
 use super::edit::current_value;
 use super::handler::{
-    GRAPH_NEIGHBOR_CAP, comment_target, depends_on_display, focusables, guide_is_stale,
-    notes_of_kind, typed_notes, verification_rows,
+    TREE_COMPACT_CHILDREN, TREE_COMPACT_DEPTH, comment_target, depends_on_display, focusables,
+    guide_is_stale, notes_of_kind, typed_notes, verification_rows,
 };
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
 
@@ -64,6 +64,11 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         if active { "  ● ACTIVE" } else { "" }
     );
 
+    // Wide enough to show the task-tree side panel — when it's shown, the
+    // plain "Blocked by"/"Blocking" text lists below are redundant (the tree
+    // already covers direct neighbors) and are skipped.
+    let show_panel = chunks[0].width >= 96;
+
     let mut lines: Vec<Line> = vec![];
 
     // ── Editable fields
@@ -83,44 +88,10 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     }
 
     // ── Read-only fields
-    lines.push(field_line("Status", &t.status.to_string()));
-
-    // Age / deadline counter line
-    {
-        let age_days = (Utc::now() - t.entry).num_days();
-        let age_str = if age_days == 0 {
-            "today".to_string()
-        } else if age_days == 1 {
-            "1 day ago".to_string()
-        } else {
-            format!("{age_days} days ago")
-        };
-        let deadline_str = if let Some(due) = t.due {
-            let diff = (due - Utc::now()).num_days();
-            if diff < 0 {
-                format!(
-                    "  ·  {} day{} overdue",
-                    -diff,
-                    if diff == -1 { "" } else { "s" }
-                )
-            } else if diff == 0 {
-                "  ·  due today".to_string()
-            } else if diff == 1 {
-                "  ·  due tomorrow".to_string()
-            } else {
-                format!("  ·  due in {diff} days")
-            }
-        } else {
-            String::new()
-        };
-        let overdue = t.due.map(|d| d < Utc::now()).unwrap_or(false);
-        lines.push(Line::from(vec![
-            key_span("Age"),
-            Span::styled(
-                format!("{age_str}{deadline_str}"),
-                Style::default().fg(if overdue { Color::Red } else { Color::DarkGray }),
-            ),
-        ]));
+    // Status is only worth a row when it's not the boring default — a task
+    // open in this view is pending the overwhelming majority of the time.
+    if t.status != crate::infrastructure::model::Status::Pending {
+        lines.push(field_line("Status", &t.status.to_string()));
     }
 
     let time_str = if active {
@@ -171,56 +142,53 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         ]));
     }
 
-    // Urgency with breakdown
+    // Urgency: bare number by default, additive breakdown behind 'u' — the
+    // formula is only interesting when the score looks surprising.
     {
-        let breakdown_str = if let Some(ref bd) = d.urgency_breakdown {
-            let mut parts = vec![];
-            if bd.priority != 0.0 {
-                parts.push(format!("pri {:.1}", bd.priority));
-            }
-            if bd.due != 0.0 {
-                parts.push(format!("due {:.1}", bd.due));
-            }
-            if bd.blocking != 0.0 {
-                parts.push(format!("blocking {:.1}", bd.blocking));
-            }
-            if bd.blocked != 0.0 {
-                parts.push(format!("blocked {:.1}", bd.blocked));
-            }
-            if bd.active != 0.0 {
-                parts.push(format!("active {:.1}", bd.active));
-            }
-            if bd.age != 0.0 {
-                parts.push(format!("age {:.1}", bd.age));
-            }
-            if bd.tags != 0.0 {
-                parts.push(format!("tags {:.1}", bd.tags));
-            }
-            if bd.project != 0.0 {
-                parts.push(format!("proj {:.1}", bd.project));
-            }
-            if parts.is_empty() {
-                String::new()
-            } else {
-                format!("  ({})", parts.join(" + "))
-            }
+        let breakdown_str = if st.show_urgency_breakdown {
+            urgency_breakdown_str(d)
         } else {
             String::new()
+        };
+        let hint = if !st.show_urgency_breakdown && d.urgency_breakdown.is_some() {
+            "  (u for breakdown)"
+        } else {
+            ""
         };
         lines.push(Line::from(vec![
             key_span("Urgency"),
             Span::raw(format!("{:.1}", t.urgency)),
-            Span::styled(breakdown_str, Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{breakdown_str}{hint}"),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
 
-    lines.push(field_line(
-        "Entered",
-        &t.entry
-            .with_timezone(&Local)
-            .format("%Y-%m-%d %H:%M")
-            .to_string(),
-    ));
+    // Entered, with the task's age folded in rather than its own row.
+    {
+        let age_days = (Utc::now() - t.entry).num_days();
+        let age_str = if age_days == 0 {
+            "today".to_string()
+        } else if age_days == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{age_days} days ago")
+        };
+        lines.push(Line::from(vec![
+            key_span("Entered"),
+            Span::raw(
+                t.entry
+                    .with_timezone(&Local)
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string(),
+            ),
+            Span::styled(
+                format!("  ({age_str})"),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+    }
     lines.push(field_line(
         "Modified",
         &t.modified
@@ -228,19 +196,23 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             .format("%Y-%m-%d %H:%M")
             .to_string(),
     ));
-    lines.push(field_line("UUID", &t.uuid.to_string()));
 
     // ── Guide: assignment / rationale / freshness banner ────────────
+    // Collapsed to ~2 lines by default (the full text is what most guides
+    // need at a glance); 'v' expands to the full text.
     if let Some(a) = &d.guide.assignment {
         lines.push(Line::from(vec![
             key_span("Assignment"),
-            Span::styled(a.clone(), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                collapsed_text(a, st.verbose),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
     if let Some(r) = &d.guide.rationale {
         lines.push(Line::from(vec![
             key_span("Rationale"),
-            Span::raw(r.clone()),
+            Span::raw(collapsed_text(r, st.verbose)),
         ]));
     }
     if guide_is_stale(d) {
@@ -266,7 +238,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
 
     // Compute selection once here so typed notes, anchors, comments and
     // checklist can all reference it below.
-    let items = focusables(d);
+    let items = focusables(d, st.show_notes);
     let sel: Option<Focusable> = if st.editing {
         None
     } else {
@@ -277,25 +249,47 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     // ── Typed notes (findings, constraints, …) ───────────────────────────────
     // Build a flat note list once so indices match Focusable::Note(i).
     let all_typed = typed_notes(d);
+    // One combined legend for every navigable section below, instead of
+    // repeating "↑/↓ select · c comment · r reconsider · x resolve" in each
+    // section's own header. Shown whenever there's a focusable item beyond
+    // the always-present editable metadata fields.
+    if items.len() > EDIT_FIELDS.len() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )));
+    }
+    // "Risks" always renders in full — it's the one typed-note kind that
+    // answers what a human reviewer actually wants (impact/what could go
+    // wrong), not the AI's own execution workpaper. Every other kind
+    // (findings, constraints, assumptions, decisions, …) collapses to a
+    // single counted summary line unless `show_notes` is toggled on.
     let mut note_cursor: usize = 0; // tracks position in all_typed across kinds
+    let mut hidden_note_counts: Vec<(&str, usize)> = Vec::new();
     for (label, kind) in [
+        ("Risks", "risk"),
         ("Findings", "finding"),
         ("Constraints", "constraint"),
         ("Assumptions", "assumption"),
         ("Open questions", "open_question"),
         ("Non-goals", "non_goal"),
         ("Decisions", "decision"),
-        ("Risks", "risk"),
         ("Patterns", "pattern"),
     ] {
         let notes = notes_of_kind(d, kind);
         if notes.is_empty() {
             continue;
         }
+        if kind != "risk" && !st.show_notes {
+            hidden_note_counts.push((label, notes.len()));
+            note_cursor += notes.len();
+            continue;
+        }
         lines.push(Line::from(""));
-        lines.push(section(&format!(
-            "{label}  (↑/↓ select · c comment · r reconsider)"
-        )));
+        lines.push(section(label));
         for n in &notes {
             let note_idx = note_cursor;
             note_cursor += 1;
@@ -331,7 +325,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                         .bg(row_bg),
                 ),
                 Span::styled(
-                    n.text.clone(),
+                    collapsed_text(&n.text, st.verbose || is_sel),
                     Style::default()
                         .fg(row_fg)
                         .bg(row_bg)
@@ -383,26 +377,49 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     // Sanity: note_cursor should equal all_typed.len() — unused but kept for
     // clarity; the compiler will optimise it away.
     let _ = all_typed.len();
-
-    if !d.blocked_by.is_empty() {
+    if !hidden_note_counts.is_empty() {
+        let total: usize = hidden_note_counts.iter().map(|(_, c)| c).sum();
+        let breakdown = hidden_note_counts
+            .iter()
+            .map(|(label, c)| format!("{c} {}", label.to_lowercase()))
+            .collect::<Vec<_>>()
+            .join(" · ");
         lines.push(Line::from(""));
-        lines.push(section("Blocked by"));
-        for b in &d.blocked_by {
-            lines.push(Line::from(format!("  {b}")));
-        }
+        lines.push(Line::from(Span::styled(
+            format!(
+                "  {total} AI work note{} ({breakdown})  — the AI's execution workpaper, not usually needed for review  (n to view)",
+                if total == 1 { "" } else { "s" }
+            ),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )));
     }
-    if !d.blocking.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(section("Blocking"));
-        for b in &d.blocking {
-            lines.push(Line::from(format!("  {b}")));
+
+    // On narrow terminals there's no room for the task-tree panel, so these
+    // stay as the only view of blockers/dependents; on wide terminals the
+    // tree already shows them (with more structure), so skip the duplicate.
+    if !show_panel {
+        if !d.blocked_by.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(section("Blocked by"));
+            for b in &d.blocked_by {
+                lines.push(Line::from(format!("  {b}")));
+            }
+        }
+        if !d.blocking.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(section("Blocking"));
+            for b in &d.blocking {
+                lines.push(Line::from(format!("  {b}")));
+            }
         }
     }
     // (sel / items / file_selected already computed above — before typed notes)
 
     if !d.links.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Links  (Enter to open)"));
+        lines.push(section("Links"));
         for (i, link) in d.links.iter().enumerate() {
             let selected = sel == Some(Focusable::Link(i));
             let (bg, fg) = if selected {
@@ -442,9 +459,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     // ── Code anchors: each is focusable, shows 💬/⟳ markers + threaded comments ──
     if !d.anchors.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section(
-            "Possible relevant files  · ↑/↓ select · c comment · r reconsider",
-        ));
+        lines.push(section("Possible relevant files"));
         for (ai, anchor) in d.anchors.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Anchor(ai));
             let file_text = format!("{}{}", anchor.path, anchor.location());
@@ -574,9 +589,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             progress.push_str(&format!("{acc_done}/{acc_total} acceptance"));
         }
         lines.push(Line::from(""));
-        lines.push(section(&format!(
-            "Checklist  {progress}  (Space toggle · c comment · r reconsider · x resolve)"
-        )));
+        lines.push(section(&format!("Checklist  {progress}")));
         for (i, item) in d.checklist.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Checklist(i));
             let row_bg = if is_sel { Color::Blue } else { Color::Reset };
@@ -642,48 +655,54 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                 spans.push(Span::styled(" ⟳", Style::default().fg(Color::Yellow)));
             }
             lines.push(Line::from(spans));
-            if let Some(intent) = &item.intent {
-                lines.push(Line::from(Span::styled(
-                    format!("         {intent}"),
-                    Style::default().fg(Color::DarkGray),
-                )));
-            }
-            // Verify command — how this step/criterion is checked.
-            if let Some(v) = &item.verify_cmd {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        "         verify ".to_string(),
+            // Intent/verify/result/provenance detail is only shown for the
+            // selected row (or in verbose mode) — with many AI-authored steps
+            // this metadata otherwise buries the checklist itself.
+            let show_detail = is_sel || st.verbose;
+            if show_detail {
+                if let Some(intent) = &item.intent {
+                    lines.push(Line::from(Span::styled(
+                        format!("         {intent}"),
                         Style::default().fg(Color::DarkGray),
-                    ),
-                    Span::styled(v.clone(), Style::default().fg(Color::Blue)),
-                ]));
-            }
-            // Execution outcome recorded when the step was marked done.
-            if let Some(r) = &item.result {
-                lines.push(Line::from(vec![
-                    Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
-                    Span::styled(r.clone(), Style::default().fg(Color::Green)),
-                ]));
-            }
-            // Completion provenance: which commit / when the step was finished.
-            if item.done && (item.done_commit.is_some() || item.done_at.is_some()) {
-                let commit = item
-                    .done_commit
-                    .as_deref()
-                    .map(|c| {
-                        let short: String = c.chars().take(8).collect();
-                        format!("@ {short}")
-                    })
-                    .unwrap_or_default();
-                let when = item
-                    .done_at
-                    .as_deref()
-                    .map(|w| format!("  {w}"))
-                    .unwrap_or_default();
-                lines.push(Line::from(Span::styled(
-                    format!("         done {commit}{when}"),
-                    Style::default().fg(Color::DarkGray),
-                )));
+                    )));
+                }
+                // Verify command — how this step/criterion is checked.
+                if let Some(v) = &item.verify_cmd {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "         verify ".to_string(),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                        Span::styled(v.clone(), Style::default().fg(Color::Blue)),
+                    ]));
+                }
+                // Execution outcome recorded when the step was marked done.
+                if let Some(r) = &item.result {
+                    lines.push(Line::from(vec![
+                        Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
+                        Span::styled(r.clone(), Style::default().fg(Color::Green)),
+                    ]));
+                }
+                // Completion provenance: which commit / when the step was finished.
+                if item.done && (item.done_commit.is_some() || item.done_at.is_some()) {
+                    let commit = item
+                        .done_commit
+                        .as_deref()
+                        .map(|c| {
+                            let short: String = c.chars().take(8).collect();
+                            format!("@ {short}")
+                        })
+                        .unwrap_or_default();
+                    let when = item
+                        .done_at
+                        .as_deref()
+                        .map(|w| format!("  {w}"))
+                        .unwrap_or_default();
+                    lines.push(Line::from(Span::styled(
+                        format!("         done {commit}{when}"),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
             }
             // Thread: show comments anchored to this step/acceptance, indented.
             for a in &fb {
@@ -708,7 +727,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     let verif = verification_rows(d);
     if !verif.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section("Verification  (run: sara guide <id> --run)"));
+        lines.push(section("Verification  (run: sara verify <id> --run)"));
         for (scope, label, cmd) in &verif {
             lines.push(Line::from(vec![
                 Span::styled(
@@ -740,11 +759,15 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             )));
         }
     }
-    // ── Similar tasks (shared tags, same project)
+    // ── Similar tasks (shared tags, same project) — low-signal, so only the
+    // top few by urgency are shown; the rest collapse into a count.
     if !d.similar.is_empty() {
+        const RELATED_SHOWN: usize = 3;
+        let mut similar: Vec<&(i64, String, f64)> = d.similar.iter().collect();
+        similar.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
         lines.push(Line::from(""));
         lines.push(section("Related tasks (shared tags)"));
-        for (id, desc, urg) in &d.similar {
+        for (id, desc, urg) in similar.iter().take(RELATED_SHOWN) {
             lines.push(Line::from(vec![
                 Span::styled(format!("  #{id:<3} "), Style::default().fg(Color::Gray)),
                 Span::raw(desc.clone()),
@@ -753,6 +776,14 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
+        }
+        if similar.len() > RELATED_SHOWN {
+            lines.push(Line::from(Span::styled(
+                format!("  … {} more", similar.len() - RELATED_SHOWN),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            )));
         }
     }
     // ── Comments section: task-level + replies only (anchored ones shown inline above) ─
@@ -768,9 +799,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         .collect();
     if !unthreaded.is_empty() {
         lines.push(Line::from(""));
-        lines.push(section(
-            "Comments  (↑/↓ select · c add · r reconsider · x resolve)",
-        ));
+        lines.push(section("Comments"));
         // Build an index: comment-id -> annotation, for resolving note: replies.
         let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =
             all_comments.iter().map(|a| (a.id, *a)).collect();
@@ -861,14 +890,16 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
 
     // History is rendered in its own box at the bottom — not in the main lines.
 
-    // Split the main content area horizontally when wide enough for the panel.
-    let show_panel = chunks[0].width >= 96;
-    let (left_area, panel_area) = if show_panel {
+    // Split the main content area horizontally when wide enough for the
+    // panel — the task tree goes first (leftmost): it's the "how does this
+    // fit together" orientation a reviewer wants before the task's own
+    // details, not an afterthought tucked off to the side.
+    let (main_area, panel_area) = if show_panel {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(50), Constraint::Length(42)])
+            .constraints([Constraint::Length(42), Constraint::Min(50)])
             .split(chunks[0]);
-        (cols[0], Some(cols[1]))
+        (cols[1], Some(cols[0]))
     } else {
         (chunks[0], None)
     };
@@ -882,53 +913,40 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         )
         .wrap(Wrap { trim: false })
         .scroll((st.scroll, 0));
-    f.render_widget(para, left_area);
+    f.render_widget(para, main_area);
 
-    // ── Feature chain / dependency graph (top) + Git + stats
+    // ── Task tree (top) + Git
     if let Some(panel) = panel_area {
-        // 'd' toggles between the linear chain panel (only meaningful when
-        // the task is linked to others) and the dependency graph panel.
-        // Unlike the chain panel, the graph panel stays visible even with no
-        // blockers/dependents (showing "— none —") once toggled on — hiding
-        // it silently on an empty task would look like the keypress did
-        // nothing.
-        let has_chain = d.chain.len() > 1;
-        let graph_active = st.show_graph;
-        let top_h: u16 = if graph_active {
-            graph_panel_height(d, st)
-        } else if has_chain {
-            // +3 for border (2) and the progress bar row (1).
-            ((d.chain.len() as u16) + 3).clamp(5, 14)
-        } else {
-            0
-        };
+        // The task tree is always shown — it's the primary answer to "how is
+        // this task tied to others" — compact by default, 'd' expands it.
+        let tree_lines = task_tree_lines(d, st);
+        // +2 for the panel's own border.
+        let top_h: u16 = ((tree_lines.len() + 2) as u16).clamp(7, 24);
 
-        // The GitHub-style activity heatmap panel is deprecated for now (kept
-        // out of the layout, not deleted — `render_mini_heatmap`/`d.activity`
-        // are still populated in case this gets revisited).
-        let constraints: Vec<Constraint> = if top_h > 0 {
-            vec![
-                Constraint::Length(top_h),
-                Constraint::Min(4),
-                Constraint::Length(14),
-            ]
-        } else {
-            vec![Constraint::Min(4), Constraint::Length(14)]
-        };
+        // The GitHub-style activity heatmap panel and the per-task project
+        // stats panel are both deprecated for now — kept out of the layout,
+        // not deleted (`render_mini_heatmap`/`render_project_stats` and
+        // `d.activity`/`d.stats` are still populated in case a project-wide
+        // command resurfaces them later). Project-wide stats aren't
+        // task-specific, so they didn't earn a permanent slot on a screen
+        // about *this* task.
         let panel_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(constraints)
+            .constraints([Constraint::Length(top_h), Constraint::Min(4)])
             .split(panel);
 
-        let base = if graph_active {
-            render_graph_panel(f, panel_chunks[0], d, st);
-            1
-        } else if has_chain {
-            render_chain_panel(f, panel_chunks[0], d);
-            1
+        let tree_title = if st.tree_expanded {
+            " Task tree — expanded  (d to collapse) "
         } else {
-            0
+            " Task tree  (d to expand) "
         };
+        let tree_para = Paragraph::new(tree_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(tree_title)
+                .border_style(Style::default().fg(Color::Magenta)),
+        );
+        f.render_widget(tree_para, panel_chunks[0]);
 
         let git_lines = git_panel_lines(d);
         let git_para = Paragraph::new(git_lines)
@@ -939,9 +957,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     .border_style(Style::default().fg(Color::DarkGray)),
             )
             .wrap(Wrap { trim: false });
-        f.render_widget(git_para, panel_chunks[base]);
-
-        render_project_stats(f, panel_chunks[base + 1], d);
+        f.render_widget(git_para, panel_chunks[1]);
     }
 
     // ── History box (pinned to bottom, above edit bar and footer)
@@ -974,7 +990,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     // ── Comment bar (anchored to the focused element)
     if st.commenting {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
-        let items = focusables(d);
+        let items = focusables(d, st.show_notes);
         let focus = items.get(st.selected).cloned();
         let (tk, tid) = comment_target(d, &focus);
         let target = match (tk, tid) {
@@ -1034,7 +1050,7 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     } else if st.editing {
         " type to edit  •  Enter/Ctrl+S confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • ⇧↑/⇧↓ reorder • a add step • Enter edit/open • c comment • Ctrl+E $EDITOR • d graph • ? help • q close "
+        " ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close "
             .to_string()
     };
     let footer_idx = chunks.len() - 1;
@@ -1044,179 +1060,81 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     );
 }
 
-/// Right-hand panel showing the dependency chain (feature) the task belongs to,
-/// in blockers-first order: a progress bar plus one row per linked task. Completed
-/// tasks are struck through; the task currently being viewed is highlighted.
-fn render_chain_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
-    let total = d.chain.len();
-    let done = d
-        .chain
-        .iter()
-        .filter(|t| t.status == crate::infrastructure::model::Status::Completed)
-        .count();
-    let all_done = total > 0 && done == total;
+/// Inner width the task tree panel is laid out for (panel is a fixed
+/// `Constraint::Length(42)` column, minus 2 for the left/right border).
+const TREE_PANEL_WIDTH: usize = 40;
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" Feature chain  {done}/{total} "))
-        .border_style(Style::default().fg(if all_done { Color::Green } else { Color::Cyan }));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-
-    let mut lines: Vec<Line> = Vec::new();
-
-    // Progress bar across the panel width.
-    let bar_w = inner.width.saturating_sub(2) as usize;
-    if bar_w > 0 {
-        let filled = (done * bar_w + total / 2).checked_div(total).unwrap_or(0);
-        let mut spans = vec![Span::raw(" ")];
-        spans.push(Span::styled(
-            "█".repeat(filled),
-            Style::default().fg(if all_done { Color::Green } else { Color::Cyan }),
-        ));
-        spans.push(Span::styled(
-            "░".repeat(bar_w - filled),
-            Style::default().fg(Color::DarkGray),
-        ));
-        lines.push(Line::from(spans));
-    }
-
-    let current_idx = d.chain.iter().position(|t| t.uuid == d.task.uuid);
-    let desc_w = inner.width.saturating_sub(8) as usize;
-    for (i, t) in d.chain.iter().enumerate() {
-        let completed = t.status == crate::infrastructure::model::Status::Completed;
-        let is_current = Some(i) == current_idx;
-        let id_str =
-            t.id.map(|n| format!("{n:>3}"))
-                .unwrap_or_else(|| "  -".to_string());
-        let marker = if is_current { "▶ " } else { "  " };
-        let glyph = if completed {
-            "✓"
-        } else if is_current {
-            "◉"
-        } else {
-            "○"
-        };
-        let desc = truncate_str(&t.description, desc_w.max(8));
-
-        let (glyph_style, text_style) = if is_current {
-            (
-                Style::default()
-                    .fg(Color::White)
-                    .bg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-                Style::default()
-                    .fg(Color::White)
-                    .bg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else if completed {
-            (
-                Style::default().fg(Color::Green),
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::CROSSED_OUT),
-            )
-        } else {
-            (
-                Style::default().fg(Color::Cyan),
-                Style::default().fg(Color::Gray),
-            )
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(marker.to_string(), glyph_style),
-            Span::styled(format!("{glyph} "), glyph_style),
-            Span::styled(format!("{id_str} "), text_style),
-            Span::styled(desc, text_style),
-        ]));
-    }
-
-    // Scroll so the current task stays visible in long chains (1 = progress bar row).
-    let visible = inner.height as usize;
-    let cur_line = current_idx.map(|i| i + 1).unwrap_or(0);
-    let scroll = if cur_line >= visible {
-        (cur_line + 1 - visible) as u16
+/// Right-hand panel showing how this task is tied to others: every blocker
+/// recursively above (nearest hop first), the current task highlighted in
+/// the middle, every dependent recursively below — the primary answer to
+/// "how did earlier work lead here, and what does finishing this unblock".
+/// Replaces the old flat "feature chain" list, which flattened a branching
+/// DAG into a single line and lost that structure. Compact by default (2
+/// levels, a few siblings per node); 'd' expands to the tree's full fetched
+/// depth/fan-out.
+fn task_tree_lines(d: &Detail, st: &EditState) -> Vec<Line<'static>> {
+    let (max_depth, max_children) = if st.tree_expanded {
+        (usize::MAX, usize::MAX)
     } else {
-        0
+        (TREE_COMPACT_DEPTH, TREE_COMPACT_CHILDREN)
     };
 
-    f.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
-}
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(tree_section_header(&format!(
+        "← blocked by ({})",
+        d.tree.blockers.len()
+    )));
+    push_tree_side_lines(
+        &mut lines,
+        &d.tree.blockers,
+        d.tree.blockers_hidden,
+        max_depth,
+        max_children,
+    );
 
-/// Right-hand panel showing the depth-1 dependency graph: blockers above the
-/// current task, dependents below. Each node shows only id + status glyph +
-/// PR/issue badge (reusing `link_flags_by_task`'s already-computed flags, not
-/// recomputing badge precedence) — deliberately no description, to stay
-/// glanceable. Replaces `render_chain_panel` when active: the underlying
-/// model is a real DAG that can branch across multiple features, which a
-/// single linear chain can't represent.
-fn render_graph_panel(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail, st: &EditState) {
-    let title = if st.graph_full_impact {
-        " Dependency graph — full impact "
-    } else {
-        " Dependency graph "
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(Style::default().fg(Color::Magenta));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-
-    let mut lines: Vec<Line> = Vec::new();
-
-    if st.graph_full_impact {
-        lines.push(graph_section_header(&format!(
-            "← blocked by, full impact ({})",
-            st.full_impact.len()
-        )));
-        push_graph_node_lines(&mut lines, &st.full_impact, st.full_impact.len(), true);
-    } else {
-        lines.push(graph_section_header(&format!(
-            "← blocked by ({})",
-            d.graph.blockers.len()
-        )));
-        push_graph_node_lines(
-            &mut lines,
-            &d.graph.blockers,
-            GRAPH_NEIGHBOR_CAP,
-            st.graph_expanded,
-        );
-    }
-
-    let rule = "─".repeat(inner.width as usize);
+    let rule = "─".repeat(TREE_PANEL_WIDTH);
     lines.push(Line::from(Span::styled(
         rule.clone(),
         Style::default().fg(Color::DarkGray),
     )));
-    lines.push(current_task_graph_line(&d.task));
+    lines.push(current_task_tree_line(&d.task));
     lines.push(Line::from(Span::styled(
         rule,
         Style::default().fg(Color::DarkGray),
     )));
 
-    lines.push(graph_section_header(&format!(
+    lines.push(tree_section_header(&format!(
         "blocks → ({})",
-        d.graph.dependents.len()
+        d.tree.dependents.len()
     )));
-    push_graph_node_lines(
+    push_tree_side_lines(
         &mut lines,
-        &d.graph.dependents,
-        GRAPH_NEIGHBOR_CAP,
-        st.graph_expanded,
+        &d.tree.dependents,
+        d.tree.dependents_hidden,
+        max_depth,
+        max_children,
     );
-
-    f.render_widget(Paragraph::new(lines), inner);
+    lines
 }
 
-fn graph_section_header(text: &str) -> Line<'static> {
+fn push_tree_side_lines(
+    lines: &mut Vec<Line<'static>>,
+    nodes: &[GraphNode],
+    hidden: usize,
+    max_depth: usize,
+    max_children: usize,
+) {
+    if nodes.is_empty() && hidden == 0 {
+        lines.push(Line::from(Span::styled(
+            "   — none —",
+            Style::default().fg(Color::DarkGray),
+        )));
+        return;
+    }
+    push_tree_node_lines(lines, nodes, hidden, "  ", 1, max_depth, max_children);
+}
+
+fn tree_section_header(text: &str) -> Line<'static> {
     Line::from(Span::styled(
         format!(" {text}"),
         Style::default()
@@ -1225,7 +1143,7 @@ fn graph_section_header(text: &str) -> Line<'static> {
     ))
 }
 
-fn current_task_graph_line(task: &Task) -> Line<'static> {
+fn current_task_tree_line(task: &Task) -> Line<'static> {
     let id_str = task
         .id
         .map(|n| format!("{n:>3}"))
@@ -1237,40 +1155,57 @@ fn current_task_graph_line(task: &Task) -> Line<'static> {
     Line::from(vec![
         Span::styled(" ▶ ", style),
         Span::styled(format!("{id_str} "), style),
-        Span::styled(truncate_str(&task.description, 24), style),
+        Span::styled(truncate_str(&task.description, 30), style),
     ])
 }
 
-/// Append one line per visible node, capped at `cap` unless `expanded`, plus
-/// a "+N more" summary line for whatever's left over. A single dedicated key
-/// ('d', pressed again) reveals the rest inline rather than opening a
-/// separate filtered-list screen — simpler, and depth-1 lists are short
-/// enough that a whole new screen for the overflow felt disproportionate.
-fn push_graph_node_lines(
+/// Recursively append one line per node (`tree`-command style: `├─`/`└─`
+/// connectors, `│ `/`  ` continuation prefixes), capped per level at
+/// `max_children` siblings and `max_depth` levels — whatever's cut off by
+/// either cap collapses into a trailing "+N more" / "… (d to expand)" line
+/// rather than being silently dropped.
+fn push_tree_node_lines(
     lines: &mut Vec<Line<'static>>,
     nodes: &[GraphNode],
-    cap: usize,
-    expanded: bool,
+    hidden_here: usize,
+    prefix: &str,
+    depth: usize,
+    max_depth: usize,
+    max_children: usize,
 ) {
-    if nodes.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "   — none —",
-            Style::default().fg(Color::DarkGray),
-        )));
-        return;
+    let total = nodes.len();
+    let visible = total.min(max_children);
+    let overflow = hidden_here + total.saturating_sub(visible);
+    for (i, node) in nodes.iter().take(visible).enumerate() {
+        let is_last = overflow == 0 && i + 1 == visible;
+        let connector = if is_last { "└─" } else { "├─" };
+        lines.push(tree_node_line(node, prefix, connector));
+        let child_prefix = format!("{prefix}{}", if is_last { "   " } else { "│  " });
+        let has_children = !node.children.is_empty() || node.hidden_children > 0;
+        if has_children {
+            if depth < max_depth {
+                push_tree_node_lines(
+                    lines,
+                    &node.children,
+                    node.hidden_children,
+                    &child_prefix,
+                    depth + 1,
+                    max_depth,
+                    max_children,
+                );
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("{child_prefix}└─ … (d to expand)"),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                )));
+            }
+        }
     }
-    let visible = if expanded {
-        nodes.len()
-    } else {
-        cap.min(nodes.len())
-    };
-    for node in &nodes[..visible] {
-        lines.push(graph_node_line(node));
-    }
-    let overflow = nodes.len() - visible;
     if overflow > 0 {
         lines.push(Line::from(Span::styled(
-            format!("   +{overflow} more  (d to expand)"),
+            format!("{prefix}└─ +{overflow} more  (d to expand)"),
             Style::default()
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::ITALIC),
@@ -1278,13 +1213,10 @@ fn push_graph_node_lines(
     }
 }
 
-fn graph_node_line(node: &GraphNode) -> Line<'static> {
+fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'static> {
     let completed = node.status == crate::infrastructure::model::Status::Completed;
     let glyph = if completed { "✓" } else { "○" };
-    let id_str = node
-        .id
-        .map(|n| format!("{n:>3}"))
-        .unwrap_or_else(|| "  -".to_string());
+    let id_str = node.id.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
     let style = if completed {
         Style::default()
             .fg(Color::DarkGray)
@@ -1292,13 +1224,20 @@ fn graph_node_line(node: &GraphNode) -> Line<'static> {
     } else {
         Style::default().fg(Color::Cyan)
     };
+    let desc_budget = TREE_PANEL_WIDTH
+        .saturating_sub(prefix.chars().count() + connector.chars().count() + id_str.len() + 4);
     let mut spans = vec![
-        Span::styled(format!("   {glyph} "), style),
-        Span::styled(id_str, style),
+        Span::styled(
+            format!("{prefix}{connector}"),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(format!("{glyph} "), style),
+        Span::styled(format!("{id_str} "), style),
+        Span::styled(truncate_str(&node.description, desc_budget.max(6)), style),
     ];
     if let Some(label) = link_badge_label(node.badge.as_ref()) {
         spans.push(Span::styled(
-            format!("  {label}"),
+            format!(" {label}"),
             Style::default().fg(Color::Yellow),
         ));
     }
@@ -1322,32 +1261,9 @@ fn link_badge_label(flags: Option<&db::LinkFlags>) -> Option<&'static str> {
     }
 }
 
-fn graph_panel_height(d: &Detail, st: &EditState) -> u16 {
-    let blocker_rows = if st.graph_full_impact {
-        graph_side_rows(st.full_impact.len(), true)
-    } else {
-        graph_side_rows(d.graph.blockers.len(), st.graph_expanded)
-    };
-    let dependent_rows = graph_side_rows(d.graph.dependents.len(), st.graph_expanded);
-    // 2 borders + 2 section headers + 2 separators + 1 current-task row.
-    let fixed = 2 + 2 + 2 + 1;
-    ((blocker_rows + dependent_rows + fixed) as u16).clamp(7, 20)
-}
-
-fn graph_side_rows(len: usize, expanded: bool) -> usize {
-    if len == 0 {
-        return 1; // "— none —"
-    }
-    let visible = if expanded {
-        len
-    } else {
-        GRAPH_NEIGHBOR_CAP.min(len)
-    };
-    let overflow_row = usize::from(!expanded && len > GRAPH_NEIGHBOR_CAP);
-    visible + overflow_row
-}
-
-/// Build lines for the History box at the bottom of the detail view.
+/// Project-wide stats panel — no longer wired into the layout (it isn't
+/// task-specific), kept for a possible future project-level command.
+#[allow(dead_code)]
 fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1514,6 +1430,7 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
     f.render_widget(Paragraph::new(lines), inner);
 }
 
+#[allow(dead_code)]
 fn render_mini_heatmap(
     f: &mut Frame,
     area: ratatui::layout::Rect,
@@ -1941,14 +1858,85 @@ fn due_value_span<'a>(task: &Task, fallback: &str) -> Span<'a> {
             Color::Reset
         };
         Span::styled(
-            dd.with_timezone(&Local)
-                .format("%Y-%m-%d %H:%M")
-                .to_string(),
+            format!(
+                "{}  {}",
+                dd.with_timezone(&Local).format("%Y-%m-%d %H:%M"),
+                due_countdown_str(days),
+            ),
             Style::default().fg(color),
         )
     } else {
         Span::styled(fallback.to_string(), Style::default().fg(Color::Gray))
     }
+}
+
+/// Human countdown text for a due date ("overdue by N days", "due today", …).
+fn due_countdown_str(days: i64) -> String {
+    if days < 0 {
+        format!(
+            "({} day{} overdue)",
+            -days,
+            if days == -1 { "" } else { "s" }
+        )
+    } else if days == 0 {
+        "(due today)".to_string()
+    } else if days == 1 {
+        "(due tomorrow)".to_string()
+    } else {
+        format!("(due in {days} days)")
+    }
+}
+
+/// Additive urgency breakdown as "(pri 1.0 + due 2.0 + …)", empty when every
+/// component is zero.
+fn urgency_breakdown_str(d: &Detail) -> String {
+    let Some(ref bd) = d.urgency_breakdown else {
+        return String::new();
+    };
+    let mut parts = vec![];
+    if bd.priority != 0.0 {
+        parts.push(format!("pri {:.1}", bd.priority));
+    }
+    if bd.due != 0.0 {
+        parts.push(format!("due {:.1}", bd.due));
+    }
+    if bd.blocking != 0.0 {
+        parts.push(format!("blocking {:.1}", bd.blocking));
+    }
+    if bd.blocked != 0.0 {
+        parts.push(format!("blocked {:.1}", bd.blocked));
+    }
+    if bd.active != 0.0 {
+        parts.push(format!("active {:.1}", bd.active));
+    }
+    if bd.age != 0.0 {
+        parts.push(format!("age {:.1}", bd.age));
+    }
+    if bd.tags != 0.0 {
+        parts.push(format!("tags {:.1}", bd.tags));
+    }
+    if bd.project != 0.0 {
+        parts.push(format!("proj {:.1}", bd.project));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("  ({})", parts.join(" + "))
+    }
+}
+
+/// Collapse long free text to ~2 lines worth of characters with an ellipsis
+/// and an expand hint, unless `verbose` is set (then the full text passes
+/// through unchanged). Char-based rather than word-wrap-aware since the
+/// caller's `Paragraph` already wraps — this just bounds how much of a very
+/// long field shows before the reader has to opt in to more.
+fn collapsed_text(s: &str, verbose: bool) -> String {
+    const COLLAPSED_CHARS: usize = 160;
+    if verbose || s.chars().count() <= COLLAPSED_CHARS {
+        return s.to_string();
+    }
+    let t: String = s.chars().take(COLLAPSED_CHARS).collect();
+    format!("{t}…  (v to expand)")
 }
 
 fn key_span(k: &str) -> Span<'static> {
@@ -1988,9 +1976,10 @@ fn month_abbr(m: u32) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::DependencyGraph;
+    use super::super::types::TaskTree;
     use super::*;
     use crate::infrastructure::model::{Status, Task};
+    use chrono::Utc;
     use ratatui::{Terminal, backend::TestBackend};
 
     fn task() -> Task {
@@ -2003,6 +1992,31 @@ mod tests {
             id: Some(id),
             status,
             badge: None,
+            description: format!("task {id}"),
+            children: vec![],
+            hidden_children: 0,
+        }
+    }
+
+    fn node_with_children(id: i64, children: Vec<GraphNode>) -> GraphNode {
+        GraphNode {
+            children,
+            ..node(id, Status::Pending)
+        }
+    }
+
+    fn typed_note(id: i64, kind: &str, text: &str) -> crate::infrastructure::db::Annotation {
+        crate::infrastructure::db::Annotation {
+            id,
+            text: text.into(),
+            entry: Utc::now(),
+            kind: kind.into(),
+            author: "ai".into(),
+            target_kind: None,
+            target_id: None,
+            status: "open".into(),
+            request_revision: false,
+            resolved_by_run: None,
         }
     }
 
@@ -2030,8 +2044,7 @@ mod tests {
             ai_runs: vec![],
             head_commit: None,
             project_commands: crate::infrastructure::db::ProjectCommands::default(),
-            chain: vec![],
-            graph: DependencyGraph::default(),
+            tree: TaskTree::default(),
         }
     }
 
@@ -2046,18 +2059,18 @@ mod tests {
             due_error: false,
             dep_error: None,
             scroll: 0,
-            show_graph: true,
-            graph_expanded: false,
-            graph_full_impact: false,
-            full_impact: vec![],
+            tree_expanded: false,
+            show_urgency_breakdown: false,
+            verbose: false,
+            show_notes: false,
         }
     }
 
     fn draw(st: &EditState) -> String {
         // Wide enough that render()'s `chunks[0].width >= 96` gate shows the
         // side panel at all, and tall enough that the panel's own stacked
-        // constraints (graph/chain + Git(14) + stats(11) + Min(4)) don't get
-        // starved and silently truncated by Layout::split.
+        // constraints (task tree + Git(Min 4)) don't get starved and
+        // silently truncated by Layout::split.
         let mut terminal = Terminal::new(TestBackend::new(140, 60)).unwrap();
         terminal.draw(|f| render(f, st)).unwrap();
         let buf = terminal.backend().buffer();
@@ -2075,82 +2088,244 @@ mod tests {
     }
 
     #[test]
-    fn graph_panel_does_not_panic_when_empty() {
-        let mut d = base_detail(task());
-        d.graph = DependencyGraph::default();
+    fn task_tree_does_not_panic_when_empty() {
+        let d = base_detail(task());
         let st = base_state(d);
         let out = draw(&st);
-        assert!(out.contains("Dependency graph"));
+        assert!(out.contains("Task tree"));
         assert!(out.contains("none"));
     }
 
     #[test]
-    fn graph_panel_shows_branching_blockers_and_dependents() {
+    fn task_tree_shows_branching_blockers_and_dependents() {
         let mut d = base_detail(task());
-        d.graph = DependencyGraph {
+        d.tree = TaskTree {
             blockers: vec![node(1, Status::Pending), node(2, Status::Completed)],
+            blockers_hidden: 0,
             dependents: vec![node(3, Status::Pending)],
+            dependents_hidden: 0,
         };
         let st = base_state(d);
         let out = draw(&st);
         // Both blockers (one completed, one pending) and the dependent render
-        // as distinct rows — this is exactly what the old linear chain panel
-        // couldn't do for a task with neighbors in different features.
+        // as distinct rows — this is exactly what the old linear feature
+        // chain couldn't do for a task with neighbors in different features.
         assert!(out.contains("blocked by (2)"));
         assert!(out.contains("blocks"));
-        assert!(out.contains("1"));
-        assert!(out.contains("2"));
-        assert!(out.contains("3"));
+        assert!(out.contains("task 1"));
+        assert!(out.contains("task 2"));
+        assert!(out.contains("task 3"));
     }
 
     #[test]
-    fn graph_panel_collapses_overflow_to_a_summary_row_by_default() {
+    fn task_tree_collapses_overflow_to_a_summary_row_by_default() {
         let mut d = base_detail(task());
-        d.graph = DependencyGraph {
+        d.tree = TaskTree {
             blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+            blockers_hidden: 0,
             dependents: vec![],
+            dependents_hidden: 0,
         };
         let st = base_state(d);
         let out = draw(&st);
         assert!(out.contains("more"));
-        // Only the first GRAPH_NEIGHBOR_CAP ids should be visible, not all 8.
-        assert!(out.contains(&format!("{GRAPH_NEIGHBOR_CAP}")) || out.contains("more"));
     }
 
     #[test]
-    fn graph_panel_expanded_shows_everything_and_drops_the_summary_row() {
+    fn task_tree_expanded_shows_everything_and_drops_the_summary_row() {
         let mut d = base_detail(task());
-        d.graph = DependencyGraph {
+        d.tree = TaskTree {
             blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+            blockers_hidden: 0,
             dependents: vec![],
+            dependents_hidden: 0,
         };
         let mut st = base_state(d);
-        st.graph_expanded = true;
+        st.tree_expanded = true;
         let out = draw(&st);
         assert!(!out.contains("more"));
         for i in 1..=8 {
             assert!(
-                out.contains(&i.to_string()),
-                "expected id {i} to be visible"
+                out.contains(&format!("task {i}")),
+                "expected task {i} to be visible"
             );
         }
     }
 
     #[test]
-    fn graph_panel_full_impact_shows_transitive_blockers_and_ignores_the_cap() {
+    fn task_tree_nests_grandchildren_with_tree_connectors() {
         let mut d = base_detail(task());
-        d.graph = DependencyGraph {
-            blockers: vec![node(1, Status::Pending)],
+        let grandchild = node(100, Status::Pending);
+        let child = node_with_children(2, vec![grandchild]);
+        d.tree = TaskTree {
+            blockers: vec![node(1, Status::Pending), child],
+            blockers_hidden: 0,
             dependents: vec![],
+            dependents_hidden: 0,
+        };
+        let st = base_state(d);
+        let out = draw(&st);
+        assert!(out.contains("task 100"));
+        assert!(out.contains("└─") || out.contains("├─"));
+    }
+
+    #[test]
+    fn task_tree_hides_beyond_compact_depth_until_expanded() {
+        // blocker(10) -> blocker(100) -> blocker(1000): three hops up.
+        // Compact depth is 2, so task 1000 (the third hop) stays hidden
+        // behind the expand hint until 'd' is toggled.
+        let great_grandchild = node(1000, Status::Pending);
+        let grandchild = node_with_children(100, vec![great_grandchild]);
+        let child = node_with_children(10, vec![grandchild]);
+        let mut d = base_detail(task());
+        d.tree = TaskTree {
+            blockers: vec![child],
+            blockers_hidden: 0,
+            dependents: vec![],
+            dependents_hidden: 0,
         };
         let mut st = base_state(d);
-        st.graph_full_impact = true;
-        st.full_impact = (100..=106).map(|i| node(i, Status::Pending)).collect();
         let out = draw(&st);
-        assert!(out.contains("full impact"));
-        // The full-impact list (7 items) ignores GRAPH_NEIGHBOR_CAP entirely.
-        assert!(!out.contains("more"));
-        assert!(out.contains("100"));
-        assert!(out.contains("106"));
+        assert!(out.contains("task 10"));
+        assert!(out.contains("task 100"));
+        assert!(!out.contains("task 1000"));
+
+        st.tree_expanded = true;
+        let out2 = draw(&st);
+        assert!(out2.contains("task 1000"));
+    }
+
+    #[test]
+    fn status_row_hidden_when_pending_shown_otherwise() {
+        let d = base_detail(task());
+        let st = base_state(d);
+        let out = draw(&st);
+        assert!(!out.lines().any(|l| l.trim_start().starts_with("Status")));
+
+        let mut completed_task = task();
+        completed_task.status = Status::Completed;
+        let d2 = base_detail(completed_task);
+        let st2 = base_state(d2);
+        let out2 = draw(&st2);
+        assert!(out2.contains("Status"));
+        assert!(out2.contains("completed"));
+    }
+
+    #[test]
+    fn urgency_breakdown_hidden_by_default_and_shown_when_toggled() {
+        let mut d = base_detail(task());
+        d.task.urgency = 5.0;
+        d.urgency_breakdown = Some(crate::infrastructure::db::UrgencyBreakdown {
+            priority: 3.0,
+            due: 0.0,
+            blocking: 0.0,
+            blocked: 0.0,
+            active: 0.0,
+            tags: 0.0,
+            project: 0.0,
+            age: 0.0,
+        });
+        let mut st = base_state(d);
+        let out = draw(&st);
+        assert!(out.contains("u for breakdown"));
+        assert!(!out.contains("pri 3.0"));
+
+        st.show_urgency_breakdown = true;
+        let out2 = draw(&st);
+        assert!(out2.contains("pri 3.0"));
+    }
+
+    #[test]
+    fn risk_notes_always_show_but_other_notes_collapse_until_toggled() {
+        let mut d = base_detail(task());
+        d.annotations = vec![
+            typed_note(1, "risk", "touches the shared urgency formula"),
+            typed_note(2, "finding", "existing tests cover this path"),
+            typed_note(3, "decision", "kept the old signature"),
+        ];
+        let st = base_state(d);
+        let out = draw(&st);
+        // Risk is the human-relevant one — always visible.
+        assert!(out.contains("Risks"));
+        assert!(out.contains("touches the shared urgency formula"));
+        // The AI's own process notes collapse to a counted summary instead
+        // of dumping their text — that's the whole point of the toggle.
+        assert!(!out.contains("existing tests cover this path"));
+        assert!(!out.contains("kept the old signature"));
+        assert!(out.contains("n to view"));
+
+        let mut st2 = st;
+        st2.show_notes = true;
+        let out2 = draw(&st2);
+        assert!(out2.contains("existing tests cover this path"));
+        assert!(out2.contains("kept the old signature"));
+    }
+
+    #[test]
+    fn long_assignment_is_collapsed_until_verbose() {
+        let mut d = base_detail(task());
+        let long = "x".repeat(200);
+        d.guide.assignment = Some(long.clone());
+        let mut st = base_state(d);
+        let out = draw(&st);
+        assert!(out.contains("v to expand"));
+        assert!(!out.contains(&long));
+
+        st.verbose = true;
+        let out2 = draw(&st);
+        assert!(!out2.contains("v to expand"));
+    }
+
+    #[test]
+    fn checklist_detail_only_shows_for_selected_row_unless_verbose() {
+        let mut d = base_detail(task());
+        d.checklist = vec![
+            crate::infrastructure::db::ChecklistItem {
+                id: 1,
+                text: "first step".into(),
+                done: false,
+                position: 0,
+                intent: Some("do the first thing".into()),
+                kind: "step".into(),
+                source: "human".into(),
+                verify_cmd: None,
+                result: None,
+                done_commit: None,
+                done_at: None,
+            },
+            crate::infrastructure::db::ChecklistItem {
+                id: 2,
+                text: "second step".into(),
+                done: false,
+                position: 1,
+                intent: Some("do the second thing".into()),
+                kind: "step".into(),
+                source: "human".into(),
+                verify_cmd: None,
+                result: None,
+                done_commit: None,
+                done_at: None,
+            },
+        ];
+        let mut st = base_state(d);
+        st.selected = 0; // metadata field, not a checklist row: nothing selected below
+        let out = draw(&st);
+        assert!(!out.contains("do the first thing"));
+        assert!(!out.contains("do the second thing"));
+
+        // Select the first checklist row explicitly.
+        let idx = focusables(&st.detail, st.show_notes)
+            .iter()
+            .position(|f| matches!(f, Focusable::Checklist(0)))
+            .unwrap();
+        st.selected = idx;
+        let out2 = draw(&st);
+        assert!(out2.contains("do the first thing"));
+        assert!(!out2.contains("do the second thing"));
+
+        st.verbose = true;
+        let out3 = draw(&st);
+        assert!(out3.contains("do the first thing"));
+        assert!(out3.contains("do the second thing"));
     }
 }
