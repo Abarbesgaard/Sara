@@ -325,6 +325,9 @@ pub struct Item {
     pub created: DateTime<Utc>,
     pub modified: DateTime<Utc>,
     pub status: String,
+    /// The task this memory was learned from/about, if any. Loose reference
+    /// (no FK): a memory outlives the task it points at.
+    pub source_task_uuid: Option<Uuid>,
 }
 
 impl Item {
@@ -344,6 +347,27 @@ impl Item {
             created: now,
             modified: now,
             status: "active".to_string(),
+            source_task_uuid: None,
+        }
+    }
+
+    pub fn new_memory(title: String, body: String, source_task_uuid: Option<Uuid>) -> Self {
+        let now = Utc::now();
+        Item {
+            uuid: Uuid::new_v4(),
+            display_id: None,
+            kind: "memory".to_string(),
+            title,
+            url: None,
+            project: None,
+            tags: vec![],
+            path: None,
+            summary: None,
+            body,
+            created: now,
+            modified: now,
+            status: "active".to_string(),
+            source_task_uuid,
         }
     }
 
@@ -363,6 +387,7 @@ impl Item {
             created: now,
             modified: now,
             status: "active".to_string(),
+            source_task_uuid: None,
         }
     }
 

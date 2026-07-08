@@ -435,6 +435,15 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
              END;",
         ),
+        M::up(
+            // A memory can point back at the task it was learned from/about.
+            // Deliberately no FK/cascade: like items.project, this is a loose
+            // reference so a memory outlives the task it references rather
+            // than being silently orphaned or deleted if the task is removed.
+            "ALTER TABLE items ADD COLUMN source_task_uuid TEXT;
+             CREATE INDEX IF NOT EXISTS idx_items_source_task
+                ON items(source_task_uuid) WHERE source_task_uuid IS NOT NULL;",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -2646,6 +2655,9 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
         created: str_to_dt(&row.get::<_, String>(10)?).unwrap_or_else(|_| Utc::now()),
         modified: str_to_dt(&row.get::<_, String>(11)?).unwrap_or_else(|_| Utc::now()),
         status: row.get(12)?,
+        source_task_uuid: row
+            .get::<_, Option<String>>(13)?
+            .and_then(|s| Uuid::parse_str(&s).ok()),
     })
 }
 
@@ -2670,8 +2682,8 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
         .context("item path must be set before insert")?;
     let tags_json = serde_json::to_string(&item.tags)?;
     conn.execute(
-        "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+        "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
         rusqlite::params![
             item.uuid.to_string(),
             item.kind,
@@ -2686,6 +2698,7 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
             dt_to_str(&item.created),
             dt_to_str(&item.modified),
             item.status,
+            item.source_task_uuid.map(|u| u.to_string()),
         ],
     )?;
     set_item_tags(conn, &item.uuid, &item.tags)?;
@@ -2696,7 +2709,7 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     let mut items = vec![];
     if let Some(k) = kind {
         let mut stmt = conn.prepare(
-            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
              FROM items WHERE status = 'active' AND kind = ?1 ORDER BY display_id",
         )?;
         let rows = stmt.query_map([k], row_to_item)?;
@@ -2705,7 +2718,7 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
         }
     } else {
         let mut stmt = conn.prepare(
-            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
              FROM items WHERE status = 'active' ORDER BY kind, display_id",
         )?;
         let rows = stmt.query_map([], row_to_item)?;
@@ -2727,7 +2740,7 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     };
     let id: i64 = id_str.parse().context("Invalid item id")?;
     conn.query_row(
-        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
          FROM items WHERE kind = ?1 AND display_id = ?2 AND status = 'active'",
         rusqlite::params![kind, id],
         row_to_item,
@@ -2823,7 +2836,7 @@ pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
 pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
     let folded = fold_tag(tag);
     let mut stmt = conn.prepare(
-        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
          FROM items i JOIN item_tags it ON it.item_uuid = i.uuid
          WHERE i.status = 'active' AND it.tag = ?1 ORDER BY i.modified DESC",
     )?;
@@ -2838,7 +2851,7 @@ pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
 /// Active items referencing `project` (exact match, same casing as `projects.name`).
 pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
-        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
          FROM items i JOIN item_projects ip ON ip.item_uuid = i.uuid
          WHERE i.status = 'active' AND ip.project = ?1 ORDER BY i.modified DESC",
     )?;
@@ -2848,6 +2861,23 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
         items.push(r?);
     }
     Ok(items)
+}
+
+/// Task-linkage-derived confidence signal for ranking a memory in recall: a
+/// manually authored note with no source task stays at the baseline. A memory
+/// tied to a task is boosted, more so if that task actually completed
+/// (evidence the underlying approach worked) than if it's still pending or the
+/// source task can no longer be found (loose reference, may have been
+/// deleted/reset -- the memory still stands on its own, just without the boost).
+pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
+    let Some(source) = item.source_task_uuid else {
+        return 1.0;
+    };
+    match get_task_by_uuid_prefix(conn, &source.to_string()) {
+        Ok(Some(task)) if task.status == Status::Completed => 2.0,
+        Ok(Some(_)) => 1.5,
+        _ => 1.0,
+    }
 }
 
 pub fn record_event(
@@ -5038,6 +5068,56 @@ mod tests {
 
         assert!(search_fts(&conn, "original-marker-text", 10).unwrap().is_empty());
         assert_eq!(search_fts(&conn, "updated-marker-text", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn source_task_uuid_round_trips_through_insert() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+
+        let loaded = list_items(&conn, Some("memory")).unwrap();
+        assert_eq!(loaded[0].source_task_uuid, Some(task.uuid));
+    }
+
+    #[test]
+    fn item_strength_is_baseline_with_no_source_task() {
+        let conn = mem();
+        let item = make_memory("standalone", &[]);
+        assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn item_strength_is_boosted_for_a_completed_source_task() {
+        let conn = mem();
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 2.0);
+    }
+
+    #[test]
+    fn item_strength_is_moderately_boosted_for_a_pending_source_task() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 1.5);
+    }
+
+    #[test]
+    fn item_strength_falls_back_to_baseline_when_source_task_is_gone() {
+        let conn = mem();
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(Uuid::new_v4()));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 1.0);
     }
 
     #[test]
