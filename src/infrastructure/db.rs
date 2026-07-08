@@ -409,6 +409,32 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
              );
              CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
         ),
+        M::up(
+            // Index items (memories/notes/links) into the same FTS5 table used
+            // for tasks/annotations/anchors, namespaced as 'item_<kind>' (e.g.
+            // 'item_memory') so hits don't collide with the existing 'note'
+            // ref_kind (annotations). The update trigger only re-inserts when
+            // status='active', so archiving an item (sara forget) automatically
+            // drops it from search_index via the same UPDATE -- no separate
+            // cleanup step needed. task_uuid is reused to carry the item's own
+            // uuid since items aren't necessarily tied to one task.
+            "CREATE TRIGGER IF NOT EXISTS trg_items_ai AFTER INSERT ON items BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status = 'active';
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_items_au AFTER UPDATE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status = 'active';
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_items_ad AFTER DELETE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+             END;",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -3493,6 +3519,14 @@ mod tests {
                 name TEXT PRIMARY KEY, path TEXT, goal TEXT, stack TEXT,
                 conventions TEXT, notes TEXT, initialized_at TEXT, last_seen TEXT,
                 setup_cmd TEXT, test_cmd TEXT, lint_cmd TEXT, run_cmd TEXT
+            );
+            CREATE TABLE items (
+                uuid TEXT PRIMARY KEY, kind TEXT NOT NULL, display_id INTEGER,
+                title TEXT NOT NULL, url TEXT, project TEXT,
+                tags_json TEXT NOT NULL DEFAULT '[]', path TEXT NOT NULL,
+                summary TEXT, body TEXT NOT NULL DEFAULT '',
+                created TEXT NOT NULL, modified TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active'
             );",
         )
         .unwrap();
@@ -4911,6 +4945,61 @@ mod tests {
 
         assert_eq!(find_items_by_project(&conn, "web-app").unwrap().len(), 1);
         assert!(find_items_by_project(&conn, "Web-App").unwrap().is_empty());
+    }
+
+    #[test]
+    fn items_are_indexed_into_search_fts_under_a_namespaced_ref_kind() {
+        let conn = mem();
+        let mut item = make_memory("service-a auth quirk", &[]);
+        item.body = "service-a requires an X-Client-Id header".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "X-Client-Id", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].ref_kind, "item_memory");
+        assert_eq!(hits[0].task_uuid, item.uuid.to_string());
+    }
+
+    #[test]
+    fn item_ref_kind_does_not_collide_with_annotation_note_ref_kind() {
+        let conn = mem();
+        let task = seed_named_task(&conn, "unrelated task");
+        add_annotation_full(&conn, &task.uuid, "shared-term note", "comment", "human", None, None, false).unwrap();
+        let mut item = make_memory("shared-term memory", &[]);
+        item.body = "shared-term".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "shared-term", 10).unwrap();
+        let kinds: std::collections::HashSet<&str> = hits.iter().map(|h| h.ref_kind.as_str()).collect();
+        assert!(kinds.contains("note"));
+        assert!(kinds.contains("item_memory"));
+    }
+
+    #[test]
+    fn archiving_an_item_removes_it_from_search_fts() {
+        let conn = mem();
+        let mut item = make_memory("throwaway", &[]);
+        item.body = "ephemeral-marker-text".to_string();
+        insert_item(&conn, &mut item).unwrap();
+        assert_eq!(search_fts(&conn, "ephemeral-marker-text", 10).unwrap().len(), 1);
+
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(search_fts(&conn, "ephemeral-marker-text", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn updating_an_active_item_reindexes_its_new_text() {
+        let conn = mem();
+        let mut item = make_memory("original", &[]);
+        item.body = "original-marker-text".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        item.body = "updated-marker-text".to_string();
+        update_item(&conn, &item).unwrap();
+
+        assert!(search_fts(&conn, "original-marker-text", 10).unwrap().is_empty());
+        assert_eq!(search_fts(&conn, "updated-marker-text", 10).unwrap().len(), 1);
     }
 
     #[test]
