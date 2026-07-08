@@ -377,11 +377,24 @@ fn run() -> Result<()> {
             project,
             task,
         } => {
-            commands::learn::run(&conn, &cfg, &text.join(" "), &tag, &project, task.as_deref())?;
+            commands::learn::run(
+                &conn,
+                &cfg,
+                &text.join(" "),
+                &tag,
+                &project,
+                task.as_deref(),
+            )?;
         }
 
-        Command::Recall { query, limit, json } => {
-            commands::recall::run(&conn, &cfg, &query.join(" "), limit, json)?;
+        Command::Recall {
+            query,
+            tag,
+            project,
+            limit,
+            json,
+        } => {
+            commands::recall::run(&conn, &cfg, &query.join(" "), &tag, &project, limit, json)?;
         }
 
         Command::Assignment { id, text } => {

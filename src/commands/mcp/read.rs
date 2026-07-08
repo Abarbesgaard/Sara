@@ -65,11 +65,20 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Cross-task keyword search over descriptions, notes, and code anchors.")]
+    #[tool(
+        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups over learned memories."
+    )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
-                commands::recall::recall_value(conn, cfg, &p.query, p.limit.unwrap_or(20))
+                commands::recall::recall_value(
+                    conn,
+                    cfg,
+                    &p.query,
+                    p.tag.as_deref().unwrap_or(&[]),
+                    p.project.as_deref().unwrap_or(&[]),
+                    p.limit.unwrap_or(20),
+                )
             })
             .map_err(mcp_err)?;
         ok_json(v)

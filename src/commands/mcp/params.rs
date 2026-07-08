@@ -75,8 +75,16 @@ pub(crate) struct VerifyParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct RecallParams {
     pub(crate) project_path: Option<String>,
-    /// Search query (keyword / FTS).
+    /// Search query (keyword / FTS). Optional when `tag`/`project` narrow the
+    /// lookup instead; combines with them using AND when both are given.
+    #[serde(default)]
     pub(crate) query: String,
+    /// Exact tag match against indexed memory tags (a memory must carry every
+    /// tag given to match).
+    pub(crate) tag: Option<Vec<String>>,
+    /// Exact project match against indexed memory project references (a
+    /// memory matches if it references any of the given projects).
+    pub(crate) project: Option<Vec<String>>,
     /// Max results (default 20).
     pub(crate) limit: Option<i64>,
 }

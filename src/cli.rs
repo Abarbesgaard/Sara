@@ -416,11 +416,20 @@ pub enum Command {
         task: Option<String>,
     },
 
-    /// Cross-task memory: keyword search across tasks/findings/anchors
+    /// Cross-task memory: keyword search across tasks/findings/anchors, or an
+    /// exact `--tag`/`--project` lookup over learned memories
     Recall {
-        /// Search query
-        #[arg(required = true)]
+        /// Search query (optional when --tag/--project narrows the lookup;
+        /// combines with them using AND — both the filter and the text must match)
         query: Vec<String>,
+        /// Exact tag match against indexed memory tags (repeatable — a memory
+        /// must carry every tag given to match)
+        #[arg(long)]
+        tag: Vec<String>,
+        /// Exact project match against indexed memory project references
+        /// (repeatable — a memory matches if it references any of the given projects)
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Vec<String>,
         /// Max results
         #[arg(long, default_value_t = 20)]
         limit: i64,

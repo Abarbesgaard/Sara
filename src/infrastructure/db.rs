@@ -2750,6 +2750,20 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     .map_err(|_| anyhow::anyhow!("No active {kind} with id {id}"))
 }
 
+/// Look up an active item by its own uuid (as opposed to `get_item_by_handle`,
+/// which resolves the short `n1`/`l2`/`m3` display handle). Used by `recall`,
+/// where `search_index.task_uuid` carries the item's own uuid for item hits
+/// (see the `trg_items_*` triggers above).
+pub fn get_item_by_uuid(conn: &Connection, uuid: &str) -> Result<Item> {
+    conn.query_row(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE uuid = ?1 AND status = 'active'",
+        [uuid],
+        row_to_item,
+    )
+    .map_err(|_| anyhow::anyhow!("No active item with uuid {uuid}"))
+}
+
 pub fn update_item(conn: &Connection, item: &Item) -> Result<()> {
     let tags_json = serde_json::to_string(&item.tags)?;
     conn.execute(
@@ -2816,6 +2830,18 @@ pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String
         )?;
     }
     Ok(())
+}
+
+/// Whether any memory has ever been learned (active `items` row with
+/// kind='memory'). Used by `recall` to distinguish "no memories recorded yet"
+/// from "no matches for this specific query".
+pub fn has_any_memories(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM items WHERE kind = 'memory' AND status = 'active'",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 /// Known tag vocabulary across active items, with usage counts, for `sara tags`
@@ -5034,13 +5060,24 @@ mod tests {
     fn item_ref_kind_does_not_collide_with_annotation_note_ref_kind() {
         let conn = mem();
         let task = seed_named_task(&conn, "unrelated task");
-        add_annotation_full(&conn, &task.uuid, "shared-term note", "comment", "human", None, None, false).unwrap();
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "shared-term note",
+            "comment",
+            "human",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         let mut item = make_memory("shared-term memory", &[]);
         item.body = "shared-term".to_string();
         insert_item(&conn, &mut item).unwrap();
 
         let hits = search_fts(&conn, "shared-term", 10).unwrap();
-        let kinds: std::collections::HashSet<&str> = hits.iter().map(|h| h.ref_kind.as_str()).collect();
+        let kinds: std::collections::HashSet<&str> =
+            hits.iter().map(|h| h.ref_kind.as_str()).collect();
         assert!(kinds.contains("note"));
         assert!(kinds.contains("item_memory"));
     }
@@ -5051,11 +5088,20 @@ mod tests {
         let mut item = make_memory("throwaway", &[]);
         item.body = "ephemeral-marker-text".to_string();
         insert_item(&conn, &mut item).unwrap();
-        assert_eq!(search_fts(&conn, "ephemeral-marker-text", 10).unwrap().len(), 1);
+        assert_eq!(
+            search_fts(&conn, "ephemeral-marker-text", 10)
+                .unwrap()
+                .len(),
+            1
+        );
 
         archive_item(&conn, &item.uuid).unwrap();
 
-        assert!(search_fts(&conn, "ephemeral-marker-text", 10).unwrap().is_empty());
+        assert!(
+            search_fts(&conn, "ephemeral-marker-text", 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -5068,8 +5114,15 @@ mod tests {
         item.body = "updated-marker-text".to_string();
         update_item(&conn, &item).unwrap();
 
-        assert!(search_fts(&conn, "original-marker-text", 10).unwrap().is_empty());
-        assert_eq!(search_fts(&conn, "updated-marker-text", 10).unwrap().len(), 1);
+        assert!(
+            search_fts(&conn, "original-marker-text", 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            search_fts(&conn, "updated-marker-text", 10).unwrap().len(),
+            1
+        );
     }
 
     #[test]
