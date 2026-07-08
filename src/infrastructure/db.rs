@@ -386,6 +386,29 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 Ok(())
             },
         ),
+        M::up(
+            // Normalized tag/project index for items (memories, notes, links),
+            // additive to items.tags_json (kept for rendering). Tags are stored
+            // case-folded (lowercase) so "service-a" and "serviceA" collide into
+            // one vocabulary entry instead of fragmenting recall/`sara tags`.
+            // Projects are stored as-is: they must match `projects.name` exactly,
+            // which is itself case-sensitive (derived from repo folder names).
+            "CREATE TABLE IF NOT EXISTS item_tags (
+                item_uuid TEXT NOT NULL,
+                tag       TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, tag),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag);
+
+             CREATE TABLE IF NOT EXISTS item_projects (
+                item_uuid TEXT NOT NULL,
+                project   TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, project),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -2639,6 +2662,7 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
             item.status,
         ],
     )?;
+    set_item_tags(conn, &item.uuid, &item.tags)?;
     Ok(())
 }
 
@@ -2702,6 +2726,7 @@ pub fn update_item(conn: &Connection, item: &Item) -> Result<()> {
             dt_to_str(&item.modified),
         ],
     )?;
+    set_item_tags(conn, &item.uuid, &item.tags)?;
     Ok(())
 }
 
@@ -2711,6 +2736,92 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
         rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
     )?;
     Ok(())
+}
+
+fn fold_tag(tag: &str) -> String {
+    tag.trim().to_lowercase()
+}
+
+/// Replace an item's normalized tag set. Case-folded so "service-a" and
+/// "serviceA" collide into one vocabulary entry.
+pub fn set_item_tags(conn: &Connection, item_uuid: &Uuid, tags: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_tags WHERE item_uuid = ?1", [&uuid])?;
+    for tag in tags {
+        let folded = fold_tag(tag);
+        if folded.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_tags (item_uuid, tag) VALUES (?1, ?2)",
+            rusqlite::params![uuid, folded],
+        )?;
+    }
+    Ok(())
+}
+
+/// Replace an item's project references (a memory can reference more than one).
+pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_projects WHERE item_uuid = ?1", [&uuid])?;
+    for project in projects {
+        let trimmed = project.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_projects (item_uuid, project) VALUES (?1, ?2)",
+            rusqlite::params![uuid, trimmed],
+        )?;
+    }
+    Ok(())
+}
+
+/// Known tag vocabulary across active items, with usage counts, for `sara tags`
+/// (discoverability) and exact `--tag` recall filters.
+pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT it.tag, COUNT(*) FROM item_tags it
+         JOIN items i ON i.uuid = it.item_uuid
+         WHERE i.status = 'active'
+         GROUP BY it.tag ORDER BY COUNT(*) DESC, it.tag ASC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Active items whose normalized tag set contains `tag` (case-folded exact match).
+pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
+    let folded = fold_tag(tag);
+    let mut stmt = conn.prepare(
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status
+         FROM items i JOIN item_tags it ON it.item_uuid = i.uuid
+         WHERE i.status = 'active' AND it.tag = ?1 ORDER BY i.modified DESC",
+    )?;
+    let rows = stmt.query_map([folded], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
+}
+
+/// Active items referencing `project` (exact match, same casing as `projects.name`).
+pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status
+         FROM items i JOIN item_projects ip ON ip.item_uuid = i.uuid
+         WHERE i.status = 'active' AND ip.project = ?1 ORDER BY i.modified DESC",
+    )?;
+    let rows = stmt.query_map([project], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
 }
 
 pub fn record_event(
@@ -4733,5 +4844,86 @@ mod tests {
             "https://github.com/org/repo/issues/3#issuecomment-77"
         );
         assert_eq!(loaded[0].updated_at, c.updated_at);
+    }
+
+    fn make_memory(title: &str, tags: &[&str]) -> Item {
+        let mut item = Item::new_note(title.to_string(), "body".to_string());
+        item.kind = "memory".to_string();
+        item.path = Some(String::new());
+        item.tags = tags.iter().map(|t| t.to_string()).collect();
+        item
+    }
+
+    #[test]
+    fn insert_item_case_folds_tags_into_item_tags() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["Service-A", "API"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let counts = list_tags_with_counts(&conn).unwrap();
+        let tags: Vec<&str> = counts.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(tags.contains(&"service-a"));
+        assert!(tags.contains(&"api"));
+        assert!(!tags.contains(&"Service-A"));
+    }
+
+    #[test]
+    fn differently_cased_tags_collide_into_one_vocabulary_entry() {
+        let conn = mem();
+        let mut a = make_memory("m1", &["service-a"]);
+        let mut b = make_memory("m2", &["Service-A"]);
+        insert_item(&conn, &mut a).unwrap();
+        insert_item(&conn, &mut b).unwrap();
+
+        let counts = list_tags_with_counts(&conn).unwrap();
+        assert_eq!(counts, vec![("service-a".to_string(), 2)]);
+    }
+
+    #[test]
+    fn find_items_by_tag_matches_case_insensitively() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["Service-A"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let found = find_items_by_tag(&conn, "SERVICE-A").unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].uuid, item.uuid);
+    }
+
+    #[test]
+    fn set_item_tags_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["old"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        set_item_tags(&conn, &item.uuid, &["new".to_string()]).unwrap();
+
+        assert!(find_items_by_tag(&conn, "old").unwrap().is_empty());
+        assert_eq!(find_items_by_tag(&conn, "new").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn find_items_by_project_matches_exact_case() {
+        let conn = mem();
+        let mut item = make_memory("m1", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_projects(&conn, &item.uuid, &["web-app".to_string()]).unwrap();
+
+        assert_eq!(find_items_by_project(&conn, "web-app").unwrap().len(), 1);
+        assert!(find_items_by_project(&conn, "Web-App").unwrap().is_empty());
+    }
+
+    #[test]
+    fn archived_items_are_excluded_from_tag_and_project_lookups() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["gone"]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_projects(&conn, &item.uuid, &["repo".to_string()]).unwrap();
+
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(find_items_by_tag(&conn, "gone").unwrap().is_empty());
+        assert!(find_items_by_project(&conn, "repo").unwrap().is_empty());
+        assert!(list_tags_with_counts(&conn).unwrap().is_empty());
     }
 }
