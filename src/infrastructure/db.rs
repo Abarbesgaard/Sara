@@ -4382,6 +4382,44 @@ mod tests {
         assert!(hits.iter().any(|h| h.task_uuid == task.uuid.to_string()));
     }
 
+    #[test]
+    fn search_fts_tolerates_hyphenated_service_name_query() {
+        let conn = mem();
+        let mut item = make_memory("service-a note", &[]);
+        item.body = "service-a requires an X-Client-Id header".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        // A bare hyphenated word must not be parsed as column-filter/NOT syntax.
+        let hits = search_fts(&conn, "service-a", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn search_fts_treats_boolean_keywords_as_literal_text() {
+        let conn = mem();
+        let mut item = make_memory("config and setup notes", &[]);
+        item.body = "config-and-setup guide".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        // Must not error out or be parsed as an FTS5 boolean expression.
+        let hits = search_fts(&conn, "config-and-setup", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        let hits = search_fts(&conn, "AND OR NOT", 10).unwrap();
+        assert!(hits.is_empty(), "no crash on bare boolean keywords");
+    }
+
+    #[test]
+    fn search_fts_tolerates_wildcard_and_empty_queries() {
+        let conn = mem();
+        let mut item = make_memory("wildcard note", &[]);
+        item.body = "some content".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(search_fts(&conn, "*", 10).is_ok());
+        assert!(search_fts(&conn, "", 10).is_ok());
+        assert!(search_fts(&conn, "-", 10).is_ok());
+    }
+
     // ── dependency closure ──────────────────────────────────────────────────
 
     #[test]
