@@ -1,5 +1,10 @@
 mod input;
 mod persist;
+mod similar;
+
+/// How many prior tasks/notes to surface as "similar past work" before creating
+/// a new task. Kept small since these are informational, not a hard gate.
+const SIMILAR_LIMIT: i64 = 5;
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -35,6 +40,24 @@ pub fn run(
         println!("Cancelled.");
         return Ok(());
     };
+
+    match similar::find_similar(conn, &form.description, SIMILAR_LIMIT) {
+        Ok(hits) if !hits.is_empty() => {
+            println!("Similar past work found — consider reusing instead of starting fresh:");
+            for hit in &hits {
+                println!(
+                    "  [{}] task {} ({}): {}",
+                    hit["ref_kind"].as_str().unwrap_or(""),
+                    hit["task"].as_i64().unwrap_or(0),
+                    hit["description"].as_str().unwrap_or(""),
+                    hit["snippet"].as_str().unwrap_or("")
+                );
+            }
+            println!();
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("Warning: recall check failed: {e}"),
+    }
 
     let task = persist::save(
         conn,
@@ -87,6 +110,8 @@ pub fn run_value(
         anyhow::bail!("task creation was cancelled");
     };
 
+    let similar = similar::find_similar(conn, &form.description, SIMILAR_LIMIT).unwrap_or_default();
+
     let task: Task = persist::save(
         conn,
         cfg,
@@ -103,6 +128,7 @@ pub fn run_value(
         "uuid": task.uuid.to_string(),
         "project": task.project,
         "description": task.description,
+        "similar": similar,
     }))
 }
 
