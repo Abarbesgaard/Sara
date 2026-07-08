@@ -376,6 +376,7 @@ fn run() -> Result<()> {
             tag,
             project,
             task,
+            force,
         } => {
             commands::learn::run(
                 &conn,
@@ -384,6 +385,7 @@ fn run() -> Result<()> {
                 &tag,
                 &project,
                 task.as_deref(),
+                force,
             )?;
         }
 

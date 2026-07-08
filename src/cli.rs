@@ -414,6 +414,9 @@ pub enum Command {
         /// Task uuid prefix this memory was learned from/about
         #[arg(long, add = ArgValueCandidates::new(task_ids))]
         task: Option<String>,
+        /// Skip the size and secret-pattern warnings and save anyway
+        #[arg(long)]
+        force: bool,
     },
 
     /// Cross-task memory: keyword search across tasks/findings/anchors, or an
