@@ -399,6 +399,10 @@ fn run() -> Result<()> {
             commands::recall::run(&conn, &cfg, &query.join(" "), &tag, &project, limit, json)?;
         }
 
+        Command::Forget { handle, .. } => {
+            commands::forget::run(&conn, &handle)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

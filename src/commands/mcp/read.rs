@@ -105,4 +105,47 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(description = "List all tag vocabulary with usage counts across active memories.")]
+    fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp tags", |conn, _cfg| {
+                let counts = crate::infrastructure::db::list_tags_with_counts(conn)?;
+                Ok(serde_json::json!(
+                    counts
+                        .into_iter()
+                        .map(|(tag, count)| serde_json::json!({ "tag": tag, "count": count }))
+                        .collect::<Vec<_>>()
+                ))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "List all known projects with their metadata, task counts, and last activity."
+    )]
+    fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp projects", |conn, _cfg| {
+                let names = crate::infrastructure::db::project_names(conn)?;
+                let mut rows = Vec::with_capacity(names.len());
+                for name in names {
+                    let profile = crate::infrastructure::db::get_project(conn, &name)?;
+                    let stats = crate::infrastructure::db::project_stats(conn, &name)?;
+                    let last = crate::infrastructure::db::project_last_activity(conn, &name)?;
+                    rows.push(serde_json::json!({
+                        "name": name,
+                        "goal": profile.as_ref().and_then(|p| p.goal.as_deref()),
+                        "stack": profile.as_ref().and_then(|p| p.stack.as_deref()),
+                        "pending": stats.pending,
+                        "done": stats.completed_total,
+                        "last_activity": last.map(|d| d.to_rfc3339()),
+                    }));
+                }
+                Ok(serde_json::Value::Array(rows))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

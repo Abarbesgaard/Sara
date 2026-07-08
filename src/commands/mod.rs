@@ -7,6 +7,7 @@ pub mod delete;
 pub mod dep;
 pub mod done;
 pub mod export;
+pub mod forget;
 pub mod guide;
 pub mod import;
 pub mod info;

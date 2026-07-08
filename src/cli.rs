@@ -441,6 +441,15 @@ pub enum Command {
         json: bool,
     },
 
+    /// Archive (forget) a memory by its label — e.g. `sara forget m3`
+    Forget {
+        /// Memory label, e.g. m3 (from `sara learn` output or `sara recall`)
+        handle: String,
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        yes: bool,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix

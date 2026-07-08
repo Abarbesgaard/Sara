@@ -165,4 +165,38 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Remove a link from a task by its sequential link id (shown in `sara info`)."
+    )]
+    fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp unlink", |conn, _cfg| {
+                commands::annotate::unlink_value(conn, p.link_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`)."
+    )]
+    fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp denotate", |conn, _cfg| {
+                commands::annotate::denotate_value(conn, p.annotation_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Move a task to a different project.")]
+    fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {
+                commands::move_task::move_value(conn, cfg, &p.id, &p.project)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

@@ -28,11 +28,16 @@ pub fn link(conn: &Connection, id_or_uuid: &str, url: &str, label: Option<&str>)
     Ok(())
 }
 
-pub fn unlink(conn: &Connection, link_id: i64) -> Result<()> {
+pub fn unlink_value(conn: &Connection, link_id: i64) -> Result<Value> {
     if db::delete_link(conn, link_id)? {
-        println!("Removed link {link_id}.");
+        Ok(json!({ "link_id": link_id, "removed": true }))
     } else {
-        anyhow::bail!("No link with id {link_id}");
+        anyhow::bail!("No link with id {link_id}")
     }
+}
+
+pub fn unlink(conn: &Connection, link_id: i64) -> Result<()> {
+    unlink_value(conn, link_id)?;
+    println!("Removed link {link_id}.");
     Ok(())
 }

@@ -248,3 +248,58 @@ pub(crate) struct AttachParams {
     /// Provenance: "ai" marks it suggested; anything else is manual.
     pub(crate) source: Option<String>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct LearnParams {
+    pub(crate) project_path: Option<String>,
+    /// The memory text (a concise distilled paragraph — one key insight).
+    pub(crate) text: String,
+    /// Tags for lookup (repeatable). Prefer existing tags — check `sara tags` first.
+    pub(crate) tags: Option<Vec<String>>,
+    /// Projects this memory references. Defaults to the current project.
+    pub(crate) projects: Option<Vec<String>>,
+    /// UUID prefix of the task this memory was learned from/about.
+    pub(crate) task: Option<String>,
+    /// Skip size and secret-pattern guardrails (use only when content is safe).
+    pub(crate) force: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ForgetParams {
+    pub(crate) project_path: Option<String>,
+    /// Memory label to archive, e.g. "m3". Get labels from `recall` output.
+    pub(crate) handle: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct TagsParams {
+    pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ProjectsParams {
+    pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct UnlinkParams {
+    pub(crate) project_path: Option<String>,
+    /// Sequential link id shown in `sara info` (the number before the URL).
+    pub(crate) link_id: i64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct DenotateParams {
+    pub(crate) project_path: Option<String>,
+    /// Sequential annotation id shown in `sara info` (the number before the text).
+    pub(crate) annotation_id: i64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct MoveTaskParams {
+    pub(crate) project_path: Option<String>,
+    /// Task id or 8-char uuid prefix.
+    pub(crate) id: String,
+    /// Name of the target project.
+    pub(crate) project: String,
+}

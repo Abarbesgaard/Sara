@@ -183,4 +183,38 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary."
+    )]
+    fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, ErrorData> {
+        let tags = p.tags.unwrap_or_default();
+        let projects = p.projects.unwrap_or_default();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
+                commands::learn::learn_value(
+                    conn,
+                    cfg,
+                    &p.text,
+                    &tags,
+                    &projects,
+                    p.task.as_deref(),
+                    p.force.unwrap_or(false),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong."
+    )]
+    fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp forget", |conn, _cfg| {
+                commands::forget::forget_value(conn, &p.handle)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

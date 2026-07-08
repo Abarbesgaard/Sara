@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
@@ -23,22 +24,38 @@ pub fn run(
     task: Option<&str>,
     force: bool,
 ) -> Result<()> {
-    let text = text.trim();
+    let v = learn_value(conn, cfg, text, tags, projects, task, force)?;
+    println!(
+        "Learned {} ({}): {}",
+        v["label"].as_str().unwrap_or("m?"),
+        v["uuid"].as_str().unwrap_or(""),
+        v["text"].as_str().unwrap_or(""),
+    );
+    Ok(())
+}
 
+/// Print-free core shared by the CLI `learn` command and the MCP `learn` tool.
+pub fn learn_value(
+    conn: &Connection,
+    cfg: &Config,
+    text: &str,
+    tags: &[String],
+    projects: &[String],
+    task: Option<&str>,
+    force: bool,
+) -> Result<Value> {
+    let text = text.trim();
     if !force {
         check_size(text)?;
         check_secrets(text)?;
     }
-
     let item = save(conn, cfg, text, tags, projects, task)?;
-
-    println!(
-        "Learned m{} ({}): {}",
-        item.display_id.unwrap_or(0),
-        &item.uuid.to_string()[..8],
-        summarize(text)
-    );
-    Ok(())
+    Ok(json!({
+        "label": format!("m{}", item.display_id.unwrap_or(0)),
+        "uuid": &item.uuid.to_string()[..8],
+        "text": summarize(text),
+        "tags": item.tags,
+    }))
 }
 
 /// Warn (and abort) when the body is too long to be a distilled paragraph.

@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 27, "expected 27 tools, got {names:?}");
+    assert_eq!(names.len(), 34, "expected 34 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -40,6 +40,8 @@ fn exposes_the_agent_loop_tools() {
         "recall",
         "feedback",
         "plan_show",
+        "tags",
+        "projects",
         // mutate (create / guide)
         "add",
         "step_done",
@@ -51,9 +53,13 @@ fn exposes_the_agent_loop_tools() {
         "assignment",
         "rationale",
         "attach",
+        "learn",
+        "forget",
         // completion / edit / lifecycle
         "done",
         "link",
+        "unlink",
+        "denotate",
         "dep",
         "validate",
         "modify",
@@ -61,6 +67,7 @@ fn exposes_the_agent_loop_tools() {
         "record_run",
         "start",
         "stop",
+        "move_task",
     ] {
         assert!(
             names.iter().any(|n| n == expected),

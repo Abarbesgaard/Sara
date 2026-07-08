@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
@@ -104,11 +105,16 @@ pub fn annotate(
     Ok(())
 }
 
-pub fn denotate(conn: &Connection, annotation_id: i64) -> Result<()> {
+pub fn denotate_value(conn: &Connection, annotation_id: i64) -> Result<Value> {
     if db::delete_annotation(conn, annotation_id)? {
-        println!("Removed annotation {annotation_id}.");
+        Ok(json!({ "annotation_id": annotation_id, "removed": true }))
     } else {
-        anyhow::bail!("No annotation with id {annotation_id}");
+        anyhow::bail!("No annotation with id {annotation_id}")
     }
+}
+
+pub fn denotate(conn: &Connection, annotation_id: i64) -> Result<()> {
+    denotate_value(conn, annotation_id)?;
+    println!("Removed annotation {annotation_id}.");
     Ok(())
 }
