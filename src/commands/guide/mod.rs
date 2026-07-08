@@ -596,7 +596,9 @@ pub fn record_run_value(
 ) -> Result<serde_json::Value> {
     anyhow::ensure!(!kind.trim().is_empty(), "kind cannot be empty");
     let task = db::resolve_task(conn, id)?;
-    let run_id = db::record_ai_run(conn, &task.uuid, kind, model, provider, prompt, response)?;
+    let run_id = db::record_ai_run(
+        conn, &task.uuid, kind, model, provider, prompt, response, None, None, None,
+    )?;
     Ok(json!({
         "task": task.id,
         "run_id": run_id,

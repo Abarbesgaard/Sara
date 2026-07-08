@@ -444,6 +444,13 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_items_source_task
                 ON items(source_task_uuid) WHERE source_task_uuid IS NOT NULL;",
         ),
+        M::up(
+            // Token usage columns for task_ai_runs — all nullable so existing
+            // rows and callers that don't supply token counts stay valid.
+            "ALTER TABLE task_ai_runs ADD COLUMN prompt_tokens     INTEGER;
+             ALTER TABLE task_ai_runs ADD COLUMN completion_tokens INTEGER;
+             ALTER TABLE task_ai_runs ADD COLUMN total_tokens      INTEGER;",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -3147,6 +3154,9 @@ pub struct AiRun {
     pub model: Option<String>,
     pub provider: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
 }
 
 /// Record one LLM interaction against a task; returns the run id.
@@ -3158,10 +3168,13 @@ pub fn record_ai_run(
     provider: Option<&str>,
     prompt: Option<&str>,
     response_json: Option<&str>,
+    prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
+    total_tokens: Option<i64>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO task_ai_runs (task_uuid, kind, model, provider, prompt, response_json, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        "INSERT INTO task_ai_runs (task_uuid, kind, model, provider, prompt, response_json, created_at, prompt_tokens, completion_tokens, total_tokens)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             task_uuid.to_string(),
             kind,
@@ -3170,6 +3183,9 @@ pub fn record_ai_run(
             prompt,
             response_json,
             dt_to_str(&Utc::now()),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -3177,7 +3193,7 @@ pub fn record_ai_run(
 
 pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
     let mut stmt = conn.prepare(
-        "SELECT id, kind, model, provider, created_at FROM task_ai_runs
+        "SELECT id, kind, model, provider, created_at, prompt_tokens, completion_tokens, total_tokens FROM task_ai_runs
          WHERE task_uuid=?1 ORDER BY created_at ASC, id ASC",
     )?;
     let rows = stmt
@@ -3189,6 +3205,9 @@ pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
                 model: r.get(2)?,
                 provider: r.get(3)?,
                 created_at: str_to_dt(&at).unwrap_or_else(|_| Utc::now()),
+                prompt_tokens: r.get(5)?,
+                completion_tokens: r.get(6)?,
+                total_tokens: r.get(7)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -3585,6 +3604,16 @@ mod tests {
                 summary TEXT, body TEXT NOT NULL DEFAULT '',
                 created TEXT NOT NULL, modified TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active'
+            );
+            CREATE TABLE task_ai_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid     TEXT NOT NULL,
+                kind          TEXT NOT NULL,
+                model         TEXT,
+                provider      TEXT,
+                prompt        TEXT,
+                response_json TEXT,
+                created_at    TEXT NOT NULL
             );",
         )
         .unwrap();
@@ -4331,17 +4360,28 @@ mod tests {
             Some("azure"),
             Some("prompt"),
             Some("{}"),
+            Some(100),
+            Some(200),
+            Some(300),
         )
         .unwrap();
-        let r2 = record_ai_run(&conn, &task.uuid, "refine", None, None, None, None).unwrap();
+        let r2 = record_ai_run(
+            &conn, &task.uuid, "refine", None, None, None, None, None, None, None,
+        )
+        .unwrap();
         assert!(r2 > r1);
 
         let runs = get_ai_runs(&conn, &task.uuid).unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0].kind, "enrich");
         assert_eq!(runs[0].model.as_deref(), Some("opus"));
+        assert_eq!(runs[0].prompt_tokens, Some(100));
+        assert_eq!(runs[0].completion_tokens, Some(200));
+        assert_eq!(runs[0].total_tokens, Some(300));
         assert_eq!(runs[1].kind, "refine");
         assert!(runs[1].model.is_none());
+        assert!(runs[1].prompt_tokens.is_none());
+        assert!(runs[1].total_tokens.is_none());
     }
 
     // ── feedback lifecycle ──────────────────────────────────────────────────
