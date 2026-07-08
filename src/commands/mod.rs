@@ -11,6 +11,7 @@ pub mod guide;
 pub mod import;
 pub mod info;
 pub mod init;
+pub mod learn;
 pub mod list;
 pub mod mcp;
 pub mod modify;

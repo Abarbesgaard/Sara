@@ -2735,8 +2735,10 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
         ("note", rest)
     } else if let Some(rest) = handle.strip_prefix('l') {
         ("link", rest)
+    } else if let Some(rest) = handle.strip_prefix('m') {
+        ("memory", rest)
     } else {
-        anyhow::bail!("Item handle must start with n or l (e.g. n1, l2)");
+        anyhow::bail!("Item handle must start with n, l, or m (e.g. n1, l2, m3)");
     };
     let id: i64 = id_str.parse().context("Invalid item id")?;
     conn.query_row(

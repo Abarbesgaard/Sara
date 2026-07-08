@@ -399,6 +399,23 @@ pub enum Command {
         run: bool,
     },
 
+    /// Save a distilled, freeform memory for future recall (global, not
+    /// task/project-scoped: it references projects rather than belonging to one)
+    Learn {
+        /// The memory text (a short distilled paragraph)
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+        /// Tag (repeatable)
+        #[arg(long, short)]
+        tag: Vec<String>,
+        /// Project this memory references (repeatable; defaults to the current project)
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Vec<String>,
+        /// Task uuid prefix this memory was learned from/about
+        #[arg(long, add = ArgValueCandidates::new(task_ids))]
+        task: Option<String>,
+    },
+
     /// Cross-task memory: keyword search across tasks/findings/anchors
     Recall {
         /// Search query

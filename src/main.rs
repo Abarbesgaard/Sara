@@ -371,6 +371,15 @@ fn run() -> Result<()> {
             commands::guide::verify(&conn, &cfg, &id, step, run)?;
         }
 
+        Command::Learn {
+            text,
+            tag,
+            project,
+            task,
+        } => {
+            commands::learn::run(&conn, &cfg, &text.join(" "), &tag, &project, task.as_deref())?;
+        }
+
         Command::Recall { query, limit, json } => {
             commands::recall::run(&conn, &cfg, &query.join(" "), limit, json)?;
         }
