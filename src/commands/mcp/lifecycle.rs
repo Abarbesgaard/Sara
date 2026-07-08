@@ -122,6 +122,9 @@ impl SaraServer {
         description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
     )]
     fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, ErrorData> {
+        let total = p
+            .total_tokens
+            .or_else(|| p.prompt_tokens.zip(p.completion_tokens).map(|(a, b)| a + b));
         let v = self
             .with_project(p.project_path.as_deref(), "mcp record_run", |conn, _cfg| {
                 commands::guide::record_run_value(
@@ -132,6 +135,9 @@ impl SaraServer {
                     p.provider.as_deref(),
                     p.prompt.as_deref(),
                     p.response.as_deref(),
+                    p.prompt_tokens,
+                    p.completion_tokens,
+                    total,
                 )
             })
             .map_err(mcp_err)?;

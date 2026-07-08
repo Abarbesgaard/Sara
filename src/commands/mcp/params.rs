@@ -207,6 +207,12 @@ pub(crate) struct RecordRunParams {
     pub(crate) prompt: Option<String>,
     /// A summary of the model's response (stored, not displayed in `sara info`).
     pub(crate) response: Option<String>,
+    /// Number of prompt/input tokens used by the model.
+    pub(crate) prompt_tokens: Option<i64>,
+    /// Number of completion/output tokens used by the model.
+    pub(crate) completion_tokens: Option<i64>,
+    /// Total tokens used (prompt + completion). If omitted, computed from the other two when both are present.
+    pub(crate) total_tokens: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

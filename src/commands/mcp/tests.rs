@@ -456,6 +456,9 @@ fn record_run_then_resolve_links_the_run_id() {
                 Some("cursor"),
                 None,
                 None,
+                None,
+                None,
+                None,
             )
         })
         .expect("record_run");
