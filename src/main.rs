@@ -419,6 +419,10 @@ fn run() -> Result<()> {
             commands::forget::run(&conn, &handle)?;
         }
 
+        Command::Tags { json } => {
+            commands::tags::run(&conn, json)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

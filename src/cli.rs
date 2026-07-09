@@ -463,6 +463,13 @@ pub enum Command {
         yes: bool,
     },
 
+    /// List all memory tags with usage counts (most-used first)
+    Tags {
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix
