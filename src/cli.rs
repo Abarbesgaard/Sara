@@ -470,6 +470,13 @@ pub enum Command {
         json: bool,
     },
 
+    /// Browse all saved memories, newest first, with strength label
+    Memories {
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix

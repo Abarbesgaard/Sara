@@ -423,6 +423,10 @@ fn run() -> Result<()> {
             commands::tags::run(&conn, json)?;
         }
 
+        Command::Memories { json } => {
+            commands::memories::run(&conn, json)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

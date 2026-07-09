@@ -2762,6 +2762,22 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     Ok(items)
 }
 
+/// All active memories (`kind = 'memory'`), sorted newest-created first.
+/// Use this for the `sara memories` browse command — display_id order is not
+/// guaranteed to match creation order, so sort explicitly on `created`.
+pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE status = 'active' AND kind = 'memory' ORDER BY created DESC",
+    )?;
+    let rows = stmt.query_map([], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
+}
+
 pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     let handle = handle.trim().to_lowercase();
     let (kind, id_str) = if let Some(rest) = handle.strip_prefix('n') {
