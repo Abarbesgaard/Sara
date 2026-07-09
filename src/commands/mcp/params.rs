@@ -312,3 +312,27 @@ pub(crate) struct MoveTaskParams {
     /// Name of the target project.
     pub(crate) project: String,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct LinkMemoryParams {
+    pub(crate) project_path: Option<String>,
+    /// Source memory label (e.g. "m12") or 8-char uuid prefix.
+    pub(crate) from: String,
+    /// Relation type: supersedes | similar_to | derived_from | used_in
+    pub(crate) relation: String,
+    /// Target memory label (e.g. "m7") or 8-char uuid prefix.
+    pub(crate) to: String,
+    /// Edge weight (default 1.0).
+    pub(crate) weight: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct UnlinkMemoryParams {
+    pub(crate) project_path: Option<String>,
+    /// Source memory label (e.g. "m12") or 8-char uuid prefix.
+    pub(crate) from: String,
+    /// Relation type: supersedes | similar_to | derived_from | used_in
+    pub(crate) relation: String,
+    /// Target memory label (e.g. "m7") or 8-char uuid prefix.
+    pub(crate) to: String,
+}

@@ -37,6 +37,9 @@ struct Hit {
     files: Vec<String>,
     /// Tasks linked to this memory: (task, source "auto"|"explicit").
     linked_tasks: Vec<(Task, String)>,
+    /// Labels of memories that supersede this one (incoming `supersedes` edges).
+    /// Non-empty means this memory may be stale — the superseding memory is more current.
+    superseded_by: Vec<String>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -72,6 +75,7 @@ pub fn recall_value(
                 "exact_match": h.exact_match,
                 "modified": h.modified.map(|m| m.to_rfc3339()),
                 "files": h.files,
+                "superseded_by": h.superseded_by,
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
                     "description": t.description,
@@ -222,8 +226,13 @@ pub fn run(
                     .collect();
                 format!(" [via tasks: {}]", parts.join(", "))
             };
+            let superseded_str = if h.superseded_by.is_empty() {
+                String::new()
+            } else {
+                format!(" ⚠ superseded by: {}", h.superseded_by.join(", "))
+            };
             println!(
-                "  [{}] {} {} {}: {}{}{}{}",
+                "  [{}] {} {} {}: {}{}{}{}{}",
                 h.ref_kind,
                 marker,
                 h.label,
@@ -231,6 +240,7 @@ pub fn run(
                 h.snippet.trim(),
                 files_str,
                 tasks_str,
+                superseded_str,
                 if age.is_empty() {
                     String::new()
                 } else {
@@ -421,6 +431,7 @@ fn collect_hits(
                     modified,
                     files: vec![],
                     linked_tasks: vec![],
+                    superseded_by: vec![],
                 });
             }
         }
@@ -456,6 +467,19 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .collect();
     let files = db::get_item_files(conn, &item.uuid).unwrap_or_default();
     let linked_tasks = db::get_item_task_links(conn, &item.uuid).unwrap_or_default();
+    // Check for incoming `supersedes` edges — means this memory may be stale.
+    let superseded_by: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "supersedes")
+        .map(|l| {
+            // Resolve the from_uuid to a label like "m12".
+            db::get_item_by_uuid(conn, &l.from_uuid)
+                .ok()
+                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .unwrap_or_else(|| l.from_uuid[..8].to_string())
+        })
+        .collect();
     Hit {
         ref_kind: format!("item_{}", item.kind),
         strength: db::item_strength(conn, &item),
@@ -466,6 +490,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         modified: Some(item.modified),
         files,
         linked_tasks,
+        superseded_by,
     }
 }
 

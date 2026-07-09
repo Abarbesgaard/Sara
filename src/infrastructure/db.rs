@@ -475,6 +475,27 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
              );
              CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
         ),
+        M::up(
+            // memory_links: typed directed edges between memories (items) or
+            // between a memory and a task. Relation types:
+            //   supersedes   — from is the newer/correct version, to is outdated
+            //   similar_to   — informational similarity (bidirectional intent)
+            //   derived_from — from was derived/synthesised from to
+            //   used_in      — from (memory) was used in to (task)
+            // Unique on (from_uuid, to_uuid, relation) — dedup enforced at DB level.
+            // Weight (default 1.0) reserved for future confidence tuning.
+            "CREATE TABLE IF NOT EXISTS memory_links (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_uuid TEXT    NOT NULL,
+                to_uuid   TEXT    NOT NULL,
+                relation  TEXT    NOT NULL,
+                weight    REAL    NOT NULL DEFAULT 1.0,
+                created   TEXT    NOT NULL,
+                UNIQUE (from_uuid, to_uuid, relation)
+             );
+             CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links(from_uuid);
+             CREATE INDEX IF NOT EXISTS idx_memory_links_to   ON memory_links(to_uuid);",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -3018,6 +3039,151 @@ pub fn get_item_task_links(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<(T
         result.push(r?);
     }
     Ok(result)
+}
+
+// ── memory_links ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct MemoryLink {
+    pub id: i64,
+    pub from_uuid: String,
+    pub to_uuid: String,
+    pub relation: String,
+    pub weight: f64,
+}
+
+/// Valid relation types for `memory_links`.
+pub const MEMORY_LINK_RELATIONS: &[&str] = &[
+    "supersedes",
+    "similar_to",
+    "derived_from",
+    "used_in",
+];
+
+/// Insert a typed directed edge between two memories/tasks.
+/// Enforces:
+///   - Relation must be one of the known types.
+///   - Dedup: (from, to, relation) is unique at DB level; duplicate inserts are ignored.
+///   - Cycle guard for directed hierarchies (`supersedes`, `derived_from`):
+///     refuses if a path from `to_uuid` back to `from_uuid` already exists.
+pub fn insert_memory_link(
+    conn: &Connection,
+    from_uuid: &str,
+    to_uuid: &str,
+    relation: &str,
+    weight: f64,
+) -> Result<()> {
+    if !MEMORY_LINK_RELATIONS.contains(&relation) {
+        anyhow::bail!(
+            "Unknown relation '{}'. Valid types: {}",
+            relation,
+            MEMORY_LINK_RELATIONS.join(", ")
+        );
+    }
+    if from_uuid == to_uuid {
+        anyhow::bail!("A memory cannot link to itself.");
+    }
+    // Cycle guard for hierarchical relations.
+    if matches!(relation, "supersedes" | "derived_from") {
+        if memory_link_path_exists(conn, to_uuid, from_uuid)? {
+            anyhow::bail!(
+                "Inserting this link would create a cycle \
+                 (a path from '{}' to '{}' already exists).",
+                to_uuid, from_uuid
+            );
+        }
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO memory_links (from_uuid, to_uuid, relation, weight, created)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![from_uuid, to_uuid, relation, weight, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+/// BFS to check whether any directed path exists from `start` to `target`
+/// through `memory_links` edges (relation-agnostic — conservative).
+fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Result<bool> {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    queue.push_back(start.to_string());
+    while let Some(current) = queue.pop_front() {
+        if current == target {
+            return Ok(true);
+        }
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        let mut stmt = conn.prepare(
+            "SELECT to_uuid FROM memory_links WHERE from_uuid = ?1",
+        )?;
+        let neighbours: Vec<String> = stmt
+            .query_map([&current], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for n in neighbours {
+            if !visited.contains(&n) {
+                queue.push_back(n);
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// All outgoing links from a memory/task UUID.
+pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight
+         FROM memory_links WHERE from_uuid = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([from_uuid], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// All incoming links to a memory/task UUID.
+pub fn get_memory_links_to(conn: &Connection, to_uuid: &str) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight
+         FROM memory_links WHERE to_uuid = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([to_uuid], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Delete a specific directed edge by its three-part key.
+pub fn delete_memory_link(
+    conn: &Connection,
+    from_uuid: &str,
+    to_uuid: &str,
+    relation: &str,
+) -> Result<bool> {
+    let changed = conn.execute(
+        "DELETE FROM memory_links WHERE from_uuid=?1 AND to_uuid=?2 AND relation=?3",
+        rusqlite::params![from_uuid, to_uuid, relation],
+    )?;
+    Ok(changed > 0)
 }
 
 /// Whether any memory has ever been learned (active `items` row with

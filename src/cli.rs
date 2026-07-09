@@ -477,6 +477,32 @@ pub enum Command {
         json: bool,
     },
 
+    /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
+    /// Relations: supersedes, similar_to, derived_from, used_in
+    #[command(name = "link-memory")]
+    LinkMemory {
+        /// Source memory label (e.g. m12)
+        from: String,
+        /// Relation type: supersedes | similar_to | derived_from | used_in
+        relation: String,
+        /// Target memory label (e.g. m7)
+        to: String,
+        /// Edge weight (default 1.0)
+        #[arg(long, default_value = "1.0")]
+        weight: f64,
+    },
+
+    /// Remove a typed directed link between two memories
+    #[command(name = "unlink-memory")]
+    UnlinkMemory {
+        /// Source memory label (e.g. m12)
+        from: String,
+        /// Relation type
+        relation: String,
+        /// Target memory label (e.g. m7)
+        to: String,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix

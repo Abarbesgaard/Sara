@@ -193,4 +193,43 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Create a typed directed link between two memories. \
+        Relations: `supersedes` (new replaces old; old shows ⚠ superseded-by in recall), \
+        `similar_to` (bidirectional affinity), `derived_from` (this was built on top of that), \
+        `used_in` (memory references a context/file). \
+        The superseding memory surfaces alongside the stale one in recall output. \
+        Use this to invalidate outdated memories rather than deleting them."
+    )]
+    fn link_memory(
+        &self,
+        Parameters(p): Parameters<LinkMemoryParams>,
+    ) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp link_memory", |conn, _cfg| {
+                commands::link_memory::link_memory_value(
+                    conn,
+                    &p.from,
+                    &p.relation,
+                    &p.to,
+                    p.weight.unwrap_or(1.0),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Remove a typed directed link between two memories.")]
+    fn unlink_memory(
+        &self,
+        Parameters(p): Parameters<UnlinkMemoryParams>,
+    ) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp unlink_memory", |conn, _cfg| {
+                commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

@@ -427,6 +427,14 @@ fn run() -> Result<()> {
             commands::memories::run(&conn, json)?;
         }
 
+        Command::LinkMemory { from, relation, to, weight } => {
+            commands::link_memory::run(&conn, &from, &relation, &to, weight)?;
+        }
+
+        Command::UnlinkMemory { from, relation, to } => {
+            commands::link_memory::unlink(&conn, &from, &relation, &to)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

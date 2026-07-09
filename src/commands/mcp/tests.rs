@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 35, "expected 35 tools, got {names:?}");
+    assert_eq!(names.len(), 37, "expected 37 tools, got {names:?}");
     for expected in [
         // read
         "list",
