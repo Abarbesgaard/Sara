@@ -281,6 +281,11 @@ pub(crate) struct TagsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct MemoriesParams {
+    pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ProjectsParams {
     pub(crate) project_path: Option<String>,
 }

@@ -22,7 +22,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback."
+        description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting."
     )]
     fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -118,6 +118,50 @@ impl SaraServer {
                         .map(|(tag, count)| serde_json::json!({ "tag": tag, "count": count }))
                         .collect::<Vec<_>>()
                 ))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`."
+    )]
+    fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
+                let items = crate::infrastructure::db::list_memories(conn)?;
+                let rows: Vec<serde_json::Value> = items
+                    .iter()
+                    .map(|m| {
+                        let strength = crate::infrastructure::db::item_strength(conn, m);
+                        let label = format!(
+                            "{}{}",
+                            m.kind.chars().next().unwrap_or('m'),
+                            m.display_id.unwrap_or(0)
+                        );
+                        let strength_label = if strength >= 2.0 {
+                            "Strong"
+                        } else if strength >= 1.5 {
+                            "Linked"
+                        } else {
+                            "Weak"
+                        };
+                        let files = crate::infrastructure::db::get_item_files(conn, &m.uuid)
+                            .unwrap_or_default();
+                        serde_json::json!({
+                            "label": label,
+                            "title": m.title,
+                            "body": m.body,
+                            "strength": strength,
+                            "strength_label": strength_label,
+                            "tags": m.tags,
+                            "files": files,
+                            "created": m.created.to_rfc3339(),
+                            "modified": m.modified.to_rfc3339(),
+                        })
+                    })
+                    .collect();
+                Ok(serde_json::json!({ "memories": rows }))
             })
             .map_err(mcp_err)?;
         ok_json(v)
