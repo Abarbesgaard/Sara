@@ -3627,6 +3627,17 @@ pub fn recent_search_queries(conn: &Connection, limit: i64) -> Result<Vec<String
     Ok(queries)
 }
 
+/// Retention policy: delete events older than `days` days. Called at MCP
+/// server startup to bound the table size without requiring a separate job.
+/// Errors are non-fatal — a failed prune doesn't affect functionality.
+pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
+    let cutoff = (Utc::now() - chrono::Duration::days(days))
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
+    let n = conn.execute("DELETE FROM events WHERE at < ?1", [&cutoff])?;
+    Ok(n)
+}
+
 pub fn upsert_embedding(conn: &Connection, ref_uuid: &Uuid, vector: &[f32]) -> Result<()> {
     let vector_json = serde_json::to_string(vector)?;
     conn.execute(
