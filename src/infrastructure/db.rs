@@ -415,7 +415,16 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 PRIMARY KEY (item_uuid, file_path),
                 FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
              );
-             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);",
+             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);
+
+             CREATE TABLE IF NOT EXISTS item_task_links (
+                item_uuid TEXT NOT NULL,
+                task_uuid TEXT NOT NULL,
+                source    TEXT NOT NULL DEFAULT 'auto',
+                PRIMARY KEY (item_uuid, task_uuid),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
         ),
         M::up(
             // Index items (memories/notes/links) into the same FTS5 table used
@@ -2897,6 +2906,82 @@ pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
     Ok(items)
 }
 
+/// Replace a memory's task associations. `links` is a slice of (task_uuid, source)
+/// where source is either `"auto"` (detected from file overlap) or `"explicit"`
+/// (user-supplied). Existing rows for the item are deleted first.
+pub fn set_item_task_links(
+    conn: &Connection,
+    item_uuid: &Uuid,
+    links: &[(Uuid, &str)],
+) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_task_links WHERE item_uuid = ?1", [&uuid])?;
+    for (task_uuid, source) in links {
+        conn.execute(
+            "INSERT OR IGNORE INTO item_task_links (item_uuid, task_uuid, source) VALUES (?1, ?2, ?3)",
+            rusqlite::params![uuid, task_uuid.to_string(), source],
+        )?;
+    }
+    Ok(())
+}
+
+/// Completed tasks that have `path` in their `task_files` attachment list.
+/// When `prefix` is false, only tasks with an exact `path` match are returned.
+/// When `prefix` is true, tasks with any attached file starting with `path`
+/// are returned (directory-level lookup — pass a trailing `/`).
+/// Pending / in-progress / deleted tasks are always excluded.
+pub fn find_tasks_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Task>> {
+    let mut tasks = vec![];
+    if prefix {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT DISTINCT t.{TASK_COLUMNS} FROM tasks t
+             JOIN task_files f ON f.task_uuid = t.uuid
+             WHERE t.status = 'completed' AND f.path LIKE ?1 || '%'
+             ORDER BY t.modified DESC"
+        ))?;
+        let rows = stmt.query_map([path], row_to_task)?;
+        for r in rows {
+            tasks.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT DISTINCT t.{TASK_COLUMNS} FROM tasks t
+             JOIN task_files f ON f.task_uuid = t.uuid
+             WHERE t.status = 'completed' AND f.path = ?1
+             ORDER BY t.modified DESC"
+        ))?;
+        let rows = stmt.query_map([path], row_to_task)?;
+        for r in rows {
+            tasks.push(r?);
+        }
+    }
+    Ok(tasks)
+}
+
+/// All task links recorded for a memory, each paired with its source label
+/// (`"auto"` or `"explicit"`). Ordered by task.modified DESC so the most
+/// recently completed work surfaces first.
+pub fn get_item_task_links(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<(Task, String)>> {
+    let uuid = item_uuid.to_string();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT t.{TASK_COLUMNS}, l.source
+         FROM item_task_links l
+         JOIN tasks t ON t.uuid = l.task_uuid
+         WHERE l.item_uuid = ?1
+         ORDER BY t.modified DESC"
+    ))?;
+    let rows = stmt.query_map([&uuid], |row| {
+        let task = row_to_task(row)?;
+        let source: String = row.get(16)?;
+        Ok((task, source))
+    })?;
+    let mut result = vec![];
+    for r in rows {
+        result.push(r?);
+    }
+    Ok(result)
+}
+
 /// Whether any memory has ever been learned (active `items` row with
 /// kind='memory'). Used by `recall` to distinguish "no memories recorded yet"
 /// from "no matches for this specific query".
@@ -5358,5 +5443,94 @@ mod tests {
 
         assert!(find_items_by_file(&conn, "/repo/src/old.rs", false).unwrap().is_empty());
         assert_eq!(find_items_by_file(&conn, "/repo/src/new.rs", false).unwrap().len(), 1);
+    }
+
+    // ── item_task_links ───────────────────────────────────────────────────────
+
+    fn make_completed_task(conn: &Connection, description: &str, file: &str) -> Task {
+        let mut task = Task::new(description.to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(conn, &mut task).unwrap();
+        set_task_files(conn, &task.uuid, &[file.to_string()]).unwrap();
+        task
+    }
+
+    #[test]
+    fn find_tasks_by_file_exact_returns_only_completed_tasks() {
+        let conn = mem();
+        let completed = make_completed_task(&conn, "fix auth", "/repo/src/auth.rs");
+
+        let mut pending = Task::new("wip auth".to_string(), "Sara".to_string());
+        insert_task(&conn, &mut pending).unwrap();
+        set_task_files(&conn, &pending.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let hits = find_tasks_by_file(&conn, "/repo/src/auth.rs", false).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].uuid, completed.uuid);
+    }
+
+    #[test]
+    fn find_tasks_by_file_prefix_returns_all_completed_under_dir() {
+        let conn = mem();
+        let a = make_completed_task(&conn, "task a", "/repo/src/auth.rs");
+        let b = make_completed_task(&conn, "task b", "/repo/src/model.rs");
+        make_completed_task(&conn, "task c", "/repo/tests/foo.rs");
+
+        let hits = find_tasks_by_file(&conn, "/repo/src/", true).unwrap();
+        assert_eq!(hits.len(), 2);
+        let uuids: Vec<_> = hits.iter().map(|t| t.uuid).collect();
+        assert!(uuids.contains(&a.uuid));
+        assert!(uuids.contains(&b.uuid));
+    }
+
+    #[test]
+    fn set_item_task_links_stores_source_labels_correctly() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let auto_task = make_completed_task(&conn, "auto task", "/repo/src/auth.rs");
+        let mut explicit_task = Task::new("explicit task".to_string(), "Sara".to_string());
+        explicit_task.status = Status::Completed;
+        insert_task(&conn, &mut explicit_task).unwrap();
+
+        set_item_task_links(
+            &conn,
+            &item.uuid,
+            &[(auto_task.uuid, "auto"), (explicit_task.uuid, "explicit")],
+        )
+        .unwrap();
+
+        let links = get_item_task_links(&conn, &item.uuid).unwrap();
+        assert_eq!(links.len(), 2);
+        let auto_link = links.iter().find(|(t, _)| t.uuid == auto_task.uuid).unwrap();
+        assert_eq!(auto_link.1, "auto");
+        let exp_link = links.iter().find(|(t, _)| t.uuid == explicit_task.uuid).unwrap();
+        assert_eq!(exp_link.1, "explicit");
+    }
+
+    #[test]
+    fn get_item_task_links_returns_empty_when_no_links() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(get_item_task_links(&conn, &item.uuid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_item_task_links_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        let t1 = make_completed_task(&conn, "t1", "/repo/a.rs");
+        let t2 = make_completed_task(&conn, "t2", "/repo/b.rs");
+
+        set_item_task_links(&conn, &item.uuid, &[(t1.uuid, "auto")]).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(t2.uuid, "explicit")]).unwrap();
+
+        let links = get_item_task_links(&conn, &item.uuid).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].0.uuid, t2.uuid);
     }
 }
