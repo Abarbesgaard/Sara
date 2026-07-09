@@ -407,7 +407,15 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 PRIMARY KEY (item_uuid, project),
                 FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
              );
-             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
+             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);
+
+             CREATE TABLE IF NOT EXISTS item_files (
+                item_uuid TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, file_path),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);",
         ),
         M::up(
             // Index items (memories/notes/links) into the same FTS5 table used
@@ -2839,6 +2847,56 @@ pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String
     Ok(())
 }
 
+/// Replace an item's file associations (a memory can be tied to multiple files).
+/// Paths should be absolute before calling; no normalisation is done here.
+pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_files WHERE item_uuid = ?1", [&uuid])?;
+    for path in paths {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_files (item_uuid, file_path) VALUES (?1, ?2)",
+            rusqlite::params![uuid, trimmed],
+        )?;
+    }
+    Ok(())
+}
+
+/// Active items associated with `path`.
+/// When `prefix` is false, only items whose file_path exactly equals `path`
+/// are returned. When `prefix` is true, items whose file_path starts with
+/// `path` are returned (directory-level recall — pass a trailing `/`).
+pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Item>> {
+    let mut items = vec![];
+    if prefix {
+        let mut stmt = conn.prepare(
+            "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+             FROM items i JOIN item_files f ON f.item_uuid = i.uuid
+             WHERE i.status = 'active' AND f.file_path LIKE ?1 || '%'
+             ORDER BY i.modified DESC",
+        )?;
+        let rows = stmt.query_map([path], row_to_item)?;
+        for r in rows {
+            items.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+             FROM items i JOIN item_files f ON f.item_uuid = i.uuid
+             WHERE i.status = 'active' AND f.file_path = ?1
+             ORDER BY i.modified DESC",
+        )?;
+        let rows = stmt.query_map([path], row_to_item)?;
+        for r in rows {
+            items.push(r?);
+        }
+    }
+    Ok(items)
+}
+
 /// Whether any memory has ever been learned (active `items` row with
 /// kind='memory'). Used by `recall` to distinguish "no memories recorded yet"
 /// from "no matches for this specific query".
@@ -5227,5 +5285,78 @@ mod tests {
         assert!(find_items_by_tag(&conn, "gone").unwrap().is_empty());
         assert!(find_items_by_project(&conn, "repo").unwrap().is_empty());
         assert!(list_tags_with_counts(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn find_items_by_file_exact_returns_only_matching_item() {
+        let conn = mem();
+        let mut a = make_memory("auth memory", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        set_item_files(&conn, &a.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let mut b = make_memory("other memory", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        set_item_files(&conn, &b.uuid, &["/repo/src/lib.rs".to_string()]).unwrap();
+
+        let hits = find_items_by_file(&conn, "/repo/src/auth.rs", false).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].uuid, a.uuid);
+    }
+
+    #[test]
+    fn find_items_by_file_prefix_returns_all_under_directory() {
+        let conn = mem();
+        let mut a = make_memory("auth memory", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        set_item_files(&conn, &a.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let mut b = make_memory("model memory", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        set_item_files(&conn, &b.uuid, &["/repo/src/model.rs".to_string()]).unwrap();
+
+        let mut c = make_memory("outside memory", &[]);
+        insert_item(&conn, &mut c).unwrap();
+        set_item_files(&conn, &c.uuid, &["/repo/tests/integration.rs".to_string()]).unwrap();
+
+        let hits = find_items_by_file(&conn, "/repo/src/", true).unwrap();
+        assert_eq!(hits.len(), 2);
+        let uuids: Vec<_> = hits.iter().map(|h| h.uuid).collect();
+        assert!(uuids.contains(&a.uuid));
+        assert!(uuids.contains(&b.uuid));
+    }
+
+    #[test]
+    fn find_items_by_file_excludes_archived_items() {
+        let conn = mem();
+        let mut item = make_memory("archived memory", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(find_items_by_file(&conn, "/repo/src/auth.rs", false).unwrap().is_empty());
+        assert!(find_items_by_file(&conn, "/repo/src/", true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn find_items_by_file_returns_empty_when_no_match() {
+        let conn = mem();
+        let mut item = make_memory("some memory", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        assert!(find_items_by_file(&conn, "/repo/src/other.rs", false).unwrap().is_empty());
+        assert!(find_items_by_file(&conn, "/repo/tests/", true).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_item_files_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/old.rs".to_string()]).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/new.rs".to_string()]).unwrap();
+
+        assert!(find_items_by_file(&conn, "/repo/src/old.rs", false).unwrap().is_empty());
+        assert_eq!(find_items_by_file(&conn, "/repo/src/new.rs", false).unwrap().len(), 1);
     }
 }
