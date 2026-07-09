@@ -6,4 +6,5 @@ pub mod git;
 pub mod model;
 pub mod portable;
 pub mod project;
+pub mod safety;
 pub mod tui;
