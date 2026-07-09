@@ -3916,6 +3916,42 @@ pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<Sear
     Ok(rows)
 }
 
+/// Token-based AND search: each token is quoted individually and joined with
+/// spaces (FTS5 AND semantics). Unlike `search_fts`, this tolerates different
+/// word ordering and paraphrases — any row containing ALL the given tokens
+/// (in any order) is returned. Callers should strip stop words and cap the
+/// token list before calling to avoid over-constraining the query.
+pub fn search_fts_tokens(
+    conn: &Connection,
+    tokens: &[String],
+    limit: i64,
+) -> Result<Vec<SearchHit>> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+    // Each token quoted as an FTS5 string literal; space-join = AND.
+    let fts_query = tokens
+        .iter()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut stmt = conn.prepare(
+        "SELECT ref_kind, task_uuid, text FROM search_index
+         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![fts_query, limit], |r| {
+            Ok(SearchHit {
+                ref_kind: r.get(0)?,
+                task_uuid: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 // ── project env commands ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]

@@ -45,9 +45,11 @@ pub fn run(
         Ok(hits) if !hits.is_empty() => {
             println!("Similar past work found — consider reusing instead of starting fresh:");
             for hit in &hits {
+                let confidence = hit["confidence"].as_str().unwrap_or("medium");
                 println!(
-                    "  [{}] task {} ({}): {}",
+                    "  [{}] [{}] task {} ({}): {}",
                     hit["ref_kind"].as_str().unwrap_or(""),
+                    confidence,
                     hit["task"].as_i64().unwrap_or(0),
                     hit["description"].as_str().unwrap_or(""),
                     hit["snippet"].as_str().unwrap_or("")
