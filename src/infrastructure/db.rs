@@ -407,24 +407,7 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 PRIMARY KEY (item_uuid, project),
                 FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
              );
-             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);
-
-             CREATE TABLE IF NOT EXISTS item_files (
-                item_uuid TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                PRIMARY KEY (item_uuid, file_path),
-                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
-             );
-             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);
-
-             CREATE TABLE IF NOT EXISTS item_task_links (
-                item_uuid TEXT NOT NULL,
-                task_uuid TEXT NOT NULL,
-                source    TEXT NOT NULL DEFAULT 'auto',
-                PRIMARY KEY (item_uuid, task_uuid),
-                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
-             );
-             CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
+             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
         ),
         M::up(
             // Index items (memories/notes/links) into the same FTS5 table used
@@ -467,6 +450,30 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
             "ALTER TABLE task_ai_runs ADD COLUMN prompt_tokens     INTEGER;
              ALTER TABLE task_ai_runs ADD COLUMN completion_tokens INTEGER;
              ALTER TABLE task_ai_runs ADD COLUMN total_tokens      INTEGER;",
+        ),
+        M::up(
+            // File and task-link association tables for memories.
+            // item_files: ties a memory to one or more absolute file paths so
+            // `sara recall --file <path>` can surface relevant memories.
+            // item_task_links: stores memory→task associations with a source
+            // label ('auto' = detected from file reverse-lookup via task_files,
+            // 'explicit' = user-supplied --task flag).
+            "CREATE TABLE IF NOT EXISTS item_files (
+                item_uuid TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, file_path),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);
+
+             CREATE TABLE IF NOT EXISTS item_task_links (
+                item_uuid TEXT NOT NULL,
+                task_uuid TEXT NOT NULL,
+                source    TEXT NOT NULL DEFAULT 'auto',
+                PRIMARY KEY (item_uuid, task_uuid),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
         ),
     ]);
     migrations

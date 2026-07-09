@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
@@ -12,25 +14,56 @@ use crate::infrastructure::project::detect_current_project;
 /// token-minimization premise of the whole feature.
 const SIZE_WARN_CHARS: usize = 2000;
 
-/// `sara learn "<text>" [--tag] [-p] [--task]` — save a short, freeform
-/// distillation as a global memory (not task/project-scoped: it *references*
-/// projects rather than belonging to one, same convention as `sara add`).
+/// `sara learn "<text>" [--tag] [-p] [--task] [--file] [--auto-files]`
 pub fn run(
     conn: &Connection,
     cfg: &Config,
     text: &str,
     tags: &[String],
     projects: &[String],
-    task: Option<&str>,
+    tasks: &[String],
+    files: &[String],
+    auto_files: bool,
     force: bool,
 ) -> Result<()> {
-    let v = learn_value(conn, cfg, text, tags, projects, task, force)?;
-    println!(
-        "Learned {} ({}): {}",
-        v["label"].as_str().unwrap_or("m?"),
-        v["uuid"].as_str().unwrap_or(""),
-        v["text"].as_str().unwrap_or(""),
-    );
+    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force)?;
+    let label = v["label"].as_str().unwrap_or("m?");
+    let uuid  = v["uuid"].as_str().unwrap_or("");
+    let body  = v["text"].as_str().unwrap_or("");
+
+    let file_suffix = {
+        let fs: Vec<&str> = v["files"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+            .unwrap_or_default();
+        if fs.is_empty() {
+            String::new()
+        } else {
+            format!(" (files: {})", fs.join(", "))
+        }
+    };
+    let task_suffix = {
+        let ts = v["linked_tasks"].as_array();
+        let parts: Vec<String> = ts
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| {
+                        let id   = t["id"].as_i64()?;
+                        let desc = t["description"].as_str()?;
+                        let src  = t["source"].as_str().unwrap_or("auto");
+                        Some(format!("#{id} {desc} [{src}]"))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" (tasks: {})", parts.join(", "))
+        }
+    };
+
+    println!("Learned {label} ({uuid}): {body}{file_suffix}{task_suffix}");
     Ok(())
 }
 
@@ -41,7 +74,9 @@ pub fn learn_value(
     text: &str,
     tags: &[String],
     projects: &[String],
-    task: Option<&str>,
+    tasks: &[String],
+    files: &[String],
+    auto_files: bool,
     force: bool,
 ) -> Result<Value> {
     let text = text.trim();
@@ -49,151 +84,101 @@ pub fn learn_value(
         check_size(text)?;
         check_secrets(text)?;
     }
-    let item = save(conn, cfg, text, tags, projects, task)?;
+
+    let resolved_files = collect_files(files, auto_files)?;
+    let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
+
+    let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
+    let tasks_json: Vec<Value> = item.linked_tasks.iter().map(|(id, desc, src)| json!({
+        "id": id.parse::<i64>().unwrap_or(0),
+        "description": desc,
+        "source": src,
+    })).collect();
+
     Ok(json!({
         "label": format!("m{}", item.display_id.unwrap_or(0)),
         "uuid": &item.uuid.to_string()[..8],
         "text": summarize(text),
         "tags": item.tags,
+        "files": files_json,
+        "linked_tasks": tasks_json,
     }))
 }
 
-/// Warn (and abort) when the body is too long to be a distilled paragraph.
-/// The user must pass `--force` to override.
-fn check_size(text: &str) -> Result<()> {
-    let len = text.chars().count();
-    if len > SIZE_WARN_CHARS {
-        anyhow::bail!(
-            "Memory body is {len} characters — that looks like a raw conversation paste, \
-not a distilled paragraph ({SIZE_WARN_CHARS} char limit).\n\
-Distill the key insight into one short paragraph first, then run sara learn again.\n\
-To save anyway (not recommended): add --force."
-        );
-    }
-    Ok(())
-}
+/// Collect file paths from explicit --file flags and optionally --auto-files.
+/// All paths are resolved to absolute. Returns an error if --auto-files is
+/// requested but no git root can be found and no --file was given.
+fn collect_files(explicit: &[String], auto_files: bool) -> Result<Vec<String>> {
+    let mut paths: Vec<String> = explicit
+        .iter()
+        .map(|p| resolve_to_absolute(Path::new(p)))
+        .collect();
 
-/// Warn (and abort) when the body appears to contain a secret-like value.
-/// Heuristic only — false positives are expected. The user must pass `--force`
-/// to override. This is a write-time safeguard; it does not guarantee secrets
-/// cannot enter the store through other paths.
-fn check_secrets(text: &str) -> Result<()> {
-    if let Some(reason) = detect_secret(text) {
-        anyhow::bail!(
-            "Memory body may contain a secret ({reason}).\n\
-Remove the sensitive value before saving, or add --force to skip this check."
-        );
-    }
-    Ok(())
-}
-
-/// Returns a short description of the first suspicious pattern found, or None.
-pub(crate) fn detect_secret(text: &str) -> Option<&'static str> {
-    // Common key=value assignment patterns seen in config/appsettings/env files.
-    let kv_patterns = [
-        "api_key",
-        "apikey",
-        "api-key",
-        "secret",
-        "password",
-        "passwd",
-        "token",
-        "private_key",
-        "privatekey",
-        "client_secret",
-        "access_key",
-        "accesskey",
-        "auth_token",
-        "bearer",
-        "authorization",
-    ];
-    let lower = text.to_lowercase();
-    for kw in &kv_patterns {
-        // Only flag when followed by an assignment or colon — avoids flagging
-        // prose like "the token field is …" without a value attached.
-        for sep in ["=", ": ", ":\"", "=\""] {
-            if lower.contains(&format!("{kw}{sep}")) {
-                return Some("key=value assignment pattern");
+    if auto_files {
+        match find_git_root(&std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) {
+            Some(root) => {
+                let diff = git_diff_files(&root)?;
+                paths.extend(diff);
+            }
+            None => {
+                if explicit.is_empty() {
+                    anyhow::bail!(
+                        "No git root found — cannot use --auto-files outside a git repository.\n\
+                         Pass --file <path> explicitly instead."
+                    );
+                }
+                // git root not found but --file was given — skip auto-files silently
+                // (the explicit files are still stored).
             }
         }
     }
 
-    // AWS-style access key: AKIA… (20 uppercase alphanumeric chars)
-    if contains_aws_key(text) {
-        return Some("AWS-style access key (AKIA…)");
-    }
-
-    // High-entropy token heuristic: a word of 32+ non-whitespace ASCII chars
-    // where more than 60% are non-alphanumeric (dashes/underscores don't count)
-    // — catches hex hashes, base64 tokens, UUIDs with no surrounding prose.
-    if contains_high_entropy_token(text) {
-        return Some("high-entropy token");
-    }
-
-    None
+    // Deduplicate while preserving order.
+    let mut seen = std::collections::HashSet::new();
+    paths.retain(|p| seen.insert(p.clone()));
+    Ok(paths)
 }
 
-fn contains_aws_key(text: &str) -> bool {
-    // AKIA followed by exactly 16 uppercase letters/digits (total 20 chars)
-    let bytes = text.as_bytes();
-    for i in 0..bytes.len().saturating_sub(19) {
-        if bytes[i..i + 4] == *b"AKIA" {
-            let rest = &bytes[i + 4..i + 20];
-            if rest.len() == 16
-                && rest
-                    .iter()
-                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-            {
-                return true;
-            }
+/// Walk parent directories looking for a `.git` entry.
+fn find_git_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if dir.join(".git").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
         }
     }
-    false
 }
 
-fn contains_high_entropy_token(text: &str) -> bool {
-    for word in text.split_whitespace() {
-        // Strip common surrounding punctuation
-        let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
-        if w.len() < 32 {
-            continue;
-        }
-        // Must be all ASCII (avoids flagging normal prose in other scripts)
-        if !w.is_ascii() {
-            continue;
-        }
-        // Exclude standard UUID format (8-4-4-4-12): these appear legitimately
-        // in config descriptions and should not be flagged as high-entropy tokens.
-        if is_uuid(w) {
-            continue;
-        }
-        // Flag if more than 55% of chars are hex digits — catches long hex
-        // hashes/tokens but not plain English words
-        let hex_count = w.bytes().filter(|b| b.is_ascii_hexdigit()).count();
-        if hex_count * 100 / w.len() > 55 && w.len() >= 32 {
-            return true;
-        }
-    }
-    false
+/// Run `git diff --name-only HEAD` in `git_root` and return absolute paths.
+fn git_diff_files(git_root: &Path) -> Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .current_dir(git_root)
+        .output()
+        .context("running git diff --name-only HEAD")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .map(|l| resolve_to_absolute(&git_root.join(l)))
+        .collect())
 }
 
-/// Returns true for standard UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-fn is_uuid(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
+/// Resolve a path to absolute without requiring it to exist on disk.
+fn resolve_to_absolute(path: &Path) -> String {
+    if path.is_absolute() {
+        path.to_string_lossy().into_owned()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+            .to_string_lossy()
+            .into_owned()
     }
-    let dashes = [8, 13, 18, 23];
-    for (i, &byte) in b.iter().enumerate() {
-        if dashes.contains(&i) {
-            if byte != b'-' {
-                return false;
-            }
-        } else if !byte.is_ascii_hexdigit() {
-            return false;
-        }
-    }
-    true
 }
 
 fn save(
@@ -202,13 +187,16 @@ fn save(
     text: &str,
     tags: &[String],
     projects: &[String],
-    task: Option<&str>,
+    task_prefixes: &[String],
+    files: &[String],
 ) -> Result<Item> {
     if text.is_empty() {
         anyhow::bail!("Memory text cannot be empty");
     }
 
-    let source_task_uuid = match task {
+    // Use the first explicit --task as source_task_uuid (backward compat with
+    // item_strength). All tasks (explicit + auto-detected) go into item_task_links.
+    let first_task_uuid: Option<Uuid> = match task_prefixes.first() {
         Some(prefix) => Some(
             db::get_task_by_uuid_prefix(conn, prefix)
                 .context("looking up --task")?
@@ -219,18 +207,67 @@ fn save(
     };
 
     let projects: Vec<String> = if projects.is_empty() {
-        let (name, _path) = detect_current_project(conn, cfg)?;
+        let (name, _) = detect_current_project(conn, cfg)?;
         vec![name]
     } else {
         projects.to_vec()
     };
 
-    let mut item = Item::new_memory(summarize(text), text.to_string(), source_task_uuid);
+    let mut item = Item::new_memory(summarize(text), text.to_string(), first_task_uuid);
     item.tags = tags.to_vec();
     item.path = Some(String::new());
 
     db::insert_item(conn, &mut item)?;
     db::set_item_projects(conn, &item.uuid, &projects)?;
+
+    // Store file associations.
+    if !files.is_empty() {
+        db::set_item_files(conn, &item.uuid, files)?;
+    }
+
+    // Build task links: auto-detect from file reverse-lookup, then merge explicit.
+    let mut task_links: Vec<(Uuid, &'static str)> = vec![];
+
+    for file in files {
+        let found = db::find_tasks_by_file(conn, file, false)?;
+        for t in found {
+            if !task_links.iter().any(|(u, _)| *u == t.uuid) {
+                task_links.push((t.uuid, "auto"));
+            }
+        }
+    }
+
+    // Resolve all explicit --task prefixes and merge (explicit wins).
+    for prefix in task_prefixes {
+        if let Some(t) = db::get_task_by_uuid_prefix(conn, prefix)
+            .context("looking up --task")?
+        {
+            if let Some(pos) = task_links.iter().position(|(u, _)| *u == t.uuid) {
+                task_links[pos].1 = "explicit";
+            } else {
+                task_links.push((t.uuid, "explicit"));
+            }
+        }
+    }
+
+    if !task_links.is_empty() {
+        // Convert &'static str slice to owned for set_item_task_links.
+        let owned: Vec<(Uuid, &str)> = task_links.iter().map(|(u, s)| (*u, *s)).collect();
+        db::set_item_task_links(conn, &item.uuid, &owned)?;
+
+        // Populate item.linked_tasks for the caller to render.
+        let links = db::get_item_task_links(conn, &item.uuid)?;
+        item.linked_tasks = links
+            .into_iter()
+            .map(|(t, src)| {
+                (
+                    t.id.map(|i| i.to_string()).unwrap_or_default(),
+                    t.description,
+                    src,
+                )
+            })
+            .collect();
+    }
 
     Ok(item)
 }
@@ -245,6 +282,94 @@ fn summarize(text: &str) -> String {
         let truncated: String = trimmed.chars().take(MAX).collect();
         format!("{}…", truncated.trim_end())
     }
+}
+
+/// Warn (and abort) when the body is too long to be a distilled paragraph.
+fn check_size(text: &str) -> Result<()> {
+    let len = text.chars().count();
+    if len > SIZE_WARN_CHARS {
+        anyhow::bail!(
+            "Memory body is {len} characters — that looks like a raw conversation paste, \
+not a distilled paragraph ({SIZE_WARN_CHARS} char limit).\n\
+Distill the key insight into one short paragraph first, then run sara learn again.\n\
+To save anyway (not recommended): add --force."
+        );
+    }
+    Ok(())
+}
+
+fn check_secrets(text: &str) -> Result<()> {
+    if let Some(reason) = detect_secret(text) {
+        anyhow::bail!(
+            "Memory body may contain a secret ({reason}).\n\
+Remove the sensitive value before saving, or add --force to skip this check."
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn detect_secret(text: &str) -> Option<&'static str> {
+    let kv_patterns = [
+        "api_key", "apikey", "api-key", "secret", "password", "passwd", "token",
+        "private_key", "privatekey", "client_secret", "access_key", "accesskey",
+        "auth_token", "bearer", "authorization",
+    ];
+    let lower = text.to_lowercase();
+    for kw in &kv_patterns {
+        for sep in ["=", ": ", ":\"", "=\""] {
+            if lower.contains(&format!("{kw}{sep}")) {
+                return Some("key=value assignment pattern");
+            }
+        }
+    }
+    if contains_aws_key(text) {
+        return Some("AWS-style access key (AKIA…)");
+    }
+    if contains_high_entropy_token(text) {
+        return Some("high-entropy token");
+    }
+    None
+}
+
+fn contains_aws_key(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    for i in 0..bytes.len().saturating_sub(19) {
+        if bytes[i..i + 4] == *b"AKIA" {
+            let rest = &bytes[i + 4..i + 20];
+            if rest.len() == 16 && rest.iter().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn contains_high_entropy_token(text: &str) -> bool {
+    for word in text.split_whitespace() {
+        let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+        if w.len() < 32 || !w.is_ascii() || is_uuid(w) {
+            continue;
+        }
+        let hex_count = w.bytes().filter(|b| b.is_ascii_hexdigit()).count();
+        if hex_count * 100 / w.len() > 55 && w.len() >= 32 {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_uuid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 { return false; }
+    let dashes = [8, 13, 18, 23];
+    for (i, &byte) in b.iter().enumerate() {
+        if dashes.contains(&i) {
+            if byte != b'-' { return false; }
+        } else if !byte.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

@@ -411,9 +411,16 @@ pub enum Command {
         /// Project this memory references (repeatable; defaults to the current project)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Vec<String>,
-        /// Task uuid prefix this memory was learned from/about
+        /// Task uuid prefix this memory was learned from/about (repeatable; source='explicit')
         #[arg(long, add = ArgValueCandidates::new(task_ids))]
-        task: Option<String>,
+        task: Vec<String>,
+        /// File path to associate with this memory (repeatable; stored as absolute path)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Auto-attach files touched since HEAD via `git diff --name-only HEAD`
+        /// (requires a git root; error if none is found and --file is also absent)
+        #[arg(long)]
+        auto_files: bool,
         /// Skip the size and secret-pattern warnings and save anyway
         #[arg(long)]
         force: bool,

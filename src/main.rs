@@ -376,6 +376,8 @@ fn run() -> Result<()> {
             tag,
             project,
             task,
+            file,
+            auto_files,
             force,
         } => {
             commands::learn::run(
@@ -384,7 +386,9 @@ fn run() -> Result<()> {
                 &text.join(" "),
                 &tag,
                 &project,
-                task.as_deref(),
+                &task,
+                &file,
+                auto_files,
                 force,
             )?;
         }

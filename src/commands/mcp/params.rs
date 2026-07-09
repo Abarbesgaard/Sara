@@ -258,8 +258,10 @@ pub(crate) struct LearnParams {
     pub(crate) tags: Option<Vec<String>>,
     /// Projects this memory references. Defaults to the current project.
     pub(crate) projects: Option<Vec<String>>,
-    /// UUID prefix of the task this memory was learned from/about.
-    pub(crate) task: Option<String>,
+    /// UUID prefixes of tasks this memory was learned from/about (repeatable; source='explicit').
+    pub(crate) tasks: Option<Vec<String>>,
+    /// Absolute file paths to associate with this memory (repeatable).
+    pub(crate) files: Option<Vec<String>>,
     /// Skip size and secret-pattern guardrails (use only when content is safe).
     pub(crate) force: Option<bool>,
 }

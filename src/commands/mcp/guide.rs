@@ -190,6 +190,8 @@ impl SaraServer {
     fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, ErrorData> {
         let tags = p.tags.unwrap_or_default();
         let projects = p.projects.unwrap_or_default();
+        let tasks = p.tasks.unwrap_or_default();
+        let files = p.files.unwrap_or_default();
         let v = self
             .with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
                 commands::learn::learn_value(
@@ -198,7 +200,9 @@ impl SaraServer {
                     &p.text,
                     &tags,
                     &projects,
-                    p.task.as_deref(),
+                    &tasks,
+                    &files,
+                    false, // auto_files not available via MCP — paths must be explicit
                     p.force.unwrap_or(false),
                 )
             })
