@@ -81,6 +81,8 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         "description": task.description,
         "status": "completed",
         "recurrence": recurrence,
+        "auto_memory": db::synthesize_done_memory(conn, &task.uuid, &task.project)
+            .unwrap_or(None),
     }))
 }
 
@@ -97,6 +99,9 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
             rec.get("id").and_then(|i| i.as_i64()).unwrap_or(0),
             rec.get("due").and_then(|d| d.as_str()).unwrap_or_default()
         );
+    }
+    if let Some(label) = v.get("auto_memory").and_then(|m| m.as_str()) {
+        println!("🧠 Auto-memory saved: {label} (provisional — review with `sara memories`)");
     }
     Ok(())
 }

@@ -3262,7 +3262,144 @@ pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
     }
 }
 
-/// Surface Strong (strength >= 2.0) memories relevant to a task, combining
+// ── auto-memory synthesis on task completion ─────────────────────────────────
+
+/// Distil a completed task into a provisional memory and write it to `items`.
+///
+/// Called from `done_value()` after a task is marked completed. The memory is
+/// tagged from the task's own tags, linked to the task via `item_task_links`
+/// (explicit), and marked `provisional` — task #29 will surface that in
+/// recall so unverified AI-derived patterns aren't treated as ground truth.
+///
+/// Returns `Ok(Some(label))` (e.g. `"m14"`) when a memory was created,
+/// `Ok(None)` when the task has no useful content to distil, and `Err` only
+/// for hard DB failures (not safety rejections, which are silent skips).
+pub fn synthesize_done_memory(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    project_name: &str,
+) -> Result<Option<String>> {
+    use crate::infrastructure::safety;
+
+    let task = match get_task_by_uuid_prefix(conn, &task_uuid.to_string()[..8])? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    // Gather ingredients -------------------------------------------------
+    let steps = get_checklist(conn, task_uuid).unwrap_or_default();
+    let done_steps: Vec<&ChecklistItem> = steps
+        .iter()
+        .filter(|s| s.done && s.kind == STEP_KIND_STEP)
+        .collect();
+    let acceptance: Vec<&ChecklistItem> = steps
+        .iter()
+        .filter(|s| s.done && s.kind == STEP_KIND_ACCEPTANCE)
+        .collect();
+
+    let annotations = get_annotations(conn, task_uuid).unwrap_or_default();
+    let key_annotations: Vec<&Annotation> = annotations
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.kind.as_str(),
+                "finding" | "decision" | "constraint" | "risk" | "pattern"
+            )
+        })
+        .collect();
+
+    let files = get_task_files(conn, task_uuid).unwrap_or_default();
+
+    // Skip if there's truly nothing useful to distil
+    if done_steps.is_empty() && acceptance.is_empty() && key_annotations.is_empty() {
+        return Ok(None);
+    }
+
+    // Build body (capped at 1900 chars to stay under safety::SIZE_LIMIT_CHARS) -
+    let mut parts: Vec<String> = vec![];
+    parts.push(format!("Task completed: {}", task.description.trim()));
+
+    if !done_steps.is_empty() {
+        let step_parts: Vec<String> = done_steps
+            .iter()
+            .map(|s| {
+                if let Some(ref r) = s.result {
+                    format!("\"{}\" → {}", s.text.trim(), r.trim())
+                } else {
+                    format!("\"{}\"", s.text.trim())
+                }
+            })
+            .collect();
+        parts.push(format!("Steps: {}", step_parts.join("; ")));
+    }
+
+    if !acceptance.is_empty() {
+        let ac_parts: Vec<String> = acceptance.iter().map(|s| s.text.trim().to_string()).collect();
+        parts.push(format!("Acceptance: {}", ac_parts.join("; ")));
+    }
+
+    // Group key annotations by kind
+    for kind in &["decision", "finding", "constraint", "risk", "pattern"] {
+        let group: Vec<&str> = key_annotations
+            .iter()
+            .filter(|a| a.kind == *kind)
+            .map(|a| a.text.trim())
+            .collect();
+        if !group.is_empty() {
+            let cap = kind.chars().next().unwrap().to_uppercase().to_string() + &kind[1..];
+            parts.push(format!("{}s: {}", cap, group.join("; ")));
+        }
+    }
+
+    let body_raw = parts.join(". ");
+    // Hard-cap to stay under SIZE_LIMIT_CHARS
+    let body: String = if body_raw.chars().count() > 1900 {
+        body_raw.chars().take(1900).collect::<String>() + "…"
+    } else {
+        body_raw
+    };
+
+    // Safety check — silently skip if secrets detected (never block done)
+    if safety::check_secrets(&body).is_err() {
+        return Ok(None);
+    }
+
+    // Build the title from the task description (truncated)
+    let title: String = {
+        const MAX: usize = 80;
+        let t = task.description.trim();
+        if t.chars().count() <= MAX {
+            t.to_string()
+        } else {
+            t.chars().take(MAX).collect::<String>() + "…"
+        }
+    };
+
+    // Write to items -------------------------------------------------------
+    let mut item = crate::infrastructure::model::Item::new_memory(title, body, Some(*task_uuid));
+    item.tags = task.tags.clone();
+    item.status = "provisional".to_string(); // flagged for task #29 to surface
+    item.path = Some(String::new());
+
+    insert_item(conn, &mut item)?;
+    set_item_projects(conn, &item.uuid, &[project_name.to_string()])?;
+
+    // Attach task's source files as item_files
+    if !files.is_empty() {
+        set_item_files(conn, &item.uuid, &files)?;
+    }
+
+    // Wire explicit task link
+    set_item_task_links(conn, &item.uuid, &[(*task_uuid, "explicit")])?;
+
+    let label = format!(
+        "m{}",
+        item.display_id.unwrap_or(0)
+    );
+    Ok(Some(label))
+}
+
+
 /// FTS over the task description and exact tag intersection. Used by
 /// `guide_value` to inject prior-work context automatically — callers should
 /// omit the `similar_work` field when the result is empty.
@@ -5809,5 +5946,72 @@ mod tests {
         let links = get_item_task_links(&conn, &item.uuid).unwrap();
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].0.uuid, t2.uuid);
+    }
+
+    #[test]
+    fn synthesize_done_memory_skips_when_no_steps_or_annotations() {
+        let conn = mem();
+        let mut task = Task::new("bare task".to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+        // No checklist steps, no annotations — nothing to distil
+        let result = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn synthesize_done_memory_creates_provisional_item_with_done_steps() {
+        let conn = mem();
+        let mut task = Task::new("impl auth".to_string(), "Sara".to_string());
+        task.tags = vec!["auth".to_string()];
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+
+        // Add a done step with result
+        let step_id = add_step(&conn, &task.uuid, "Add login endpoint", None, STEP_KIND_STEP, "human", None).unwrap();
+        conn.execute(
+            "UPDATE task_checklist SET done=1, result='Implemented POST /login in routes.rs' WHERE id=?1",
+            [step_id],
+        ).unwrap();
+
+        let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(label.is_some(), "should create a memory");
+
+        // Query directly (provisional items not returned by list_memories which filters status='active')
+        let m: (String, String, String) = conn.query_row(
+            "SELECT status, body, tags_json FROM items WHERE source_task_uuid=?1 AND kind='memory'",
+            [task.uuid.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!(m.0, "provisional");
+        assert!(m.1.contains("impl auth"), "body should mention task description");
+        assert!(m.1.contains("login endpoint"), "body should mention the step");
+        let tags: Vec<String> = serde_json::from_str(&m.2).unwrap();
+        assert!(tags.contains(&"auth".to_string()));
+    }
+
+    #[test]
+    fn synthesize_done_memory_includes_key_annotations() {
+        let conn = mem();
+        let mut task = Task::new("refactor db".to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+
+        // Add a done step so we pass the "nothing useful" guard
+        let step_id = add_step(&conn, &task.uuid, "Move queries to db.rs", None, STEP_KIND_STEP, "human", None).unwrap();
+        conn.execute("UPDATE task_checklist SET done=1 WHERE id=?1", [step_id]).unwrap();
+
+        // Add a decision annotation
+        add_annotation_full(&conn, &task.uuid, "Keep all SQL in db.rs — no ORM", "decision", "human", None, None, false).unwrap();
+
+        let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(label.is_some());
+
+        let body: String = conn.query_row(
+            "SELECT body FROM items WHERE source_task_uuid=?1 AND kind='memory'",
+            [task.uuid.to_string()],
+            |r| r.get(0),
+        ).unwrap();
+        assert!(body.contains("Keep all SQL in db.rs"), "body should include the decision annotation");
     }
 }
