@@ -66,7 +66,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories."
+        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics)."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
         let v = self

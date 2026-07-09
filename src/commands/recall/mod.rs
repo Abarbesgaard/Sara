@@ -84,6 +84,11 @@ pub fn recall_value(
         .iter()
         .map(|(id, desc, score)| json!({ "task": id, "task_description": desc, "score": score }))
         .collect();
+
+    // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
+    // Only meaningful when a free-text query drove the search (tag/file-only = high).
+    let (confidence, caveat) = match_confidence(query, &tags, &hits);
+
     Ok(json!({
         "query": query,
         "tag": tags,
@@ -91,7 +96,51 @@ pub fn recall_value(
         "files": files,
         "keyword": keyword,
         "semantic": sem,
+        "confidence": confidence,
+        "caveat": caveat,
     }))
+}
+
+/// Derive a match-confidence label and human-readable caveat from the search
+/// inputs and results.
+///
+/// - `high`:   exact tag/project/file filters drove all hits (reliable index lookup).
+/// - `medium`: some or all hits came from FTS keyword ranking (literal match only —
+///             paraphrased or conceptually related content may not surface).
+/// - `none`:   no hits at all AND a free-text query was involved — this does NOT
+///             mean no similar work exists; it means no keywords overlapped.
+///
+/// Tag/file-only searches with zero results emit `"none"` without a caveat (the
+/// absence of a tagged memory is meaningful — the tag simply doesn't exist).
+fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str, &'static str) {
+    let has_query = !query.is_empty();
+    let has_exact_filters = !tags.is_empty();
+
+    if hits.is_empty() {
+        if has_query {
+            return (
+                "none",
+                "No keyword matches found. Sara uses literal FTS only — \
+                 paraphrased or conceptually related content may not surface. \
+                 Try --tag, different keywords, or --file to broaden the search.",
+            );
+        }
+        // Tag/file-only miss — meaningful absence, no misleading caveat needed.
+        return ("none", "");
+    }
+
+    // Hits exist. Confidence is high only when every hit came from an exact
+    // tag/project/file filter (no FTS ranking involved).
+    let all_exact = hits.iter().all(|h| h.exact_match);
+    if all_exact || (has_exact_filters && !has_query) {
+        return ("high", "");
+    }
+
+    (
+        "medium",
+        "Keyword-match only (literal FTS). Paraphrased or conceptually \
+         similar content with different wording may not appear.",
+    )
 }
 
 pub fn run(
@@ -137,11 +186,21 @@ pub fn run(
             }
         } else {
             println!("No matches for \"{query}\".");
+            println!(
+                "Note: Sara uses literal keyword search only — paraphrased or \
+                 conceptually related content may not surface. Try --tag or different keywords."
+            );
         }
         return Ok(());
     }
 
     if !hits.is_empty() {
+        // Show confidence caveat for FTS-only results so callers know the absence
+        // of further hits is not a guarantee that nothing similar exists.
+        let (_, caveat) = match_confidence(query, &tags, &hits);
+        if !caveat.is_empty() {
+            println!("Note: {caveat}");
+        }
         println!("Keyword matches:");
         for h in &hits {
             let age = h.modified.map(age_str).unwrap_or_default();
