@@ -3264,7 +3264,109 @@ pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
 
 // ── auto-memory synthesis on task completion ─────────────────────────────────
 
-/// Distil a completed task into a provisional memory and write it to `items`.
+/// A candidate memory that pruning identified as low-value.
+#[derive(Debug)]
+pub struct PruneCandidate {
+    /// Short label like "m7".
+    pub label: String,
+    pub uuid: String,
+    pub title: String,
+    /// Why the memory was flagged.
+    pub reason: &'static str,
+}
+
+/// Evaluate all active memories and return those that should be archived.
+///
+/// Three signals:
+/// - **superseded**: has at least one incoming `supersedes` edge → the newer
+///   memory explicitly replaces this one.
+/// - **provisional + old**: status=`provisional` (auto-generated on `done`)
+///   AND older than `provisional_days` days without being reviewed.
+/// - **weak + old**: strength=1.0 (no task link at all) AND older than
+///   `weak_days` days — low-signal memories that were never tied to any work.
+///
+/// If `dry_run` is true the function returns candidates but writes nothing.
+/// If false it archives them by setting `status='archived'`.
+pub fn prune_memories(
+    conn: &Connection,
+    weak_days: i64,
+    provisional_days: i64,
+    dry_run: bool,
+) -> Result<Vec<PruneCandidate>> {
+    let all = {
+        let mut stmt = conn.prepare(
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE kind='memory' AND status IN ('active','provisional') ORDER BY created ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_item)?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    };
+
+    let now = Utc::now();
+    let mut candidates: Vec<PruneCandidate> = vec![];
+
+    for item in &all {
+        let label = format!(
+            "{}{}",
+            item.kind.chars().next().unwrap_or('m'),
+            item.display_id.unwrap_or(0)
+        );
+        let age_days = (now - item.created).num_days();
+
+        // Signal 1: superseded by another memory
+        let superseded = {
+            let mut stmt = conn.prepare(
+                "SELECT COUNT(*) FROM memory_links WHERE to_uuid=?1 AND relation='supersedes'",
+            )?;
+            let count: i64 = stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
+            count > 0
+        };
+        if superseded {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "superseded by a newer memory",
+            });
+            continue;
+        }
+
+        // Signal 2: provisional and stale (auto-generated, never reviewed)
+        if item.status == "provisional" && age_days >= provisional_days {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "provisional auto-memory not reviewed within time limit",
+            });
+            continue;
+        }
+
+        // Signal 3: weak (no task link) and old
+        let strength = item_strength(conn, item);
+        if strength < 1.5 && age_days >= weak_days {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "weak memory (no task link) older than age threshold",
+            });
+        }
+    }
+
+    if !dry_run {
+        for c in &candidates {
+            conn.execute(
+                "UPDATE items SET status='archived', modified=?1 WHERE uuid=?2",
+                rusqlite::params![dt_to_str(&now), c.uuid],
+            )?;
+        }
+    }
+
+    Ok(candidates)
+}
+
+
 ///
 /// Called from `done_value()` after a task is marked completed. The memory is
 /// tagged from the task's own tags, linked to the task via `item_task_links`

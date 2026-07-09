@@ -40,6 +40,8 @@ struct Hit {
     /// Labels of memories that supersede this one (incoming `supersedes` edges).
     /// Non-empty means this memory may be stale — the superseding memory is more current.
     superseded_by: Vec<String>,
+    /// True when this memory is auto-generated (status=provisional) and not yet reviewed.
+    provisional: bool,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -76,6 +78,7 @@ pub fn recall_value(
                 "modified": h.modified.map(|m| m.to_rfc3339()),
                 "files": h.files,
                 "superseded_by": h.superseded_by,
+                "provisional": h.provisional,
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
                     "description": t.description,
@@ -231,8 +234,13 @@ pub fn run(
             } else {
                 format!(" ⚠ superseded by: {}", h.superseded_by.join(", "))
             };
+            let provisional_str = if h.provisional {
+                " [provisional — unreviewed auto-memory]".to_string()
+            } else {
+                String::new()
+            };
             println!(
-                "  [{}] {} {} {}: {}{}{}{}{}",
+                "  [{}] {} {} {}: {}{}{}{}{}{}",
                 h.ref_kind,
                 marker,
                 h.label,
@@ -241,6 +249,7 @@ pub fn run(
                 files_str,
                 tasks_str,
                 superseded_str,
+                provisional_str,
                 if age.is_empty() {
                     String::new()
                 } else {
@@ -432,6 +441,7 @@ fn collect_hits(
                     files: vec![],
                     linked_tasks: vec![],
                     superseded_by: vec![],
+                    provisional: false,
                 });
             }
         }
@@ -491,6 +501,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         files,
         linked_tasks,
         superseded_by,
+        provisional: item.status == "provisional",
     }
 }
 

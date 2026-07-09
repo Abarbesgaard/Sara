@@ -336,3 +336,14 @@ pub(crate) struct UnlinkMemoryParams {
     /// Target memory label (e.g. "m7") or 8-char uuid prefix.
     pub(crate) to: String,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct PruneMemoriesParams {
+    pub(crate) project_path: Option<String>,
+    /// If true (default), only show candidates — do not archive anything.
+    pub(crate) dry_run: Option<bool>,
+    /// Days before a Weak memory (no task link) is eligible for pruning. Default 90.
+    pub(crate) weak_days: Option<i64>,
+    /// Days before a Provisional auto-memory is eligible if unreviewed. Default 30.
+    pub(crate) provisional_days: Option<i64>,
+}

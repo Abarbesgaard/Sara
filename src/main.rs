@@ -435,6 +435,11 @@ fn run() -> Result<()> {
             commands::link_memory::unlink(&conn, &from, &relation, &to)?;
         }
 
+        Command::PruneMemories { dry_run, apply, weak_days, provisional_days } => {
+            let actual_dry_run = !apply && dry_run;
+            commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

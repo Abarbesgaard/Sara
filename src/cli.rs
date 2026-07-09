@@ -503,6 +503,24 @@ pub enum Command {
         to: String,
     },
 
+    /// Evaluate and optionally archive low-value memories (superseded, weak+old, provisional+old).
+    /// Runs in dry-run mode by default — pass --apply to actually archive.
+    #[command(name = "prune-memories")]
+    PruneMemories {
+        /// Show what would be archived without making changes (default)
+        #[arg(long, default_value = "true")]
+        dry_run: bool,
+        /// Actually archive the candidates (opposite of --dry-run)
+        #[arg(long, conflicts_with = "dry_run")]
+        apply: bool,
+        /// Days before a Weak (no task link) memory is eligible (default 90)
+        #[arg(long, default_value = "90")]
+        weak_days: i64,
+        /// Days before a Provisional auto-memory is eligible if unreviewed (default 30)
+        #[arg(long, default_value = "30")]
+        provisional_days: i64,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix

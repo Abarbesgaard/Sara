@@ -16,6 +16,7 @@ pub mod init;
 pub mod learn;
 pub mod list;
 pub mod memories;
+pub mod prune_memories;
 pub mod mcp;
 pub mod modify;
 pub mod move_task;
