@@ -2682,6 +2682,8 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
         source_task_uuid: row
             .get::<_, Option<String>>(13)?
             .and_then(|s| Uuid::parse_str(&s).ok()),
+        files: vec![],
+        linked_tasks: vec![],
     })
 }
 

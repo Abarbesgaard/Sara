@@ -328,6 +328,14 @@ pub struct Item {
     /// The task this memory was learned from/about, if any. Loose reference
     /// (no FK): a memory outlives the task it points at.
     pub source_task_uuid: Option<Uuid>,
+    /// File paths this memory is associated with (absolute). Not auto-populated
+    /// by row_to_item — call set_item_files / find_items_by_file explicitly.
+    pub files: Vec<String>,
+    /// Tasks linked to this memory with their source label ("auto" or
+    /// "explicit"). Not auto-populated by row_to_item — call
+    /// set_item_task_links / get_item_task_links explicitly.
+    /// Tuple: (task display id as string, description, source label).
+    pub linked_tasks: Vec<(String, String, String)>,
 }
 
 impl Item {
@@ -348,6 +356,8 @@ impl Item {
             modified: now,
             status: "active".to_string(),
             source_task_uuid: None,
+            files: vec![],
+            linked_tasks: vec![],
         }
     }
 
@@ -368,6 +378,8 @@ impl Item {
             modified: now,
             status: "active".to_string(),
             source_task_uuid,
+            files: vec![],
+            linked_tasks: vec![],
         }
     }
 
@@ -388,6 +400,8 @@ impl Item {
             modified: now,
             status: "active".to_string(),
             source_task_uuid: None,
+            files: vec![],
+            linked_tasks: vec![],
         }
     }
 
