@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
+use crate::infrastructure::model::{Item, Task};
 
 /// `sara recall <query>` — cross-task memory. Uses the FTS5 index over task
 /// descriptions/rationale/assignment, annotations (findings/decisions/…), and
@@ -33,6 +33,10 @@ struct Hit {
     /// than plain-text FTS ranking.
     exact_match: bool,
     modified: Option<DateTime<Utc>>,
+    /// File paths the memory is associated with (from `item_files`).
+    files: Vec<String>,
+    /// Tasks linked to this memory: (task, source "auto"|"explicit").
+    linked_tasks: Vec<(Task, String)>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -43,17 +47,19 @@ pub fn recall_value(
     query: &str,
     tags: &[String],
     projects: &[String],
+    files: &[String],
     limit: i64,
 ) -> Result<serde_json::Value> {
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
+    let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
 
-    if query.is_empty() && tags.is_empty() && projects.is_empty() {
-        anyhow::bail!("Provide a search query, --tag, or --project to recall.");
+    if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
+        anyhow::bail!("Provide a search query, --tag, --project, or --file to recall.");
     }
 
-    let hits = collect_hits(conn, query, &tags, &projects, limit)?;
+    let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
     let keyword: Vec<_> = hits
         .iter()
         .map(|h| {
@@ -65,6 +71,12 @@ pub fn recall_value(
                 "strength": h.strength,
                 "exact_match": h.exact_match,
                 "modified": h.modified.map(|m| m.to_rfc3339()),
+                "files": h.files,
+                "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
+                    "id": t.id.unwrap_or(0),
+                    "description": t.description,
+                    "source": src,
+                })).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -76,6 +88,7 @@ pub fn recall_value(
         "query": query,
         "tag": tags,
         "project": projects,
+        "files": files,
         "keyword": keyword,
         "semantic": sem,
     }))
@@ -87,13 +100,16 @@ pub fn run(
     query: &str,
     tags: &[String],
     projects: &[String],
+    files: &[String],
     limit: i64,
     as_json: bool,
 ) -> Result<()> {
     if as_json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&recall_value(conn, cfg, query, tags, projects, limit)?)?
+            serde_json::to_string_pretty(&recall_value(
+                conn, cfg, query, tags, projects, files, limit
+            )?)?
         );
         return Ok(());
     }
@@ -101,16 +117,19 @@ pub fn run(
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
+    let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
 
-    if query.is_empty() && tags.is_empty() && projects.is_empty() {
-        anyhow::bail!("Provide a search query, --tag, or --project to recall.");
+    if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
+        anyhow::bail!("Provide a search query, --tag, --project, or --file to recall.");
     }
 
-    let hits = collect_hits(conn, query, &tags, &projects, limit)?;
+    let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
     let semantic = semantic_hits(conn, query, limit);
 
     if hits.is_empty() && semantic.is_empty() {
-        if !tags.is_empty() || !projects.is_empty() {
+        if !files.is_empty() {
+            println!("No memories tied to the given file(s).");
+        } else if !tags.is_empty() || !projects.is_empty() {
             if !db::has_any_memories(conn)? {
                 println!("No memories recorded yet. Use `sara learn \"...\"` to save one.");
             } else {
@@ -127,13 +146,32 @@ pub fn run(
         for h in &hits {
             let age = h.modified.map(age_str).unwrap_or_default();
             let marker = if h.exact_match { "=" } else { "~" };
+            let files_str = if h.files.is_empty() {
+                String::new()
+            } else {
+                format!(" [files: {}]", h.files.join(", "))
+            };
+            let tasks_str = if h.linked_tasks.is_empty() {
+                String::new()
+            } else {
+                let parts: Vec<String> = h
+                    .linked_tasks
+                    .iter()
+                    .map(|(t, src)| {
+                        format!("#{} {} ({})", t.id.unwrap_or(0), t.description, src)
+                    })
+                    .collect();
+                format!(" [via tasks: {}]", parts.join(", "))
+            };
             println!(
-                "  [{}] {} {} {}: {}{}",
+                "  [{}] {} {} {}: {}{}{}{}",
                 h.ref_kind,
                 marker,
                 h.label,
                 h.description,
                 h.snippet.trim(),
+                files_str,
+                tasks_str,
                 if age.is_empty() {
                     String::new()
                 } else {
@@ -160,7 +198,30 @@ fn normalize(values: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Resolve query/tag/project inputs into a single ranked list of hits:
+/// Resolve a file path (or directory prefix ending with '/') to absolute form.
+/// The trailing '/' is preserved for prefix matching.
+fn resolve_file_path(path: &str) -> String {
+    if path.ends_with('/') {
+        // Directory prefix: resolve the dir part, re-append the slash.
+        let dir = path.trim_end_matches('/');
+        let resolved = if std::path::Path::new(dir).is_absolute() {
+            dir.to_string()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(dir).to_string_lossy().into_owned())
+                .unwrap_or_else(|_| dir.to_string())
+        };
+        format!("{resolved}/")
+    } else if std::path::Path::new(path).is_absolute() {
+        path.to_string()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path).to_string_lossy().into_owned())
+            .unwrap_or_else(|_| path.to_string())
+    }
+}
+
+/// Resolve query/tag/project/file inputs into a single ranked list of hits:
 /// Strong (linkage-derived) memories first, then exact tag/project matches,
 /// then plain FTS hits; ties broken by most-recently-modified.
 fn collect_hits(
@@ -168,45 +229,77 @@ fn collect_hits(
     query: &str,
     tags: &[String],
     projects: &[String],
+    files: &[String],
     limit: i64,
 ) -> Result<Vec<Hit>> {
+    // File filter: intersect items across all --file values (AND semantics).
+    let file_uuids: Option<HashSet<uuid::Uuid>> = if !files.is_empty() {
+        let mut combined: Option<HashSet<uuid::Uuid>> = None;
+        for path in files {
+            let prefix = path.ends_with('/');
+            let items = db::find_items_by_file(conn, path, prefix)?;
+            let uuids: HashSet<uuid::Uuid> = items.into_iter().map(|i| i.uuid).collect();
+            combined = Some(match combined {
+                Some(existing) => existing.intersection(&uuids).copied().collect(),
+                None => uuids,
+            });
+        }
+        combined
+    } else {
+        None
+    };
+
     // Exact filters narrow first: a memory must carry every given --tag, and
     // reference at least one of the given --project values.
-    let exact_items: Option<Vec<Item>> = if !tags.is_empty() || !projects.is_empty() {
-        let mut by_tag: Option<HashSet<uuid::Uuid>> = None;
-        for tag in tags {
-            let hit: HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
-                .into_iter()
-                .map(|i| i.uuid)
-                .collect();
-            by_tag = Some(match by_tag {
-                Some(existing) => existing.intersection(&hit).copied().collect(),
-                None => hit,
-            });
-        }
+    let tag_project_uuids: Option<HashSet<uuid::Uuid>> =
+        if !tags.is_empty() || !projects.is_empty() {
+            let mut by_tag: Option<HashSet<uuid::Uuid>> = None;
+            for tag in tags {
+                let hit: HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
+                    .into_iter()
+                    .map(|i| i.uuid)
+                    .collect();
+                by_tag = Some(match by_tag {
+                    Some(existing) => existing.intersection(&hit).copied().collect(),
+                    None => hit,
+                });
+            }
 
-        let mut by_project: Option<HashSet<uuid::Uuid>> = None;
-        for project in projects {
-            let hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
-                .into_iter()
-                .map(|i| i.uuid)
-                .collect();
-            by_project = Some(match by_project {
-                Some(mut existing) => {
-                    existing.extend(hit);
-                    existing
-                }
-                None => hit,
-            });
-        }
+            let mut by_project: Option<HashSet<uuid::Uuid>> = None;
+            for project in projects {
+                let hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
+                    .into_iter()
+                    .map(|i| i.uuid)
+                    .collect();
+                by_project = Some(match by_project {
+                    Some(mut existing) => {
+                        existing.extend(hit);
+                        existing
+                    }
+                    None => hit,
+                });
+            }
 
-        let uuids: HashSet<uuid::Uuid> = match (by_tag, by_project) {
-            (Some(t), Some(p)) => t.intersection(&p).copied().collect(),
-            (Some(t), None) => t,
-            (None, Some(p)) => p,
-            (None, None) => HashSet::new(),
+            Some(match (by_tag, by_project) {
+                (Some(t), Some(p)) => t.intersection(&p).copied().collect(),
+                (Some(t), None) => t,
+                (None, Some(p)) => p,
+                (None, None) => HashSet::new(),
+            })
+        } else {
+            None
         };
 
+    // Combined exact filter: AND of file + tag/project sets when both provided.
+    let exact_uuids: Option<HashSet<uuid::Uuid>> = match (file_uuids, tag_project_uuids) {
+        (Some(f), Some(tp)) => Some(f.intersection(&tp).copied().collect()),
+        (Some(f), None) => Some(f),
+        (None, Some(tp)) => Some(tp),
+        (None, None) => None,
+    };
+
+    // Build exact_items from the combined UUID set.
+    let exact_items: Option<Vec<Item>> = if let Some(uuids) = exact_uuids {
         let mut items = vec![];
         for u in uuids {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
@@ -267,6 +360,8 @@ fn collect_hits(
                     strength: 1.0,
                     exact_match: false,
                     modified,
+                    files: vec![],
+                    linked_tasks: vec![],
                 });
             }
         }
@@ -300,6 +395,8 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .chars()
         .take(160)
         .collect();
+    let files = db::get_item_files(conn, &item.uuid).unwrap_or_default();
+    let linked_tasks = db::get_item_task_links(conn, &item.uuid).unwrap_or_default();
     Hit {
         ref_kind: format!("item_{}", item.kind),
         strength: db::item_strength(conn, &item),
@@ -308,6 +405,8 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         snippet,
         exact_match,
         modified: Some(item.modified),
+        files,
+        linked_tasks,
     }
 }
 
@@ -383,7 +482,7 @@ mod tests {
             &["web-app"],
         );
 
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "about service-a");
         assert!(hits[0].exact_match);
@@ -392,7 +491,8 @@ mod tests {
     #[test]
     fn recall_with_no_memories_and_no_tasks_reports_none_recorded() {
         let conn = db::open_in_memory_for_test();
-        let v = recall_value(&conn, &cfg(), "", &["service-a".to_string()], &[], 20).unwrap();
+        let v =
+            recall_value(&conn, &cfg(), "", &["service-a".to_string()], &[], &[], 20).unwrap();
         assert!(v["keyword"].as_array().unwrap().is_empty());
         assert!(!db::has_any_memories(&conn).unwrap());
     }
@@ -421,7 +521,7 @@ mod tests {
         unlinked.path = Some(String::new());
         db::insert_item(&conn, &mut unlinked).unwrap();
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20).unwrap();
         assert!(!hits.is_empty());
         assert_eq!(hits[0].description, "service-a auth fix");
     }
@@ -440,10 +540,10 @@ mod tests {
         // Regression: FTS5 treats bare hyphens as NOT; --tag must never go
         // through MATCH at all (find_items_by_tag uses a plain WHERE clause),
         // and a free-text query containing a hyphen must still be quoted.
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 1);
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 1);
     }
 
@@ -467,8 +567,82 @@ mod tests {
         );
         assert!(newer.modified >= older.modified);
 
-        let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
     }
+
+    #[test]
+    fn recall_by_file_returns_associated_memories() {
+        let conn = db::open_in_memory_for_test();
+
+        let item = seed_memory(&conn, "auth notes", "JWT details", &[], &[]);
+        db::set_item_files(&conn, &item.uuid, &["src/auth.rs".to_string()]).unwrap();
+
+        seed_memory(&conn, "unrelated notes", "something else", &[], &[]);
+
+        let hits =
+            collect_hits(&conn, "", &[], &[], &["src/auth.rs".to_string()], 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].description, "auth notes");
+        assert_eq!(hits[0].files, vec!["src/auth.rs"]);
+    }
+
+    #[test]
+    fn recall_by_file_prefix_returns_all_files_under_dir() {
+        let conn = db::open_in_memory_for_test();
+
+        let a = seed_memory(&conn, "auth notes", "JWT details", &[], &[]);
+        db::set_item_files(&conn, &a.uuid, &["src/auth.rs".to_string()]).unwrap();
+
+        let b = seed_memory(&conn, "model notes", "model details", &[], &[]);
+        db::set_item_files(&conn, &b.uuid, &["src/model.rs".to_string()]).unwrap();
+
+        seed_memory(&conn, "unrelated", "outside src", &[], &[]);
+
+        let hits = collect_hits(&conn, "", &[], &[], &["src/".to_string()], 20).unwrap();
+        assert_eq!(hits.len(), 2);
+    }
+
+    #[test]
+    fn recall_file_and_tag_are_anded() {
+        let conn = db::open_in_memory_for_test();
+
+        let a = seed_memory(&conn, "auth notes", "JWT details", &["auth"], &[]);
+        db::set_item_files(&conn, &a.uuid, &["src/auth.rs".to_string()]).unwrap();
+
+        let b = seed_memory(&conn, "other auth notes", "other", &["auth"], &[]);
+        db::set_item_files(&conn, &b.uuid, &["src/other.rs".to_string()]).unwrap();
+
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["auth".to_string()],
+            &[],
+            &["src/auth.rs".to_string()],
+            20,
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].description, "auth notes");
+    }
+
+    #[test]
+    fn recall_linked_tasks_are_surfaced_on_item_hit() {
+        let conn = db::open_in_memory_for_test();
+
+        let mut task = Task::new("fix auth".to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        db::insert_task(&conn, &mut task).unwrap();
+
+        let item = seed_memory(&conn, "auth memory", "auth body", &["auth"], &[]);
+        db::set_item_task_links(&conn, &item.uuid, &[(task.uuid, "explicit")]).unwrap();
+
+        let hits = collect_hits(&conn, "", &["auth".to_string()], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].linked_tasks.len(), 1);
+        assert_eq!(hits[0].linked_tasks[0].0.description, "fix auth");
+        assert_eq!(hits[0].linked_tasks[0].1, "explicit");
+    }
 }
+

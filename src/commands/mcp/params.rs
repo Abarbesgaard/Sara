@@ -75,7 +75,7 @@ pub(crate) struct VerifyParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct RecallParams {
     pub(crate) project_path: Option<String>,
-    /// Search query (keyword / FTS). Optional when `tag`/`project` narrow the
+    /// Search query (keyword / FTS). Optional when `tag`/`project`/`files` narrow the
     /// lookup instead; combines with them using AND when both are given.
     #[serde(default)]
     pub(crate) query: String,
@@ -85,6 +85,8 @@ pub(crate) struct RecallParams {
     /// Exact project match against indexed memory project references (a
     /// memory matches if it references any of the given projects).
     pub(crate) project: Option<Vec<String>>,
+    /// Filter by associated file path (exact match; trailing '/' = prefix/directory match).
+    pub(crate) files: Option<Vec<String>>,
     /// Max results (default 20).
     pub(crate) limit: Option<i64>,
 }

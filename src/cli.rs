@@ -440,6 +440,12 @@ pub enum Command {
         /// (repeatable — a memory matches if it references any of the given projects)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Vec<String>,
+        /// Filter by associated file path (repeatable; trailing '/' = prefix/directory match)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Max results (alias for --limit)
+        #[arg(long)]
+        top: Option<i64>,
         /// Max results
         #[arg(long, default_value_t = 20)]
         limit: i64,

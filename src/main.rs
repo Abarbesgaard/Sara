@@ -397,10 +397,22 @@ fn run() -> Result<()> {
             query,
             tag,
             project,
+            file,
+            top,
             limit,
             json,
         } => {
-            commands::recall::run(&conn, &cfg, &query.join(" "), &tag, &project, limit, json)?;
+            let effective_limit = top.unwrap_or(limit);
+            commands::recall::run(
+                &conn,
+                &cfg,
+                &query.join(" "),
+                &tag,
+                &project,
+                &file,
+                effective_limit,
+                json,
+            )?;
         }
 
         Command::Forget { handle, .. } => {

@@ -2883,6 +2883,19 @@ pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> 
     Ok(())
 }
 
+/// File paths stored for a given memory (by its UUID).
+pub fn get_item_files(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {
+    let uuid = item_uuid.to_string();
+    let mut stmt =
+        conn.prepare("SELECT file_path FROM item_files WHERE item_uuid = ?1 ORDER BY file_path")?;
+    let rows = stmt.query_map([&uuid], |r| r.get(0))?;
+    let mut paths = vec![];
+    for r in rows {
+        paths.push(r?);
+    }
+    Ok(paths)
+}
+
 /// Active items associated with `path`.
 /// When `prefix` is false, only items whose file_path exactly equals `path`
 /// are returned. When `prefix` is true, items whose file_path starts with
