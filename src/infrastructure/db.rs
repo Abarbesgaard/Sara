@@ -3096,6 +3096,79 @@ pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
     }
 }
 
+/// Surface Strong (strength >= 2.0) memories relevant to a task, combining
+/// FTS over the task description and exact tag intersection. Used by
+/// `guide_value` to inject prior-work context automatically — callers should
+/// omit the `similar_work` field when the result is empty.
+pub fn find_similar_strong_memories(
+    conn: &Connection,
+    description: &str,
+    tags: &[String],
+) -> Result<Vec<Item>> {
+    let mut candidates: std::collections::HashMap<uuid::Uuid, Item> =
+        std::collections::HashMap::new();
+
+    // FTS path: description keywords.
+    if !description.is_empty() {
+        for hit in search_fts(conn, description, 20).unwrap_or_default() {
+            if hit.ref_kind.starts_with("item_") {
+                if let Ok(uuid) = hit.task_uuid.parse::<uuid::Uuid>() {
+                    if !candidates.contains_key(&uuid) {
+                        if let Ok(item) = get_item_by_uuid(conn, &uuid.to_string()) {
+                            if item.kind == "memory" {
+                                candidates.insert(uuid, item);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Tag path: exact intersection across all given tags.
+    if !tags.is_empty() {
+        let mut tag_set: Option<std::collections::HashSet<uuid::Uuid>> = None;
+        for tag in tags {
+            let tag_norm = tag.trim().to_lowercase();
+            if tag_norm.is_empty() {
+                continue;
+            }
+            let uuids: std::collections::HashSet<uuid::Uuid> = find_items_by_tag(conn, &tag_norm)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| i.kind == "memory")
+                .map(|i| i.uuid)
+                .collect();
+            tag_set = Some(match tag_set {
+                Some(existing) => existing.intersection(&uuids).copied().collect(),
+                None => uuids,
+            });
+        }
+        for uuid in tag_set.unwrap_or_default() {
+            candidates.entry(uuid).or_insert_with(|| {
+                get_item_by_uuid(conn, &uuid.to_string()).unwrap()
+            });
+        }
+    }
+
+    // Filter to Strong only, load file associations, sort by strength desc.
+    let mut strong: Vec<Item> = candidates
+        .into_values()
+        .filter_map(|mut item| {
+            let s = item_strength(conn, &item);
+            if s >= 2.0 {
+                item.files = get_item_files(conn, &item.uuid).unwrap_or_default();
+                Some(item)
+            } else {
+                None
+            }
+        })
+        .collect();
+    strong.sort_by(|a, b| b.modified.cmp(&a.modified));
+    strong.truncate(5);
+    Ok(strong)
+}
+
 pub fn record_event(
     conn: &Connection,
     action: &str,

@@ -63,6 +63,51 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
             "needs_revision".to_string(),
             serde_json::Value::Bool(needs_revision),
         );
+
+        // Auto-recall: surface Strong prior-work memories relevant to this task.
+        // Only injected when Strong matches exist — omitted entirely otherwise so
+        // normal task-loading output is unchanged in the common case.
+        let description = obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tags: Vec<String> = obj
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let similar = db::find_similar_strong_memories(conn, &description, &tags)
+            .unwrap_or_default();
+        if !similar.is_empty() {
+            let similar_json: Vec<serde_json::Value> = similar
+                .iter()
+                .map(|item| {
+                    let label = format!(
+                        "{}{}",
+                        item.kind.chars().next().unwrap_or('m'),
+                        item.display_id.unwrap_or(0)
+                    );
+                    let snippet: String = item
+                        .summary
+                        .clone()
+                        .unwrap_or_else(|| item.body.clone())
+                        .chars()
+                        .take(160)
+                        .collect();
+                    serde_json::json!({
+                        "label": label,
+                        "description": item.title,
+                        "snippet": snippet,
+                        "files": item.files,
+                    })
+                })
+                .collect();
+            obj.insert(
+                "similar_work".to_string(),
+                serde_json::Value::Array(similar_json),
+            );
+        }
     }
 
     Ok(guide)
