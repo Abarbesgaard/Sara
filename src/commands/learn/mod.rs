@@ -83,6 +83,7 @@ pub fn learn_value(
     if !force {
         check_size(text)?;
         check_secrets(text)?;
+        check_overlap(conn, tags)?;
     }
 
     let resolved_files = collect_files(files, auto_files)?;
@@ -103,6 +104,102 @@ pub fn learn_value(
         "files": files_json,
         "linked_tasks": tasks_json,
     }))
+}
+
+/// Detect existing memories whose tags overlap significantly with the new one.
+/// Two bands:
+///   - Near-duplicate: existing memory shares ALL given tags → warn prominently.
+///   - Partial overlap: shares ≥50% (but not all) tags → softer note.
+/// Prints warnings to stderr; never blocks the write (use --force to silence).
+fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
+    if tags.is_empty() {
+        return Ok(());
+    }
+    let normalized: Vec<String> = tags
+        .iter()
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if normalized.is_empty() {
+        return Ok(());
+    }
+
+    // Build UUID sets per tag, then intersect (near-dupe) and union (any overlap).
+    let mut any_union: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
+    let mut all_intersection: Option<std::collections::HashSet<uuid::Uuid>> = None;
+
+    for tag in &normalized {
+        let uuids: std::collections::HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
+            .into_iter()
+            .filter(|i| i.kind == "memory")
+            .map(|i| i.uuid)
+            .collect();
+        any_union.extend(&uuids);
+        all_intersection = Some(match all_intersection {
+            Some(existing) => existing.intersection(&uuids).copied().collect(),
+            None => uuids,
+        });
+    }
+
+    let near_dupes: std::collections::HashSet<uuid::Uuid> =
+        all_intersection.unwrap_or_default();
+    let partial: std::collections::HashSet<uuid::Uuid> = any_union
+        .difference(&near_dupes)
+        .copied()
+        .collect();
+
+    // Only surface partial overlaps if they share ≥50% of the given tags.
+    let threshold = ((normalized.len() as f64) * 0.5).ceil() as usize;
+    let significant_partial: Vec<uuid::Uuid> = if normalized.len() > 1 {
+        partial
+            .into_iter()
+            .filter(|u| {
+                let count = normalized.iter().filter(|t| {
+                    db::find_items_by_tag(conn, t)
+                        .unwrap_or_default()
+                        .iter()
+                        .any(|i| &i.uuid == u)
+                }).count();
+                count >= threshold
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    if !near_dupes.is_empty() {
+        eprintln!(
+            "Warning: {} existing {} with identical tags [{}]:",
+            near_dupes.len(),
+            if near_dupes.len() == 1 { "memory" } else { "memories" },
+            normalized.join(", ")
+        );
+        for u in &near_dupes {
+            if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
+                let label = format!("m{}", item.display_id.unwrap_or(0));
+                let snippet: String = item.body.chars().take(80).collect();
+                eprintln!("  {} — {}", label, snippet.trim());
+            }
+        }
+        eprintln!("Consider updating an existing memory with `sara forget <label>` + re-learn, or pass --force to create anyway.");
+    }
+
+    if !significant_partial.is_empty() {
+        eprintln!(
+            "Note: {} potentially related {} (partial tag overlap — possible contradiction):",
+            significant_partial.len(),
+            if significant_partial.len() == 1 { "memory" } else { "memories" }
+        );
+        for u in &significant_partial {
+            if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
+                let label = format!("m{}", item.display_id.unwrap_or(0));
+                let snippet: String = item.body.chars().take(80).collect();
+                eprintln!("  {} — {}", label, snippet.trim());
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Collect file paths from explicit --file flags and optionally --auto-files.
