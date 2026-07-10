@@ -46,3 +46,26 @@ fn projects_from(conn: &Connection) -> Vec<CompletionCandidate> {
         .map(CompletionCandidate::new)
         .collect()
 }
+
+/// Candidates for a memory label argument (e.g. `--supersedes m7`): every
+/// active memory's label annotated with the start of its body.
+pub fn memory_labels() -> Vec<CompletionCandidate> {
+    crate::infrastructure::db::open()
+        .ok()
+        .map(|conn| memory_labels_from(&conn))
+        .unwrap_or_default()
+}
+
+fn memory_labels_from(conn: &Connection) -> Vec<CompletionCandidate> {
+    crate::infrastructure::db::list_memories(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| {
+            m.display_id.map(|id| {
+                let label = format!("m{id}");
+                let snippet: String = m.body.chars().take(60).collect();
+                CompletionCandidate::new(label).help(Some(snippet.into()))
+            })
+        })
+        .collect()
+}
