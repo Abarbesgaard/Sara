@@ -74,9 +74,9 @@ is ever written into your repositories.**
 
 The core promise: *an agent that uses Sara can always pick up exactly where it left off*, even after the conversation ends, the shell closes, or the machine reboots.
 
-Sara maintains four layers of memory:
+Sara has two scopes of memory — **project-wide** and **file-level** — sitting on top of a full change history and a cross-task search index.
 
-### 1. Project memory (`sara init`)
+### Project-wide memory (`sara init`)
 
 Running `sara init` in a repo records the project's **goal**, **stack**,
 **conventions**, and **setup/test/lint commands**. Any agent (or human) that
@@ -89,7 +89,28 @@ sara init --goal "Auth service for web-app" --stack "Rust, SQLite" \
   --conventions "snake_case, no unwrap" --notes "run cargo test before PR"
 ```
 
-### 2. Task memory
+Use `sara init` (without flags) to reopen the profile and edit it. The profile
+travels with the project name, so every agent that touches the same repo reads
+the same shared context.
+
+### File-level memory (`sara attach`)
+
+Individual tasks can carry **code anchors** — durable pointers into the
+codebase — so an agent resuming work knows exactly where to look:
+
+```bash
+sara attach 1 src/auth/login.rs                            # whole file
+sara attach 1 src/auth/login.rs --symbol "validate_token"  # specific function
+sara attach 1 src/auth/login.rs --lines "42-67"            # line range
+sara attach 1 src/auth/login.rs --reason "JWT logic lives here"
+```
+
+Each anchor records the **file path**, an optional **symbol** or **line range**,
+a **reason** (why it matters to the task), and a **source fragment** (a snapshot
+of the code at attach time). This means the agent can later ask "what files does
+this task touch?" and get a precise, annotated answer — not a guess.
+
+### Task memory
 
 Every task is a durable record with description, priority, due date, tags,
 estimate, recurrence, status, and a full set of attached context:
@@ -108,7 +129,7 @@ estimate, recurrence, status, and a full set of attached context:
 None of this requires the agent to be running. Open the task later — in any
 session, on any client — and the full context is there.
 
-### 3. Change history
+### Change history
 
 Every mutation to a task is recorded: field edits, timer events, dependency
 changes, step completions, comment additions, file attachments, and branch ties.
@@ -117,7 +138,7 @@ Additions show `+`, removals show `−`, and value changes show `old → new`.
 The history panel is visible in `sara info` and included in `--md`/`--plain`
 output via `--history`. Nothing is ever silently overwritten.
 
-### 4. Cross-task search (`sara recall`)
+### Cross-task search (`sara recall`)
 
 ```bash
 sara recall "auth"          # full-text search across all tasks in the current project
