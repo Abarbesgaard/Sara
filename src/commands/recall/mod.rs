@@ -45,6 +45,12 @@ struct Hit {
     /// The item's own uuid for memory hits (None for plain task hits) — used
     /// to record usage-reinforcement events after the final hit list is known.
     item_uuid: Option<uuid::Uuid>,
+    /// Labels of memories this one is derived from (outgoing `derived_from` edges).
+    /// Non-empty means this is a per-application copy of a canonical pattern memory.
+    derived_from_labels: Vec<String>,
+    /// Number of memories that derive from this one (incoming `derived_from` edges).
+    /// Non-zero means this is a canonical pattern memory.
+    derived_count: usize,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -82,6 +88,9 @@ pub fn recall_value(
                 "files": h.files,
                 "superseded_by": h.superseded_by,
                 "provisional": h.provisional,
+                "canonical": h.derived_count > 0,
+                "derived_count": h.derived_count,
+                "derived_from": h.derived_from_labels,
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
                     "description": t.description,
@@ -242,8 +251,18 @@ pub fn run(
             } else {
                 String::new()
             };
+            let canonical_str = if h.derived_count > 0 {
+                format!(" [canonical, {} derived]", h.derived_count)
+            } else {
+                String::new()
+            };
+            let derived_from_str = if h.derived_from_labels.is_empty() {
+                String::new()
+            } else {
+                format!(" [derived from: {}]", h.derived_from_labels.join(", "))
+            };
             println!(
-                "  [{}] {} {} {}: {}{}{}{}{}{}",
+                "  [{}] {} {} {}: {}{}{}{}{}{}{}{}",
                 h.ref_kind,
                 marker,
                 h.label,
@@ -253,6 +272,8 @@ pub fn run(
                 tasks_str,
                 superseded_str,
                 provisional_str,
+                canonical_str,
+                derived_from_str,
                 if age.is_empty() {
                     String::new()
                 } else {
@@ -479,6 +500,8 @@ fn collect_hits(
                     superseded_by: vec![],
                     provisional: false,
                     item_uuid: None,
+                    derived_from_labels: vec![],
+                    derived_count: 0,
                 });
             }
         }
@@ -536,6 +559,24 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
                 .unwrap_or_else(|| l.from_uuid[..8].to_string())
         })
         .collect();
+    // Outgoing `derived_from` edges — this memory is derived from a canonical.
+    let derived_from_labels: Vec<String> = db::get_memory_links_from(conn, &item.uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .map(|l| {
+            db::get_item_by_uuid(conn, &l.to_uuid)
+                .ok()
+                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .unwrap_or_else(|| l.to_uuid[..8].to_string())
+        })
+        .collect();
+    // Incoming `derived_from` edges — other memories derive from this canonical.
+    let derived_count = db::get_memory_links_to(conn, &item.uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .count();
     Hit {
         ref_kind: format!("item_{}", item.kind),
         strength: db::item_strength(conn, &item),
@@ -549,6 +590,8 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         superseded_by,
         provisional: item.status == "provisional",
         item_uuid: Some(item.uuid),
+        derived_from_labels,
+        derived_count,
     }
 }
 
@@ -821,6 +864,74 @@ mod tests {
         assert_eq!(hits[0].linked_tasks.len(), 1);
         assert_eq!(hits[0].linked_tasks[0].0.description, "fix auth");
         assert_eq!(hits[0].linked_tasks[0].1, "explicit");
+    }
+
+    #[test]
+    fn recall_surfaces_canonical_and_derived_memory_distinction() {
+        let conn = db::open_in_memory_for_test();
+
+        // Canonical: the pattern memory.
+        let canonical = seed_memory(
+            &conn,
+            "CodeQL config pattern",
+            "extract to codeql-config.yml and use query-filters",
+            &["codeql"],
+            &[],
+        );
+        // Derived: per-repo application memories.
+        let derived_a = seed_memory(
+            &conn,
+            "CodeQL config applied to repo-a",
+            "applied codeql pattern to repo-a",
+            &["codeql"],
+            &[],
+        );
+        let derived_b = seed_memory(
+            &conn,
+            "CodeQL config applied to repo-b",
+            "applied codeql pattern to repo-b",
+            &["codeql"],
+            &[],
+        );
+
+        // Link derived memories to canonical.
+        db::insert_memory_link(
+            &conn,
+            &derived_a.uuid.to_string(),
+            &canonical.uuid.to_string(),
+            "derived_from",
+            1.0,
+        )
+        .unwrap();
+        db::insert_memory_link(
+            &conn,
+            &derived_b.uuid.to_string(),
+            &canonical.uuid.to_string(),
+            "derived_from",
+            1.0,
+        )
+        .unwrap();
+
+        let hits = collect_hits(&conn, "", &["codeql".to_string()], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 3);
+
+        // Find each hit by description.
+        let canonical_hit = hits.iter().find(|h| h.description == "CodeQL config pattern").unwrap();
+        let derived_a_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-a").unwrap();
+        let derived_b_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-b").unwrap();
+
+        // Canonical: has derived_count=2, no derived_from_labels.
+        assert_eq!(canonical_hit.derived_count, 2, "canonical must report 2 derived memories");
+        assert!(canonical_hit.derived_from_labels.is_empty(), "canonical must not be derived from anything");
+
+        // Derived: has derived_count=0, derived_from_labels pointing to canonical.
+        assert_eq!(derived_a_hit.derived_count, 0);
+        assert_eq!(derived_a_hit.derived_from_labels.len(), 1);
+        assert_eq!(derived_b_hit.derived_count, 0);
+        assert_eq!(derived_b_hit.derived_from_labels.len(), 1);
+
+        // Both derived memories point to the same canonical label.
+        assert_eq!(derived_a_hit.derived_from_labels[0], derived_b_hit.derived_from_labels[0]);
     }
 }
 
