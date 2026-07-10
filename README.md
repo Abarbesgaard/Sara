@@ -27,6 +27,10 @@ is ever written into your repositories.**
 
 - [Highlights](#highlights)
 - [What Sara remembers](#what-sara-remembers)
+- [Memory system](#memory-system-sara-learn--sara-recall--sara-memories)
+  - [Learning](#learning-sara-learn)
+  - [Recalling](#recalling-sara-recall)
+  - [Browsing & managing memories](#browsing--managing-memories)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Core concepts](#core-concepts)
@@ -58,6 +62,8 @@ is ever written into your repositories.**
 
 - **Persistent memory** — tasks, steps, notes, decisions, and history all live
   in a local SQLite database and survive across chat sessions and machine reboots.
+- **Knowledge memory** — `sara learn` / `sara recall` let agents save and retrieve
+  free-form findings (decisions, gotchas, context) that outlive any single task.
 - **Project-aware** — `sara` auto-detects the current project (a Git repo, or any
   folder you run `sara init` in) and scopes `sara list` to it by default.
 - **Transparent urgency** — a Taskwarrior-style scoring model decides ordering; `sara info` shows the exact breakdown.
@@ -148,6 +154,95 @@ sara recall "migration" -a  # search across all projects
 When the agent needs to know "have I seen this before?" or "what did I decide
 about X?", `recall` searches descriptions, annotations, steps, and links across
 every task — making the database a queryable long-term memory, not just a todo list.
+
+---
+
+## Memory system (`sara learn` / `sara recall` / `sara memories`)
+
+Sara has a **persistent knowledge store** that is separate from tasks. While tasks
+track *what to do*, memories capture *what you've learned* — decisions, gotchas,
+architectural context, and session findings that future agents (and future you)
+can surface in seconds.
+
+Every memory carries **tags** for quick lookup, optional **file associations** so a
+memory surfaces whenever an agent touches a related path, and a **strength score**
+that rises automatically when the memory is frequently recalled.
+
+### Learning (`sara learn`)
+
+Save a finding as a memory after finishing meaningful work:
+
+```bash
+sara learn --tag auth -p web-app "JWT refresh tokens must be stored httpOnly; localStorage is XSS-vulnerable."
+
+# tie to the file you just edited
+sara learn --tag auth --file src/auth/login.rs "validate_token() returns Err on clock skew > 30s — callers must handle."
+
+# auto-attach all files changed since last commit
+sara learn --auto-files --tag migration "Running diesel migrations in tests requires a separate test database URL."
+
+# correct a stale memory atomically
+sara learn --supersedes m7 --tag codeql "Sanitiser is LogSanitizer.escape(), not String::replace()."
+```
+
+**Rules of thumb:**
+- One idea per memory — don't dump an entire conversation. A paragraph that
+  stands alone is the target.
+- Tags are the primary lookup key — always include at least one.
+- Use `--file` (repeatable) to bind a memory to the file it describes; recall
+  will surface it whenever an agent revisits that file.
+- `--auto-files` reads `git diff --name-only HEAD` and attaches every changed
+  file automatically — ideal at the end of a work session.
+- Memories over 2 000 chars or containing secret-like patterns are rejected by
+  default; pass `--force` only when the content is legitimately safe.
+
+### Recalling (`sara recall`)
+
+Before starting any new feature or investigation, always recall:
+
+```bash
+sara recall --tag auth -p web-app       # tag-scoped lookup (fast, reliable)
+sara recall "refresh token"             # full-text keyword search
+sara recall --file src/auth/login.rs    # everything linked to a specific file
+sara recall --file src/ --top 5         # most recent memories for any file under src/
+```
+
+`recall` searches both memories **and** tasks in one pass — memory hits are
+prefixed `[item_memory]`. If a memory was superseded by a newer one, recall
+shows a `[superseded by: mN]` warning so you don't act on stale knowledge.
+
+**Overlap warnings:** when `sara learn` detects an existing memory with the same
+tag or file association, it prints an overlap warning. Always resolve it before
+moving on — run `sara dream <label>` to read the old memory in full, then
+either `sara relearn <label>` to correct it in place, `sara learn --supersedes
+<label>` to mark it superseded, or `sara learn --force` if the two memories
+genuinely cover different concerns.
+
+### Browsing & managing memories
+
+```bash
+sara memories           # all memories newest-first, with Strong / Linked / Weak labels
+sara tags               # all tags with counts — check before learning to avoid drift
+sara dream m7           # full body + bond graph for a single memory
+sara dream              # whole-brain constellation (all memories + links)
+sara forget m7          # archive a stale memory
+sara relearn m7 --tag auth "corrected text"   # edit in place — keeps label, links, dates
+sara promote m14        # accept a provisional auto-memory as permanent
+sara prune-memories --dry-run   # preview low-value memories eligible for archival
+sara prune-memories --apply     # actually archive them
+```
+
+**Strength labels:**
+- **Strong** — frequently recalled; the most trusted memories.
+- **Linked** — tied to tasks or files; reliable context.
+- **Weak** — saved but rarely used; candidates for pruning after 90 days.
+
+**Provisional memories:** `sara done` automatically synthesises a memory from
+the completed task's steps, results, and annotations. These are marked
+`[provisional]` in `sara memories`. Read each one with `sara dream <label>`,
+then either promote it (`sara promote <label>`), correct it (`sara relearn
+<label> "fixed text"`), or discard it (`sara forget <label> -y`). Don't let
+provisionals accumulate — they dilute recall precision.
 
 ---
 
@@ -392,7 +487,13 @@ from reading and planning a task through to completing it:
 | `steps` | Ordered steps (optionally up to step N) |
 | `step_done` | Mark a step done, recording result + commit |
 | `verify` | Read-only: the verification commands + acceptance criteria (does **not** run them) |
-| `recall` | Cross-task keyword search |
+| `recall` | Cross-task keyword search + memory lookup |
+| `memories` | Browse all saved memories (with strength labels) |
+| `forget` | Archive a memory by label |
+| `promote` | Accept a provisional auto-memory as permanent |
+| `link_memory` | Create a typed edge between two memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
+| `unlink_memory` | Remove a typed edge between two memories |
+| `prune_memories` | Dry-run or apply archival of low-value memories |
 | `annotate` | Add a comment / finding / decision |
 | `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
 | `plan_show` | Dependency-ordered briefing (the task plus everything it is blocked by) |
@@ -816,7 +917,17 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara addbranch <id>`              | Tie the current git branch to a task (`--clear`)         |
 | `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
 | `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
-| `sara recall <query>`              | Full-text search across tasks (`-a` all projects)        |
+| `sara recall <query>`              | Full-text search across tasks and memories (`-a` all projects, `--tag`, `--file`, `--top N`) |
+| `sara learn [FLAGS] "<text>"`      | Save a knowledge memory (`--tag`, `-p`, `--file`, `--auto-files`, `--task`, `--supersedes`, `--force`; flags before text) |
+| `sara memories`                    | Browse all saved memories newest-first with **Strong / Linked / Weak** labels |
+| `sara tags`                        | List all memory tags with counts |
+| `sara dream [label]`               | Inspect a single memory's full body + bond graph (or whole-brain constellation without a label) |
+| `sara forget <label>`              | Archive a memory (e.g. `sara forget m3 -y`) |
+| `sara relearn <label> [FLAGS] ["text"]` | Edit a memory in place — `--tag`/`--file` replace the whole set; keeps label + links |
+| `sara promote <label>`             | Accept a provisional auto-memory as permanent |
+| `sara link-memory <from> <rel> <to>` | Create a typed edge between memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
+| `sara unlink-memory <from> <rel> <to>` | Remove a typed edge between memories |
+| `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |
