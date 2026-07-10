@@ -3356,6 +3356,38 @@ fn recall_usage_boost(conn: &Connection, item_uuid: &Uuid) -> f64 {
     (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP)
 }
 
+/// Per-day recall counts for the last `days` days (oldest day first). Powers
+/// the "recall pulse" sparkline in `sara dream` — a 30-day activity trace of
+/// how often the memory actually surfaced.
+pub fn memory_recall_daily_counts(conn: &Connection, item_uuid: &Uuid, days: i64) -> Vec<u64> {
+    let mut counts = vec![0u64; days.max(1) as usize];
+    let now = Utc::now();
+    let cutoff = dt_to_str(&(now - chrono::Duration::days(days)));
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT at FROM events
+         WHERE action='memory_recalled' AND ref_uuid=?1 AND at >= ?2",
+    ) else {
+        return counts;
+    };
+    let rows = stmt
+        .query_map(
+            rusqlite::params![item_uuid.to_string(), cutoff],
+            |r| r.get::<_, String>(0),
+        )
+        .map(|rows| rows.flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
+    for at in rows {
+        if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&at) {
+            let age_days = (now - ts.with_timezone(&Utc)).num_days();
+            if (0..days).contains(&age_days) {
+                let idx = (days - 1 - age_days) as usize;
+                counts[idx] += 1;
+            }
+        }
+    }
+    counts
+}
+
 // ── auto-memory synthesis on task completion ─────────────────────────────────
 
 /// A candidate memory that pruning identified as low-value.

@@ -423,6 +423,10 @@ fn run() -> Result<()> {
             commands::promote::run(&conn, &handle)?;
         }
 
+        Command::Dream { handle } => {
+            commands::dream::run(&conn, &handle)?;
+        }
+
         Command::Relearn {
             handle,
             text,

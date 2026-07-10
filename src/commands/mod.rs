@@ -8,6 +8,7 @@ pub mod dep;
 pub mod done;
 pub mod export;
 pub mod forget;
+pub mod dream;
 pub mod link_memory;
 pub mod guide;
 pub mod import;
