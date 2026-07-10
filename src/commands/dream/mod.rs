@@ -567,6 +567,384 @@ fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
     );
 }
 
+// ── the web: whole-brain constellation view ──────────────────────────────────
+
+struct Star {
+    label: String,
+    title: String,
+    strength: f64,
+    provisional: bool,
+    tags: Vec<String>,
+    /// Canvas position, produced by the force layout.
+    x: f64,
+    y: f64,
+    /// Recalled within the last 7 days — pulses.
+    recently_recalled: bool,
+}
+
+struct Bond {
+    a: usize,
+    b: usize,
+    relation: String,
+}
+
+struct WebData {
+    stars: Vec<Star>,
+    bonds: Vec<Bond>,
+}
+
+fn shared_tags(a: &[String], b: &[String]) -> usize {
+    a.iter().filter(|t| b.contains(t)).count()
+}
+
+/// Lightweight force-directed layout: golden-angle spiral seed, then a few
+/// hundred relaxation steps — bonds and shared tags pull memories together,
+/// everything else repels, weak gravity keeps the web centred.
+fn force_layout(stars: &mut [Star], bonds: &[Bond], iterations: usize) {
+    let n = stars.len();
+    if n < 2 {
+        return;
+    }
+    // Golden-angle spiral seed for an even initial spread.
+    for (i, s) in stars.iter_mut().enumerate() {
+        let r = 70.0 * ((i + 1) as f64 / n as f64).sqrt();
+        let a = i as f64 * 2.399_963; // golden angle
+        s.x = a.cos() * r * 1.3;
+        s.y = a.sin() * r;
+    }
+    // Tag-affinity springs (soft), bond springs (firm).
+    let mut affinity: Vec<(usize, usize, f64)> = vec![];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let shared = shared_tags(&stars[i].tags, &stars[j].tags);
+            if shared > 0 {
+                affinity.push((i, j, 0.002 * shared as f64));
+            }
+        }
+    }
+    for b in bonds {
+        affinity.push((b.a, b.b, 0.02));
+    }
+
+    for _ in 0..iterations {
+        let mut fx = vec![0.0f64; n];
+        let mut fy = vec![0.0f64; n];
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let dx = stars[i].x - stars[j].x;
+                let dy = stars[i].y - stars[j].y;
+                let d2 = (dx * dx + dy * dy).max(4.0);
+                let rep = 220.0 / d2;
+                let d = d2.sqrt();
+                fx[i] += dx / d * rep;
+                fy[i] += dy / d * rep;
+                fx[j] -= dx / d * rep;
+                fy[j] -= dy / d * rep;
+            }
+            // gentle gravity toward centre
+            fx[i] -= stars[i].x * 0.01;
+            fy[i] -= stars[i].y * 0.01;
+        }
+        for &(i, j, k) in &affinity {
+            let dx = stars[j].x - stars[i].x;
+            let dy = stars[j].y - stars[i].y;
+            fx[i] += dx * k;
+            fy[i] += dy * k;
+            fx[j] -= dx * k;
+            fy[j] -= dy * k;
+        }
+        for i in 0..n {
+            stars[i].x = (stars[i].x + fx[i].clamp(-4.0, 4.0)).clamp(-95.0, 95.0);
+            stars[i].y = (stars[i].y + fy[i].clamp(-4.0, 4.0)).clamp(-68.0, 68.0);
+        }
+    }
+}
+
+fn load_web(conn: &Connection) -> Result<WebData> {
+    let memories = db::list_memories(conn)?;
+    let mut index = std::collections::HashMap::new();
+    let mut stars: Vec<Star> = memories
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            index.insert(m.uuid.to_string(), i);
+            let recent: u64 = db::memory_recall_daily_counts(conn, &m.uuid, 7).iter().sum();
+            Star {
+                label: item_label(m),
+                title: m.title.clone(),
+                strength: db::item_strength(conn, m),
+                provisional: m.status == "provisional",
+                tags: m.tags.clone(),
+                x: 0.0,
+                y: 0.0,
+                recently_recalled: recent > 0,
+            }
+        })
+        .collect();
+    let bonds: Vec<Bond> = db::all_memory_links(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|l| {
+            Some(Bond {
+                a: *index.get(&l.from_uuid)?,
+                b: *index.get(&l.to_uuid)?,
+                relation: l.relation,
+            })
+        })
+        .collect();
+    force_layout(&mut stars, &bonds, 250);
+    Ok(WebData { stars, bonds })
+}
+
+/// `sara dream` with no label: the whole brain at once. Enter dives into the
+/// neuron view for the selected star; Esc zooms back out to the web.
+pub fn run_web(conn: &Connection) -> Result<()> {
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        return run_web_plain(conn);
+    }
+    let web = load_web(conn)?;
+    if web.stars.is_empty() {
+        println!("No memories yet — nothing to dream about. Use `sara learn` first.");
+        return Ok(());
+    }
+
+    let mut terminal = tui::init_terminal()?;
+    let mut frame: u64 = 0;
+    let mut selected: usize = 0;
+    let mut show_help = false;
+    // When Some, we've dived into a single neuron.
+    let mut dream: Option<DreamData> = None;
+    let mut dream_frame: u64 = 0;
+    let mut dream_selected: usize = 0;
+
+    let res = loop {
+        let draw = terminal.draw(|f| {
+            if let Some(d) = &dream {
+                ui(f, d, dream_frame, dream_selected, &[web.stars[selected].label.clone()], show_help);
+            } else {
+                ui_web(f, &web, frame, selected, show_help);
+            }
+        });
+        if let Err(e) = draw {
+            break Err(e.into());
+        }
+        frame += 1;
+        dream_frame += 1;
+
+        if crossterm::event::poll(std::time::Duration::from_millis(TICK_MS))? {
+            use crossterm::event::{Event, KeyCode, KeyEventKind};
+            if let Event::Key(key) = crossterm::event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                match key.code {
+                    KeyCode::Char('q') => break Ok(()),
+                    KeyCode::Char('?') => show_help = !show_help,
+                    KeyCode::Esc | KeyCode::Backspace => {
+                        if show_help {
+                            show_help = false;
+                        } else if dream.is_some() {
+                            dream = None; // zoom back out to the web
+                        } else {
+                            break Ok(());
+                        }
+                    }
+                    KeyCode::Tab | KeyCode::Right | KeyCode::Down => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected = (dream_selected + 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = (selected + 1) % web.stars.len();
+                        }
+                    }
+                    KeyCode::BackTab | KeyCode::Left | KeyCode::Up => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected =
+                                    (dream_selected + d.neighbors.len() - 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = (selected + web.stars.len() - 1) % web.stars.len();
+                        }
+                    }
+                    KeyCode::Enter => {
+                        let target = if let Some(d) = &dream {
+                            // Drift within the neuron view along a memory dendrite.
+                            match d.neighbors.get(dream_selected) {
+                                Some(Neighbor { kind: NodeKind::Memory { label, .. } }) => {
+                                    Some(label.clone())
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            Some(web.stars[selected].label.clone())
+                        };
+                        if let Some(t) = target {
+                            if let Ok(d) = load(conn, &t) {
+                                let _ = db::record_memory_recall(conn, &d.item.uuid);
+                                dream = Some(d);
+                                dream_frame = 0;
+                                dream_selected = 0;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    tui::restore_terminal()?;
+    res
+}
+
+fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, show_help: bool) {
+    let area = f.area();
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(3)])
+        .split(area);
+
+    let strong = web.stars.iter().filter(|s| s.strength >= 2.0).count();
+    let linked = web.stars.iter().filter(|s| s.strength >= 1.5 && s.strength < 2.0).count();
+    let weak = web.stars.len() - strong - linked;
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ✦ the web ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!(
+                    "— {} memories · {} bonds · ",
+                    web.stars.len(),
+                    web.bonds.len()
+                ),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(format!("{strong} strong "), Style::default().fg(Color::White)),
+            Span::styled(format!("{linked} linked "), Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{weak} weak"), Style::default().fg(Color::DarkGray)),
+            Span::styled("   [?] help  [q] wake up", Style::default().fg(Color::DarkGray)),
+        ])),
+        outer[0],
+    );
+
+    let canvas = Canvas::default()
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
+        .x_bounds([-100.0, 100.0])
+        .y_bounds([-75.0, 75.0])
+        .paint(move |ctx| {
+            // Bonds first, so stars render on top.
+            for b in &web.bonds {
+                let (sa, sb) = (&web.stars[b.a], &web.stars[b.b]);
+                let touches_sel = b.a == selected || b.b == selected;
+                let color = match (b.relation.as_str(), touches_sel) {
+                    ("supersedes", true) => Color::Red,
+                    ("supersedes", false) => Color::Rgb(110, 40, 40),
+                    (_, true) => Color::Cyan,
+                    (_, false) => Color::Rgb(50, 70, 80),
+                };
+                ctx.draw(&CanvasLine { x1: sa.x, y1: sa.y, x2: sb.x, y2: sb.y, color });
+            }
+            let breath = ((frame as f64 * 0.06).sin() + 1.0) / 2.0;
+            for (i, s) in web.stars.iter().enumerate() {
+                let is_sel = i == selected;
+                // Strength → glyph + luminosity; recent recalls pulse.
+                let pulse = if s.recently_recalled { breath } else { 0.35 };
+                let lum = (70.0 + 150.0 * (s.strength / 2.5).min(1.0) * (0.55 + 0.45 * pulse)) as u8;
+                let (glyph, color) = if s.provisional {
+                    ("◌", Color::Rgb(lum, 50, lum))
+                } else if s.strength >= 2.0 {
+                    ("✦", Color::Rgb(lum, lum, lum))
+                } else if s.strength >= 1.5 {
+                    ("✧", Color::Rgb(50, lum, lum))
+                } else {
+                    ("·", Color::Rgb(lum / 2, lum / 2, (lum as u16 + 30).min(255) as u8))
+                };
+                let style = if is_sel {
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(color)
+                };
+                let text = if is_sel {
+                    format!("{glyph} {} ◄", s.label)
+                } else {
+                    format!("{glyph} {}", s.label)
+                };
+                ctx.print(s.x, s.y, Line::from(Span::styled(text, style)));
+            }
+        });
+    f.render_widget(canvas, outer[1]);
+
+    // Footer: the selected star.
+    let s = &web.stars[selected];
+    let bonds_of: Vec<String> = web
+        .bonds
+        .iter()
+        .filter_map(|b| {
+            if b.a == selected {
+                Some(format!("{} {}", b.relation, web.stars[b.b].label))
+            } else if b.b == selected {
+                Some(format!("⟵ {} {}", b.relation, web.stars[b.a].label))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let mut foot = vec![Line::from(vec![
+        Span::styled(
+            format!("{} ", s.label),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("{} ({:.1}){} ", strength_label(s.strength), s.strength,
+                if s.provisional { " [provisional]" } else { "" }),
+            Style::default().fg(Color::Cyan),
+        ),
+        Span::styled(format!("[{}]  ", s.tags.join(", ")), Style::default().fg(Color::Yellow)),
+        Span::styled(s.title.clone(), Style::default().fg(Color::Gray)),
+    ])];
+    foot.push(Line::from(Span::styled(
+        if bonds_of.is_empty() {
+            "no bonds — an isolated thought (Enter to dream into it)".to_string()
+        } else {
+            format!("bonds: {}  (Enter to dream into it)", bonds_of.join(" · "))
+        },
+        Style::default().fg(Color::DarkGray),
+    )));
+    f.render_widget(
+        Paragraph::new(foot).wrap(Wrap { trim: true }).block(
+            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)),
+        ),
+        outer[2],
+    );
+
+    if show_help {
+        tui::render_help_overlay(
+            f,
+            "the web",
+            &[
+                ("Tab / arrows", "select a star"),
+                ("Enter", "dream into the selected memory"),
+                ("Esc", "zoom out of a dream / wake up"),
+                ("q", "wake up"),
+            ],
+        );
+    }
+}
+
+fn run_web_plain(conn: &Connection) -> Result<()> {
+    let web = load_web(conn)?;
+    println!("{} memories, {} bonds", web.stars.len(), web.bonds.len());
+    for b in &web.bonds {
+        println!(
+            "{} —[{}]→ {}",
+            web.stars[b.a].label, b.relation, web.stars[b.b].label
+        );
+    }
+    Ok(())
+}
+
 // ── plain fallback (non-TTY) ─────────────────────────────────────────────────
 
 fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
@@ -635,5 +1013,38 @@ mod tests {
     fn noise_is_deterministic() {
         assert_eq!(noise(42), noise(42));
         assert_ne!(noise(1), noise(2));
+    }
+
+    #[test]
+    fn force_layout_pulls_bonded_stars_closer_than_strangers() {
+        let mk = |tags: &[&str]| Star {
+            label: "m1".into(),
+            title: String::new(),
+            strength: 1.0,
+            provisional: false,
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            x: 0.0,
+            y: 0.0,
+            recently_recalled: false,
+        };
+        let mut stars = vec![mk(&["a"]), mk(&["a"]), mk(&["b"]), mk(&["c"])];
+        let bonds = vec![Bond { a: 0, b: 1, relation: "supersedes".into() }];
+        force_layout(&mut stars, &bonds, 250);
+        let d = |i: usize, j: usize| {
+            let (dx, dy) = (stars[i].x - stars[j].x, stars[i].y - stars[j].y);
+            (dx * dx + dy * dy).sqrt()
+        };
+        assert!(d(0, 1) < d(2, 3), "bonded+tag pair should sit closer than strangers");
+        // Everything stays inside the canvas.
+        assert!(stars.iter().all(|s| s.x.abs() <= 95.0 && s.y.abs() <= 68.0));
+    }
+
+    #[test]
+    fn shared_tags_counts_overlap() {
+        let a = vec!["memory".to_string(), "tui".to_string()];
+        let b = vec!["tui".to_string(), "dream".to_string()];
+        assert_eq!(shared_tags(&a, &b), 1);
+        assert_eq!(shared_tags(&a, &a), 2);
+        assert_eq!(shared_tags(&a, &[]), 0);
     }
 }

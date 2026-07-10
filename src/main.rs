@@ -423,9 +423,10 @@ fn run() -> Result<()> {
             commands::promote::run(&conn, &handle)?;
         }
 
-        Command::Dream { handle } => {
-            commands::dream::run(&conn, &handle)?;
-        }
+        Command::Dream { handle } => match handle {
+            Some(h) => commands::dream::run(&conn, &h)?,
+            None => commands::dream::run_web(&conn)?,
+        },
 
         Command::Relearn {
             handle,

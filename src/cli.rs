@@ -469,10 +469,11 @@ pub enum Command {
         handle: String,
     },
 
-    /// Peek into a memory as if inside a dream — neuron graph, recall pulse (TUI)
+    /// Peek into a memory as if inside a dream — neuron graph, recall pulse (TUI).
+    /// With no label: the whole-brain web of memories, bonds and strengths.
     Dream {
-        /// Memory label, e.g. m3
-        handle: String,
+        /// Memory label, e.g. m3 (omit for the constellation view)
+        handle: Option<String>,
     },
 
     /// Edit a memory in place (body/tags/files) — e.g. `sara relearn m3 --tag db "corrected text"`

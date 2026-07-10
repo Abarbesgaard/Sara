@@ -3170,6 +3170,26 @@ fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Resu
 }
 
 /// All outgoing links from a memory/task UUID.
+/// Every memory link in the store — powers the whole-brain web view.
+pub fn all_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight FROM memory_links ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<MemoryLink>> {
     let mut stmt = conn.prepare(
         "SELECT id, from_uuid, to_uuid, relation, weight
