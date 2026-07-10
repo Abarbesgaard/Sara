@@ -125,6 +125,7 @@ fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
     // Build UUID sets per tag, then intersect (near-dupe) and union (any overlap).
     let mut any_union: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
     let mut all_intersection: Option<std::collections::HashSet<uuid::Uuid>> = None;
+    let mut per_tag_sets: Vec<std::collections::HashSet<uuid::Uuid>> = Vec::new();
 
     for tag in &normalized {
         let uuids: std::collections::HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
@@ -135,8 +136,9 @@ fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
         any_union.extend(&uuids);
         all_intersection = Some(match all_intersection {
             Some(existing) => existing.intersection(&uuids).copied().collect(),
-            None => uuids,
+            None => uuids.clone(),
         });
+        per_tag_sets.push(uuids);
     }
 
     let near_dupes: std::collections::HashSet<uuid::Uuid> =
@@ -152,12 +154,7 @@ fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
         partial
             .into_iter()
             .filter(|u| {
-                let count = normalized.iter().filter(|t| {
-                    db::find_items_by_tag(conn, t)
-                        .unwrap_or_default()
-                        .iter()
-                        .any(|i| &i.uuid == u)
-                }).count();
+                let count = per_tag_sets.iter().filter(|set| set.contains(u)).count();
                 count >= threshold
             })
             .collect()

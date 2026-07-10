@@ -3252,14 +3252,26 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
 /// source task can no longer be found (loose reference, may have been
 /// deleted/reset -- the memory still stands on its own, just without the boost).
 pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
-    let Some(source) = item.source_task_uuid else {
-        return 1.0;
-    };
-    match get_task_by_uuid_prefix(conn, &source.to_string()) {
-        Ok(Some(task)) if task.status == Status::Completed => 2.0,
-        Ok(Some(_)) => 1.5,
-        _ => 1.0,
+    if let Some(source) = item.source_task_uuid {
+        match get_task_by_uuid_prefix(conn, &source.to_string()) {
+            Ok(Some(task)) if task.status == Status::Completed => return 2.0,
+            Ok(Some(_)) => return 1.5,
+            _ => {}
+        }
     }
+    // Fall back to item_task_links: memories linked via `sara learn --task` /
+    // file auto-detection carry real task linkage even without a
+    // source_task_uuid, and must not be scored (and pruned) as Weak.
+    let linked = get_item_task_links(conn, &item.uuid).unwrap_or_default();
+    let mut best = 1.0_f64;
+    for (task, _) in &linked {
+        match task.status {
+            Status::Completed => return 2.0,
+            Status::Pending => best = 1.5,
+            _ => {}
+        }
+    }
+    best
 }
 
 // ── auto-memory synthesis on task completion ─────────────────────────────────
@@ -3304,6 +3316,9 @@ pub fn prune_memories(
 
     let now = Utc::now();
     let mut candidates: Vec<PruneCandidate> = vec![];
+    let mut superseded_stmt = conn.prepare(
+        "SELECT COUNT(*) FROM memory_links WHERE to_uuid=?1 AND relation='supersedes'",
+    )?;
 
     for item in &all {
         let label = format!(
@@ -3315,10 +3330,8 @@ pub fn prune_memories(
 
         // Signal 1: superseded by another memory
         let superseded = {
-            let mut stmt = conn.prepare(
-                "SELECT COUNT(*) FROM memory_links WHERE to_uuid=?1 AND relation='supersedes'",
-            )?;
-            let count: i64 = stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
+            let count: i64 =
+                superseded_stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
             count > 0
         };
         if superseded {
@@ -5919,6 +5932,34 @@ mod tests {
         item.path = Some(String::new());
 
         assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn item_strength_uses_item_task_links_when_no_source_task() {
+        let conn = mem();
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 2.0);
+    }
+
+    #[test]
+    fn item_strength_is_moderately_boosted_for_pending_linked_task() {
+        let conn = mem();
+        let task = seed_task(&conn);
+
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 1.5);
     }
 
     #[test]
