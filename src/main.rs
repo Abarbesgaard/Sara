@@ -379,6 +379,7 @@ fn run() -> Result<()> {
             file,
             auto_files,
             force,
+            supersedes,
         } => {
             commands::learn::run(
                 &conn,
@@ -390,6 +391,7 @@ fn run() -> Result<()> {
                 &file,
                 auto_files,
                 force,
+                &supersedes,
             )?;
         }
 

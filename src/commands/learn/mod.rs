@@ -12,7 +12,7 @@ use crate::infrastructure::project::detect_current_project;
 /// Size threshold in characters above which we warn that the text is probably
 /// not a distilled paragraph. A full conversation paste defeats the
 /// token-minimization premise of the whole feature.
-/// `sara learn "<text>" [--tag] [-p] [--task] [--file] [--auto-files]`
+/// `sara learn "<text>" [--tag] [-p] [--task] [--file] [--auto-files] [--supersedes <label>]`
 pub fn run(
     conn: &Connection,
     cfg: &Config,
@@ -23,8 +23,9 @@ pub fn run(
     files: &[String],
     auto_files: bool,
     force: bool,
+    supersedes: &[String],
 ) -> Result<()> {
-    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force)?;
+    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force, supersedes)?;
     let label = v["label"].as_str().unwrap_or("m?");
     let uuid  = v["uuid"].as_str().unwrap_or("");
     let body  = v["text"].as_str().unwrap_or("");
@@ -62,6 +63,13 @@ pub fn run(
     };
 
     println!("Learned {label} ({uuid}): {body}{file_suffix}{task_suffix}");
+    if let Some(links) = v["superseded"].as_array() {
+        for link in links {
+            if let Some(old_label) = link.as_str() {
+                println!("  ↳ supersedes {old_label}");
+            }
+        }
+    }
     Ok(())
 }
 
@@ -76,6 +84,7 @@ pub fn learn_value(
     files: &[String],
     auto_files: bool,
     force: bool,
+    supersedes: &[String],
 ) -> Result<Value> {
     let text = text.trim();
     if !force {
@@ -87,6 +96,32 @@ pub fn learn_value(
     let resolved_files = collect_files(files, auto_files)?;
     let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
 
+    let new_uuid = item.uuid.to_string();
+
+    // Resolve and insert supersedes links atomically with the learn.
+    let mut superseded_labels: Vec<String> = Vec::new();
+    for handle in supersedes {
+        match db::get_item_by_handle(conn, handle) {
+            Ok(old_item) => {
+                db::insert_memory_link(
+                    conn,
+                    &new_uuid,
+                    &old_item.uuid.to_string(),
+                    "supersedes",
+                    1.0,
+                )?;
+                let old_label = old_item
+                    .display_id
+                    .map(|id| format!("m{id}"))
+                    .unwrap_or_else(|| handle.clone());
+                superseded_labels.push(old_label);
+            }
+            Err(e) => {
+                eprintln!("warning: could not resolve memory '{}' for --supersedes: {e}", handle);
+            }
+        }
+    }
+
     let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
     let tasks_json: Vec<Value> = item.linked_tasks.iter().map(|(id, desc, src)| json!({
         "id": id.parse::<i64>().unwrap_or(0),
@@ -96,11 +131,12 @@ pub fn learn_value(
 
     Ok(json!({
         "label": format!("m{}", item.display_id.unwrap_or(0)),
-        "uuid": &item.uuid.to_string()[..8],
+        "uuid": &new_uuid[..8],
         "text": summarize(text),
         "tags": item.tags,
         "files": files_json,
         "linked_tasks": tasks_json,
+        "superseded": superseded_labels,
     }))
 }
 
@@ -429,5 +465,39 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn learn_value_supersedes_inserts_link() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Learn a first memory to supersede.
+        let old = super::learn_value(
+            &conn, &cfg, "old finding", &["tag-a".to_string()], &[], &[], &[], false, true, &[],
+        )
+        .unwrap();
+        let old_label = old["label"].as_str().unwrap().to_string();
+
+        // Learn a new memory that supersedes the old one.
+        let new_v = super::learn_value(
+            &conn,
+            &cfg,
+            "new finding supersedes old",
+            &["tag-a".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[old_label.clone()],
+        )
+        .unwrap();
+
+        // The superseded array should contain the old label.
+        let superseded = new_v["superseded"].as_array().unwrap();
+        assert_eq!(superseded.len(), 1);
+        assert_eq!(superseded[0].as_str().unwrap(), old_label);
     }
 }

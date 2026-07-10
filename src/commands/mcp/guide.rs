@@ -204,6 +204,7 @@ impl SaraServer {
                     &files,
                     false, // auto_files not available via MCP — paths must be explicit
                     p.force.unwrap_or(false),
+                    &[], // supersedes not yet exposed via MCP
                 )
             })
             .map_err(mcp_err)?;

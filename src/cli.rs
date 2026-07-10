@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use clap_complete::engine::ArgValueCandidates;
 
-use crate::completion::{projects, task_ids};
+use crate::completion::{memory_labels, projects, task_ids};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -424,6 +424,11 @@ pub enum Command {
         /// Skip the size and secret-pattern warnings and save anyway
         #[arg(long)]
         force: bool,
+        /// Mark an existing memory as superseded by the new one (repeatable).
+        /// Atomically creates a supersedes link — no separate `sara link-memory` needed.
+        /// Accepts memory labels like "m7".
+        #[arg(long, add = ArgValueCandidates::new(memory_labels))]
+        supersedes: Vec<String>,
     },
 
     /// Cross-task memory: keyword search across tasks/findings/anchors, or an
