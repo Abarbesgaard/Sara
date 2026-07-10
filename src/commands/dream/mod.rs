@@ -575,11 +575,19 @@ struct Star {
     strength: f64,
     provisional: bool,
     tags: Vec<String>,
+    /// Lowercased searchable text: label + tags + title + body.
+    haystack: String,
     /// Canvas position, produced by the force layout.
     x: f64,
     y: f64,
     /// Recalled within the last 7 days — pulses.
     recently_recalled: bool,
+}
+
+impl Star {
+    fn matches(&self, query: &str) -> bool {
+        !query.is_empty() && self.haystack.contains(query)
+    }
 }
 
 struct Bond {
@@ -669,12 +677,21 @@ fn load_web(conn: &Connection) -> Result<WebData> {
         .map(|(i, m)| {
             index.insert(m.uuid.to_string(), i);
             let recent: u64 = db::memory_recall_daily_counts(conn, &m.uuid, 7).iter().sum();
+            let label = item_label(m);
+            let haystack = format!(
+                "{} {} {} {}",
+                label.to_lowercase(),
+                m.tags.join(" ").to_lowercase(),
+                m.title.to_lowercase(),
+                m.body.to_lowercase()
+            );
             Star {
-                label: item_label(m),
+                label,
                 title: m.title.clone(),
                 strength: db::item_strength(conn, m),
                 provisional: m.status == "provisional",
                 tags: m.tags.clone(),
+                haystack,
                 x: 0.0,
                 y: 0.0,
                 recently_recalled: recent > 0,
@@ -717,13 +734,41 @@ pub fn run_web(conn: &Connection) -> Result<()> {
     let mut dream: Option<DreamData> = None;
     let mut dream_frame: u64 = 0;
     let mut dream_selected: usize = 0;
+    // Zoom factor for the web canvas; view drifts toward the selected star.
+    let mut zoom: f64 = 1.0;
+    // Some(buffer) while typing a search; `query` is the committed filter.
+    let mut search_input: Option<String> = None;
+    let mut query = String::new();
+
+    let jump_to_match = |sel: usize, q: &str, stars: &[Star], back: bool| -> usize {
+        if q.is_empty() {
+            return sel;
+        }
+        let n = stars.len();
+        for step in 1..=n {
+            let i = if back { (sel + n - step) % n } else { (sel + step) % n };
+            if stars[i].matches(q) {
+                return i;
+            }
+        }
+        sel
+    };
 
     let res = loop {
         let draw = terminal.draw(|f| {
             if let Some(d) = &dream {
                 ui(f, d, dream_frame, dream_selected, &[web.stars[selected].label.clone()], show_help);
             } else {
-                ui_web(f, &web, frame, selected, show_help);
+                ui_web(
+                    f,
+                    &web,
+                    frame,
+                    selected,
+                    show_help,
+                    zoom,
+                    search_input.as_deref(),
+                    &query,
+                );
             }
         });
         if let Err(e) = draw {
@@ -738,14 +783,58 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
+                // Search-typing mode swallows most keys.
+                if dream.is_none() {
+                    if let Some(buf) = &mut search_input {
+                        match key.code {
+                            KeyCode::Esc => {
+                                search_input = None;
+                                query.clear();
+                            }
+                            KeyCode::Enter => {
+                                query = buf.trim().to_lowercase();
+                                search_input = None;
+                                selected = jump_to_match(selected, &query, &web.stars, false);
+                            }
+                            KeyCode::Backspace => {
+                                if buf.pop().is_none() {
+                                    search_input = None;
+                                }
+                            }
+                            KeyCode::Char(c) => buf.push(c),
+                            _ => {}
+                        }
+                        continue;
+                    }
+                }
                 match key.code {
                     KeyCode::Char('q') => break Ok(()),
                     KeyCode::Char('?') => show_help = !show_help,
+                    KeyCode::Char('/') if dream.is_none() => {
+                        search_input = Some(String::new());
+                    }
+                    KeyCode::Char('n') if dream.is_none() => {
+                        selected = jump_to_match(selected, &query, &web.stars, false);
+                    }
+                    KeyCode::Char('N') if dream.is_none() => {
+                        selected = jump_to_match(selected, &query, &web.stars, true);
+                    }
+                    KeyCode::Char('+') | KeyCode::Char('=') if dream.is_none() => {
+                        zoom = (zoom * 1.25).min(6.0);
+                    }
+                    KeyCode::Char('-') if dream.is_none() => {
+                        zoom = (zoom / 1.25).max(1.0);
+                    }
+                    KeyCode::Char('0') if dream.is_none() => zoom = 1.0,
                     KeyCode::Esc | KeyCode::Backspace => {
                         if show_help {
                             show_help = false;
                         } else if dream.is_some() {
                             dream = None; // zoom back out to the web
+                        } else if !query.is_empty() {
+                            query.clear();
+                        } else if zoom > 1.0 {
+                            zoom = 1.0;
                         } else {
                             break Ok(());
                         }
@@ -800,7 +889,17 @@ pub fn run_web(conn: &Connection) -> Result<()> {
     res
 }
 
-fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, show_help: bool) {
+#[allow(clippy::too_many_arguments)]
+fn ui_web(
+    f: &mut ratatui::Frame,
+    web: &WebData,
+    frame: u64,
+    selected: usize,
+    show_help: bool,
+    zoom: f64,
+    search_input: Option<&str>,
+    query: &str,
+) {
     let area = f.area();
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -810,25 +909,55 @@ fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, sh
     let strong = web.stars.iter().filter(|s| s.strength >= 2.0).count();
     let linked = web.stars.iter().filter(|s| s.strength >= 1.5 && s.strength < 2.0).count();
     let weak = web.stars.len() - strong - linked;
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ✦ the web ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled(
-                format!(
-                    "— {} memories · {} bonds · ",
-                    web.stars.len(),
-                    web.bonds.len()
-                ),
-                Style::default().fg(Color::DarkGray),
+    let matches = web.stars.iter().filter(|s| s.matches(query)).count();
+    let mut header = vec![
+        Span::styled(" ✦ the web ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!(
+                "— {} memories · {} bonds · ",
+                web.stars.len(),
+                web.bonds.len()
             ),
-            Span::styled(format!("{strong} strong "), Style::default().fg(Color::White)),
-            Span::styled(format!("{linked} linked "), Style::default().fg(Color::Cyan)),
-            Span::styled(format!("{weak} weak"), Style::default().fg(Color::DarkGray)),
-            Span::styled("   [?] help  [q] wake up", Style::default().fg(Color::DarkGray)),
-        ])),
-        outer[0],
-    );
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(format!("{strong} strong "), Style::default().fg(Color::White)),
+        Span::styled(format!("{linked} linked "), Style::default().fg(Color::Cyan)),
+        Span::styled(format!("{weak} weak"), Style::default().fg(Color::DarkGray)),
+    ];
+    if let Some(buf) = search_input {
+        header.push(Span::styled(
+            format!("   /{buf}▌"),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ));
+    } else if !query.is_empty() {
+        header.push(Span::styled(
+            format!("   /{query} — {matches} lit (n next, Esc clear)"),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    if zoom > 1.0 {
+        header.push(Span::styled(
+            format!("   {zoom:.1}x"),
+            Style::default().fg(Color::Green),
+        ));
+    }
+    header.push(Span::styled(
+        "   [?] help  [q] wake up",
+        Style::default().fg(Color::DarkGray),
+    ));
+    f.render_widget(Paragraph::new(Line::from(header)), outer[0]);
 
+    // Zoom transform: the view drifts toward the selected star as zoom grows
+    // (at 1x the centre stays at the origin, so the whole web is visible).
+    let sel_star = &web.stars[selected];
+    let (cx, cy) = (
+        sel_star.x * (1.0 - 1.0 / zoom),
+        sel_star.y * (1.0 - 1.0 / zoom),
+    );
+    let tx = move |x: f64| (x - cx) * zoom;
+    let ty = move |y: f64| (y - cy) * zoom;
+
+    let searching = !query.is_empty();
     let canvas = Canvas::default()
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
         .x_bounds([-100.0, 100.0])
@@ -838,17 +967,26 @@ fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, sh
             for b in &web.bonds {
                 let (sa, sb) = (&web.stars[b.a], &web.stars[b.b]);
                 let touches_sel = b.a == selected || b.b == selected;
+                let faded = searching && !(sa.matches(query) || sb.matches(query));
                 let color = match (b.relation.as_str(), touches_sel) {
+                    _ if faded => Color::Rgb(30, 32, 38),
                     ("supersedes", true) => Color::Red,
                     ("supersedes", false) => Color::Rgb(110, 40, 40),
                     (_, true) => Color::Cyan,
                     (_, false) => Color::Rgb(50, 70, 80),
                 };
-                ctx.draw(&CanvasLine { x1: sa.x, y1: sa.y, x2: sb.x, y2: sb.y, color });
+                ctx.draw(&CanvasLine {
+                    x1: tx(sa.x),
+                    y1: ty(sa.y),
+                    x2: tx(sb.x),
+                    y2: ty(sb.y),
+                    color,
+                });
             }
             let breath = ((frame as f64 * 0.06).sin() + 1.0) / 2.0;
             for (i, s) in web.stars.iter().enumerate() {
                 let is_sel = i == selected;
+                let is_match = s.matches(query);
                 // Strength → glyph + luminosity; recent recalls pulse.
                 let pulse = if s.recently_recalled { breath } else { 0.35 };
                 let lum = (70.0 + 150.0 * (s.strength / 2.5).min(1.0) * (0.55 + 0.45 * pulse)) as u8;
@@ -863,6 +1001,11 @@ fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, sh
                 };
                 let style = if is_sel {
                     Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                } else if searching && is_match {
+                    Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)
+                } else if searching {
+                    // Non-matching stars sink into the fog.
+                    Style::default().fg(Color::Rgb(45, 45, 52))
                 } else {
                     Style::default().fg(color)
                 };
@@ -871,7 +1014,7 @@ fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, sh
                 } else {
                     format!("{glyph} {}", s.label)
                 };
-                ctx.print(s.x, s.y, Line::from(Span::styled(text, style)));
+                ctx.print(tx(s.x), ty(s.y), Line::from(Span::styled(text, style)));
             }
         });
     f.render_widget(canvas, outer[1]);
@@ -925,8 +1068,11 @@ fn ui_web(f: &mut ratatui::Frame, web: &WebData, frame: u64, selected: usize, sh
             "the web",
             &[
                 ("Tab / arrows", "select a star"),
+                ("/", "search (label, tags, title, body)"),
+                ("n / N", "next / previous match"),
+                ("+ / - / 0", "zoom toward the selected star / reset"),
                 ("Enter", "dream into the selected memory"),
-                ("Esc", "zoom out of a dream / wake up"),
+                ("Esc", "zoom out of a dream / clear search / wake up"),
                 ("q", "wake up"),
             ],
         );
@@ -1023,6 +1169,7 @@ mod tests {
             strength: 1.0,
             provisional: false,
             tags: tags.iter().map(|t| t.to_string()).collect(),
+            haystack: String::new(),
             x: 0.0,
             y: 0.0,
             recently_recalled: false,
@@ -1046,5 +1193,24 @@ mod tests {
         assert_eq!(shared_tags(&a, &b), 1);
         assert_eq!(shared_tags(&a, &a), 2);
         assert_eq!(shared_tags(&a, &[]), 0);
+    }
+
+    #[test]
+    fn star_matches_searches_haystack_and_ignores_empty_query() {
+        let star = Star {
+            label: "m49".into(),
+            title: "Usage-based strength".into(),
+            strength: 1.0,
+            provisional: false,
+            tags: vec!["memory".into()],
+            haystack: "m49 memory usage-based strength recall boost".into(),
+            x: 0.0,
+            y: 0.0,
+            recently_recalled: false,
+        };
+        assert!(star.matches("recall"));
+        assert!(star.matches("m49"));
+        assert!(!star.matches("payment"));
+        assert!(!star.matches(""), "empty query must not light everything up");
     }
 }
