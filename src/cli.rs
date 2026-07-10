@@ -469,6 +469,24 @@ pub enum Command {
         handle: String,
     },
 
+    /// Edit a memory in place (body/tags/files) — e.g. `sara relearn m3 --tag db "corrected text"`
+    Relearn {
+        /// Memory label, e.g. m3
+        handle: String,
+        /// New body text (optional; omit to only change tags/files)
+        #[arg(trailing_var_arg = true)]
+        text: Vec<String>,
+        /// Replace the tag set (repeatable)
+        #[arg(long, short)]
+        tag: Vec<String>,
+        /// Replace the file associations (repeatable; stored as absolute path)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Skip the size and secret-pattern warnings and save anyway
+        #[arg(long)]
+        force: bool,
+    },
+
     /// List all memory tags with usage counts (most-used first)
     Tags {
         /// Emit as JSON

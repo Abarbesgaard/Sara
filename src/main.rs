@@ -423,6 +423,22 @@ fn run() -> Result<()> {
             commands::promote::run(&conn, &handle)?;
         }
 
+        Command::Relearn {
+            handle,
+            text,
+            tag,
+            file,
+            force,
+        } => {
+            let joined = text.join(" ");
+            let body = if joined.trim().is_empty() {
+                None
+            } else {
+                Some(joined.as_str())
+            };
+            commands::relearn::run(&conn, &handle, body, &tag, &file, force)?;
+        }
+
         Command::Tags { json } => {
             commands::tags::run(&conn, json)?;
         }

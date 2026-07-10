@@ -233,4 +233,23 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn."
+    )]
+    fn relearn(&self, Parameters(p): Parameters<RelearnParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp relearn", |conn, _cfg| {
+                commands::relearn::relearn_value(
+                    conn,
+                    &p.handle,
+                    p.text.as_deref(),
+                    p.tags.as_deref().unwrap_or(&[]),
+                    p.files.as_deref().unwrap_or(&[]),
+                    p.force.unwrap_or(false),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

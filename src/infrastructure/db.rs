@@ -3291,6 +3291,11 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
 /// source task can no longer be found (loose reference, may have been
 /// deleted/reset -- the memory still stands on its own, just without the boost).
 pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
+    item_base_strength(conn, item) + recall_usage_boost(conn, &item.uuid)
+}
+
+/// Task-linkage-derived base strength (see module docs on `item_strength`).
+fn item_base_strength(conn: &Connection, item: &Item) -> f64 {
     if let Some(source) = item.source_task_uuid {
         match get_task_by_uuid_prefix(conn, &source.to_string()) {
             Ok(Some(task)) if task.status == Status::Completed => return 2.0,
@@ -3311,6 +3316,44 @@ pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
         }
     }
     best
+}
+
+/// Usage-reinforcement window and weights: each time a memory surfaces in
+/// recall within the window it earns a small boost. Five recalls in the
+/// window lift a Weak (1.0) memory to Linked (1.5) — protecting it from
+/// age-based pruning — but usage alone can never fabricate Strong (2.0).
+pub const RECALL_BOOST_WINDOW_DAYS: i64 = 30;
+pub const RECALL_BOOST_PER_HIT: f64 = 0.1;
+pub const RECALL_BOOST_CAP: f64 = 0.5;
+
+/// Log that a memory surfaced in recall output. Fire-and-forget semantics at
+/// call sites — a failed write must never break a read path.
+pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
+    record_event(
+        conn,
+        "memory_recalled",
+        Some(item_uuid),
+        Some("memory"),
+        &[],
+        None,
+    )
+}
+
+/// Recall-derived reinforcement: how often this memory actually surfaced in
+/// the last [`RECALL_BOOST_WINDOW_DAYS`] days, translated into a strength
+/// boost. Events older than the window (or pruned by retention) don't count,
+/// so unused memories decay back toward their base strength.
+fn recall_usage_boost(conn: &Connection, item_uuid: &Uuid) -> f64 {
+    let cutoff = dt_to_str(&(Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS)));
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM events
+             WHERE action='memory_recalled' AND ref_uuid=?1 AND at >= ?2",
+            rusqlite::params![item_uuid.to_string(), cutoff],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP)
 }
 
 // ── auto-memory synthesis on task completion ─────────────────────────────────
@@ -5880,6 +5923,46 @@ mod tests {
             find_items_by_file(&conn, "/repo/src/x.rs", false).unwrap().len(),
             1
         );
+    }
+
+    #[test]
+    fn recall_usage_boosts_item_strength_within_window() {
+        let conn = mem();
+        let mut item = make_memory("used often", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        assert_eq!(item_strength(&conn, &item), 1.0);
+
+        for _ in 0..3 {
+            record_memory_recall(&conn, &item.uuid).unwrap();
+        }
+        let s = item_strength(&conn, &item);
+        assert!((s - 1.3).abs() < 1e-9, "expected 1.3, got {s}");
+
+        // Boost is capped: many more recalls can lift Weak to Linked but not Strong.
+        for _ in 0..20 {
+            record_memory_recall(&conn, &item.uuid).unwrap();
+        }
+        let s = item_strength(&conn, &item);
+        assert!((s - 1.5).abs() < 1e-9, "expected cap at 1.5, got {s}");
+    }
+
+    #[test]
+    fn recall_usage_boost_ignores_events_outside_window() {
+        let conn = mem();
+        let mut item = make_memory("stale usage", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        // Insert an old event well outside the 30-day window.
+        let old = (Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS + 10))
+            .to_rfc3339();
+        conn.execute(
+            "INSERT INTO events (action, ref_uuid, kind, tags_json, project, at)
+             VALUES ('memory_recalled', ?1, 'memory', '[]', NULL, ?2)",
+            rusqlite::params![item.uuid.to_string(), old],
+        )
+        .unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 1.0);
     }
 
     #[test]

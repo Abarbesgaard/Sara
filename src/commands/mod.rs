@@ -24,6 +24,7 @@ pub mod plan;
 pub mod projects;
 pub mod promote;
 pub mod recall;
+pub mod relearn;
 pub mod reset;
 pub mod sync;
 pub mod tags;

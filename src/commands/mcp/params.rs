@@ -283,6 +283,21 @@ pub(crate) struct PromoteParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RelearnParams {
+    pub(crate) project_path: Option<String>,
+    /// Memory label to edit, e.g. "m3".
+    pub(crate) handle: String,
+    /// New body text (omit to only change tags/files).
+    pub(crate) text: Option<String>,
+    /// Replacement tag set (omit to keep existing tags).
+    pub(crate) tags: Option<Vec<String>>,
+    /// Replacement file associations, absolute paths (omit to keep existing).
+    pub(crate) files: Option<Vec<String>>,
+    /// Skip size and secret-pattern guardrails (use only when content is safe).
+    pub(crate) force: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct TagsParams {
     pub(crate) project_path: Option<String>,
 }

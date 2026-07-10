@@ -42,6 +42,9 @@ struct Hit {
     superseded_by: Vec<String>,
     /// True when this memory is auto-generated (status=provisional) and not yet reviewed.
     provisional: bool,
+    /// The item's own uuid for memory hits (None for plain task hits) — used
+    /// to record usage-reinforcement events after the final hit list is known.
+    item_uuid: Option<uuid::Uuid>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -475,6 +478,7 @@ fn collect_hits(
                     linked_tasks: vec![],
                     superseded_by: vec![],
                     provisional: false,
+                    item_uuid: None,
                 });
             }
         }
@@ -491,6 +495,15 @@ fn collect_hits(
             .then(b.modified.cmp(&a.modified))
     });
     hits.truncate(limit.max(0) as usize);
+
+    // Usage reinforcement: log each memory that actually surfaced, so
+    // frequently-recalled memories gain strength (see db::item_strength).
+    // Fire-and-forget — a failed event write must never break recall.
+    for h in &hits {
+        if let Some(u) = h.item_uuid {
+            let _ = db::record_memory_recall(conn, &u);
+        }
+    }
 
     Ok(hits)
 }
@@ -535,6 +548,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         linked_tasks,
         superseded_by,
         provisional: item.status == "provisional",
+        item_uuid: Some(item.uuid),
     }
 }
 
