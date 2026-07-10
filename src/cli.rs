@@ -463,6 +463,12 @@ pub enum Command {
         yes: bool,
     },
 
+    /// Promote a provisional auto-memory to active after review — e.g. `sara promote m14`
+    Promote {
+        /// Memory label, e.g. m14 (provisional memories are flagged in `sara memories`/`recall`)
+        handle: String,
+    },
+
     /// List all memory tags with usage counts (most-used first)
     Tags {
         /// Emit as JSON

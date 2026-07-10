@@ -221,4 +221,16 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place."
+    )]
+    fn promote(&self, Parameters(p): Parameters<PromoteParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp promote", |conn, _cfg| {
+                commands::promote::promote_value(conn, &p.handle)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

@@ -26,6 +26,7 @@ pub fn run(conn: &Connection, as_json: bool) -> Result<()> {
                     "body": m.body,
                     "strength": strength,
                     "strength_label": strength_label(strength),
+                    "provisional": m.status == "provisional",
                     "tags": m.tags,
                     "files": files,
                     "created": m.created.to_rfc3339(),
@@ -63,9 +64,14 @@ pub fn run(conn: &Connection, as_json: bool) -> Result<()> {
             .take(100)
             .collect();
         println!(
-            "  {} ({}) {}{}: {}",
+            "  {} ({}){} {}{}: {}",
             label,
             strength_label(strength),
+            if m.status == "provisional" {
+                " [provisional]"
+            } else {
+                ""
+            },
             m.title,
             tags_str,
             snippet.trim()

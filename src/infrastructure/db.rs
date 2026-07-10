@@ -496,6 +496,35 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links(from_uuid);
              CREATE INDEX IF NOT EXISTS idx_memory_links_to   ON memory_links(to_uuid);",
         ),
+        M::up(
+            // Provisional visibility fix: the original item triggers only
+            // indexed status='active', so auto-memories created on `done`
+            // (status='provisional') never reached FTS and could not surface
+            // in recall. Recreate the triggers to index provisional too, and
+            // backfill the index for existing provisional rows.
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+                ref_kind UNINDEXED, ref_id UNINDEXED, task_uuid UNINDEXED, text
+             );
+             DROP TRIGGER IF EXISTS trg_items_ai;
+             DROP TRIGGER IF EXISTS trg_items_au;
+             CREATE TRIGGER trg_items_ai AFTER INSERT ON items BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status IN ('active','provisional');
+             END;
+             CREATE TRIGGER trg_items_au AFTER UPDATE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status IN ('active','provisional');
+             END;
+             INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+             SELECT 'item_' || kind, uuid, uuid,
+                 coalesce(title,'')||' '||coalesce(summary,'')||' '||coalesce(body,'')
+             FROM items WHERE status = 'provisional';",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -2718,7 +2747,7 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
 fn next_item_display_id(conn: &Connection, kind: &str) -> Result<i64> {
     let max: i64 = conn
         .query_row(
-            "SELECT COALESCE(MAX(display_id), 0) FROM items WHERE kind = ?1 AND status = 'active'",
+            "SELECT COALESCE(MAX(display_id), 0) FROM items WHERE kind = ?1 AND status IN ('active','provisional')",
             [kind],
             |r| r.get(0),
         )
@@ -2764,7 +2793,7 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     if let Some(k) = kind {
         let mut stmt = conn.prepare(
             "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-             FROM items WHERE status = 'active' AND kind = ?1 ORDER BY display_id",
+             FROM items WHERE status IN ('active','provisional') AND kind = ?1 ORDER BY display_id",
         )?;
         let rows = stmt.query_map([k], row_to_item)?;
         for r in rows {
@@ -2773,7 +2802,7 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     } else {
         let mut stmt = conn.prepare(
             "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-             FROM items WHERE status = 'active' ORDER BY kind, display_id",
+             FROM items WHERE status IN ('active','provisional') ORDER BY kind, display_id",
         )?;
         let rows = stmt.query_map([], row_to_item)?;
         for r in rows {
@@ -2789,7 +2818,7 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
 pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-         FROM items WHERE status = 'active' AND kind = 'memory' ORDER BY created DESC",
+         FROM items WHERE status IN ('active','provisional') AND kind = 'memory' ORDER BY created DESC",
     )?;
     let rows = stmt.query_map([], row_to_item)?;
     let mut items = vec![];
@@ -2813,7 +2842,7 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     let id: i64 = id_str.parse().context("Invalid item id")?;
     conn.query_row(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-         FROM items WHERE kind = ?1 AND display_id = ?2 AND status = 'active'",
+         FROM items WHERE kind = ?1 AND display_id = ?2 AND status IN ('active','provisional')",
         rusqlite::params![kind, id],
         row_to_item,
     )
@@ -2827,7 +2856,7 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
 pub fn get_item_by_uuid(conn: &Connection, uuid: &str) -> Result<Item> {
     conn.query_row(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-         FROM items WHERE uuid = ?1 AND status = 'active'",
+         FROM items WHERE uuid = ?1 AND status IN ('active','provisional')",
         [uuid],
         row_to_item,
     )
@@ -2861,6 +2890,16 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
         rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
     )?;
     Ok(())
+}
+
+/// Promote a provisional (auto-synthesised) memory to active after review.
+/// Returns false when the item wasn't provisional (already active/archived).
+pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE items SET status='active', modified=?2 WHERE uuid=?1 AND status='provisional'",
+        rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
+    )?;
+    Ok(n > 0)
 }
 
 fn fold_tag(tag: &str) -> String {
@@ -2943,7 +2982,7 @@ pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
         let mut stmt = conn.prepare(
             "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
              FROM items i JOIN item_files f ON f.item_uuid = i.uuid
-             WHERE i.status = 'active' AND f.file_path LIKE ?1 || '%'
+             WHERE i.status IN ('active','provisional') AND f.file_path LIKE ?1 || '%'
              ORDER BY i.modified DESC",
         )?;
         let rows = stmt.query_map([path], row_to_item)?;
@@ -2954,7 +2993,7 @@ pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
         let mut stmt = conn.prepare(
             "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
              FROM items i JOIN item_files f ON f.item_uuid = i.uuid
-             WHERE i.status = 'active' AND f.file_path = ?1
+             WHERE i.status IN ('active','provisional') AND f.file_path = ?1
              ORDER BY i.modified DESC",
         )?;
         let rows = stmt.query_map([path], row_to_item)?;
@@ -3191,7 +3230,7 @@ pub fn delete_memory_link(
 /// from "no matches for this specific query".
 pub fn has_any_memories(conn: &Connection) -> Result<bool> {
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM items WHERE kind = 'memory' AND status = 'active'",
+        "SELECT COUNT(*) FROM items WHERE kind = 'memory' AND status IN ('active','provisional')",
         [],
         |r| r.get(0),
     )?;
@@ -3204,7 +3243,7 @@ pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT it.tag, COUNT(*) FROM item_tags it
          JOIN items i ON i.uuid = it.item_uuid
-         WHERE i.status = 'active'
+         WHERE i.status IN ('active','provisional')
          GROUP BY it.tag ORDER BY COUNT(*) DESC, it.tag ASC",
     )?;
     let rows = stmt
@@ -3220,7 +3259,7 @@ pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
          FROM items i JOIN item_tags it ON it.item_uuid = i.uuid
-         WHERE i.status = 'active' AND it.tag = ?1 ORDER BY i.modified DESC",
+         WHERE i.status IN ('active','provisional') AND it.tag = ?1 ORDER BY i.modified DESC",
     )?;
     let rows = stmt.query_map([folded], row_to_item)?;
     let mut items = vec![];
@@ -3235,7 +3274,7 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
     let mut stmt = conn.prepare(
         "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
          FROM items i JOIN item_projects ip ON ip.item_uuid = i.uuid
-         WHERE i.status = 'active' AND ip.project = ?1 ORDER BY i.modified DESC",
+         WHERE i.status IN ('active','provisional') AND ip.project = ?1 ORDER BY i.modified DESC",
     )?;
     let rows = stmt.query_map([project], row_to_item)?;
     let mut items = vec![];
@@ -5816,6 +5855,55 @@ mod tests {
     }
 
     #[test]
+    fn provisional_items_are_indexed_into_search_fts() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &[]);
+        item.body = "frobnicator wiring pattern from done-synthesis".to_string();
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "done-synthesis", 10).unwrap();
+        assert_eq!(hits.len(), 1, "provisional memory must be FTS-searchable");
+        assert_eq!(hits[0].ref_kind, "item_memory");
+    }
+
+    #[test]
+    fn provisional_items_surface_in_tag_and_file_lookups() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &["autotag"]);
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/x.rs".to_string()]).unwrap();
+
+        assert_eq!(find_items_by_tag(&conn, "autotag").unwrap().len(), 1);
+        assert_eq!(
+            find_items_by_file(&conn, "/repo/src/x.rs", false).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn promote_item_activates_only_provisional() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &[]);
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(promote_item(&conn, &item.uuid).unwrap());
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                [item.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "active");
+
+        // Second promote is a no-op
+        assert!(!promote_item(&conn, &item.uuid).unwrap());
+    }
+
+    #[test]
     fn item_ref_kind_does_not_collide_with_annotation_note_ref_kind() {
         let conn = mem();
         let task = seed_named_task(&conn, "unrelated task");
@@ -6167,7 +6255,12 @@ mod tests {
         let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
         assert!(label.is_some(), "should create a memory");
 
-        // Query directly (provisional items not returned by list_memories which filters status='active')
+        // Provisional memories are visible in list_memories (flagged by status)
+        let listed = list_memories(&conn).unwrap();
+        assert!(
+            listed.iter().any(|i| i.status == "provisional"),
+            "provisional memory should be listed"
+        );
         let m: (String, String, String) = conn.query_row(
             "SELECT status, body, tags_json FROM items WHERE source_task_uuid=?1 AND kind='memory'",
             [task.uuid.to_string()],

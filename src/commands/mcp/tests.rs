@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 38, "expected 38 tools, got {names:?}");
+    assert_eq!(names.len(), 39, "expected 39 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -55,6 +55,7 @@ fn exposes_the_agent_loop_tools() {
         "attach",
         "learn",
         "forget",
+        "promote",
         // completion / edit / lifecycle
         "done",
         "link",

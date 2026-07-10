@@ -276,6 +276,27 @@ fn normalize(values: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Stop words + max-token cap for the token-AND fallback. Duplicated locally
+/// (rather than reused from `add::similar`) to keep the vertical-slice
+/// boundary the architecture tests enforce.
+const STOP_WORDS: &[&str] = &[
+    "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at",
+    "by", "up", "as", "or", "do", "if", "be", "we", "he", "she", "they",
+    "but", "and", "not", "with", "from", "this", "that", "are", "was",
+    "has", "have", "how", "what", "does", "did",
+];
+const MAX_AND_TOKENS: usize = 6;
+
+/// Extract meaningful search tokens from free text: lowercase, alpha-only,
+/// ≥3 chars, not a stop word, capped at MAX_AND_TOKENS.
+fn meaningful_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphabetic())
+        .map(|w| w.to_lowercase())
+        .filter(|w| w.len() >= 3 && !STOP_WORDS.contains(&w.as_str()))
+        .take(MAX_AND_TOKENS)
+        .collect()
+}
+
 /// Resolve a file path (or directory prefix ending with '/') to absolute form.
 /// The trailing '/' is preserved for prefix matching.
 fn resolve_file_path(path: &str) -> String {
@@ -392,7 +413,19 @@ fn collect_hits(
     let fts_hits = if query.is_empty() {
         vec![]
     } else {
-        db::search_fts(conn, query, limit.max(50))?
+        let phrase = db::search_fts(conn, query, limit.max(50))?;
+        if !phrase.is_empty() {
+            phrase
+        } else {
+            // Phrase literal missed — fall back to token-AND (order-independent,
+            // stop-word-stripped) so paraphrased queries still surface hits.
+            let tokens = meaningful_tokens(query);
+            if tokens.is_empty() {
+                vec![]
+            } else {
+                db::search_fts_tokens(conn, &tokens, limit.max(50))?
+            }
+        }
     };
 
     let mut hits = vec![];
@@ -557,6 +590,42 @@ mod tests {
         )
         .unwrap();
         item
+    }
+
+    #[test]
+    fn recall_falls_back_to_token_and_when_phrase_misses() {
+        let conn = db::open_in_memory_for_test();
+        seed_memory(
+            &conn,
+            "MudTable pagination gotcha",
+            "MudBlazor MudTable runs pagination server-side when using ServerData",
+            &[],
+            &["web-app"],
+        );
+
+        // Word order differs from the stored text → phrase literal misses,
+        // token-AND fallback should still surface the memory.
+        let hits = collect_hits(&conn, "pagination MudTable", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].description, "MudTable pagination gotcha");
+        assert!(!hits[0].exact_match);
+    }
+
+    #[test]
+    fn recall_surfaces_provisional_memories_with_flag() {
+        let conn = db::open_in_memory_for_test();
+        let mut item = Item::new_memory(
+            "auto memory".to_string(),
+            "synthesised frobnicator pattern".to_string(),
+            None,
+        );
+        item.status = "provisional".to_string();
+        item.path = Some(String::new());
+        db::insert_item(&conn, &mut item).unwrap();
+
+        let hits = collect_hits(&conn, "frobnicator", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].provisional, "provisional flag must be set");
     }
 
     #[test]

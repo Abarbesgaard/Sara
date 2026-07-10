@@ -419,6 +419,10 @@ fn run() -> Result<()> {
             commands::forget::run(&conn, &handle)?;
         }
 
+        Command::Promote { handle } => {
+            commands::promote::run(&conn, &handle)?;
+        }
+
         Command::Tags { json } => {
             commands::tags::run(&conn, json)?;
         }

@@ -276,6 +276,13 @@ pub(crate) struct ForgetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct PromoteParams {
+    pub(crate) project_path: Option<String>,
+    /// Provisional memory label to promote to active, e.g. "m14".
+    pub(crate) handle: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct TagsParams {
     pub(crate) project_path: Option<String>,
 }
