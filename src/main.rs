@@ -465,6 +465,17 @@ fn run() -> Result<()> {
         Command::PruneMemories { dry_run, apply, weak_days, provisional_days } => {
             let actual_dry_run = !apply && dry_run;
             commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
+            // Informational: surface unlinked conflict candidates alongside prune output.
+            if let Ok(diag) = commands::diagnose_memories::diagnose_value(&conn) {
+                let n = diag["count"].as_u64().unwrap_or(0);
+                if n > 0 {
+                    println!("\n{n} unlinked conflict candidate(s) also found — run `sara diagnose-memories` to review.");
+                }
+            }
+        }
+
+        Command::DiagnoseMemories { json } => {
+            commands::diagnose_memories::run(&conn, json)?;
         }
 
         Command::Assignment { id, text } => {

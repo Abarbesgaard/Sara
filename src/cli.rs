@@ -557,6 +557,16 @@ pub enum Command {
         provisional_days: i64,
     },
 
+    /// Scan all active memories and report pairs sharing files or full tag sets
+    /// with no memory_links edge — unlinked conflict candidates for review.
+    /// Alias: `sara conflicts`
+    #[command(name = "diagnose-memories", alias = "conflicts")]
+    DiagnoseMemories {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix
