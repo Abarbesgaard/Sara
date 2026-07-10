@@ -1,4 +1,4 @@
-# Sara — a folder-aware task manager
+# Sara — task memory for AI agents
 
 `Sara` is what plan mode would be if it kept its memory. She's built primarily
 as a tool for an LLM agent, not the human at the keyboard: instead of a plan
@@ -26,6 +26,7 @@ is ever written into your repositories.**
 ## Table of contents
 
 - [Highlights](#highlights)
+- [What Sara remembers](#what-sara-remembers)
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Core concepts](#core-concepts)
@@ -55,7 +56,9 @@ is ever written into your repositories.**
 
 ## Highlights
 
-- **Folder-aware** — `sara` auto-detects the current project (a Git repo, or any
+- **Persistent memory** — tasks, steps, notes, decisions, and history all live
+  in a local SQLite database and survive across chat sessions and machine reboots.
+- **Project-aware** — `sara` auto-detects the current project (a Git repo, or any
   folder you run `sara init` in) and scopes `sara list` to it by default.
 - **Transparent urgency** — a Taskwarrior-style scoring model decides ordering; `sara info` shows the exact breakdown.
 - **Interactive TUI** — a ratatui review form for adding/editing, and a rich detail view for everything else.
@@ -64,6 +67,66 @@ is ever written into your repositories.**
 - **Git integration** — tie a task to a branch and snapshot the files it touched.
 - **Full history** — every change (field edits, deps, files, checklist, links, comments, timer) is recorded.
 - **Single SQLite file** — easy to back up, and nothing is written into your repos.
+
+---
+
+## What Sara remembers
+
+The core promise: *an agent that uses Sara can always pick up exactly where it left off*, even after the conversation ends, the shell closes, or the machine reboots.
+
+Sara maintains four layers of memory:
+
+### 1. Project memory (`sara init`)
+
+Running `sara init` in a repo records the project's **goal**, **stack**,
+**conventions**, and **setup/test/lint commands**. Any agent (or human) that
+opens that project later can read this profile — it's the "what is this project
+and how do I work in it" context that would otherwise live only in a system
+prompt.
+
+```bash
+sara init --goal "Auth service for web-app" --stack "Rust, SQLite" \
+  --conventions "snake_case, no unwrap" --notes "run cargo test before PR"
+```
+
+### 2. Task memory
+
+Every task is a durable record with description, priority, due date, tags,
+estimate, recurrence, status, and a full set of attached context:
+
+| Attachment | What it holds |
+|---|---|
+| **Steps** | The ordered sub-tasks to execute; each step can carry its own intent, verify command, and result |
+| **Acceptance criteria** | The conditions that must be true before `done` |
+| **Annotations / comments** | Free-form notes, decisions, findings, open questions |
+| **Links** | URLs (GitHub PRs/issues get auto-labelled) |
+| **File attachments** | Code anchors — file path, symbol, lines, source fragment |
+| **Assignment** | The originating prompt / what to build |
+| **Rationale** | Why this task exists |
+| **Branch tie** | The git branch this task lives on |
+
+None of this requires the agent to be running. Open the task later — in any
+session, on any client — and the full context is there.
+
+### 3. Change history
+
+Every mutation to a task is recorded: field edits, timer events, dependency
+changes, step completions, comment additions, file attachments, and branch ties.
+Additions show `+`, removals show `−`, and value changes show `old → new`.
+
+The history panel is visible in `sara info` and included in `--md`/`--plain`
+output via `--history`. Nothing is ever silently overwritten.
+
+### 4. Cross-task search (`sara recall`)
+
+```bash
+sara recall "auth"          # full-text search across all tasks in the current project
+sara recall "migration" -a  # search across all projects
+```
+
+When the agent needs to know "have I seen this before?" or "what did I decide
+about X?", `recall` searches descriptions, annotations, steps, and links across
+every task — making the database a queryable long-term memory, not just a todo list.
 
 ---
 
@@ -332,7 +395,7 @@ Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
 blocks on stdin. So do a few niche/destructive/setup commands (`init`, `move`,
 `delete`, `reset`, `undo`, `sync`, `export`/`import`).
 
-**Folder-awareness:** the CLI derives "the project" from the current git folder,
+**Project awareness:** the CLI derives "the project" from the current git folder,
 but a long-running server has no per-call working directory. So **every tool
 takes an optional `project_path`** — set it to the absolute path of the target
 repo and the tool operates on that project. Omit it to use the directory the
@@ -732,6 +795,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara addbranch <id>`              | Tie the current git branch to a task (`--clear`)         |
 | `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
 | `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
+| `sara recall <query>`              | Full-text search across tasks (`-a` all projects)        |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |
