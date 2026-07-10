@@ -87,13 +87,13 @@ pub fn learn_value(
     supersedes: &[String],
 ) -> Result<Value> {
     let text = text.trim();
+    let resolved_files = collect_files(files, auto_files)?;
     if !force {
         crate::infrastructure::safety::check_size(text)?;
         crate::infrastructure::safety::check_secrets(text)?;
-        check_overlap(conn, tags)?;
+        check_overlap(conn, tags, &resolved_files)?;
     }
 
-    let resolved_files = collect_files(files, auto_files)?;
     let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
 
     let new_uuid = item.uuid.to_string();
@@ -140,12 +140,14 @@ pub fn learn_value(
     }))
 }
 
-/// Detect existing memories whose tags overlap significantly with the new one.
-/// Two bands:
+/// Detect existing memories whose tags overlap significantly with the new one,
+/// and memories that share any of the same file links (even with different tags).
+/// Two tag-overlap bands:
 ///   - Near-duplicate: existing memory shares ALL given tags → warn prominently.
 ///   - Partial overlap: shares ≥50% (but not all) tags → softer note.
+/// File-overlap: any memory already linked to one of the new memory's files → warn.
 /// Prints warnings to stderr; never blocks the write (use --force to silence).
-fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
+pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]) -> Result<()> {
     if tags.is_empty() {
         return Ok(());
     }
@@ -226,6 +228,40 @@ fn check_overlap(conn: &Connection, tags: &[String]) -> Result<()> {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
+            }
+        }
+    }
+
+    // File-overlap check: warn for any existing memory sharing a file path.
+    if !files.is_empty() {
+        let mut file_overlap: Vec<(String, uuid::Uuid)> = Vec::new();
+        for path in files {
+            let matches = db::find_items_by_file(conn, path, false)?;
+            for item in matches {
+                if item.kind == "memory"
+                    && !file_overlap.iter().any(|(_, u)| *u == item.uuid)
+                    && !near_dupes.contains(&item.uuid)
+                {
+                    file_overlap.push((path.clone(), item.uuid));
+                }
+            }
+        }
+        if !file_overlap.is_empty() {
+            eprintln!(
+                "Note: {} existing {} linked to the same file(s) — consider --supersedes or sara relearn:",
+                file_overlap.len(),
+                if file_overlap.len() == 1 { "memory" } else { "memories" }
+            );
+            for (path, u) in &file_overlap {
+                if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
+                    let label = format!("m{}", item.display_id.unwrap_or(0));
+                    let snippet: String = item.body.chars().take(80).collect();
+                    let short_path = std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(path.as_str());
+                    eprintln!("  {} [{short_path}] — {}", label, snippet.trim());
+                }
             }
         }
     }
@@ -499,5 +535,35 @@ mod tests {
         let superseded = new_v["superseded"].as_array().unwrap();
         assert_eq!(superseded.len(), 1);
         assert_eq!(superseded[0].as_str().unwrap(), old_label);
+    }
+
+    #[test]
+    fn check_overlap_warns_on_file_overlap() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        let file_path = "/tmp/test_sara_overlap_check.rs".to_string();
+
+        // Learn first memory tied to the file.
+        super::learn_value(
+            &conn,
+            &cfg,
+            "first memory about this file",
+            &["tag-x".to_string()],
+            &[],
+            &[],
+            &[file_path.clone()],
+            false,
+            true, // force — skip safety guardrails
+            &[],
+        )
+        .unwrap();
+
+        // Learning a second memory on the same file with DIFFERENT tags should
+        // still succeed (file-overlap is advisory, not blocking). The test just
+        // verifies check_overlap() itself doesn't error out.
+        let result = super::check_overlap(&conn, &["tag-y".to_string()], &[file_path.clone()]);
+        assert!(result.is_ok(), "check_overlap should not error on file overlap");
     }
 }
