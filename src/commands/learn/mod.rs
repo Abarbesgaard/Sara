@@ -207,14 +207,48 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
             if near_dupes.len() == 1 { "memory" } else { "memories" },
             normalized.join(", ")
         );
+        let mut found_canonical = false;
         for u in &near_dupes {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
+
+                // Check if this memory is a canonical (has incoming derived_from edges).
+                let derived_count = db::get_memory_links_to(conn, &u.to_string())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|l| l.relation == "derived_from")
+                    .count();
+                if derived_count > 0 {
+                    found_canonical = true;
+                    eprintln!(
+                        "    ↳ [canonical, {} derived] — this looks like a derived application; consider `sara learn --derived-from {label}` to register it, or `sara relearn {label}` to enrich the canonical",
+                        derived_count
+                    );
+                } else {
+                    // Check if this memory is itself derived from a canonical.
+                    let outgoing = db::get_memory_links_from(conn, &u.to_string())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|l| l.relation == "derived_from")
+                        .collect::<Vec<_>>();
+                    if let Some(link) = outgoing.first() {
+                        if let Ok(canon_item) = db::get_item_by_uuid(conn, &link.to_uuid) {
+                            let canon_label = format!("m{}", canon_item.display_id.unwrap_or(0));
+                            eprintln!(
+                                "    ↳ [derived from: {canon_label}] — consider enriching the canonical with `sara relearn {canon_label}`"
+                            );
+                        }
+                    }
+                }
             }
         }
-        eprintln!("Consider updating an existing memory with `sara forget <label>` + re-learn, or pass --force to create anyway.");
+        if found_canonical {
+            eprintln!("This looks like a derived application — use `sara learn --derived-from <label>` to link it to the canonical, or pass --force to create independently.");
+        } else {
+            eprintln!("Consider updating an existing memory with `sara relearn <label>`, or pass --force to create anyway.");
+        }
     }
 
     if !significant_partial.is_empty() {
@@ -228,6 +262,18 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
+                // Surface canonical status in partial overlaps too (lighter hint).
+                let derived_count = db::get_memory_links_to(conn, &u.to_string())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|l| l.relation == "derived_from")
+                    .count();
+                if derived_count > 0 {
+                    eprintln!(
+                        "    ↳ [canonical, {} derived] — consider `sara learn --derived-from {label}`",
+                        derived_count
+                    );
+                }
             }
         }
     }
@@ -565,5 +611,58 @@ mod tests {
         // verifies check_overlap() itself doesn't error out.
         let result = super::check_overlap(&conn, &["tag-y".to_string()], &[file_path.clone()]);
         assert!(result.is_ok(), "check_overlap should not error on file overlap");
+    }
+
+    #[test]
+    fn check_overlap_does_not_error_when_canonical_overlaps() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Learn the canonical memory.
+        let canonical = super::learn_value(
+            &conn, &cfg, "canonical codeql config pattern",
+            &["codeql".to_string(), "pattern".to_string()],
+            &[], &[], &[], false, true, &[],
+        ).unwrap();
+        let canon_uuid = canonical["uuid"].as_str().unwrap().to_string();
+
+        // Learn a derived memory and link it as derived_from the canonical.
+        let derived = super::learn_value(
+            &conn, &cfg, "repo-x application of codeql config pattern",
+            &["codeql".to_string()],
+            &[], &[], &[], false, true, &[],
+        ).unwrap();
+        let derived_uuid = derived["uuid"].as_str().unwrap().to_string();
+
+        // Resolve full UUIDs for the link (canon_uuid is an 8-char prefix).
+        let canon_item = db::get_item_by_handle(&conn, &format!("m{}", canonical["label"].as_str().unwrap().trim_start_matches('m'))).unwrap();
+        let derived_item = db::get_item_by_handle(&conn, &format!("m{}", derived["label"].as_str().unwrap().trim_start_matches('m'))).unwrap();
+
+        // Mark derived as derived_from canonical.
+        db::insert_memory_link(
+            &conn,
+            &derived_item.uuid.to_string(),
+            &canon_item.uuid.to_string(),
+            "derived_from",
+            1.0,
+        ).unwrap();
+
+        // Triggering check_overlap with canonical's tags should not error.
+        let result = super::check_overlap(
+            &conn,
+            &["codeql".to_string(), "pattern".to_string()],
+            &[],
+        );
+        assert!(result.is_ok(), "check_overlap should not error when canonical overlaps");
+
+        // Verify the canonical has 1 incoming derived_from edge (the derived memory).
+        let incoming = db::get_memory_links_to(&conn, &canon_item.uuid.to_string()).unwrap();
+        let derived_count = incoming.iter().filter(|l| l.relation == "derived_from").count();
+        assert_eq!(derived_count, 1, "canonical should have 1 derived child");
+
+        // Suppress unused variable warnings.
+        let _ = canon_uuid;
+        let _ = derived_uuid;
     }
 }
