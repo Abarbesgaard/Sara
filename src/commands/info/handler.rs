@@ -503,6 +503,26 @@ pub(super) fn reorder_focused_step(
     }
 }
 
+/// Find the task's PR URL, if any: the first *link* that points at a GitHub
+/// pull request, else the first PR URL mentioned inside an annotation's text
+/// (agents often note the PR in a comment before/instead of linking it).
+pub(super) fn find_pr_url(d: &Detail) -> Option<String> {
+    pr_url_from(&d.links, &d.annotations)
+}
+
+fn pr_url_from(links: &[db::Link], annotations: &[db::Annotation]) -> Option<String> {
+    if let Some(link) = links.iter().find(|l| db::is_pr_link(&l.url)) {
+        return Some(link.url.clone());
+    }
+    annotations.iter().find_map(|a| {
+        a.text
+            .split_whitespace()
+            .map(|tok| tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '/'))
+            .find(|tok| db::is_pr_link(tok))
+            .map(str::to_string)
+    })
+}
+
 /// Open a URL in the OS default browser (non-blocking). Adds a scheme for
 /// bare `www.` style links.
 pub(super) fn open_url(raw: &str) {
@@ -776,5 +796,60 @@ mod tests {
         let tempfile_path = std::fs::read_to_string(&marker).unwrap().trim().to_string();
         assert!(!std::path::Path::new(&tempfile_path).exists());
         let _ = std::fs::remove_file(&marker);
+    }
+
+    fn link(url: &str) -> db::Link {
+        db::Link {
+            id: 1,
+            url: url.to_string(),
+            label: None,
+            entry: chrono::Utc::now(),
+        }
+    }
+
+    fn note(text: &str) -> db::Annotation {
+        db::Annotation {
+            id: 1,
+            text: text.to_string(),
+            entry: chrono::Utc::now(),
+            kind: "comment".to_string(),
+            author: "human".to_string(),
+            target_kind: None,
+            target_id: None,
+            status: "open".to_string(),
+            request_revision: false,
+            resolved_by_run: None,
+        }
+    }
+
+    #[test]
+    fn pr_url_prefers_pr_link_over_issue_link() {
+        let links = vec![
+            link("https://github.com/o/r/issues/7"),
+            link("https://github.com/o/r/pull/42"),
+        ];
+        assert_eq!(
+            pr_url_from(&links, &[]),
+            Some("https://github.com/o/r/pull/42".to_string())
+        );
+    }
+
+    #[test]
+    fn pr_url_falls_back_to_annotation_text() {
+        let notes = vec![
+            note("just a plain comment"),
+            note("opened PR (https://github.com/o/r/pull/58), awaiting review."),
+        ];
+        assert_eq!(
+            pr_url_from(&[], &notes),
+            Some("https://github.com/o/r/pull/58".to_string())
+        );
+    }
+
+    #[test]
+    fn pr_url_is_none_without_any_pr_reference() {
+        let links = vec![link("https://github.com/o/r/issues/7")];
+        let notes = vec![note("see https://github.com/o/r/issues/7 for context")];
+        assert_eq!(pr_url_from(&links, &notes), None);
     }
 }
