@@ -13,8 +13,8 @@ use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::handler::{
     build_task_tree, checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
-    edit_text_via_external_editor, feedback_for_focus, focusables, open_in_editor, open_url,
-    reconcile_dependencies, reorder_focused_step,
+    edit_text_via_external_editor, feedback_for_focus, find_pr_url, focusables, open_in_editor,
+    open_url, reconcile_dependencies, reorder_focused_step,
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
@@ -433,6 +433,12 @@ pub(super) fn edit_loop<B: Backend>(
                                 st.selected = items.len() - 1;
                             }
                         }
+                        // ── Open the task's PR in the browser ───────────────
+                        KeyCode::Char('o') => {
+                            if let Some(url) = find_pr_url(&st.detail) {
+                                open_url(&url);
+                            }
+                        }
                         KeyCode::Char('?') => {
                             showing_help = true;
                         }
@@ -464,6 +470,7 @@ fn help_bindings() -> Vec<(&'static str, &'static str)> {
         ("c", "comment on the focused element"),
         ("r", "flag the focused element for reconsideration"),
         ("x", "resolve the focused element's feedback"),
+        ("o", "open the task's linked PR in the browser"),
         ("d", "expand/collapse the task tree"),
         ("u", "show/hide the urgency score breakdown"),
         ("v", "expand/collapse long text and checklist detail"),
@@ -656,7 +663,7 @@ mod tests {
             assert!(labels.contains(&shared), "missing shared binding {shared}");
         }
         // Domain letters not part of the shared keymap vocabulary.
-        for domain in ["e", "a", "c", "r", "x"] {
+        for domain in ["e", "a", "c", "r", "x", "o"] {
             assert!(labels.contains(&domain), "missing domain binding {domain}");
         }
     }

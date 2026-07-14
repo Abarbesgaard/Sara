@@ -1483,6 +1483,13 @@ pub fn is_issue_link(url: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Does this URL point at a GitHub pull request?
+pub fn is_pr_link(url: &str) -> bool {
+    derive_link_label(url)
+        .map(|l| l.starts_with("PR "))
+        .unwrap_or(false)
+}
+
 /// If `url` is a GitHub issue link, return `(owner/repo, issue number)` so
 /// tasks linking the same issue can be grouped together.
 pub fn parse_issue_link(url: &str) -> Option<(String, u64)> {
@@ -1593,9 +1600,7 @@ pub fn link_flags_by_task(
     let mut map: std::collections::HashMap<String, LinkFlags> = std::collections::HashMap::new();
     for row in rows {
         let (uuid, url) = row?;
-        let is_pr = derive_link_label(&url)
-            .map(|l| l.starts_with("PR "))
-            .unwrap_or(false);
+        let is_pr = is_pr_link(&url);
         let is_issue = is_issue_link(&url);
         let entry = map.entry(uuid).or_default();
         entry.any = true;
@@ -4690,6 +4695,13 @@ mod tests {
         assert!(is_issue_link("https://github.com/acme/widgets/issues/7"));
         assert!(!is_issue_link("https://github.com/acme/widgets/pull/42"));
         assert!(!is_issue_link("https://example.com/foo"));
+    }
+
+    #[test]
+    fn is_pr_link_distinguishes_prs_from_issues_and_others() {
+        assert!(is_pr_link("https://github.com/acme/widgets/pull/42"));
+        assert!(!is_pr_link("https://github.com/acme/widgets/issues/7"));
+        assert!(!is_pr_link("https://example.com/foo"));
     }
 
     #[test]
