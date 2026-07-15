@@ -35,6 +35,7 @@ pub(super) fn edit_loop<B: Backend>(
         due_error: false,
         dep_error: None,
         scroll: 0,
+        last_selected: None,
         tree_expanded: false,
         show_urgency_breakdown: false,
         verbose: false,
@@ -45,7 +46,7 @@ pub(super) fn edit_loop<B: Backend>(
 
     loop {
         terminal.draw(|f| {
-            render(f, &st);
+            render(f, &mut st);
             if showing_help {
                 tui::render_help_overlay(f, "Task detail", &help_bindings());
             }
