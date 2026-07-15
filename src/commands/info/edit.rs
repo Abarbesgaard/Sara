@@ -433,9 +433,15 @@ pub(super) fn edit_loop<B: Backend>(
                                 st.selected = items.len() - 1;
                             }
                         }
-                        // ── Open the task's PR in the browser ───────────────
+                        // ── Open the highlighted link, else the task's PR ───
                         KeyCode::Char('o') => {
-                            if let Some(url) = find_pr_url(&st.detail) {
+                            let url = match &current {
+                                Some(Focusable::Link(i)) => {
+                                    st.detail.links.get(*i).map(|l| l.url.clone())
+                                }
+                                _ => find_pr_url(&st.detail),
+                            };
+                            if let Some(url) = url {
                                 open_url(&url);
                             }
                         }
@@ -470,7 +476,10 @@ fn help_bindings() -> Vec<(&'static str, &'static str)> {
         ("c", "comment on the focused element"),
         ("r", "flag the focused element for reconsideration"),
         ("x", "resolve the focused element's feedback"),
-        ("o", "open the task's linked PR in the browser"),
+        (
+            "o",
+            "open the highlighted link (else the task's PR) in the browser",
+        ),
         ("d", "expand/collapse the task tree"),
         ("u", "show/hide the urgency score breakdown"),
         ("v", "expand/collapse long text and checklist detail"),
