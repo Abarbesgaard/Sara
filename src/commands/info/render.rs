@@ -17,7 +17,7 @@ use super::handler::{
 };
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
 
-pub(super) fn render(f: &mut Frame, st: &EditState) {
+pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     let area = f.area();
     let d = &st.detail;
 
@@ -70,6 +70,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     let show_panel = chunks[0].width >= 96;
 
     let mut lines: Vec<Line> = vec![];
+    // Display-line range (start..=end, pre-wrap indices into `lines`) of the
+    // focused row, captured while building so the viewport can follow it.
+    let mut sel_range: Option<(usize, usize)> = None;
 
     // ── Editable fields
     for (i, field) in EDIT_FIELDS.iter().enumerate() {
@@ -85,6 +88,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             if v.is_empty() { "-".to_string() } else { v }
         };
         lines.push(editable_line(field.label(), &value, selected, *field, t));
+        if selected {
+            sel_range = Some((lines.len() - 1, lines.len() - 1));
+        }
     }
 
     // ── Read-only fields
@@ -356,6 +362,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     Style::default().fg(Color::Yellow).bg(row_bg),
                 ));
             }
+            if is_sel {
+                sel_range = Some((lines.len(), lines.len()));
+            }
             lines.push(Line::from(spans));
 
             // Thread: show open comments indented beneath this note.
@@ -446,6 +455,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     Style::default().fg(Color::DarkGray).bg(bg),
                 ));
             }
+            if selected {
+                sel_range = Some((lines.len(), lines.len()));
+            }
             lines.push(Line::from(spans));
         }
     }
@@ -453,7 +465,11 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
         lines.push(Line::from(""));
         lines.push(section("Relevant files"));
         for file in &d.manual_files {
-            lines.push(nav_line(file, Color::Cyan, false, file_selected(file)));
+            let selected = file_selected(file);
+            if selected {
+                sel_range = Some((lines.len(), lines.len()));
+            }
+            lines.push(nav_line(file, Color::Cyan, false, selected));
         }
     }
     // ── Code anchors: each is focusable, shows 💬/⟳ markers + threaded comments ──
@@ -534,6 +550,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     " ⟳",
                     Style::default().fg(Color::Yellow).bg(row_bg),
                 ));
+            }
+            if is_sel {
+                sel_range = Some((lines.len(), lines.len()));
             }
             lines.push(Line::from(spans));
 
@@ -654,6 +673,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
             if fb.iter().any(|a| a.request_revision) {
                 spans.push(Span::styled(" ⟳", Style::default().fg(Color::Yellow)));
             }
+            if is_sel {
+                sel_range = Some((lines.len(), lines.len()));
+            }
             lines.push(Line::from(spans));
             // Intent/verify/result/provenance detail is only shown for the
             // selected row (or in verbose mode) — with many AI-authored steps
@@ -719,6 +741,11 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                     ),
                     Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
                 ]));
+            }
+            // The selected step reveals its intent/verify/result detail and
+            // comment thread below the row — keep that block in view too.
+            if is_sel && let Some((start, _)) = sel_range {
+                sel_range = Some((start, lines.len() - 1));
             }
         }
     }
@@ -884,6 +911,9 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
                 spans.push(Span::styled("⟳ ", Style::default().fg(Color::Yellow)));
             }
             spans.push(Span::styled(a.text.clone(), text_style));
+            if is_sel {
+                sel_range = Some((lines.len(), lines.len()));
+            }
             lines.push(Line::from(spans));
         }
     }
@@ -903,6 +933,43 @@ pub(super) fn render(f: &mut Frame, st: &EditState) {
     } else {
         (chunks[0], None)
     };
+
+    // ── Scroll-follow: keep the highlighted row in view ─────────────────
+    // Only when the selection actually moved (arrow keys / j/k / g/G) — a
+    // manual PageUp/PageDown scroll is left alone so the user can still
+    // peek around freely. `Paragraph::scroll` counts wrapped (visual) rows,
+    // so logical lines are measured at the pane's inner width.
+    let inner_w = main_area.width.saturating_sub(2).max(1);
+    let viewport = main_area.height.saturating_sub(2) as usize;
+    let selection_moved = st.last_selected != Some(st.selected);
+    st.last_selected = Some(st.selected);
+    if viewport > 0 {
+        if selection_moved && let Some((first, last)) = sel_range {
+            let top: usize = lines[..first]
+                .iter()
+                .map(|l| wrapped_rows(l, inner_w))
+                .sum();
+            let bottom: usize = top
+                + lines[first..=last]
+                    .iter()
+                    .map(|l| wrapped_rows(l, inner_w))
+                    .sum::<usize>();
+            let mut scroll = st.scroll as usize;
+            if bottom > scroll + viewport {
+                scroll = bottom - viewport;
+            }
+            // Applied second so the top of a taller-than-viewport block wins.
+            if top < scroll {
+                scroll = top;
+            }
+            st.scroll = scroll.min(u16::MAX as usize) as u16;
+        }
+        // Never leave the viewport scrolled past the end of the content.
+        let total: usize = lines.iter().map(|l| wrapped_rows(l, inner_w)).sum();
+        st.scroll = st
+            .scroll
+            .min(total.saturating_sub(viewport).min(u16::MAX as usize) as u16);
+    }
 
     let para = Paragraph::new(lines)
         .block(
@@ -1765,6 +1832,42 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
     lines
 }
 
+/// Number of terminal rows a logical line occupies in the main paragraph
+/// once word-wrapped to `width` columns. A greedy estimate that mirrors
+/// ratatui's `WordWrapper` closely enough for scroll-follow — an off-by-one
+/// in a pathological wrap case only shifts the follow point by a row.
+fn wrapped_rows(line: &Line, width: u16) -> usize {
+    let width = width.max(1) as usize;
+    if line.width() <= width {
+        return 1;
+    }
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    let mut rows = 1usize;
+    let mut used = 0usize;
+    for word in text.split(' ') {
+        let w = Span::raw(word).width();
+        let sep = usize::from(used > 0);
+        if used + sep + w <= width {
+            used += sep + w;
+        } else if w > width {
+            // A word wider than the pane hard-wraps mid-word.
+            if used > 0 {
+                rows += 1;
+            }
+            let mut rem = w;
+            while rem > width {
+                rows += 1;
+                rem -= width;
+            }
+            used = rem;
+        } else {
+            rows += 1;
+            used = w;
+        }
+    }
+    rows
+}
+
 fn truncate_str(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -2059,6 +2162,7 @@ mod tests {
             due_error: false,
             dep_error: None,
             scroll: 0,
+            last_selected: None,
             tree_expanded: false,
             show_urgency_breakdown: false,
             verbose: false,
@@ -2066,12 +2170,16 @@ mod tests {
         }
     }
 
-    fn draw(st: &EditState) -> String {
+    fn draw(st: &mut EditState) -> String {
         // Wide enough that render()'s `chunks[0].width >= 96` gate shows the
         // side panel at all, and tall enough that the panel's own stacked
         // constraints (task tree + Git(Min 4)) don't get starved and
         // silently truncated by Layout::split.
-        let mut terminal = Terminal::new(TestBackend::new(140, 60)).unwrap();
+        draw_at(st, 140, 60)
+    }
+
+    fn draw_at(st: &mut EditState, w: u16, h: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
         terminal.draw(|f| render(f, st)).unwrap();
         let buf = terminal.backend().buffer();
         let area = *buf.area();
@@ -2090,8 +2198,8 @@ mod tests {
     #[test]
     fn task_tree_does_not_panic_when_empty() {
         let d = base_detail(task());
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         assert!(out.contains("Task tree"));
         assert!(out.contains("none"));
     }
@@ -2105,8 +2213,8 @@ mod tests {
             dependents: vec![node(3, Status::Pending)],
             dependents_hidden: 0,
         };
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         // Both blockers (one completed, one pending) and the dependent render
         // as distinct rows — this is exactly what the old linear feature
         // chain couldn't do for a task with neighbors in different features.
@@ -2126,8 +2234,8 @@ mod tests {
             dependents: vec![],
             dependents_hidden: 0,
         };
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         assert!(out.contains("more"));
     }
 
@@ -2142,7 +2250,7 @@ mod tests {
         };
         let mut st = base_state(d);
         st.tree_expanded = true;
-        let out = draw(&st);
+        let out = draw(&mut st);
         assert!(!out.contains("more"));
         for i in 1..=8 {
             assert!(
@@ -2163,8 +2271,8 @@ mod tests {
             dependents: vec![],
             dependents_hidden: 0,
         };
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         assert!(out.contains("task 100"));
         assert!(out.contains("└─") || out.contains("├─"));
     }
@@ -2185,28 +2293,28 @@ mod tests {
             dependents_hidden: 0,
         };
         let mut st = base_state(d);
-        let out = draw(&st);
+        let out = draw(&mut st);
         assert!(out.contains("task 10"));
         assert!(out.contains("task 100"));
         assert!(!out.contains("task 1000"));
 
         st.tree_expanded = true;
-        let out2 = draw(&st);
+        let out2 = draw(&mut st);
         assert!(out2.contains("task 1000"));
     }
 
     #[test]
     fn status_row_hidden_when_pending_shown_otherwise() {
         let d = base_detail(task());
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         assert!(!out.lines().any(|l| l.trim_start().starts_with("Status")));
 
         let mut completed_task = task();
         completed_task.status = Status::Completed;
         let d2 = base_detail(completed_task);
-        let st2 = base_state(d2);
-        let out2 = draw(&st2);
+        let mut st2 = base_state(d2);
+        let out2 = draw(&mut st2);
         assert!(out2.contains("Status"));
         assert!(out2.contains("completed"));
     }
@@ -2226,12 +2334,12 @@ mod tests {
             age: 0.0,
         });
         let mut st = base_state(d);
-        let out = draw(&st);
+        let out = draw(&mut st);
         assert!(out.contains("u for breakdown"));
         assert!(!out.contains("pri 3.0"));
 
         st.show_urgency_breakdown = true;
-        let out2 = draw(&st);
+        let out2 = draw(&mut st);
         assert!(out2.contains("pri 3.0"));
     }
 
@@ -2243,8 +2351,8 @@ mod tests {
             typed_note(2, "finding", "existing tests cover this path"),
             typed_note(3, "decision", "kept the old signature"),
         ];
-        let st = base_state(d);
-        let out = draw(&st);
+        let mut st = base_state(d);
+        let out = draw(&mut st);
         // Risk is the human-relevant one — always visible.
         assert!(out.contains("Risks"));
         assert!(out.contains("touches the shared urgency formula"));
@@ -2256,7 +2364,7 @@ mod tests {
 
         let mut st2 = st;
         st2.show_notes = true;
-        let out2 = draw(&st2);
+        let out2 = draw(&mut st2);
         assert!(out2.contains("existing tests cover this path"));
         assert!(out2.contains("kept the old signature"));
     }
@@ -2267,12 +2375,12 @@ mod tests {
         let long = "x".repeat(200);
         d.guide.assignment = Some(long.clone());
         let mut st = base_state(d);
-        let out = draw(&st);
+        let out = draw(&mut st);
         assert!(out.contains("v to expand"));
         assert!(!out.contains(&long));
 
         st.verbose = true;
-        let out2 = draw(&st);
+        let out2 = draw(&mut st);
         assert!(!out2.contains("v to expand"));
     }
 
@@ -2309,7 +2417,7 @@ mod tests {
         ];
         let mut st = base_state(d);
         st.selected = 0; // metadata field, not a checklist row: nothing selected below
-        let out = draw(&st);
+        let out = draw(&mut st);
         assert!(!out.contains("do the first thing"));
         assert!(!out.contains("do the second thing"));
 
@@ -2319,13 +2427,65 @@ mod tests {
             .position(|f| matches!(f, Focusable::Checklist(0)))
             .unwrap();
         st.selected = idx;
-        let out2 = draw(&st);
+        let out2 = draw(&mut st);
         assert!(out2.contains("do the first thing"));
         assert!(!out2.contains("do the second thing"));
 
         st.verbose = true;
-        let out3 = draw(&st);
+        let out3 = draw(&mut st);
         assert!(out3.contains("do the first thing"));
         assert!(out3.contains("do the second thing"));
+    }
+
+    fn many_steps(n: i64) -> Vec<crate::infrastructure::db::ChecklistItem> {
+        (0..n)
+            .map(|i| crate::infrastructure::db::ChecklistItem {
+                id: i + 1,
+                text: format!("step number {i}"),
+                done: false,
+                position: i,
+                intent: None,
+                kind: "step".into(),
+                source: "human".into(),
+                verify_cmd: None,
+                result: None,
+                done_commit: None,
+                done_at: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn selection_follow_scrolls_highlighted_row_into_view() {
+        let mut d = base_detail(task());
+        d.checklist = many_steps(40);
+        let mut st = base_state(d);
+        st.selected = focusables(&st.detail, st.show_notes)
+            .iter()
+            .position(|f| matches!(f, Focusable::Checklist(39)))
+            .unwrap();
+
+        // On a short terminal the last checklist row sits far below the fold;
+        // navigating to it must pull the viewport down so the highlight
+        // stays visible.
+        let out = draw_at(&mut st, 100, 20);
+        assert!(st.scroll > 0, "viewport should have scrolled down");
+        assert!(out.contains("step number 39"));
+    }
+
+    #[test]
+    fn manual_scroll_is_clamped_but_not_snapped_back() {
+        let mut d = base_detail(task());
+        d.checklist = many_steps(40);
+        let mut st = base_state(d);
+        // Selection unchanged since the last frame (no navigation) …
+        st.last_selected = Some(st.selected);
+        // … then a manual scroll far past the end of the content.
+        st.scroll = 500;
+        draw_at(&mut st, 100, 20);
+        // Clamped to the end of the content, but NOT snapped back up to the
+        // still-selected first row — free scrolling stays free.
+        assert!(st.scroll < 500, "scroll should be clamped to content");
+        assert!(st.scroll > 0, "scroll must not snap back to the selection");
     }
 }
