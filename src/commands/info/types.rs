@@ -166,6 +166,10 @@ pub(super) struct EditState {
     /// Error from the last "Depends on" commit, shown until the next edit.
     pub(super) dep_error: Option<String>,
     pub(super) scroll: u16,
+    /// `selected` as of the previous frame — lets render() detect navigation
+    /// and pull the viewport along only then, so manual PageUp/PageDown
+    /// scrolling isn't snapped back to the selection every frame.
+    pub(super) last_selected: Option<usize>,
     /// True to render the task tree at full depth/fan-out instead of the
     /// compact default (2 levels, a handful of siblings per node).
     pub(super) tree_expanded: bool,
