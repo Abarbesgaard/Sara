@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adeptus Machinae — a worked example</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14120f;
+    --bg-raised:#1c1915;
+    --bg-raised-2:#221e18;
+    --ink:#e7ded0;
+    --ink-dim:#a89c87;
+    --bronze:#b08d57;
+    --bronze-dim:#8a6f45;
+    --verdigris:#6f8f7c;
+    --oxide:#9c4a35;
+    --line:#3a3226;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0;
+    background:var(--bg);
+    background-image:radial-gradient(ellipse 900px 500px at 50% -10%, rgba(176,141,87,0.07), transparent 60%);
+    color:var(--ink);
+    font-family:'Spectral', Georgia, serif;
+    font-size:17px;
+    line-height:1.7;
+  }
+  .wrap{max-width:820px; margin:0 auto; padding:0 28px;}
+  h1,h2,h3,.disp{font-family:'Cinzel', serif; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .rule{height:1px; background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent); margin:2.5rem 0;}
+  .eyebrow{font-family:'IBM Plex Mono', monospace; font-size:11.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:0.7rem;}
+
+  header{padding:4rem 0 1rem; text-align:center;}
+  header h1{font-size:26px;}
+  header .lede{color:var(--ink-dim); font-style:italic; max-width:600px; margin:1.1rem auto 0; font-size:16px;}
+  .back{display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); text-decoration:none; margin-top:1.4rem;}
+  .back:hover{color:var(--bronze);}
+
+  section{padding:0.5rem 0 1rem;}
+  .step-eyebrow{font-family:'IBM Plex Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--verdigris); margin:2rem 0 0.4rem;}
+  h2{font-size:19px; margin-bottom:0.9rem;}
+  p{margin:0 0 1rem;}
+  .prose{color:var(--ink); max-width:680px;}
+  .prose b{color:var(--bronze); font-weight:600;}
+  .dim{color:var(--ink-dim);}
+
+  /* terminal / code blocks */
+  .term{background:var(--bg-raised); border:1px solid var(--line); border-left:2px solid var(--bronze-dim); border-radius:4px; padding:14px 16px; font-family:'IBM Plex Mono', monospace; font-size:13px; line-height:1.65; color:var(--ink); overflow-x:auto; margin:0 0 1.2rem; white-space:pre;}
+  .term .p{color:var(--ink-dim);}
+  .term .c{color:var(--verdigris);}
+  .term .o{color:var(--ink-dim); font-style:italic;}
+  .term .k{color:var(--bronze);}
+
+  /* the charge card */
+  .charge{background:var(--bg-raised); border:1px solid var(--line); border-radius:4px; padding:1.4rem 1.6rem; margin:0 0 1.4rem;}
+  .charge .tag{font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--oxide); margin:0 0 0.4rem;}
+  .charge h3{font-size:16px; color:var(--bronze); margin:0 0 0.5rem;}
+  .charge p{margin:0; color:var(--ink-dim); font-size:15px;}
+
+  /* the authority-in-action grid */
+  .auth-grid{display:grid; grid-template-columns:1fr; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden;}
+  .auth-row{background:var(--bg-raised); display:grid; grid-template-columns:150px 1fr; gap:1.2rem; padding:1.1rem 1.4rem; align-items:start;}
+  .auth-row .tier{font-family:'Cinzel', serif; font-size:14px; letter-spacing:0.04em; text-transform:uppercase; color:var(--verdigris);}
+  .auth-row .tier small{display:block; font-family:'Spectral', serif; font-style:italic; text-transform:none; letter-spacing:0; color:var(--ink-dim); font-size:12.5px; margin-top:2px;}
+  .auth-row .what{font-size:14.5px; color:var(--ink);}
+  .auth-row .what .ex{display:block; margin-top:0.4rem; color:var(--ink-dim); font-size:13.5px;}
+  .auth-row .what .ex b{color:var(--bronze); font-weight:500;}
+
+  .callout{border-left:2px solid var(--verdigris); background:var(--bg-raised); padding:1rem 1.3rem; margin:0 0 1.3rem; color:var(--ink-dim); font-size:14.5px; font-style:italic;}
+  .callout b{color:var(--verdigris); font-style:normal;}
+
+  .cta{display:inline-block; margin-top:0.6rem; padding:13px 30px; background:var(--bronze); color:var(--bg); font-family:'Cinzel', serif; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; font-size:14px; text-decoration:none; border-radius:3px;}
+  .cta:hover{background:#c8a066;}
+
+  footer{padding:2.5rem 0 4rem; text-align:center;}
+  footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
+  footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1rem;}
+
+  @media(max-width:640px){
+    body{font-size:16px;}
+    .wrap{padding:0 18px;}
+    header{padding:3rem 0 1rem;}
+    header h1{font-size:22px;}
+    .auth-row{grid-template-columns:1fr; gap:0.4rem; padding:1rem 1.1rem;}
+    .term{font-size:12px; padding:12px 13px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">sara / a worked example</p>
+    <h1>The rite, walked once</h1>
+    <p class="lede">The creed is abstract until you see it drive a real charge. Here is one defect, mended end to end under the Adeptus Machinae — and where each tier of authority (<span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>) actually bites.</p>
+    <a class="back" href="index.html">← back to the creed</a>
+  </header>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="step-eyebrow">before you begin — bind the agent</p>
+    <h2>Adopt the creed</h2>
+    <p class="prose">Install sara, then bind your agent to the law. The simplest way — the <b>Fat Vow</b> — is to paste the creed into your agent's instruction file. Creed above, faction below.</p>
+    <pre class="term"><span class="p">$</span> <span class="c">curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</span>
+
+<span class="o"># then, in your project's AGENTS.md / CLAUDE.md:</span>
+<span class="o">#   1. paste docs/factions/adeptus-machinae.md   (the creed)</span>
+<span class="o">#   2. paste docs/factions/faction-legio.md      (the faction — its Viae + leges)</span></pre>
+    <p class="prose dim">From here the agent is <i>sub lege machinae</i>. Everything below is what a session then looks like.</p>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="step-eyebrow">the work — a defect arrives</p>
+    <h2>The charge</h2>
+    <div class="charge">
+      <p class="tag">bug · Via Emendatio</p>
+      <h3>Login rejects names containing an apostrophe</h3>
+      <p>A user named <span class="mono">O'Brien</span> cannot log in — the form reports "invalid characters". Repair it.</p>
+    </div>
+    <p class="prose">One defect, one kind of work. The agent declares <b>Via Emendatio</b> — the rite for repairing a defect — and walks its fixed Ritus: <span class="mono">reproduce → locate → prove with a failing test → mend → witness → record</span>.</p>
+  </section>
+
+  <section>
+    <p class="step-eyebrow">1 — recall, then frame the charge</p>
+    <p class="prose"><b>Lex Recordi</b> makes <span class="mono">recall</span> come first — never write memory before seeking its duplicate; never re-derive what a past session already learned.</p>
+    <pre class="term"><span class="p">›</span> <span class="k">recall</span> <span class="o">--tag auth --project shop</span>
+<span class="o">  m12 [auth] login validation runs through validateName() in src/auth/login.ts</span>
+
+<span class="p">›</span> <span class="k">add</span> <span class="o">"Login rejects apostrophe in names" --tag auth --priority H \</span>
+<span class="o">      --check "Reproduce with O'Brien" \</span>
+<span class="o">      --check "Prove with a failing test" --check "Mend validateName" \</span>
+<span class="o">      --check "Witness: suite green" --kind acceptance</span>
+<span class="c">  Created charge (a3f9c1e2): Login rejects apostrophe in names</span></pre>
+    <p class="prose dim">The charge now carries its own guide — its steps and its acceptance criterion. That guide is the <b class="mono">Edictum</b>.</p>
+  </section>
+
+  <section>
+    <p class="step-eyebrow">2 — a fork: which file? (Sententia decides)</p>
+    <p class="callout">The agent could stop and ask <i>"which validation file do you mean?"</i>. No Lex forbids it, no Edictum names the file, no Mos points the way. So the tie-breaker — a <b>Sententia</b> — speaks: <b>Non Vaga</b>. Take the most specific path already open (the <span class="mono">validateName()</span> that recall surfaced) and proceed <i>without asking leave</i>.</p>
+  </section>
+
+  <section>
+    <p class="step-eyebrow">3 — walk the Ritus, proving each act</p>
+    <p class="prose"><b>Lex Itineris</b> fixes the order: no act begins before its predecessor closes, and none closes but by a <span class="mono">step_done</span> that carries evidence.</p>
+    <pre class="term"><span class="p">›</span> <span class="k">next</span>            <span class="o"># → step 1: reproduce with O'Brien</span>
+<span class="p">›</span> <span class="k">step_done</span> 1 <span class="o">--result "Confirmed: validateName() rejects ' via /[a-z]/i guard"</span>
+
+<span class="p">›</span> <span class="k">next</span>            <span class="o"># → step 2: prove with a failing test</span>
+<span class="p">›</span> <span class="k">step_done</span> 2 <span class="o">--result "Added test 'accepts apostrophe' — RED, as required"</span>
+
+<span class="p">›</span> <span class="k">next</span>            <span class="o"># → step 3: mend</span>
+<span class="p">›</span> <span class="k">step_done</span> 3 <span class="o">--result "Widened guard to allow ' - . ; commit b1c2d3e"</span></pre>
+  </section>
+
+  <section>
+    <p class="step-eyebrow">4 — witness (Mos supplies the default)</p>
+    <p class="callout">The charge's Edictum says "witness: suite green" but names no command. Where the Edictum is silent, <b>Mos</b> — the documented default — is taken: run the project's configured test command from <span class="mono">sara init</span>. No guessing, no asking.</p>
+    <pre class="term"><span class="p">›</span> <span class="k">verify</span> <span class="o">--run</span>
+<span class="c">  ✓ npm test — 48 passed (was 47; the new test now GREEN)</span>
+<span class="p">›</span> <span class="k">step_done</span> 4 <span class="o">--kind acceptance --result "Full suite green; the failing test passes"</span></pre>
+  </section>
+
+  <section>
+    <p class="step-eyebrow">5 — the gate (Lex halts you)</p>
+    <p class="prose"><b>Lex Termini</b> is invariant and cannot be softened. The agent opens a PR and <span class="mono">link</span>s it — but refuses to call the charge <span class="mono">done</span>, because the PR is not yet merged. Opening the road is not walking it.</p>
+    <pre class="term"><span class="p">›</span> <span class="c">git push && gh pr create --fill</span>
+<span class="p">›</span> <span class="k">link</span> a3f9c1e2 <span class="o">https://github.com/you/shop/pull/91</span>
+<span class="p">›</span> <span class="k">learn</span> <span class="o">--auto-files --tag auth "validateName() must allow ' - . in surnames"</span>
+
+<span class="p">›</span> <span class="k">done</span> a3f9c1e2
+<span class="c">  ✗ HALT (Lex Termini): PR #91 is open, not merged. The charge stays.</span></pre>
+    <p class="prose dim">Once a human merges #91, the same <span class="mono">done</span> succeeds. The agent stopped exactly where the law commands — not a step early, not a step late.</p>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="step-eyebrow">the whole hierarchy, in one charge</p>
+    <h2>Where each authority bit</h2>
+    <div class="auth-grid">
+      <div class="auth-row">
+        <div class="tier">Lex<small>statute — always</small></div>
+        <div class="what">The invariant floor. It fired at recall (Recordi), at ordering the steps (Itineris), and at the gate (Termini).<span class="ex"><b>here:</b> halted <span class="mono">done</span> until the PR merges.</span></div>
+      </div>
+      <div class="auth-row">
+        <div class="tier">Edictum<small>the charge's guide</small></div>
+        <div class="what">Binding for this charge only — its own steps and acceptance criteria, set when the charge was framed.<span class="ex"><b>here:</b> "prove with a failing test", "witness: suite green".</span></div>
+      </div>
+      <div class="auth-row">
+        <div class="tier">Mos<small>the default</small></div>
+        <div class="what">The documented custom, taken when nothing above is written.<span class="ex"><b>here:</b> the test command came from the project's <span class="mono">sara init</span> config.</span></div>
+      </div>
+      <div class="auth-row">
+        <div class="tier">Sententia<small>the tie-breaker</small></div>
+        <div class="what">A maxim — speaks only at a fork no Lex, Edictum, or Mos settles.<span class="ex"><b>here:</b> Non Vaga chose the file instead of asking.</span></div>
+      </div>
+    </div>
+    <p class="prose" style="margin-top:1.3rem;">When two would conflict, the higher wins — always. <span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>. That single ordering is what keeps an agent decisive without ever going rogue.</p>
+  </section>
+
+  <section style="text-align:center; padding-top:1.5rem;">
+    <a class="cta" href="skills.html">Choose your register →</a>
+  </section>
+
+  <footer>
+    <p class="disp" style="font-size:13px;">Adeptus Machinae</p>
+    <p class="fine"><a href="index.html">the creed</a> · <a href="skills.html">the register</a> · <a href="https://github.com/Abarbesgaard/Sara">github.com/Abarbesgaard/Sara</a></p>
+  </footer>
+
+</div>
+</body>
+</html>
