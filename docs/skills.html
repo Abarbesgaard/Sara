@@ -103,6 +103,27 @@
   .sub .dl{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:13px; padding:11px 18px; border-radius:3px; text-decoration:none; border:1px solid var(--bronze); color:var(--page-bg); background:var(--bronze);}
 
   .note{max-width:640px; margin:0 auto; padding:2rem 0 4rem; text-align:center; color:var(--ink-dim); font-size:14px; font-style:italic;}
+
+  /* the creed's law, explained */
+  .lawbox{background:var(--bg-raised); border:1px solid var(--line); border-radius:4px; padding:1.7rem 1.9rem; max-width:660px; margin:1rem auto 0;}
+  .lawbox + .lawbox{margin-top:14px;}
+  .lawbox .head{font-family:'Cinzel', serif; font-size:14px; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0 0 0.2rem; font-weight:600;}
+  .lawbox .gloss{color:var(--ink-dim); font-size:14px; font-style:italic; margin:0 0 1.1rem;}
+  .authority{display:flex; align-items:stretch; gap:0; flex-wrap:wrap; margin:0 0 0.6rem; font-family:'IBM Plex Mono', monospace;}
+  .authority .tier{flex:1 1 0; min-width:120px; text-align:center; padding:0.6rem 0.5rem; border:1px solid var(--line); border-left:none;}
+  .authority .tier:first-child{border-left:1px solid var(--bronze-dim);}
+  .authority .tier .t-name{color:var(--bronze); font-size:13px; font-weight:500; letter-spacing:0.04em;}
+  .authority .tier .t-def{color:var(--ink-dim); font-size:11px; display:block; margin-top:3px; line-height:1.4; font-family:'Spectral', serif; font-style:italic;}
+  .authority .arrow{align-self:center; color:var(--verdigris); font-size:14px; padding:0 6px;}
+  @media(max-width:560px){.authority .arrow{display:none;} .authority .tier{flex-basis:45%; border-left:1px solid var(--line)!important; margin:-1px 0 0 -1px;}}
+  .whymax{list-style:none; margin:0; padding:0;}
+  .whymax li{padding:0.7rem 0; border-top:1px solid var(--line);}
+  .whymax li:first-child{border-top:none;}
+  .whymax .m-name{font-family:'Cinzel', serif; color:var(--verdigris); font-size:13px; letter-spacing:0.04em; text-transform:uppercase;}
+  .whymax .m-lat{font-style:italic; color:var(--ink-dim); font-size:13px;}
+  .whymax .m-body{display:block; color:var(--ink); font-size:13.5px; margin-top:0.2rem; line-height:1.5;}
+  .scope-note{font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.04em; color:var(--ink-dim); margin:0.9rem 0 0; padding-top:0.8rem; border-top:1px dashed var(--line);}
+  .scope-note b{color:var(--bronze); font-weight:500;}
   footer{padding:0 0 3.5rem; text-align:center;}
   footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
   footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1rem;}
@@ -141,6 +162,53 @@
     <a class="dl" href="factions/adeptus-machinae.md" download>↓ adeptus-machinae.md</a>
   </div>
 
+  <p class="eyebrow" style="text-align:center; margin-top:2rem;">the order of authority — which rule wins</p>
+  <div class="lawbox">
+    <p class="gloss">The creed is not a flat list of rules. When two seem to conflict, the higher tier binds — always, without appeal. This is the spine the whole register hangs on.</p>
+    <div class="authority">
+      <div class="tier"><span class="t-name">LEX</span><span class="t-def">statute — invariant, applies always</span></div>
+      <span class="arrow">&gt;</span>
+      <div class="tier"><span class="t-name">EDICTUM</span><span class="t-def">the charge's own guide — binding for that charge</span></div>
+      <span class="arrow">&gt;</span>
+      <div class="tier"><span class="t-name">MOS</span><span class="t-def">custom — the documented default</span></div>
+      <span class="arrow">&gt;</span>
+      <div class="tier"><span class="t-name">SENTENTIA</span><span class="t-def">maxim — the tie-breaker for a fork no rule settles</span></div>
+    </div>
+    <p class="scope-note"><i>Dura lex, sed lex</i> — a Lex is never softened because it is inconvenient. A Maxim only speaks where no Lex, Edictum, or Mos has.</p>
+  </div>
+
+  <p class="eyebrow" style="text-align:center; margin-top:2.2rem;">the five Leges — the universal statutes</p>
+  <div class="lawbox">
+    <p class="gloss">Invariant law. Every agent under the creed obeys these, in every faction, on every charge — the non-negotiable floor.</p>
+    <ul class="leges">
+      <li><b>Lex Loci</b> — the Law of Place: every call outside the launch dir carries the province's <span class="mono">project_path</span>; target a charge by its UUID prefix, never the recycled id.</li>
+      <li><b>Lex Itineris</b> — the Law of the Journey: the road is fixed and ordered; load → <span class="mono">next</span> → labor → <span class="mono">step_done</span> → verify. Work not logged did not happen.</li>
+      <li><b>Lex Nexus</b> — the Law of Binding: a declared dependency is a wall; labor only within the charge — work outside it is not done, however near to hand.</li>
+      <li><b>Lex Recordi</b> — the Law of Memory: <span class="mono">recall</span> precedes <span class="mono">learn</span>; every memory carries a known tag; a stale memory is forgotten, not left to mislead.</li>
+      <li><b>Lex Termini</b> — the Law of the Ending: the burden of proof of completion is yours; <span class="mono">done</span> only when verified and any PR is merged — opening the road is not walking it.</li>
+    </ul>
+    <p class="scope-note">These five are <b>Leges Magnae</b> — universal. A <b>faction</b> may add its own statutes (Legio adds five), but those are <b>faction-scoped</b>: they bind only an agent that adopts that faction, and may never contradict a Lex above them.</p>
+  </div>
+
+  <p class="eyebrow" style="text-align:center; margin-top:2.2rem;">the three Maxims — why they exist</p>
+  <div class="lawbox">
+    <p class="gloss">An LLM's native failure mode is drift: it hedges, asks needless questions, offers three plans, and stops at every waypoint to check in. The Maxims are the creed's answer — tie-breakers that fire precisely at the fork where a model would otherwise wander, and resolve it toward decisive, single-track progress. They speak <i>only</i> when no Lex, Edictum, or Mos settles the call.</p>
+    <ul class="whymax">
+      <li>
+        <span class="m-name">Non Vaga</span> — <span class="m-lat">does not wander</span>
+        <span class="m-body">Fires when the agent is tempted to ask a clarifying question or guess across provinces. Resolves to: take the most specific path already open, and proceed without asking leave.</span>
+      </li>
+      <li>
+        <span class="m-name">Iter Unum</span> — <span class="m-lat">one road</span>
+        <span class="m-body">Fires when several plausible plans present themselves. Resolves to: commit to one, record it in <span class="mono">assignment</span>/<span class="mono">rationale</span>, and never lay two roads before the one who sent you. If genuinely blocked, surface exactly one question — never a list.</span>
+      </li>
+      <li>
+        <span class="m-name">Ad Finem</span> — <span class="m-lat">to the end</span>
+        <span class="m-body">Fires at a natural pause — a step logged, a PR opened, a note left. Resolves to: treat these as waypoints, not the destination; continue to <span class="mono">done</span> unless a Lex requires stopping for a human.</span>
+      </li>
+    </ul>
+  </div>
+
   <p class="inherit"></p>
 
   <p class="eyebrow" style="text-align:center;">faction i — for now, the only one</p>
@@ -157,7 +225,8 @@
     <p class="tag">faction</p>
     <h3>Legio</h3>
     <p class="lat">a charge, once taken, is carried to its end</p>
-    <p class="desc">Inherits the Adeptus creed whole, then supplies what the creed leaves to its factions: the <b>six Viae</b> (the kinds of software work, each with its Ritus and Testes) and the leges of <b>execution and completion</b> — carrying a charge to <span class="mono">done</span> without deviation, without stopping at waypoints, without asking leave where a default will do.</p>
+    <p class="desc">Inherits the Adeptus creed whole, then supplies what the creed leaves to its factions: the <b>six Viae</b> (the kinds of software work, each with its Ritus and Testes) and its own leges of <b>execution and completion</b> — carrying a charge to <span class="mono">done</span> without deviation, without stopping at waypoints, without asking leave where a default will do.</p>
+    <p class="eyebrow" style="text-align:left; margin:0 0 0.5rem;">the leges of Legio — faction-scoped statutes</p>
     <ul class="leges">
       <li><b>Lex Cursus</b> — the steps are a ladder; none begun before its predecessor closes</li>
       <li><b>Lex Probationis</b> — the burden of proof of completion is yours; every step_done carries evidence</li>
@@ -165,6 +234,7 @@
       <li><b>Lex Perseverantiae</b> — a waypoint is not a stopping point; halt only at a wall or an unmerged PR</li>
       <li><b>Lex Emendationis</b> — a failing gate is mended and re-walked, not abandoned</li>
     </ul>
+    <p class="scope-note">These five sharpen <i>how</i> a Via's road is walked. They are <b>Legio's own</b> — they bind an agent that adopts Legio, sit <i>below</i> the five universal Leges, and contradict none of them. A different faction would bring different leges.</p>
     <a class="dl" href="factions/faction-legio.md" download>↓ faction-legio.md</a>
   </div>
 
