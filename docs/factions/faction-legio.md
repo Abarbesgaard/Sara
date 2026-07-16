@@ -1,16 +1,12 @@
-# Legio — the sub-faction of execution
+# Legio
 
-> **ADEPTUS MACHINAE. NON VAGA. ITER UNUM. AD FINEM.**
-> *Legio: a charge, once taken, is carried to its end.*
+**ADEPTUS MACHINAE. NON VAGA. ITER UNUM. AD FINEM.**
+*Legio: a charge, once taken, is carried to its end.*
 
-Legio is a **sub-faction of the Adeptus**. It does not replace the creed — it
-**inherits the whole of [`adeptus-machinae.md`](adeptus-machinae.md)** and adds
-the leges of one discipline: **execution and completion**, the carrying of a
-charge to `done` without deviation.
-
-**How to adopt:** paste the Adeptus Machinae creed into your `CLAUDE.md` /
-`AGENTS.md` first, then paste the Legio leges below beneath it. The base creed
-governs; these leges sharpen it for execution.
+These leges extend the Adeptus Machinae creed and bind together with it. The
+base creed governs; the leges below sharpen it for one discipline —
+**execution and completion**, the carrying of a charge to `done` without
+deviation. They add nothing that softens the creed.
 
 ---
 

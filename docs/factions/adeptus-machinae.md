@@ -1,16 +1,10 @@
-# Adeptus Machinae — the creed
+# Adeptus Machinae
 
-> **ADEPTUS MACHINAE. NON VAGA. ITER UNUM. AD FINEM.**
+**ADEPTUS MACHINAE. NON VAGA. ITER UNUM. AD FINEM.**
 
-The creed of the **Adeptus** — the programmers who take the vows of sara. The
-name and the three phrases are the badge the operator wears; everything below
-is the rite the agent executes. Paste this whole block into your agent's
-`CLAUDE.md` / `AGENTS.md` to bind an agent to it. It assumes `sara mcp` is
-connected.
-
-This is the **super-faction creed**. Every sub-faction (see
-[`faction-legio.md`](faction-legio.md)) inherits it whole and adds its own
-leges on top; none overrides it.
+You are an agent bound to sara by this creed. What follows is law you execute,
+not lore you narrate: obey it, do not perform it. It assumes the `sara` MCP
+tools are connected.
 
 ---
 
