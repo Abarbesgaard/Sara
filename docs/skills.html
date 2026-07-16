@@ -87,6 +87,19 @@
   .via .ritus{font-size:13px; color:var(--ink); margin:0.15rem 0 0; line-height:1.5;}
   .via .testes{font-size:13px; color:var(--ink-dim); margin:0.15rem 0 0; line-height:1.5;}
   .dl.block{display:block; width:max-content; margin:1.5rem auto 0; color:var(--page-bg)!important; background:var(--bronze); border:1px solid var(--bronze); border-radius:3px; padding:11px 18px; font-family:'IBM Plex Mono', monospace; font-size:13px; text-decoration:none;}
+  /* emblems */
+  .emblem{display:block; width:62px; height:62px; margin:0 auto 0.7rem;}
+  .emblem-sub{display:block; width:56px; height:56px; margin:0 auto 0.4rem;}
+  /* the rite of adoption — two ways to bind */
+  .paths{display:grid; grid-template-columns:repeat(2,1fr); gap:16px; max-width:820px; margin:1.4rem auto 0;}
+  @media(max-width:640px){.paths{grid-template-columns:1fr;}}
+  .path{background:var(--bg-raised); border:1px solid var(--line); border-top:2px solid var(--bronze-dim); border-radius:4px; padding:1.4rem 1.5rem;}
+  .path .tag{font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--verdigris); margin:0;}
+  .path h4{font-family:'Cinzel', serif; font-size:16px; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0.4rem 0 0.15rem; font-weight:600;}
+  .path .sub-lat{font-style:italic; color:var(--ink-dim); font-size:13px; margin:0 0 1rem;}
+  .path ol{margin:0; padding-left:1.2rem; font-size:14px; color:var(--ink); line-height:1.55;}
+  .path ol li{margin-bottom:0.45rem;}
+  .path a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
   .sub .dl{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:13px; padding:11px 18px; border-radius:3px; text-decoration:none; border:1px solid var(--bronze); color:var(--page-bg); background:var(--bronze);}
 
   .note{max-width:640px; margin:0 auto; padding:2rem 0 4rem; text-align:center; color:var(--ink-dim); font-size:14px; font-style:italic;}
@@ -109,6 +122,19 @@
 
   <p class="eyebrow" style="text-align:center;">the super-faction — the creed all inherit</p>
   <div class="super">
+    <svg class="emblem" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g stroke="#b08d57" stroke-width="1.6">
+        <circle cx="50" cy="50" r="30"/>
+        <circle cx="50" cy="50" r="6"/>
+        <g>
+          <line x1="50" y1="14" x2="50" y2="4"/><line x1="50" y1="86" x2="50" y2="96"/>
+          <line x1="14" y1="50" x2="4" y2="50"/><line x1="86" y1="50" x2="96" y2="50"/>
+          <line x1="25.5" y1="25.5" x2="18.2" y2="18.2"/><line x1="74.5" y1="74.5" x2="81.8" y2="81.8"/>
+          <line x1="74.5" y1="25.5" x2="81.8" y2="18.2"/><line x1="25.5" y1="74.5" x2="18.2" y2="81.8"/>
+        </g>
+        <path d="M35 50 Q42 38 50 50 Q58 62 65 50" stroke-width="1.2" opacity="0.8"/>
+      </g>
+    </svg>
     <h2>Adeptus Machinae</h2>
     <p class="creed">NON VAGA · ITER UNUM · AD FINEM</p>
     <p class="desc">The universal creed. The order of authority (<span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>), the five Leges, the three Maxims, and the six Viae &mdash; the kinds of work (Genesis, Renovatio, Emendatio, Exploratio, Validatio, Publicatio), each with a fixed Ritus and its Testes. Every sub-faction inherits this whole and overrides none of it. Adopt it alone for the full register with no specialization.</p>
@@ -179,6 +205,15 @@
 
   <p class="eyebrow" style="text-align:center;">sub-faction i — for now, the only one</p>
   <div class="sub">
+    <svg class="emblem-sub" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g stroke="#b08d57" stroke-width="1.6">
+        <circle cx="50" cy="50" r="40"/>
+        <line x1="42" y1="18" x2="42" y2="74"/><line x1="58" y1="18" x2="58" y2="74"/>
+        <line x1="42" y1="28" x2="58" y2="28"/><line x1="42" y1="40" x2="58" y2="40"/>
+        <line x1="42" y1="52" x2="58" y2="52"/><line x1="42" y1="64" x2="58" y2="64"/>
+      </g>
+      <line x1="30" y1="80" x2="70" y2="80" stroke="#9c4a35" stroke-width="3.4"/>
+    </svg>
     <p class="tag">sub-faction</p>
     <h3>Legio</h3>
     <p class="lat">a charge, once taken, is carried to its end</p>
@@ -214,8 +249,31 @@
 
   <div class="rule"></div>
 
-  <p class="eyebrow" style="text-align:center;">how to adopt</p>
-  <p class="note">The downloads are operational law, written for the agent to execute — no preamble, no lore. To bind an agent, paste the file's contents into its <span class="mono">CLAUDE.md</span> / <span class="mono">AGENTS.md</span>. For a sub-faction, paste <span class="mono">adeptus-machinae.md</span> first, then <span class="mono">faction-legio.md</span> beneath it — the base creed governs, the leges sharpen. To invoke the six rites by command (<span class="mono">/via_*</span>), install the <a href="https://github.com/Abarbesgaard/Sara/tree/spqr/skills">skills</a> and add the always-on hook to your <span class="mono">AGENTS.md</span>. Both assume the <span class="mono">sara</span> MCP tools are connected.</p>
+  <p class="eyebrow" style="text-align:center;">the rite of adoption — two ways to bind</p>
+  <p class="note" style="padding:0 0 0.3rem; max-width:600px;">One law, two vestments. Choose how the creed rides with your agent. Both assume the <span class="mono">sara</span> MCP tools are connected.</p>
+  <div class="paths">
+    <div class="path">
+      <p class="tag">easiest · works anywhere</p>
+      <h4>The Fat Vow</h4>
+      <p class="sub-lat">always robed — the whole creed rides in context, every turn</p>
+      <ol>
+        <li>Download <span class="mono">adeptus-machinae.md</span> — for a sub-faction, take <span class="mono">faction-legio.md</span> too.</li>
+        <li>Paste it into your agent's <span class="mono">AGENTS.md</span> / <span class="mono">CLAUDE.md</span> — <b>creed above, faction below</b>.</li>
+        <li>That is the whole rite. No install; any tool that reads the file is bound.</li>
+      </ol>
+    </div>
+    <div class="path">
+      <p class="tag">invocable · /via_*</p>
+      <h4>The Invocable Rite</h4>
+      <p class="sub-lat">robes on call — the law loads when a Via is declared</p>
+      <ol>
+        <li>Install the <a href="https://github.com/Abarbesgaard/Sara/tree/spqr/skills">skills</a> into a skill root (<span class="mono">~/.agents/skills</span>).</li>
+        <li>Add the thin <span class="mono">hook</span> to your <span class="mono">AGENTS.md</span> so the creed is invoked at every charge.</li>
+        <li>Declare a rite by command — <span class="mono">/via_emendatio …</span> — and it walks its Ritus.</li>
+      </ol>
+    </div>
+  </div>
+  <p class="note" style="padding-top:1rem;">The downloads are operational law — written for the agent to execute, no preamble, no lore. Take one vestment, not both: the Fat Vow and the hook carry the same creed, and an agent robed twice reads its law doubled.</p>
 
   <footer>
     <p class="disp" style="font-size:13px;">Adeptus Machinae</p>
