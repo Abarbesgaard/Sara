@@ -81,6 +81,9 @@
   @media(max-width:640px){.viae{grid-template-columns:1fr;}}
   .via{background:var(--bg-raised); border:1px solid var(--line); border-top:2px solid var(--bronze-dim); border-radius:4px; padding:1.1rem 1.25rem;}
   .via .cmd{font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--bronze); letter-spacing:0.03em;}
+  a.cmd{text-decoration:none; border-bottom:1px dotted var(--bronze-dim);}
+  a.cmd:hover{color:#c8a066; border-bottom-color:#c8a066;}
+  a.cmd::after{content:' ↗'; font-size:10px; opacity:0.7;}
   .via h4{font-family:'Cinzel', serif; font-size:15px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink); margin:0.35rem 0 0.1rem; font-weight:600;}
   .via .for{font-style:italic; color:var(--verdigris); font-size:13px; margin:0 0 0.6rem;}
   .via .lbl{font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; color:var(--ink-dim); display:block; margin-top:0.55rem;}
@@ -256,10 +259,10 @@
   <p class="note">Legio inherits the creed whole and competes with it in nothing. It adds what the creed leaves to a faction: the <b>six Viae</b> and the discipline of <b>execution and completion</b>. More factions may follow, each layered on the same unchanging Adeptus law — and each free to define <i>its own</i> Viae.</p>
 
   <p class="eyebrow" style="text-align:center; margin-top:2.2rem;">the six Viae — Legio's kinds of work</p>
-  <p class="note" style="padding:0 0 0.3rem; max-width:660px;">A <span class="mono">Via</span> is a <i>kind of work</i> — and the Viae belong to the <b>faction</b>, not the creed. These six are Legio's. Declare exactly one per charge — it fixes the road: its <b>Ritus</b> (the ordered acts) and its <b>Testes</b> (the witnesses of completion). Installed as skills, each is invocable by command. Another faction may define an entirely different set.</p>
+  <p class="note" style="padding:0 0 0.3rem; max-width:660px;">A <span class="mono">Via</span> is a <i>kind of work</i> — and the Viae belong to the <b>faction</b>, not the creed. These six are Legio's. Declare exactly one per charge — it fixes the road: its <b>Ritus</b> (the ordered acts) and its <b>Testes</b> (the witnesses of completion). Installed as skills, each is invocable by command. <b>Read before you install:</b> click any <span class="mono">/command</span> to open that rite's full <span class="mono">SKILL.md</span> on GitHub.</p>
   <div class="viae">
     <div class="via">
-      <span class="cmd">/via_genesis</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_genesis/SKILL.md">/via_genesis</a>
       <h4>Genesis</h4>
       <p class="for">build a new capability</p>
       <span class="lbl">Ritus</span>
@@ -268,7 +271,7 @@
       <p class="testes">every criterion met; build compiles &amp; runs; a test covers the new behaviour</p>
     </div>
     <div class="via">
-      <span class="cmd">/via_renovatio</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_renovatio/SKILL.md">/via_renovatio</a>
       <h4>Renovatio</h4>
       <p class="for">improve, behaviour unchanged</p>
       <span class="lbl">Ritus</span>
@@ -277,7 +280,7 @@
       <p class="testes">pinning tests exist and pass unchanged; no new behaviour under cover of a refactor</p>
     </div>
     <div class="via">
-      <span class="cmd">/via_emendatio</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_emendatio/SKILL.md">/via_emendatio</a>
       <h4>Emendatio</h4>
       <p class="for">repair a defect</p>
       <span class="lbl">Ritus</span>
@@ -286,7 +289,7 @@
       <p class="testes">a test that failed before and passes after; full suite green</p>
     </div>
     <div class="via">
-      <span class="cmd">/via_exploratio</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_exploratio/SKILL.md">/via_exploratio</a>
       <h4>Exploratio</h4>
       <p class="for">investigate, no code changed</p>
       <span class="lbl">Ritus</span>
@@ -295,7 +298,7 @@
       <p class="testes">each conclusion cites its sign; question answered or declared unanswerable; no source file changed</p>
     </div>
     <div class="via">
-      <span class="cmd">/via_validatio</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_validatio/SKILL.md">/via_validatio</a>
       <h4>Validatio</h4>
       <p class="for">write or run verification</p>
       <span class="lbl">Ritus</span>
@@ -304,7 +307,7 @@
       <p class="testes">check exists and was run; real result recorded; a failure reported, never buried</p>
     </div>
     <div class="via">
-      <span class="cmd">/via_publicatio</span>
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_publicatio/SKILL.md">/via_publicatio</a>
       <h4>Publicatio</h4>
       <p class="for">carry finished work to the gate</p>
       <span class="lbl">Ritus</span>
@@ -313,7 +316,7 @@
       <p class="testes">all prior Testes green; PR opened and linked; nothing <span class="mono">done</span> before merge</p>
     </div>
   </div>
-  <a class="dl block" href="https://github.com/Abarbesgaard/Sara/tree/spqr/skills">↗ install the six rites as skills</a>
+  <a class="dl block" href="https://github.com/Abarbesgaard/Sara/tree/spqr/skills">↗ read &amp; install the six rites as skills</a>
 
   <div class="rule"></div>
 
