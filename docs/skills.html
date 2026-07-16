@@ -75,6 +75,9 @@
   .leges li{padding:6px 0; border-top:1px solid var(--line); color:var(--ink);}
   .leges li:first-child{border-top:none;}
   .leges li b{color:var(--verdigris); font-weight:500;}
+  .rites-intro{color:var(--ink-dim); font-size:14px; margin:1.4rem 0 1rem; padding-top:1.2rem; border-top:1px solid var(--line);}
+  .rites-intro b{color:var(--ink);}
+  .leges .cmd{color:var(--bronze); font-weight:500;}
   .sub .dl{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:13px; padding:11px 18px; border-radius:3px; text-decoration:none; border:1px solid var(--bronze); color:var(--page-bg); background:var(--bronze);}
 
   .note{max-width:640px; margin:0 auto; padding:2rem 0 4rem; text-align:center; color:var(--ink-dim); font-size:14px; font-style:italic;}
@@ -119,6 +122,17 @@
       <li><b>Lex Emendationis</b> — a failing gate is mended and re-walked, not abandoned</li>
     </ul>
     <a class="dl" href="factions/faction-legio.md" download>↓ faction-legio.md</a>
+
+    <p class="rites-intro">Legio also ships the six Viae as <b>invocable rites</b> — drop-in skills your agent runs by command. Declare one per charge; each walks its fixed Ritus and halts at its Testes.</p>
+    <ul class="leges rites">
+      <li><b class="cmd">/via_genesis</b> — build a new capability from nothing</li>
+      <li><b class="cmd">/via_renovatio</b> — improve without changing behaviour (pin it first)</li>
+      <li><b class="cmd">/via_emendatio</b> — repair a defect (a failing test before the mend)</li>
+      <li><b class="cmd">/via_exploratio</b> — investigate; no code is changed</li>
+      <li><b class="cmd">/via_validatio</b> — write or run verification, read the true result</li>
+      <li><b class="cmd">/via_publicatio</b> — carry finished work to the gate</li>
+    </ul>
+    <a class="dl" href="https://github.com/Abarbesgaard/Sara/tree/nightly/skills">↗ install the skills</a>
   </div>
 
   <p class="note">Legio inherits the creed; it does not compete with it. More sub-factions may follow — each a discipline layered on the same unchanging Adeptus law, never a rival to it.</p>
@@ -126,7 +140,7 @@
   <div class="rule"></div>
 
   <p class="eyebrow" style="text-align:center;">how to adopt</p>
-  <p class="note">The downloads are operational law, written for the agent to execute — no preamble, no lore. To bind an agent, paste the file's contents into its <span class="mono">CLAUDE.md</span> / <span class="mono">AGENTS.md</span>. For a sub-faction, paste <span class="mono">adeptus-machinae.md</span> first, then <span class="mono">faction-legio.md</span> beneath it — the base creed governs, the leges sharpen. Both assume the <span class="mono">sara</span> MCP tools are connected.</p>
+  <p class="note">The downloads are operational law, written for the agent to execute — no preamble, no lore. To bind an agent, paste the file's contents into its <span class="mono">CLAUDE.md</span> / <span class="mono">AGENTS.md</span>. For a sub-faction, paste <span class="mono">adeptus-machinae.md</span> first, then <span class="mono">faction-legio.md</span> beneath it — the base creed governs, the leges sharpen. To invoke the six rites by command (<span class="mono">/via_*</span>), install the <a href="https://github.com/Abarbesgaard/Sara/tree/nightly/skills">skills</a> and add the always-on hook to your <span class="mono">AGENTS.md</span>. Both assume the <span class="mono">sara</span> MCP tools are connected.</p>
 
   <footer>
     <p class="disp" style="font-size:13px;">Adeptus Machinae</p>
