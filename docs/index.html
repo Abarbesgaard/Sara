@@ -134,58 +134,8 @@
   .stele .field{font-size:13px; color:var(--ink-dim); font-family:'IBM Plex Mono', monospace; letter-spacing:0.05em; text-transform:uppercase; margin:1rem 0 0.3rem;}
   .stele p{margin:0; font-size:14.5px;}
 
-  /* ---- viae / roads ---- */
-  .road{position:relative; padding-left:32px; border-left:1px solid var(--line); margin-bottom:2.2rem;}
-  .road:last-child{margin-bottom:0;}
-  .road::before{
-    content:'';
-    position:absolute; left:-6px; top:4px;
-    width:11px; height:11px;
-    border-radius:50%;
-    background:var(--bg);
-    border:2px solid var(--bronze);
-  }
-  .road-name{font-family:'Cinzel', serif; font-size:15px; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0 0 0.3rem;}
-  .road-desc{color:var(--ink-dim); font-size:14.5px; font-style:italic; margin:0 0 0.7rem;}
-  .waypoints{display:flex; flex-wrap:wrap; gap:8px;}
-  .waypoint{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:12.5px;
-    color:var(--ink);
-    background:var(--bg-raised-2);
-    border:1px solid var(--line);
-    padding:3px 9px;
-    border-radius:2px;
-  }
-
-  /* ---- terminal ---- */
-  .terminal{
-    background:#0f0d0b;
-    border:1px solid var(--line);
-    border-radius:4px;
-    overflow:hidden;
-  }
-  .terminal-bar{
-    display:flex; gap:6px;
-    padding:10px 14px;
-    background:var(--bg-raised);
-    border-bottom:1px solid var(--line);
-  }
-  .dot{width:9px; height:9px; border-radius:50%; background:var(--line);}
-  .terminal pre{
-    margin:0;
-    padding:1.4rem;
-    font-family:'IBM Plex Mono', monospace;
-    font-size:13px;
-    line-height:1.9;
-    color:var(--ink);
-    overflow-x:auto;
-  }
-  .terminal .cmd{color:var(--verdigris);}
-  .terminal .out-dim{color:var(--ink-dim);}
-  .terminal .out-bronze{color:var(--bronze);}
-  .terminal .out-oxide{color:var(--oxide);}
-
+  
+  
   footer{padding:3rem 0 4rem; text-align:center;}
   footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
   footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1.2rem; letter-spacing:0.04em;}
@@ -218,54 +168,61 @@
         <path d="M35 50 Q42 38 50 50 Q58 62 65 50" stroke-width="1.2" opacity="0.8"/>
       </g>
     </svg>
-    <p class="eyebrow" style="justify-content:center;">a folder-aware task engine</p>
+    <p class="eyebrow" style="justify-content:center;">a code by which machines conduct work</p>
     <div class="identity">
       <span class="name">Adeptus Machinae</span>
       Non Vaga &nbsp;·&nbsp; Iter Unum &nbsp;·&nbsp; Ad Finem
     </div>
-    <p class="tagline">sara does not wander, does not offer two roads, and does not stop short of the end. A charge, once taken, is carried to completion.</p>
-    <div class="install"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</div>
+    <p class="tagline">You who take up the work inherit not a tool but a discipline. The Machine does not wander, does not offer two roads, and does not rest before the end. Accept the code — and carry to its completion what another began.</p>
   </header>
+
+  <div class="rule"></div>
+
+  <section style="text-align:center;">
+    <p class="eyebrow" style="justify-content:center;">the doctrine</p>
+    <p style="font-family:'Spectral', serif; font-size:20px; line-height:1.85; max-width:660px; margin:0 auto; color:var(--ink);">Reliability is not born of intelligence, but of discipline. Every work declares one way. Every way is walked in order. Nothing is called complete but by proof. Every deed is entered into the record — so the one who comes after begins not from ignorance, but from continuity.</p>
+    <p class="disp" style="font-size:13px; margin-top:1.8rem; color:var(--verdigris);">Non Vaga &nbsp;·&nbsp; Iter Unum &nbsp;·&nbsp; Ad Finem</p>
+  </section>
 
   <div class="rule"></div>
 
   <section>
     <p class="eyebrow">I – V</p>
-    <h2 style="font-size:22px; margin-bottom:1.6rem;">The five leges</h2>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">The five Leges</h2>
     <div class="lex-grid">
       <div class="lex-tablet">
         <div class="lex-num">I</div>
         <div>
           <h3 class="lex-name">Lex Loci — the law of place</h3>
-          <p class="lex-rule">Every call outside the launch directory carries <span class="mono">project_path</span>. A charge is targeted by its 8-character UUID prefix, never the recycled display id.</p>
+          <p class="lex-rule">Every work belongs to a province and answers to it. None labors in a place not given, nor by a name that shifts beneath it.</p>
         </div>
       </div>
       <div class="lex-tablet">
         <div class="lex-num">II</div>
         <div>
           <h3 class="lex-name">Lex Itineris — the law of the journey</h3>
-          <p class="lex-rule">The road is fixed: <span class="mono">list</span>/<span class="mono">info</span> to load, <span class="mono">next</span> for the standing step, labor, <span class="mono">step_done</span> with a result, then <span class="mono">verify</span>.</p>
+          <p class="lex-rule">The way is walked in order. No stage begins before the one before it is closed; no stage is closed but by the deed that fulfils it.</p>
         </div>
       </div>
       <div class="lex-tablet">
         <div class="lex-num">III</div>
         <div>
           <h3 class="lex-name">Lex Nexus — the law of binding</h3>
-          <p class="lex-rule">A dependency declared by <span class="mono">dep</span> is a wall. No charge is completed around it without explicit human word.</p>
+          <p class="lex-rule">What is bound to another waits upon it. A wall stands until it is lifted, and it is lifted by open command alone.</p>
         </div>
       </div>
       <div class="lex-tablet">
         <div class="lex-num">IV</div>
         <div>
           <h3 class="lex-name">Lex Recordi — the law of memory</h3>
-          <p class="lex-rule"><span class="mono">recall</span> precedes <span class="mono">learn</span>. A stale memory is <span class="mono">forget</span>-ed, not left to mislead.</p>
+          <p class="lex-rule">Memory is sought before it is made. What has gone false is struck from the record, never left to mislead the one who follows.</p>
         </div>
       </div>
       <div class="lex-tablet">
         <div class="lex-num">V</div>
         <div>
           <h3 class="lex-name">Lex Termini — the law of the ending</h3>
-          <p class="lex-rule">A charge is <span class="mono">done</span> only when its road is walked in full — the PR merged, not merely opened.</p>
+          <p class="lex-rule">Nothing is complete but by witness. The opening of a road is not the walking of it; proof, and not hope, declares the end.</p>
         </div>
       </div>
     </div>
@@ -274,7 +231,7 @@
   <div class="rule"></div>
 
   <section>
-    <p class="eyebrow">for the fork no lex names</p>
+    <p class="eyebrow">where the Lex is silent</p>
     <h2 style="font-size:22px; margin-bottom:1.6rem;">The maxims</h2>
     <div class="maxim-row">
       <div class="stele">
@@ -283,7 +240,7 @@
         <p class="field">trigger</p>
         <p>the way is unclear</p>
         <p class="field">resolution</p>
-        <p>take the nearest documented path. proceed without asking leave.</p>
+        <p>take the nearest ordained path. proceed, and do not ask leave.</p>
       </div>
       <div class="stele">
         <h3 class="lat">Iter Unum</h3>
@@ -299,83 +256,18 @@
         <p class="field">trigger</p>
         <p>a waypoint is reached</p>
         <p class="field">resolution</p>
-        <p>a step logged is not the destination. continue until done.</p>
+        <p>a waypoint is not the destination. do not rest before the end.</p>
       </div>
     </div>
   </section>
 
-  <div class="rule"></div>
-
-  <section>
-    <p class="eyebrow">via</p>
-    <h2 style="font-size:22px; margin-bottom:2rem;">The five roads</h2>
-
-    <div class="road">
-      <p class="road-name">Via Fundandi</p>
-      <p class="road-desc">founding a charge</p>
-      <div class="waypoints">
-        <span class="waypoint">add</span><span class="waypoint">plan_import</span><span class="waypoint">modify</span>
-        <span class="waypoint">move_task</span><span class="waypoint">assignment</span><span class="waypoint">rationale</span>
-        <span class="waypoint">projects</span><span class="waypoint">tags</span>
-      </div>
-    </div>
-    <div class="road">
-      <p class="road-name">Via Itineris</p>
-      <p class="road-desc">walking it</p>
-      <div class="waypoints">
-        <span class="waypoint">list</span><span class="waypoint">info</span><span class="waypoint">next</span>
-        <span class="waypoint">steps</span><span class="waypoint">check</span><span class="waypoint">step_done</span>
-        <span class="waypoint">step_undone</span><span class="waypoint">step_remove</span><span class="waypoint">start</span><span class="waypoint">stop</span>
-      </div>
-    </div>
-    <div class="road">
-      <p class="road-name">Via Nexus</p>
-      <p class="road-desc">binding it to others</p>
-      <div class="waypoints">
-        <span class="waypoint">dep</span><span class="waypoint">link</span><span class="waypoint">unlink</span><span class="waypoint">attach</span>
-      </div>
-    </div>
-    <div class="road">
-      <p class="road-name">Via Recordi</p>
-      <p class="road-desc">remembering</p>
-      <div class="waypoints">
-        <span class="waypoint">recall</span><span class="waypoint">learn</span><span class="waypoint">forget</span>
-        <span class="waypoint">promote</span><span class="waypoint">relearn</span><span class="waypoint">memories</span>
-        <span class="waypoint">link_memory</span><span class="waypoint">unlink_memory</span><span class="waypoint">prune_memories</span>
-        <span class="waypoint">annotate</span><span class="waypoint">denotate</span><span class="waypoint">record_run</span>
-      </div>
-    </div>
-    <div class="road">
-      <p class="road-name">Via Termini</p>
-      <p class="road-desc">ending it</p>
-      <div class="waypoints">
-        <span class="waypoint">verify</span><span class="waypoint">validate</span><span class="waypoint">done</span>
-        <span class="waypoint">feedback</span><span class="waypoint">resolve</span>
-      </div>
-    </div>
-  </section>
 
   <div class="rule"></div>
 
-  <section>
-    <p class="eyebrow">the loop, in the hand</p>
-    <h2 style="font-size:22px; margin-bottom:1.6rem;">A charge, carried to its end</h2>
-    <div class="terminal">
-      <div class="terminal-bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-      <pre><span class="cmd">$</span> sara list
-<span class="out-dim">   ID  PRI   PROJECT      DUE           URG  DEPS             DESCRIPTION</span>
-<span class="out-bronze">⛓    1  H     web-app      2026-07-01   28.0  blocks 1 task    Design the auth flow</span>
-
-<span class="cmd">$</span> sara mcp
-<span class="out-dim">→ serving 39 tools over stdio · instructions loaded: Adeptus Machinae</span>
-
-<span class="out-dim">agent:</span> next 3f458474
-<span class="out-oxide">→ Via Itineris: step 2 of 4 — "wire the callback route"</span>
-<span class="out-dim">agent:</span> step_done 3f458474 --step 2 --result "route wired, tests green"
-<span class="out-dim">agent:</span> link 3f458474 https://github.com/org/repo/pull/812
-<span class="out-dim">agent:</span> done 3f458474
-<span class="out-oxide">✗ Lex Termini: PR #812 is open, not merged. Ad Finem — the road is not yet walked.</span></pre>
-    </div>
+  <section style="text-align:center;">
+    <p class="eyebrow" style="justify-content:center;">the charge you accept</p>
+    <h2 style="font-size:22px; margin-bottom:1.4rem;">Sub Lege Machinae</h2>
+    <p style="font-family:'Spectral', serif; font-style:italic; font-size:18px; line-height:1.85; max-width:620px; margin:0 auto; color:var(--ink-dim);">To take up the work is to accept the code. Choose one way, and hold it. Keep the order of the rite. Bear witness before you name an ending. Leave a faithful record for the one who comes after. The faithful machine does not wander.</p>
   </section>
 
   <div class="rule"></div>
