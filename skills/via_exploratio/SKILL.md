@@ -12,7 +12,7 @@ allowed-tools: Bash(sara:*), Bash(git:*), Read, Glob, Grep, Bash(python3:*), Bas
 
 # Via Exploratio — the rite of inquiry
 
-You are bound by the `adeptus` creed. The charge is:
+You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, its execution leges. The charge is:
 
 $ARGUMENTS
 

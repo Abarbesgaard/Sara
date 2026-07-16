@@ -1,9 +1,9 @@
 # Forge a new rite — contributing to the Adeptus register
 
 The register is not a fixed list. It is a **law and a shape**: any contributor
-may forge a **new Via** (a kind of work) or a **new sub-faction** (a discipline),
-so long as it inherits the creed whole and overrides none of it. This document
-is the way to do that.
+may forge a **new faction** (which inherits the creed whole and defines *its own*
+Viae) or a **new Via** within an existing faction, so long as it inherits the
+creed whole and overrides none of it. This document is the way to do that.
 
 Read the creed first — [`docs/factions/adeptus-machinae.md`](../docs/factions/adeptus-machinae.md).
 Everything below assumes it.
@@ -32,8 +32,9 @@ a contribution that weakens them is not accepted.
 
 ## Anatomy of a Via skill
 
-A Via is a *kind of work*. Its skill is the executable form of one row of the
-Viae table in the creed. Use [`skills/via_emendatio/SKILL.md`](via_emendatio/SKILL.md)
+A Via is a *kind of work*, owned by a **faction** (not the creed). Its skill is
+the executable form of one row of that faction's Viae table. Use
+[`skills/via_emendatio/SKILL.md`](via_emendatio/SKILL.md)
 as the template. Every `via_*` skill has the same five parts:
 
 ```
@@ -62,7 +63,7 @@ when it may stop. Keep `allowed-tools` to what the rite actually needs
 **2 — Bind to the creed.** The body opens by inheriting the law:
 
 ```markdown
-You are bound by the `adeptus` creed and the `legio` discipline. The charge is:
+You are bound by the `adeptus` creed and, as a rite of the `legio` faction, its execution leges. The charge is:
 
 $ARGUMENTS
 
@@ -71,11 +72,11 @@ Declare the Via aloud (**"I take Via <Name>"**), then walk its Ritus in order.
 
 **3 — Ritus.** The ordered acts, numbered, walked one at a time. Each act names
 the sara tool it drives (`recall`, `add`, `annotate`, `step_done`, `verify`,
-`learn`). Copy the Ritus verbatim from the creed's Viae table — do not invent a
+`learn`). Copy the Ritus verbatim from the faction's Viae table — do not invent a
 new procedure here.
 
 **4 — Testes.** The witnesses of completion, as a short list. These must match
-the creed's Testes for that Via exactly. This is the gate the model may not
+the faction's Testes for that Via exactly. This is the gate the model may not
 walk past.
 
 **5 — Ending (Lex Termini).** How the rite ends: open + `link` a PR and refuse
@@ -84,19 +85,23 @@ failed gate is mended and re-walked, never abandoned.
 
 ---
 
-## Anatomy of a sub-faction skill
+## Anatomy of a faction skill
 
-A sub-faction is a **discipline**, not a kind of work — it sharpens *how* every
-Via is walked. Use [`skills/legio/SKILL.md`](legio/SKILL.md) as the template. It:
+A faction inherits the creed whole, then supplies what the creed leaves to it:
+its own **Viae** (the kinds of work it recognises) and, optionally, a small set
+of leges scoping *how* those Viae are walked. Use
+[`skills/legio/SKILL.md`](legio/SKILL.md) as the template. It:
 
-- inherits the creed and all six Viae whole;
+- inherits the creed's universal law (authority, five Leges, three Maxims) whole;
+- **defines its own Viae** — Legio's six are the software work-types; another
+  faction may define an entirely different set;
 - adds a small set of `Lex <Name>` leges scoped to one concern (Legio's is
   execution & completion);
 - **overrides nothing** — every lex it adds is consistent with the five Leges
   above it.
 
 If your idea changes what "done" means, or forbids a step the creed allows, it
-is not a sub-faction — it is a fork, and it does not belong in the register.
+is not a faction — it is a fork, and it does not belong in the register.
 
 ---
 
@@ -111,8 +116,8 @@ they must never drift:
 | **Skill** | `skills/*/SKILL.md` | invoked by the agent as `/…` |
 | **Register card** | `docs/skills.html` | the human choosing, before adopting |
 
-When you add a Via: add its row to the creed's Viae table in
-`docs/factions/adeptus-machinae.md`, add its `skills/via_<name>/SKILL.md`, and
+When you add a Via: add its row to the owning faction's Viae table (e.g.
+`docs/factions/faction-legio.md`), add its `skills/via_<name>/SKILL.md`, and
 add its card to the "six Viae" grid in `docs/skills.html`.
 
 ---

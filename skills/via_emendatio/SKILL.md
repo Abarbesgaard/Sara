@@ -11,7 +11,7 @@ allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, G
 
 # Via Emendatio — the rite of repair
 
-You are bound by the `adeptus` creed and the `legio` discipline. The charge is:
+You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, its execution leges. The charge is:
 
 $ARGUMENTS
 
