@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sara — choose your register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg:#14120f;
+    --bg-raised:#1c1915;
+    --bg-raised-2:#221e18;
+    --ink:#e7ded0;
+    --ink-dim:#a89c87;
+    --bronze:#b08d57;
+    --bronze-dim:#8a6f45;
+    --verdigris:#6f8f7c;
+    --oxide:#9c4a35;
+    --line:#3a3226;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--page-bg);}
+  body{
+    color:var(--ink);
+    font-family:'Spectral', Georgia, serif;
+    font-size:17px;
+    line-height:1.7;
+    background-image:radial-gradient(ellipse 900px 500px at 50% -10%, rgba(176,141,87,0.07), transparent 60%);
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:0 24px;}
+  h1,h2,h3,.disp{font-family:'Cinzel', serif; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .eyebrow{font-family:'IBM Plex Mono', monospace; font-size:11.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:0.7rem;}
+  .rule{height:1px; background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent); margin:2.5rem 0;}
+
+  header{padding:4rem 0 1rem; text-align:center;}
+  header h1{font-size:26px;}
+  header p{color:var(--ink-dim); font-style:italic; max-width:560px; margin:1rem auto 0; font-size:16px;}
+  .back{display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); text-decoration:none; margin-top:1.4rem;}
+  .back:hover{color:var(--bronze);}
+
+  /* super-faction banner */
+  .super{
+    background:var(--bg-raised);
+    border:1px solid var(--line);
+    border-left:3px solid var(--bronze);
+    border-radius:4px;
+    padding:1.8rem 2rem;
+    margin-top:1rem;
+  }
+  .super h2{font-size:20px; margin-bottom:0.5rem;}
+  .super .creed{font-family:'Cinzel', serif; letter-spacing:0.08em; color:var(--verdigris); font-size:13px; margin:0 0 0.9rem;}
+  .super .desc{color:var(--ink-dim); font-size:15px; margin:0 0 1.2rem;}
+  .super .dl{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:13px; padding:10px 16px; border-radius:3px; text-decoration:none; border:1px solid var(--bronze); color:var(--bronze); background:var(--bg-raised-2);}
+
+  .inherit{text-align:center; color:var(--ink-dim); font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:0.1em; margin:1.4rem 0; }
+  .inherit::before{content:'↓  inherited by  ↓'; }
+
+  /* sub-faction card */
+  .sub{
+    background:var(--bg-raised);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:2rem 1.9rem;
+    max-width:560px;
+    margin:0 auto;
+  }
+  .sub .tag{font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--oxide);}
+  .sub h3{font-size:22px; margin:0.4rem 0 0.2rem; color:var(--bronze);}
+  .sub .lat{font-style:italic; color:var(--verdigris); font-size:14px; margin:0 0 1rem;}
+  .sub .desc{color:var(--ink-dim); font-size:15px; margin:0 0 1.2rem;}
+  .leges{list-style:none; margin:0 0 1.6rem; padding:0; font-family:'IBM Plex Mono', monospace; font-size:12.5px;}
+  .leges li{padding:6px 0; border-top:1px solid var(--line); color:var(--ink);}
+  .leges li:first-child{border-top:none;}
+  .leges li b{color:var(--verdigris); font-weight:500;}
+  .sub .dl{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:13px; padding:11px 18px; border-radius:3px; text-decoration:none; border:1px solid var(--bronze); color:var(--page-bg); background:var(--bronze);}
+
+  .note{max-width:640px; margin:0 auto; padding:2rem 0 4rem; text-align:center; color:var(--ink-dim); font-size:14px; font-style:italic;}
+  footer{padding:0 0 3.5rem; text-align:center;}
+  footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
+  footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">sara / skills &amp; commands</p>
+    <h1>Choose your register</h1>
+    <p>One creed, inherited by its orders. The <span class="mono">Adeptus</span> is the faction of programmers who take sara's vows; a sub-faction sharpens the creed for one discipline. Both are drop-in snippets for your agent's <span class="mono">CLAUDE.md</span> / <span class="mono">AGENTS.md</span>.</p>
+    <a class="back" href="index.html">← back to Adeptus Machinae</a>
+  </header>
+
+  <div class="rule"></div>
+
+  <p class="eyebrow" style="text-align:center;">the super-faction — the creed all inherit</p>
+  <div class="super">
+    <h2>Adeptus Machinae</h2>
+    <p class="creed">NON VAGA · ITER UNUM · AD FINEM</p>
+    <p class="desc">The universal creed. The order of authority (<span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>), the five Leges, the three Maxims, the five Viae. Every sub-faction inherits this whole and overrides none of it. Adopt it alone for the full register with no specialization.</p>
+    <a class="dl" href="factions/adeptus-machinae.md" download>↓ adeptus-machinae.md</a>
+  </div>
+
+  <p class="inherit"></p>
+
+  <p class="eyebrow" style="text-align:center;">sub-faction i — for now, the only one</p>
+  <div class="sub">
+    <p class="tag">sub-faction</p>
+    <h3>Legio</h3>
+    <p class="lat">a charge, once taken, is carried to its end</p>
+    <p class="desc">Inherits the Adeptus creed whole, then adds the leges of one discipline — <b>execution and completion</b>: carrying a charge to <span class="mono">done</span> without deviation, without stopping at waypoints, without asking leave where a default will do.</p>
+    <ul class="leges">
+      <li><b>Lex Cursus</b> — the steps are a ladder; none begun before its predecessor closes</li>
+      <li><b>Lex Probationis</b> — the burden of proof of completion is yours; every step_done carries evidence</li>
+      <li><b>Lex Actorum</b> — what is not recorded did not happen; log as you go, never batched</li>
+      <li><b>Lex Perseverantiae</b> — a waypoint is not a stopping point; halt only at a wall or an unmerged PR</li>
+      <li><b>Lex Emendationis</b> — a failing gate is mended and re-walked, not abandoned</li>
+    </ul>
+    <a class="dl" href="factions/faction-legio.md" download>↓ faction-legio.md</a>
+  </div>
+
+  <p class="note">Legio inherits the creed; it does not compete with it. More sub-factions may follow — each a discipline layered on the same unchanging Adeptus law, never a rival to it.</p>
+
+  <footer>
+    <p class="disp" style="font-size:13px;">Adeptus Machinae</p>
+    <p class="fine"><a href="index.html">the creed</a> · <a href="https://github.com/Abarbesgaard/Sara">github.com/Abarbesgaard/Sara</a> · nightly</p>
+  </footer>
+
+</div>
+</body>
+</html>

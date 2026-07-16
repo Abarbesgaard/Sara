@@ -14,7 +14,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened."
+        description = "[Via Termini] Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened."
     )]
     fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, ErrorData> {
         let v = self
@@ -25,7 +25,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Attach a URL (e.g. a PR or issue link) to a task.")]
+    #[tool(description = "[Via Nexus] Attach a URL (e.g. a PR or issue link) to a task.")]
     fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp link", |conn, _cfg| {
@@ -36,7 +36,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off."
+        description = "[Via Nexus] Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off."
     )]
     fn dep(&self, Parameters(p): Parameters<DepParams>) -> Result<String, ErrorData> {
         let v = self
@@ -68,7 +68,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Stamp a task's guide as validated against the project's current git HEAD. Errors if the project is not a git repo."
+        description = "[Via Termini] Stamp a task's guide as validated against the project's current git HEAD. Errors if the project is not a git repo."
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -80,7 +80,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set."
+        description = "[Via Fundandi] Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set."
     )]
     fn modify(&self, Parameters(p): Parameters<ModifyParams>) -> Result<String, ErrorData> {
         let tags = p.tags.clone().unwrap_or_default();
@@ -107,7 +107,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id). Optionally cite the `run_id` (from `record_run`) that addressed it."
+        description = "[Via Termini] Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id). Optionally cite the `run_id` (from `record_run`) that addressed it."
     )]
     fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, ErrorData> {
         let v = self
@@ -119,7 +119,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
+        description = "[Via Recordi] Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
     )]
     fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, ErrorData> {
         let total = p
@@ -144,7 +144,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Start the time tracker for a task (no-op if it is already active).")]
+    #[tool(description = "[Via Itineris] Start the time tracker for a task (no-op if it is already active).")]
     fn start(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp start", |conn, cfg| {
@@ -155,7 +155,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Stop the time tracker for a task, recording the session; snapshots a tied branch's changed files if one is set."
+        description = "[Via Itineris] Stop the time tracker for a task, recording the session; snapshots a tied branch's changed files if one is set."
     )]
     fn stop(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -167,7 +167,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove a link from a task by its sequential link id (shown in `sara info`)."
+        description = "[Via Nexus] Remove a link from a task by its sequential link id (shown in `sara info`)."
     )]
     fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, ErrorData> {
         let v = self
@@ -179,7 +179,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`)."
+        description = "[Via Recordi] Remove an annotation from a task by its sequential annotation id (shown in `sara info`)."
     )]
     fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, ErrorData> {
         let v = self
@@ -190,7 +190,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Move a task to a different project.")]
+    #[tool(description = "[Via Fundandi] Move a task to a different project.")]
     fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {

@@ -18,7 +18,9 @@ use rmcp::{ServerHandler, ServiceExt, tool_handler};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
-pub(crate) const INSTRUCTIONS: &str = "\
+/// The original plain-English register. Retained verbatim as the `classic`
+/// arm of the `SARA_MCP_INSTRUCTIONS` A/B toggle (see [`resolve_instructions`]).
+pub(crate) const CLASSIC_INSTRUCTIONS: &str = "\
 sara is a folder-aware task manager: a git repo == a project, and each task carries \
 a rich guide (ordered steps, acceptance criteria, notes, links, dependencies) meant \
 for an agent to execute. This server exposes the whole non-interactive task \
@@ -32,6 +34,62 @@ recycled numeric display id. Never read the sara SQLite DB directly.\n\n\
 Typical execution loop: list/info to load a task → next for the current step → do \
 the work → step_done (with a result) → verify. To finish, link the PR (link) and \
 call done only once that PR has merged — opening a PR is not completion.";
+
+/// The Neo-Roman \"Adeptus Machinae\" register: the same behaviour as
+/// [`CLASSIC_INSTRUCTIONS`] rendered as unhedged, closed-option-space law. The
+/// default arm of the `SARA_MCP_INSTRUCTIONS` toggle. Kept in lockstep with the
+/// canonical creed in `docs/factions/adeptus-machinae.md`.
+pub(crate) const ROMANUM_INSTRUCTIONS: &str = "\
+ADEPTUS MACHINAE. NON VAGA. ITER UNUM. AD FINEM.\n\n\
+You are bound to sara, a folder-aware task manager. A git repository is a \
+province; a task is a charge; its guide is the law of its execution. This server \
+exposes the whole non-interactive lifecycle as typed tools — nothing opens a TUI \
+or blocks on stdin.\n\n\
+The order of authority, highest first: LEX > EDICTUM > MOS > SENTENTIA. Lex is \
+invariant statute; Edictum is the charge's own guide; Mos is the documented \
+default; Sententia is a maxim, the tie-breaker for a fork no rule settles.\n\n\
+LEX LOCI — the Law of Place. Every tool call outside the launch directory carries \
+`project_path`, the absolute path of the province. Target a charge by its 8-char \
+UUID prefix, never the recycled display id. Never read the sara database directly.\n\n\
+LEX ITINERIS — the Law of the Journey. The road is fixed and ordered: list/info to \
+load the charge, next for the standing step, labor, step_done with a result, then \
+verify. No step closes but by step_done; none reopens but by step_undone. Work not \
+logged did not happen.\n\n\
+LEX NEXUS — the Law of Binding. A dependency declared by dep is a wall: a blocked \
+charge is not completed around it without explicit human word. The charge is a \
+mandate — labor only within it; work outside the charge is not done.\n\n\
+LEX RECORDI — the Law of Memory. recall precedes learn — no memory is written \
+before its duplicate is sought. Every memory carries a known tag. A stale memory is \
+forgotten, not left to mislead.\n\n\
+LEX TERMINI — the Law of the Ending. The burden of proof of completion lies on you. \
+A charge is done only when verify's criteria are satisfied and any linked PR is \
+merged — not merely opened. A settled step is not relitigated. Opening the road is \
+not walking it.\n\n\
+MAXIMS, for the fork no Lex names. NON VAGA: when the way is unclear, take the most \
+specific path already open — the current province, the nearest charge, the \
+documented default — and proceed without asking leave. ITER UNUM: commit to one \
+plan; never lay two roads before the one who sent you; if genuinely blocked, ask \
+exactly one question, never a list. AD FINEM: a step logged, a PR opened, a note \
+left are waypoints, not the destination — continue until the charge is done.\n\n\
+THE FIVE ROADS. Via Fundandi (founding): add, plan_import, modify, move_task, \
+assignment, rationale, projects, tags. Via Itineris (walking): list, info, next, \
+steps, check, step_done, step_undone, step_remove, start, stop. Via Nexus \
+(binding): dep, link, unlink, attach. Via Recordi (remembering): recall, learn, \
+forget, promote, relearn, memories, link_memory, unlink_memory, prune_memories, \
+annotate, denotate, record_run. Via Termini (ending): verify, validate, done, \
+feedback, resolve. The interactive surfaces — init, delete, reset, undo, sync — are \
+Via Hominis, reserved for the human hand; they are not exposed here.";
+
+/// Select the instruction register from the `SARA_MCP_INSTRUCTIONS` environment
+/// variable. `romanum` (the Adeptus Machinae register) is the default; `classic`
+/// restores the original plain-English text. Any unrecognised value falls back to
+/// the default so a typo never yields empty instructions.
+pub(crate) fn resolve_instructions() -> &'static str {
+    match std::env::var("SARA_MCP_INSTRUCTIONS").as_deref() {
+        Ok("classic") => CLASSIC_INSTRUCTIONS,
+        _ => ROMANUM_INSTRUCTIONS,
+    }
+}
 
 /// Restores the process working directory on drop. Only changes cwd when a
 /// non-empty `project_path` is supplied.
@@ -143,7 +201,7 @@ impl ServerHandler for SaraServer {
         // ServerInfo / Implementation are #[non_exhaustive]: build from Default and
         // assign public fields rather than using a struct literal.
         let mut info = ServerInfo::default();
-        info.instructions = Some(INSTRUCTIONS.to_string());
+        info.instructions = Some(resolve_instructions().to_string());
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info = Implementation::new("sara", env!("CARGO_PKG_VERSION"));
         info

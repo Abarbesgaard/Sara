@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adeptus Machinae — sara</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14120f;
+    --bg-raised:#1c1915;
+    --bg-raised-2:#221e18;
+    --ink:#e7ded0;
+    --ink-dim:#a89c87;
+    --bronze:#b08d57;
+    --bronze-dim:#8a6f45;
+    --verdigris:#6f8f7c;
+    --oxide:#9c4a35;
+    --line:#3a3226;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0;
+    background:var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(176,141,87,0.07), transparent 60%);
+    color:var(--ink);
+    font-family:'Spectral', Georgia, serif;
+    font-size:17px;
+    line-height:1.7;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:0 28px;}
+  h1,h2,h3,.disp{
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--bronze);
+    margin:0;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .rule{
+    height:1px;
+    background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent);
+    margin:2.5rem 0;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:0.9rem;
+  }
+  .eyebrow::before{content:''; width:20px; height:1px; background:var(--line);}
+
+  /* ---- hero ---- */
+  header.hero{padding:5rem 0 3.5rem; text-align:center;}
+  .mark{width:64px; height:64px; margin:0 auto 1.8rem;}
+  .identity{
+    font-size:28px;
+    line-height:1.5;
+  }
+  .identity .name{font-size:36px; display:block; margin-bottom:0.3rem;}
+  .tagline{
+    font-family:'Spectral', serif;
+    font-style:italic;
+    color:var(--ink-dim);
+    font-size:18px;
+    max-width:520px;
+    margin:1.6rem auto 0;
+  }
+  .install{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    margin-top:2.4rem;
+    padding:14px 22px;
+    background:var(--bg-raised);
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+    color:var(--verdigris);
+  }
+  .install .prompt{color:var(--ink-dim);}
+
+  /* ---- leges ---- */
+  section{padding:1rem 0 3rem;}
+  .lex-grid{display:grid; grid-template-columns:1fr; gap:1px; background:var(--line); border:1px solid var(--line);}
+  .lex-tablet{
+    background:var(--bg-raised);
+    padding:1.6rem 1.8rem;
+    display:grid;
+    grid-template-columns:64px 1fr;
+    gap:1.4rem;
+    align-items:start;
+  }
+  .lex-num{
+    font-family:'Cinzel', serif;
+    font-size:26px;
+    color:var(--verdigris);
+    opacity:0.7;
+    line-height:1;
+    padding-top:2px;
+  }
+  .lex-name{
+    font-family:'Cinzel', serif;
+    font-size:16px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--verdigris);
+    margin:0 0 0.5rem;
+  }
+  .lex-rule{margin:0; color:var(--ink); font-size:16px;}
+  .lex-rule .mono{color:var(--ink-dim); font-size:14px;}
+
+  /* ---- maxims ---- */
+  .maxim-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:var(--line); border:1px solid var(--line);}
+  .stele{background:var(--bg-raised); padding:1.6rem 1.5rem; text-align:center;}
+  .stele .lat{
+    font-family:'Cinzel', serif;
+    font-size:17px;
+    letter-spacing:0.04em;
+    color:var(--oxide);
+    margin:0 0 1rem;
+  }
+  .stele .field{font-size:13px; color:var(--ink-dim); font-family:'IBM Plex Mono', monospace; letter-spacing:0.05em; text-transform:uppercase; margin:1rem 0 0.3rem;}
+  .stele p{margin:0; font-size:14.5px;}
+
+  /* ---- viae / roads ---- */
+  .road{position:relative; padding-left:32px; border-left:1px solid var(--line); margin-bottom:2.2rem;}
+  .road:last-child{margin-bottom:0;}
+  .road::before{
+    content:'';
+    position:absolute; left:-6px; top:4px;
+    width:11px; height:11px;
+    border-radius:50%;
+    background:var(--bg);
+    border:2px solid var(--bronze);
+  }
+  .road-name{font-family:'Cinzel', serif; font-size:15px; letter-spacing:0.05em; text-transform:uppercase; color:var(--bronze); margin:0 0 0.3rem;}
+  .road-desc{color:var(--ink-dim); font-size:14.5px; font-style:italic; margin:0 0 0.7rem;}
+  .waypoints{display:flex; flex-wrap:wrap; gap:8px;}
+  .waypoint{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    color:var(--ink);
+    background:var(--bg-raised-2);
+    border:1px solid var(--line);
+    padding:3px 9px;
+    border-radius:2px;
+  }
+
+  /* ---- terminal ---- */
+  .terminal{
+    background:#0f0d0b;
+    border:1px solid var(--line);
+    border-radius:4px;
+    overflow:hidden;
+  }
+  .terminal-bar{
+    display:flex; gap:6px;
+    padding:10px 14px;
+    background:var(--bg-raised);
+    border-bottom:1px solid var(--line);
+  }
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--line);}
+  .terminal pre{
+    margin:0;
+    padding:1.4rem;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    line-height:1.9;
+    color:var(--ink);
+    overflow-x:auto;
+  }
+  .terminal .cmd{color:var(--verdigris);}
+  .terminal .out-dim{color:var(--ink-dim);}
+  .terminal .out-bronze{color:var(--bronze);}
+  .terminal .out-oxide{color:var(--oxide);}
+
+  footer{padding:3rem 0 4rem; text-align:center;}
+  footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
+  footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1.2rem; letter-spacing:0.04em;}
+
+  @media (max-width:640px){
+    .lex-tablet{grid-template-columns:40px 1fr; gap:1rem; padding:1.3rem;}
+    .maxim-row{grid-template-columns:1fr;}
+    .identity{font-size:22px;} .identity .name{font-size:28px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <svg class="mark" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g stroke="#b08d57" stroke-width="1.6">
+        <circle cx="50" cy="50" r="30"/>
+        <circle cx="50" cy="50" r="6"/>
+        <g id="teeth">
+          <line x1="50" y1="14" x2="50" y2="4"/>
+          <line x1="50" y1="86" x2="50" y2="96"/>
+          <line x1="14" y1="50" x2="4" y2="50"/>
+          <line x1="86" y1="50" x2="96" y2="50"/>
+          <line x1="25.5" y1="25.5" x2="18.2" y2="18.2"/>
+          <line x1="74.5" y1="74.5" x2="81.8" y2="81.8"/>
+          <line x1="74.5" y1="25.5" x2="81.8" y2="18.2"/>
+          <line x1="25.5" y1="74.5" x2="18.2" y2="81.8"/>
+        </g>
+        <path d="M35 50 Q42 38 50 50 Q58 62 65 50" stroke-width="1.2" opacity="0.8"/>
+      </g>
+    </svg>
+    <p class="eyebrow" style="justify-content:center;">a folder-aware task engine</p>
+    <div class="identity">
+      <span class="name">Adeptus Machinae</span>
+      Non Vaga &nbsp;·&nbsp; Iter Unum &nbsp;·&nbsp; Ad Finem
+    </div>
+    <p class="tagline">sara does not wander, does not offer two roads, and does not stop short of the end. A charge, once taken, is carried to completion.</p>
+    <div class="install"><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</div>
+  </header>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="eyebrow">I – V</p>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">The five leges</h2>
+    <div class="lex-grid">
+      <div class="lex-tablet">
+        <div class="lex-num">I</div>
+        <div>
+          <h3 class="lex-name">Lex Loci — the law of place</h3>
+          <p class="lex-rule">Every call outside the launch directory carries <span class="mono">project_path</span>. A charge is targeted by its 8-character UUID prefix, never the recycled display id.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">II</div>
+        <div>
+          <h3 class="lex-name">Lex Itineris — the law of the journey</h3>
+          <p class="lex-rule">The road is fixed: <span class="mono">list</span>/<span class="mono">info</span> to load, <span class="mono">next</span> for the standing step, labor, <span class="mono">step_done</span> with a result, then <span class="mono">verify</span>.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">III</div>
+        <div>
+          <h3 class="lex-name">Lex Nexus — the law of binding</h3>
+          <p class="lex-rule">A dependency declared by <span class="mono">dep</span> is a wall. No charge is completed around it without explicit human word.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">IV</div>
+        <div>
+          <h3 class="lex-name">Lex Recordi — the law of memory</h3>
+          <p class="lex-rule"><span class="mono">recall</span> precedes <span class="mono">learn</span>. A stale memory is <span class="mono">forget</span>-ed, not left to mislead.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">V</div>
+        <div>
+          <h3 class="lex-name">Lex Termini — the law of the ending</h3>
+          <p class="lex-rule">A charge is <span class="mono">done</span> only when its road is walked in full — the PR merged, not merely opened.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="eyebrow">for the fork no lex names</p>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">The maxims</h2>
+    <div class="maxim-row">
+      <div class="stele">
+        <h3 class="lat">Non Vaga</h3>
+        <p>does not wander</p>
+        <p class="field">trigger</p>
+        <p>the way is unclear</p>
+        <p class="field">resolution</p>
+        <p>take the nearest documented path. proceed without asking leave.</p>
+      </div>
+      <div class="stele">
+        <h3 class="lat">Iter Unum</h3>
+        <p>one road</p>
+        <p class="field">trigger</p>
+        <p>several plans present themselves</p>
+        <p class="field">resolution</p>
+        <p>commit to one. never lay two roads before the one who sent you.</p>
+      </div>
+      <div class="stele">
+        <h3 class="lat">Ad Finem</h3>
+        <p>to the end</p>
+        <p class="field">trigger</p>
+        <p>a waypoint is reached</p>
+        <p class="field">resolution</p>
+        <p>a step logged is not the destination. continue until done.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="eyebrow">via</p>
+    <h2 style="font-size:22px; margin-bottom:2rem;">The five roads</h2>
+
+    <div class="road">
+      <p class="road-name">Via Fundandi</p>
+      <p class="road-desc">founding a charge</p>
+      <div class="waypoints">
+        <span class="waypoint">add</span><span class="waypoint">plan_import</span><span class="waypoint">modify</span>
+        <span class="waypoint">move_task</span><span class="waypoint">assignment</span><span class="waypoint">rationale</span>
+        <span class="waypoint">projects</span><span class="waypoint">tags</span>
+      </div>
+    </div>
+    <div class="road">
+      <p class="road-name">Via Itineris</p>
+      <p class="road-desc">walking it</p>
+      <div class="waypoints">
+        <span class="waypoint">list</span><span class="waypoint">info</span><span class="waypoint">next</span>
+        <span class="waypoint">steps</span><span class="waypoint">check</span><span class="waypoint">step_done</span>
+        <span class="waypoint">step_undone</span><span class="waypoint">step_remove</span><span class="waypoint">start</span><span class="waypoint">stop</span>
+      </div>
+    </div>
+    <div class="road">
+      <p class="road-name">Via Nexus</p>
+      <p class="road-desc">binding it to others</p>
+      <div class="waypoints">
+        <span class="waypoint">dep</span><span class="waypoint">link</span><span class="waypoint">unlink</span><span class="waypoint">attach</span>
+      </div>
+    </div>
+    <div class="road">
+      <p class="road-name">Via Recordi</p>
+      <p class="road-desc">remembering</p>
+      <div class="waypoints">
+        <span class="waypoint">recall</span><span class="waypoint">learn</span><span class="waypoint">forget</span>
+        <span class="waypoint">promote</span><span class="waypoint">relearn</span><span class="waypoint">memories</span>
+        <span class="waypoint">link_memory</span><span class="waypoint">unlink_memory</span><span class="waypoint">prune_memories</span>
+        <span class="waypoint">annotate</span><span class="waypoint">denotate</span><span class="waypoint">record_run</span>
+      </div>
+    </div>
+    <div class="road">
+      <p class="road-name">Via Termini</p>
+      <p class="road-desc">ending it</p>
+      <div class="waypoints">
+        <span class="waypoint">verify</span><span class="waypoint">validate</span><span class="waypoint">done</span>
+        <span class="waypoint">feedback</span><span class="waypoint">resolve</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="eyebrow">the loop, in the hand</p>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">A charge, carried to its end</h2>
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+      <pre><span class="cmd">$</span> sara list
+<span class="out-dim">   ID  PRI   PROJECT      DUE           URG  DEPS             DESCRIPTION</span>
+<span class="out-bronze">⛓    1  H     web-app      2026-07-01   28.0  blocks 1 task    Design the auth flow</span>
+
+<span class="cmd">$</span> sara mcp
+<span class="out-dim">→ serving 39 tools over stdio · instructions loaded: Adeptus Machinae</span>
+
+<span class="out-dim">agent:</span> next 3f458474
+<span class="out-oxide">→ Via Itineris: step 2 of 4 — "wire the callback route"</span>
+<span class="out-dim">agent:</span> step_done 3f458474 --step 2 --result "route wired, tests green"
+<span class="out-dim">agent:</span> link 3f458474 https://github.com/org/repo/pull/812
+<span class="out-dim">agent:</span> done 3f458474
+<span class="out-oxide">✗ Lex Termini: PR #812 is open, not merged. Ad Finem — the road is not yet walked.</span></pre>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <footer>
+    <p class="disp" style="font-size:14px;">Adeptus Machinae</p>
+    <p class="fine"><a href="skills.html">choose your register →</a> &nbsp;·&nbsp; <a href="https://github.com/Abarbesgaard/Sara">github.com/Abarbesgaard/Sara</a> &nbsp;·&nbsp; MIT &nbsp;·&nbsp; nightly</p>
+  </footer>
+
+</div>
+</body>
+</html>
