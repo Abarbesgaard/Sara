@@ -132,6 +132,11 @@
   .lex-rule{margin:0; color:var(--ink); font-size:16px;}
   .lex-rule .mono{color:var(--ink-dim); font-size:14px;}
 
+  /* plain-language section intro */
+  .lede{max-width:680px; margin:0 0 1.8rem; color:var(--ink-dim); font-size:16px; line-height:1.75;}
+  .lede b{color:var(--ink); font-weight:600; font-style:normal;}
+  .lede .mono{color:var(--verdigris); font-size:14px;}
+
   /* ---- maxims ---- */
   .maxim-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:var(--line); border:1px solid var(--line);}
   .stele{background:var(--bg-raised); padding:1.6rem 1.5rem; text-align:center;}
@@ -201,6 +206,7 @@
   <section>
     <p class="eyebrow">I – V</p>
     <h2 style="font-size:22px; margin-bottom:1.6rem;">The five Leges</h2>
+    <p class="lede">A <b>Lex</b> is a statute — invariant law that binds on every charge, in every province, without exception. These five are the floor the whole discipline stands on: they fix <i>where</i> work happens, <i>in what order</i>, <i>what may block it</i>, <i>how it is remembered</i>, and <i>what proof declares it done</i>. They are the highest authority in the code — <span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span> — and nothing below softens them.</p>
     <div class="lex-grid">
       <div class="lex-tablet">
         <div class="lex-num">I</div>
@@ -245,6 +251,7 @@
   <section>
     <p class="eyebrow">where the Lex is silent</p>
     <h2 style="font-size:22px; margin-bottom:1.6rem;">The maxims</h2>
+    <p class="lede">A <b>maxim</b> is a tie-breaker — it speaks only at a fork the Leges leave open. They exist because an unguided model <i>drifts</i>: it hedges, asks needless questions, offers three plans, and pauses at every waypoint to check in. Each maxim names the exact moment that drift begins and resolves it toward decisive, single-track progress. Read each as <b>trigger → resolution</b>.</p>
     <div class="maxim-row">
       <div class="stele">
         <h3 class="lat">Non Vaga</h3>
