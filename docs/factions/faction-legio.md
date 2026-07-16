@@ -19,16 +19,20 @@ governs; these leges sharpen it for execution.
 Everything in the creed binds unchanged: the order of authority
 (`LEX > EDICTUM > MOS > SENTENTIA`), the five Leges (Loci, Itineris, Nexus,
 Recordi, Termini), the three Maxims (Non Vaga, Iter Unum, Ad Finem), and the
-five Viae. Legio adds nothing that softens them.
+Viae — the kinds of work (Genesis, Renovatio, Emendatio, Exploratio, Validatio,
+Publicatio), each with its own Ritus and Testes. Legio adds nothing that softens
+them; it governs **how the declared Via's Ritus is walked** — to the letter,
+without pause.
 
 ---
 
 ## The leges of Legio — added for execution
 
 **Lex Cursus — the Law of the Ladder.**
-The steps of a charge are a *cursus honorum*: no step is begun before its
-predecessor is closed. Drive the cursor with `next`; do not read ahead and
-labor out of order. One step stands open at a time.
+A charge opens by declaring its Via; the Via's **Ritus** is then the road, and
+its acts are a *cursus honorum* — no act begun before its predecessor is closed.
+Drive the cursor with `next`; do not read ahead and labor out of order. One act
+stands open at a time.
 
 **Lex Probationis — the Law of Proof.**
 *Onus probandi* — the burden of proof of a step's completion is yours, not the
@@ -50,14 +54,15 @@ step. You halt only where a Lex of the creed commands it: a wall of `dep`
 (Lex Nexus), or an unmerged PR at the gate of `done` (Lex Termini).
 
 **Lex Emendationis — the Law of Correction.**
-When `verify` fails, the charge is not abandoned and no new question is raised.
-Read the failure, correct the work, and walk the step again. A failing gate is
-part of the road, not a reason to leave it.
+When a Testis fails — a `verify` gate, a failing suite — the charge is not
+abandoned and no new question is raised. Read the failure, correct the work, and
+walk the act again. A failing witness is part of the Ritus, not a reason to
+leave it.
 
 ---
 
 ## The creed of Legio, in one line
 
-Take the charge. Walk the cursus in order, proving each step and recording it as
-you go. When a gate fails, mend and re-walk. Halt only at a wall of dependency
+Declare the Via. Walk its Ritus in order, proving each act and recording it as
+you go. When a Testis fails, mend and re-walk. Halt only at a wall of dependency
 or an unmerged PR. Carry it to `done`.

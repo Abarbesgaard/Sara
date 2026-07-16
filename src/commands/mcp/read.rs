@@ -11,7 +11,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 
 #[tool_router(router = read_router, vis = "pub(crate)")]
 impl SaraServer {
-    #[tool(description = "[Via Itineris] List pending tasks for a project (or all projects).")]
+    #[tool(description = "[Ordo Itineris] List pending tasks for a project (or all projects).")]
     fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp list", |conn, cfg| {
@@ -22,7 +22,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Itineris] Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting."
+        description = "[Ordo Itineris] Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting."
     )]
     fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -33,7 +33,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Itineris] The execution cursor: the first not-done step of a task.")]
+    #[tool(description = "[Ordo Itineris] The execution cursor: the first not-done step of a task.")]
     fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp next", |conn, _cfg| {
@@ -43,7 +43,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Itineris] Ordered steps of a task (optionally only up to step `until`).")]
+    #[tool(description = "[Ordo Itineris] Ordered steps of a task (optionally only up to step `until`).")]
     fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp steps", |conn, _cfg| {
@@ -54,7 +54,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Termini] Read-only: the verification commands + acceptance criteria for a task (does NOT run them)."
+        description = "[Ordo Termini] Read-only: the verification commands + acceptance criteria for a task (does NOT run them)."
     )]
     fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, ErrorData> {
         let v = self
@@ -66,7 +66,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics)."
+        description = "[Ordo Recordi] Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics)."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
         let v = self
@@ -85,7 +85,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Termini] List a task's open human feedback (items awaiting a response).")]
+    #[tool(description = "[Ordo Termini] List a task's open human feedback (items awaiting a response).")]
     fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
@@ -96,7 +96,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Itineris] Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by)."
+        description = "[Ordo Itineris] Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by)."
     )]
     fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -107,7 +107,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Fundandi] List all tag vocabulary with usage counts across active memories.")]
+    #[tool(description = "[Ordo Fundandi] List all tag vocabulary with usage counts across active memories.")]
     fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp tags", |conn, _cfg| {
@@ -124,7 +124,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`."
+        description = "[Ordo Recordi] Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`."
     )]
     fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, ErrorData> {
         let v = self
@@ -168,7 +168,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Fundandi] List all known projects with their metadata, task counts, and last activity."
+        description = "[Ordo Fundandi] List all known projects with their metadata, task counts, and last activity."
     )]
     fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, ErrorData> {
         let v = self
@@ -195,7 +195,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Create a typed directed link between two memories. \
+        description = "[Ordo Recordi] Create a typed directed link between two memories. \
         Relations: `supersedes` (new replaces old; old shows ⚠ superseded-by in recall), \
         `similar_to` (bidirectional affinity), `derived_from` (this was built on top of that), \
         `used_in` (memory references a context/file). \
@@ -220,7 +220,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Recordi] Remove a typed directed link between two memories.")]
+    #[tool(description = "[Ordo Recordi] Remove a typed directed link between two memories.")]
     fn unlink_memory(
         &self,
         Parameters(p): Parameters<UnlinkMemoryParams>,
@@ -234,7 +234,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Evaluate and optionally archive low-value memories. \
+        description = "[Ordo Recordi] Evaluate and optionally archive low-value memories. \
         Three signals: (1) superseded — has incoming `supersedes` edge, \
         (2) provisional + old — auto-generated on `done` but not reviewed within `provisional_days`, \
         (3) weak + old — no task link and older than `weak_days`. \

@@ -12,7 +12,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 
 #[tool_router(router = guide_router, vis = "pub(crate)")]
 impl SaraServer {
-    #[tool(description = "[Via Fundandi] Create a task (never opens the TUI). Returns the new task's id/uuid.")]
+    #[tool(description = "[Ordo Fundandi] Create a task (never opens the TUI). Returns the new task's id/uuid.")]
     fn add(&self, Parameters(p): Parameters<AddParams>) -> Result<String, ErrorData> {
         let words = vec![p.description.clone()];
         let tags = p.tags.clone().unwrap_or_default();
@@ -41,7 +41,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Itineris] Mark step N of a task done, recording a result and the current git commit."
+        description = "[Ordo Itineris] Mark step N of a task done, recording a result and the current git commit."
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, ErrorData> {
         let v = self
@@ -59,7 +59,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Add a comment / note to a task (optionally anchored, or an ai finding/decision)."
+        description = "[Ordo Recordi] Add a comment / note to a task (optionally anchored, or an ai finding/decision)."
     )]
     fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<String, ErrorData> {
         let words = vec![p.text.clone()];
@@ -80,7 +80,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Fundandi] Bulk-ingest a task graph from an inline JSON plan; wires dependencies by plan-local key."
+        description = "[Ordo Fundandi] Bulk-ingest a task graph from an inline JSON plan; wires dependencies by plan-local key."
     )]
     fn plan_import(
         &self,
@@ -95,7 +95,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Itineris] Add a checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command."
+        description = "[Ordo Itineris] Add a checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command."
     )]
     fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, ErrorData> {
         let v = self
@@ -114,7 +114,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Itineris] Reopen a previously-completed step (or acceptance criterion) of a task.")]
+    #[tool(description = "[Ordo Itineris] Reopen a previously-completed step (or acceptance criterion) of a task.")]
     fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(
@@ -129,7 +129,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Itineris] Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber."
+        description = "[Ordo Itineris] Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber."
     )]
     fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
         let v = self
@@ -144,7 +144,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Fundandi] Set a task's assignment (the originating prompt / what to build).")]
+    #[tool(description = "[Ordo Fundandi] Set a task's assignment (the originating prompt / what to build).")]
     fn assignment(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp assignment", |conn, _cfg| {
@@ -154,7 +154,7 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "[Via Fundandi] Set a task's rationale (why it exists / the reasoning behind it).")]
+    #[tool(description = "[Ordo Fundandi] Set a task's rationale (why it exists / the reasoning behind it).")]
     fn rationale(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp rationale", |conn, _cfg| {
@@ -165,7 +165,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Nexus] Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`."
+        description = "[Ordo Nexus] Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`."
     )]
     fn attach(&self, Parameters(p): Parameters<AttachParams>) -> Result<String, ErrorData> {
         let v = self
@@ -185,7 +185,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary."
+        description = "[Ordo Recordi] Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary."
     )]
     fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, ErrorData> {
         let tags = p.tags.unwrap_or_default();
@@ -212,7 +212,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong."
+        description = "[Ordo Recordi] Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong."
     )]
     fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, ErrorData> {
         let v = self
@@ -224,7 +224,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place."
+        description = "[Ordo Recordi] Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place."
     )]
     fn promote(&self, Parameters(p): Parameters<PromoteParams>) -> Result<String, ErrorData> {
         let v = self
@@ -236,7 +236,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "[Via Recordi] Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn."
+        description = "[Ordo Recordi] Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn."
     )]
     fn relearn(&self, Parameters(p): Parameters<RelearnParams>) -> Result<String, ErrorData> {
         let v = self
