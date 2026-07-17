@@ -225,6 +225,54 @@ fn done_value_marks_task_completed() {
 }
 
 #[test]
+fn done_value_bails_when_blocked_unless_forced() {
+    let server = server_with(db::open_in_memory_for_test());
+    let dependent = seed_returning(&server, "p", "dependent");
+    let blocker = seed_returning(&server, "p", "blocker");
+    server
+        .with_project(None, "dep on", |conn, cfg| {
+            commands::dep::dep_on_value(conn, cfg, &dependent, &blocker)
+        })
+        .expect("dep on");
+
+    let blocked = server.with_project(None, "done", |conn, cfg| {
+        commands::done::done_value(conn, cfg, &dependent, false)
+    });
+    assert!(blocked.is_err(), "blocked task should bail without --force");
+
+    let forced = server
+        .with_project(None, "done", |conn, cfg| {
+            commands::done::done_value(conn, cfg, &dependent, true)
+        })
+        .expect("forced done");
+    assert_eq!(forced["status"], "completed");
+}
+
+#[test]
+fn done_value_spawns_next_recurrence() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = server
+        .with_project(None, "seed", |conn, _cfg| {
+            let mut t = Task::new("recurring".to_string(), "p".to_string());
+            t.due = Some(chrono::Utc::now());
+            t.recur = Some("daily".to_string());
+            db::insert_task(conn, &mut t)?;
+            Ok(t.uuid.to_string())
+        })
+        .expect("seed");
+    let v = server
+        .with_project(None, "done", |conn, cfg| {
+            commands::done::done_value(conn, cfg, &uuid, false)
+        })
+        .expect("done");
+    assert_eq!(v["status"], "completed");
+    assert!(
+        v["recurrence"].get("id").is_some(),
+        "recurring task should spawn a next occurrence"
+    );
+}
+
+#[test]
 fn link_value_attaches_a_url() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");

@@ -1,3 +1,6 @@
+mod blockers;
+mod recurrence;
+
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
@@ -13,26 +16,7 @@ use crate::infrastructure::model::Status;
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
-    // Check blockers
-    let blockers = db::get_blockers(conn, &task.uuid)?;
-    if !blockers.is_empty() && !force {
-        let blocker_ids: Vec<String> = blockers
-            .iter()
-            .map(|u| {
-                db::get_task_by_uuid_prefix(conn, &u.to_string()[..8])
-                    .ok()
-                    .flatten()
-                    .and_then(|t| t.id)
-                    .map(|i| i.to_string())
-                    .unwrap_or_else(|| u.to_string()[..8].to_string())
-            })
-            .collect();
-        anyhow::bail!(
-            "Task {} is blocked by tasks: {}. Use --force to complete anyway.",
-            task.id.unwrap_or(0),
-            blocker_ids.join(", ")
-        );
-    }
+    blockers::ensure_not_blocked(conn, &task, force)?;
 
     // Finalize any running timer
     if let Some(started) = task.started_at {
@@ -55,24 +39,7 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     }
 
     // Spawn next occurrence for recurring tasks
-    let mut recurrence = Value::Null;
-    if let Some(ref interval) = task.recur.clone() {
-        let base = task.due.unwrap_or_else(Utc::now);
-        let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
-        let mut next =
-            crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
-        next.priority = task.priority.clone();
-        next.tags = task.tags.clone();
-        next.due = Some(next_due);
-        next.recur = Some(interval.clone());
-        next.estimate_mins = task.estimate_mins;
-        next.urgency = db::compute_urgency(&next, &cfg.urgency, false, 0);
-        db::insert_task(conn, &mut next)?;
-        recurrence = json!({
-            "id": next.id,
-            "due": next_due.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string(),
-        });
-    }
+    let recurrence = recurrence::spawn_next(conn, cfg, &task)?;
 
     Ok(json!({
         "task": task.id,
