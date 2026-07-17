@@ -99,7 +99,7 @@
   <header>
     <p class="eyebrow">sara / a worked example</p>
     <h1>The rite, walked once</h1>
-    <p class="lede">The creed is abstract until you see it drive a real charge. Here is one defect, mended end to end under the Adeptus Machinae — and where each tier of authority (<span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>) actually bites.</p>
+    <p class="lede">The law is abstract until you see it drive a real charge. Here is one defect, mended end to end under the Adeptus Machinae — and where each tier of authority (<span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>) actually bites.</p>
     <a class="back" href="index.html">← back to the creed</a>
   </header>
 
@@ -107,13 +107,12 @@
 
   <section>
     <p class="step-eyebrow">before you begin — bind the agent</p>
-    <h2>Adopt the creed</h2>
-    <p class="prose">Install sara, then bind your agent to the law. The simplest way — the <b>Fat Vow</b> — is to paste the creed into your agent's instruction file. Creed above, faction below.</p>
+    <h2>Bind the agent</h2>
+    <p class="prose">Install sara, then bind your agent to the law. The simplest way — the <b>Fat Vow</b> — is to paste the <b>cartridge</b> into your agent's instruction file. The cartridge is the operating law; the creed is the human mindset and need not ride in context.</p>
     <pre class="term"><span class="p">$</span> <span class="c">curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</span>
 
 <span class="o"># then, in your project's AGENTS.md / CLAUDE.md:</span>
-<span class="o">#   1. paste docs/factions/adeptus-machinae.md   (the creed)</span>
-<span class="o">#   2. paste docs/factions/faction-legio.md      (the faction — its Viae + leges)</span></pre>
+<span class="o">#   paste docs/factions/faction-legio.md   (the cartridge — its Viae + leges)</span></pre>
     <p class="prose dim">From here the agent is <i>sub lege machinae</i>. Everything below is what a session then looks like.</p>
   </section>
 
@@ -130,7 +129,7 @@
     <p class="prose">One defect, one kind of work — <b>Via Emendatio</b>, the rite for repairing a defect. Its Ritus is fixed: <span class="mono">reproduce → locate → prove with a failing test → mend → witness → record</span>.</p>
     <p class="prose">Two ways it begins. <b>You</b>, the operator, can invoke the rite by command — the surest way to pin the agent to exactly this road:</p>
     <pre class="term"><span class="p">›</span> <span class="k">/via_emendatio</span> <span class="o">Login rejects names containing an apostrophe</span></pre>
-    <p class="prose">Or, if the creed rides always-on (the Fat Vow), the <b>agent</b> recognises the work as a repair and declares the Via itself. Either way the same Ritus is walked and the same Testes gate the ending — the operator simply chooses whether to name the rite or let the agent name it.</p>
+    <p class="prose">Or, if the cartridge rides always-on (the Fat Vow), the <b>agent</b> recognises the work as a repair and declares the Via itself. Either way the same Ritus is walked and the same Testes gate the ending — the operator simply chooses whether to name the rite or let the agent name it.</p>
   </section>
 
   <section>
@@ -154,7 +153,7 @@
 
   <section>
     <p class="step-eyebrow">3 — walk the Ritus, proving each act</p>
-    <p class="prose"><b>Lex Itineris</b> fixes the order: no act begins before its predecessor closes, and none closes but by a <span class="mono">step_done</span> that carries evidence.</p>
+    <p class="prose"><b>Lex Cursus</b> fixes the order: no act begins before its predecessor closes, and none closes but by a <span class="mono">step_done</span> that carries evidence.</p>
     <pre class="term"><span class="p">›</span> <span class="k">next</span>            <span class="o"># → step 1: reproduce with O'Brien</span>
 <span class="p">›</span> <span class="k">step_done</span> 1 <span class="o">--result "Confirmed: validateName() rejects ' via /[a-z]/i guard"</span>
 
