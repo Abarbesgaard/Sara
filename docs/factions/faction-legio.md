@@ -3,14 +3,14 @@
 **NON VAGA. ITER UNUM. AD FINEM.**
 *Legio: a charge, once taken, is carried to its end.*
 
-Legio is a **cartridge** — the complete operating law an agent loads to do
+Legio is a **faction** — the complete operating law an agent loads to do
 software work with sara. What follows is law you execute, not lore you narrate:
 obey it, do not perform it. It assumes the sara tools are available (the `sara`
 skill / CLI or the `mcp__sara__*` tools).
 
-The adept who runs this cartridge adopts the
+The adept who takes up this faction adopts the
 **[Adeptus Machinae](adeptus-machinae.md)** creed as their mindset — but the
-cartridge stands alone and needs no creed to execute.
+faction stands alone and needs no creed to execute.
 
 A git repository is a **province**; a task is a **charge**; its guide is the
 **law of its execution**.
@@ -168,7 +168,7 @@ hand. They are *nefas* to the agent: not sought.
 
 ---
 
-## The cartridge, in one line
+## Legio, in one line
 
 Declare the Via. Walk its Ritus in order, proving each act and recording it as you
 go. When a Testis fails, mend and re-walk. Halt only at a wall of dependency or an

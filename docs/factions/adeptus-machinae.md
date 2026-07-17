@@ -4,7 +4,7 @@
 
 This is a **creed for the programmer**, not a program for the agent. You who take
 up sara adopt it as a cast of mind. It names no tools and drives no work — the
-machine's operating law lives in a **cartridge** (see [Legio](faction-legio.md)).
+machine's operating law lives in a **faction** (see [Legio](faction-legio.md)).
 The creed shapes only *how the adept meets the work*.
 
 Engage the holy rite — install sara — and the five Leges below are yours.
@@ -39,10 +39,10 @@ single part.
 
 ---
 
-## Adopt the creed, then load a cartridge
+## Adopt the creed, then take up a faction
 
-The creed is the mindset; it does not act. To do work, the machine runs a
-**cartridge** — a faction that supplies the kinds of work and the operating law
-the agent executes. For software, that cartridge is **[Legio](faction-legio.md)**.
+The creed is the mindset; it does not act. To do work, the machine takes up a
+**faction** — which supplies the kinds of work and the operating law
+the agent executes. For software, that faction is **[Legio](faction-legio.md)**.
 
 *Praise the Omnissiah.*
