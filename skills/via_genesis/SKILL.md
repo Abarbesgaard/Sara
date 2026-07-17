@@ -19,6 +19,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Genesis"**), then walk its Ritus in order.
 Build nothing that already exists; build no more than the charge names.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Recall prior art** (Lex Recordi). `sara recall --tag <topic>` and `sara recall "<keywords>"` — do not rebuild what exists. On `sara add`, read the `similar` hits.
@@ -32,6 +35,7 @@ Build nothing that already exists; build no more than the charge names.
 - **Every acceptance criterion** demonstrably met.
 - The build **compiles and runs**.
 - A **test covers** the new behaviour.
+- A **memory recorded** (recall→learn) on the files touched (Lex Recordi).
 
 ## Ending (Lex Termini)
 

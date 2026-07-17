@@ -18,6 +18,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Publicatio"**), then walk its Ritus in
 order. This rite opens the road; it does not walk another's.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Confirm the Testes are already green** (Lex Termini). Every charge being released must have its own Ritus complete and its Testes satisfied. `sara verify <id>` for each; if any gate is red, **halt** — release is not the place to do the work. Send it back to its Via.

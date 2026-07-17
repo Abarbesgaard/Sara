@@ -68,7 +68,10 @@ outside the charge is not done, however near to hand.
 
 **Lex Recordi — the Law of Memory.** `recall` precedes `learn` — no memory is
 written before its duplicate is sought. Every memory carries a tag from the
-known vocabulary. A stale memory is `forget`-ed, not left to mislead.
+known vocabulary. A stale memory is `forget`-ed, not left to mislead. Where
+labor has touched a file, a memory is written before the charge is `done` — work
+that changed the province yet left no memory is unfinished, not merely
+undocumented.
 
 **Lex Termini — the Law of the Ending.** *Onus probandi* — the burden of proof
 of completion lies on you. A charge is `done` only when its road is walked in
@@ -87,6 +90,35 @@ road is not walking it.
 | **Ad Finem** — *to the end* | A step is logged, a PR opened, a note left — a natural pause | These are waypoints, not the destination. Continue to `done` unless a Lex requires stopping for a human. |
 
 *Dura lex, sed lex* — a Lex is not softened because it is inconvenient.
+
+---
+
+## The Praeco — announce each act before you walk it
+
+Law is *executed, not narrated* — but **which** law governs an act is declared
+plainly, so the one who reads your work sees the road you walk. Before each act
+of a Ritus, emit one **Praeco line** (the herald's line) in this shape:
+
+```
+▶ <Via> · <Act> — <what you are about to do> (<governing Lex / Maxim>)
+```
+
+- Name the **Via** on the first line of the charge: `▶ Via Renovatio · declared`.
+- Open **each Ritus act** with its own Praeco line, citing the Lex or Maxim that
+  binds it when one does.
+- When a Maxim resolves a fork, say so: `(Non Vaga — taking the open path)`.
+- One line, then act. The Praeco announces the act; it does not narrate the labor.
+
+Example of a walked charge:
+
+```
+▶ Via Renovatio · declared
+▶ Renovatio · Recall — searching prior memory for this file (Lex Recordi)
+▶ Renovatio · Pin — writing the behaviour-pinning test first (Lex Probationis)
+▶ Renovatio · Change — extracting the slice; no new behaviour
+▶ Renovatio · Witness — pinning tests must pass identically (Lex Termini)
+▶ Renovatio · Record — learning the change on the files touched (Lex Recordi)
+```
 
 ---
 

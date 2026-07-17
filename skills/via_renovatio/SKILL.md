@@ -19,6 +19,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Renovatio"**), then walk its Ritus in order.
 Behaviour must not change; pin it before you touch it.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior work.
@@ -33,6 +36,7 @@ Behaviour must not change; pin it before you touch it.
 
 - **Behaviour-pinning tests exist** and pass **unchanged** across the work.
 - **No new behaviour** introduced under cover of a refactor.
+- A **memory recorded** for what changed and what stayed fixed (Lex Recordi).
 
 ## Ending (Lex Termini)
 

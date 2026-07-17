@@ -18,6 +18,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Emendatio"**), then walk its Ritus in order.
 Do not jump to a patch — the failing test comes before the mend.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` and `sara recall --file <path>` for prior work on this fault before deriving anything.

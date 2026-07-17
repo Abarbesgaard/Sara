@@ -19,6 +19,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Validatio"**), then walk its Ritus in order.
 Read the true result, never the hoped one.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior checks.
@@ -33,6 +36,7 @@ Read the true result, never the hoped one.
 - The **check exists and was run**.
 - Its **real result is recorded**.
 - A **failing result is reported, never buried**.
+- Where code was produced, a **memory recorded** on the files touched (Lex Recordi).
 
 ## Ending (Lex Termini)
 

@@ -19,6 +19,9 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Exploratio"**), then walk its Ritus in
 order. Change no production code; the output is understanding, recorded.
 
+Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+and the Lex that binds it, before you walk it.
+
 ## Ritus — walk in order, one act at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `"<keywords>"` / `--file <path>` — the answer may already be Memoria.

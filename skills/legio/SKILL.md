@@ -48,6 +48,10 @@ procedure; the Via supplies it. To run a rite directly, invoke its skill.
 If a charge seems to hold two Viae, it holds two charges — split it, and declare
 one Via for each.
 
+**Announce each act.** Open every Ritus act with its **Praeco line** (creed
+§ *The Praeco*), naming the Via and the Lex that binds the act, before you walk
+it. The declaration is visible; the labor beneath it is not narrated.
+
 ---
 
 ## The leges of Legio — added for execution
