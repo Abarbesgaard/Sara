@@ -141,16 +141,6 @@
   .lede b{color:var(--ink); font-weight:600; font-style:normal;}
   .lede .mono{color:var(--verdigris); font-size:14px;}
 
-  /* order of authority */
-  .auth-grid{display:grid; grid-template-columns:1fr; gap:1px; background:var(--line); border:1px solid var(--line);}
-  .auth-row{background:var(--bg-raised); display:grid; grid-template-columns:170px 1fr; gap:1.4rem; padding:1.3rem 1.6rem; align-items:baseline;}
-  .auth-row .tier{font-family:'Cinzel', serif; font-size:16px; letter-spacing:0.04em; text-transform:uppercase; color:var(--verdigris);}
-  .auth-row .tier small{display:block; font-family:'Spectral', serif; font-style:italic; text-transform:none; letter-spacing:0; color:var(--ink-dim); font-size:13px; margin-top:3px;}
-  .auth-row .what{font-size:15.5px; color:var(--ink);}
-  .auth-row .what .ex{display:block; margin-top:0.45rem; color:var(--ink-dim); font-size:14px; font-style:italic;}
-  .auth-ladder{text-align:center; font-family:'Cinzel', serif; letter-spacing:0.06em; color:var(--bronze); font-size:15px; margin:1.5rem 0 0;}
-  .auth-ladder .gt{color:var(--verdigris); margin:0 0.5rem;}
-
   /* ---- maxims ---- */
   .maxim-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:var(--line); border:1px solid var(--line);}
   .stele{background:var(--bg-raised); padding:1.6rem 1.5rem; text-align:center;}
@@ -185,8 +175,6 @@
     .lex-name{font-size:15px;}
     .lex-rule{font-size:15px;}
     .maxim-row{grid-template-columns:1fr;}
-    .auth-row{grid-template-columns:1fr; gap:0.4rem; padding:1.1rem 1.2rem;}
-    .auth-ladder{font-size:13px;}
     .cmd-block{margin-bottom:2rem;}
     .cmd{padding:12px 14px; font-size:12.5px;}
     .cmd-alt{font-size:11.5px;}
@@ -236,36 +224,9 @@
   <div class="rule"></div>
 
   <section>
-    <p class="eyebrow">the order of authority</p>
-    <h2 style="font-size:22px; margin-bottom:1.6rem;">The Order of Precedence</h2>
-    <p class="lede">A <b>charge</b> is a single task you set the agent in motion with — the prompt you give it, together with the task's own steps and acceptance criteria. The tiers are <b>ranked</b>, and rank decides conflicts — that is the whole point. If the charge's own guide (Edictum) tells you to ship without tests but a Lex forbids it, the Lex wins and you don't ship. If nothing higher has spoken, you follow the documented custom (Mos); only when nothing above settles it do you fall back to a maxim (Sententia). Higher always overrides lower, without appeal — so you never have to guess which of two directions to obey.</p>
-    <div class="auth-grid">
-      <div class="auth-row">
-        <div class="tier">Lex<small>statute</small></div>
-        <div class="what">Invariant law — applies always, in every province, on every charge. The five Leges below. Nothing softens a Lex.<span class="ex">e.g. Lex Termini: never call a charge done before its PR is merged.</span></div>
-      </div>
-      <div class="auth-row">
-        <div class="tier">Edictum<small>the charge's guide</small></div>
-        <div class="what">The task's own steps, acceptance criteria, and notes. Binding — but for that one charge only, not universally.<span class="ex">e.g. a charge that says "prove the fix with a failing test first".</span></div>
-      </div>
-      <div class="auth-row">
-        <div class="tier">Mos<small>custom</small></div>
-        <div class="what">The documented default. Taken when no Lex and no Edictum has spoken — the settled way of doing things.<span class="ex">e.g. run the project's configured test command, rather than ask which to run.</span></div>
-      </div>
-      <div class="auth-row">
-        <div class="tier">Sententia<small>maxim</small></div>
-        <div class="what">The tie-breaker for a judgment call nothing above settles. The three Maxims (further down) are the Sententiae.<span class="ex">e.g. Non Vaga: at an unclear fork, take the nearest open path and proceed.</span></div>
-      </div>
-    </div>
-    <p class="auth-ladder">Lex <span class="gt">&gt;</span> Edictum <span class="gt">&gt;</span> Mos <span class="gt">&gt;</span> Sententia</p>
-  </section>
-
-  <div class="rule"></div>
-
-  <section>
     <p class="eyebrow">I – V</p>
     <h2 style="font-size:22px; margin-bottom:1.6rem;">The five Leges</h2>
-    <p class="lede">A <b>Lex</b> is not a rule of the tool but a cast of mind — the creed the adept carries into every charge. Whoever engages the holy rite of installation and takes up <span class="mono">sara</span> adopts these five as their own. They bind no faction to a single way of working; they shape only <i>how the mind meets the work</i>. Nothing below softens them — <span class="mono">Lex &gt; Edictum &gt; Mos &gt; Sententia</span>.</p>
+    <p class="lede">A <b>Lex</b> is not a rule of the tool but a cast of mind — the creed the adept carries into every charge. Whoever engages the holy rite of installation and takes up <span class="mono">sara</span> adopts these five as their own. They bind no faction to a single way of working; they shape only <i>how the mind meets the work</i>. Nothing softens them.</p>
     <div class="lex-grid">
       <div class="lex-tablet">
         <div class="lex-num">I</div>
