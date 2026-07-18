@@ -28,5 +28,6 @@ done
 ```
 
 Then add the always-on hook to your project's `AGENTS.md` (see
-`hook.AGENTS.md`) so an agent invokes the creed at the start of every charge.
+`hook.AGENTS.md`) so an agent takes up the **Legio** faction at the start of
+every charge. The creed (`adeptus`) is a human mindset — it is not loaded here.
 `/env` should list the skills; revert by removing the symlinks.
