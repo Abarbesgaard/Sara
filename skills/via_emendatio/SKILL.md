@@ -29,7 +29,7 @@ and the Lex that binds it, before you walk it.
 4. **Locate.** Find the defect in the source. Record it.
 5. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this act with the failing output as its `result`.
 6. **Mend.** Fix the defect — the smallest change that turns the test green.
-7. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step done <id> <N> --kind acceptance --result "<evidence>"`.
+7. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<evidence>"`.
 8. **Record.** `sara learn --auto-files --tag <topic> "<the cause and the fix>"` so the next Adept starts from knowledge.
 
 ## Testes — no completion without these

@@ -1,13 +1,13 @@
 # Adeptus Machinae — skills
 
 Neo-Roman operating discipline for agents driving [sara](https://github.com/Abarbesgaard/Sara).
-Each subfolder is a drop-in [skill](https://github.blog/) (`SKILL.md` with
+Each subfolder is a drop-in skill (`SKILL.md` with
 frontmatter) for GitHub Copilot CLI / Claude.
 
 | Skill | Kind | Invoke for |
 |---|---|---|
-| `adeptus` | creed | the always-loaded law: Leges, Maxims, the six Viae |
-| `legio` | sub-faction | execution & completion discipline |
+| `adeptus` | creed | the adept's mindset — the five Leges (not agent law) |
+| `legio` | faction | the operating law: order of authority, ground Leges, the three Maxims, the six Viae |
 | `via_genesis` | rite | build a new capability |
 | `via_renovatio` | rite | improve without changing behaviour |
 | `via_emendatio` | rite | repair a defect (test-first) |
