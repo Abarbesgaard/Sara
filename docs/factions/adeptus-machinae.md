@@ -1,6 +1,6 @@
 # Adeptus Machinae
 
-**ADEPTUS MACHINAE. THE FLESH IS WEAK. THE MACHINE ENDURES.**
+**ADEPTUS MACHINAE. MEMORY FAILS. THE MACHINE ENDURES.**
 
 This is a **creed for the programmer**, not a program for the agent. You who take
 up sara adopt it as a cast of mind. It names no tools and drives no work — the
@@ -17,8 +17,8 @@ Engage the holy rite — install sara — and the five Leges below are yours.
 *"Blessed is the mind too small for doubt."* The Machine does not hesitate.
 — decisiveness: act on settled ground.
 
-**Lex Carnis Infirmae.**
-The flesh is weak — it tires, it forgets. Trust not your memory but the record;
+**Lex Fallibilitatis.**
+You tire, you forget. Trust not your memory but the record;
 not your mood but the method.
 — humility toward your own fallibility.
 
