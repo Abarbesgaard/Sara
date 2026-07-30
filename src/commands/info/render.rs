@@ -796,7 +796,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         lines.push(section("Related tasks (shared tags)"));
         for (id, desc, urg) in similar.iter().take(RELATED_SHOWN) {
             lines.push(Line::from(vec![
-                Span::styled(format!("  #{id:<3} "), Style::default().fg(Color::Gray)),
+                Span::styled(format!("  #{id:<3} "), Style::default().fg(Color::DarkGray)),
                 Span::raw(desc.clone()),
                 Span::styled(
                     format!("  urg {urg:.1}"),
@@ -891,7 +891,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             let meta_style = if is_sel {
                 Style::default().fg(Color::White).bg(Color::Blue)
             } else {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(Color::DarkGray)
             };
             let mut spans = vec![
                 Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
@@ -1914,7 +1914,8 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
     let (bg, fg) = if selected {
         (Color::Blue, Color::White)
     } else {
-        (Color::Reset, Color::Gray)
+        // Dim keys so they recede and the value (default color) stands out.
+        (Color::Reset, Color::DarkGray)
     };
     let key_style = if selected {
         Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
@@ -2043,7 +2044,8 @@ fn collapsed_text(s: &str, verbose: bool) -> String {
 }
 
 fn key_span(k: &str) -> Span<'static> {
-    Span::styled(format!("  {:<12}", k), Style::default().fg(Color::Gray))
+    // DarkGray keeps keys visually distinct from the (default-colored) value.
+    Span::styled(format!("  {:<12}", k), Style::default().fg(Color::DarkGray))
 }
 
 fn field_line<'a>(k: &str, v: &str) -> Line<'a> {
