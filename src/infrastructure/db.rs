@@ -3507,12 +3507,14 @@ pub fn prune_memories(
     }
 
     if !dry_run {
+        let tx = conn.unchecked_transaction()?;
         for c in &candidates {
-            conn.execute(
+            tx.execute(
                 "UPDATE items SET status='archived', modified=?1 WHERE uuid=?2",
                 rusqlite::params![dt_to_str(&now), c.uuid],
             )?;
         }
+        tx.commit()?;
     }
 
     Ok(candidates)
@@ -3635,16 +3637,20 @@ pub fn synthesize_done_memory(
     item.status = "provisional".to_string(); // flagged for task #29 to surface
     item.path = Some(String::new());
 
-    insert_item(conn, &mut item)?;
-    set_item_projects(conn, &item.uuid, &[project_name.to_string()])?;
+    // Wire the memory, its projects, files, and task link in one transaction so
+    // a partial failure never leaves a half-linked provisional memory behind.
+    let tx = conn.unchecked_transaction()?;
+    insert_item(&tx, &mut item)?;
+    set_item_projects(&tx, &item.uuid, &[project_name.to_string()])?;
 
     // Attach task's source files as item_files
     if !files.is_empty() {
-        set_item_files(conn, &item.uuid, &files)?;
+        set_item_files(&tx, &item.uuid, &files)?;
     }
 
     // Wire explicit task link
-    set_item_task_links(conn, &item.uuid, &[(*task_uuid, "explicit")])?;
+    set_item_task_links(&tx, &item.uuid, &[(*task_uuid, "explicit")])?;
+    tx.commit()?;
 
     let label = format!(
         "m{}",

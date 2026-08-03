@@ -94,17 +94,20 @@ pub fn learn_value(
         check_overlap(conn, tags, &resolved_files)?;
     }
 
-    let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
+    // Wrap all writes (item + tags/projects/files/task-links + supersedes links)
+    // in one transaction so a mid-sequence failure leaves no half-wired memory.
+    let tx = conn.unchecked_transaction()?;
+    let item = save(&tx, cfg, text, tags, projects, tasks, &resolved_files)?;
 
     let new_uuid = item.uuid.to_string();
 
     // Resolve and insert supersedes links atomically with the learn.
     let mut superseded_labels: Vec<String> = Vec::new();
     for handle in supersedes {
-        match db::get_item_by_handle(conn, handle) {
+        match db::get_item_by_handle(&tx, handle) {
             Ok(old_item) => {
                 db::insert_memory_link(
-                    conn,
+                    &tx,
                     &new_uuid,
                     &old_item.uuid.to_string(),
                     "supersedes",
@@ -121,6 +124,7 @@ pub fn learn_value(
             }
         }
     }
+    tx.commit()?;
 
     let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
     let tasks_json: Vec<Value> = item.linked_tasks.iter().map(|(id, desc, src)| json!({
