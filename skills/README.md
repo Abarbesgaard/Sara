@@ -7,10 +7,11 @@ frontmatter) for GitHub Copilot CLI / Claude.
 | Skill | Kind | Invoke for |
 |---|---|---|
 | `adeptus` | creed | the adept's mindset — the five Leges (not agent law) |
-| `legio` | faction | the operating law: order of authority, ground Leges, the three Maxims, the six Viae |
+| `legio` | faction | the operating law: order of authority, ground Leges, the three Maxims, the seven Viae |
 | `via_genesis` | rite | build a new capability |
 | `via_renovatio` | rite | improve without changing behaviour |
 | `via_emendatio` | rite | repair a defect (test-first) |
+| `via_restitutio` | rite | restore a broken build/deps/config (command-first) |
 | `via_exploratio` | rite | investigate, no code changed |
 | `via_validatio` | rite | write / run verification honestly |
 | `via_publicatio` | rite | carry finished work to the gate |
@@ -21,7 +22,7 @@ Copy or symlink the skills into a skill root Copilot discovers
 (`~/.copilot/skills`, `~/.agents/skills`):
 
 ```bash
-for s in adeptus legio via_genesis via_renovatio via_emendatio \
+for s in adeptus legio via_genesis via_renovatio via_emendatio via_restitutio \
          via_exploratio via_validatio via_publicatio; do
   ln -s "$PWD/skills/$s" "$HOME/.agents/skills/$s"
 done

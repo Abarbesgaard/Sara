@@ -120,7 +120,7 @@ they must never drift:
 
 When you add a Via: add its row to the owning faction's Viae table (e.g.
 `docs/factions/faction-legio.md`), add its `skills/via_<name>/SKILL.md`, and
-add its card to the "six Viae" grid in `docs/skills.html`.
+add its card to the Viae grid in `docs/skills.html`.
 
 ---
 
