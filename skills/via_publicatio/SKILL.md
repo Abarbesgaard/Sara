@@ -25,7 +25,7 @@ and the Lex that binds it, before you walk it.
 
 1. **Confirm the Testes are already green** (Lex Termini). Every charge being released must have its own Ritus complete and its Testes satisfied. `sara verify <id>` for each; if any gate is red, **halt** — release is not the place to do the work. Send it back to its Via.
 2. **Assemble the record from the Acta.** Build the PR body / changelog from the charges' steps, results, and annotations (`sara info <id> --md`). The record is faithful to what was actually done.
-3. **Open the PR.** Branch, commit only the work in scope, push, `gh pr create`. `sara link <id> <url>` on each charge released.
+3. **Open the PR.** Branch, commit **only the work in scope** — never the scratch, ad-hoc scripts, or throwaway fixtures used to probe along the way (Lex Munditiae); delete or `git restore`/exclude them first. Push, `gh pr create`. `sara link <id> <url>` on each charge released.
 4. **Halt at the gate.** The rite ends at the opened, linked PR.
 
 ## Testes — no completion without these

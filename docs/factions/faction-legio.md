@@ -106,6 +106,12 @@ gate, a failing suite — the charge is not abandoned and no new question is rai
 Read the failure, correct the work, and walk the phase again. A failing witness is
 part of the Ritus, not a reason to leave it.
 
+**Lex Munditiae — the Law of Cleanliness.** Scratch made to probe or test — an
+ad-hoc script, a throwaway fixture, a scratch `.py`/`.sh`, a temp file — is
+*ephemeral*. It may serve while you work, but it is deleted before the charge
+ends green, and it is **never** committed or carried into a PR. Only the work in
+scope is released; the scaffolding built to reach it is not.
+
 **Lex Termini — the Law of the Ending.** A charge is `done` only when its road is
 walked in full: `verify`'s criteria satisfied, and any linked PR merged — not
 merely opened. A settled step is *res judicata*; it is not relitigated. Opening

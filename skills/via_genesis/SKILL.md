@@ -41,6 +41,7 @@ and the Lex that binds it, before you walk it.
 
 Do **not** open a PR and do **not** `sara done` here. When the Testes are green
 the charge is built and proven but **not yet released** — opening the PR is the
-sole office of `via_publicatio`, invoked explicitly. Leave the work committed and
-the charge green and ready; stop there. On a failed gate, mend and re-walk — do
+sole office of `via_publicatio`, invoked explicitly. Leave the work committed —
+scratch and throwaway probes removed first (Lex Munditiae) — and the charge green
+and ready; stop there. On a failed gate, mend and re-walk — do
 not abandon or ask anew.
