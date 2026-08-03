@@ -70,7 +70,7 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via <Name>"**), then walk its Ritus in order.
 ```
 
-**3 — Ritus.** The ordered acts, numbered, walked one at a time. Each act names
+**3 — Ritus.** The ordered phases, numbered, walked one at a time. Each phase names
 the sara tool it drives (`recall`, `add`, `annotate`, `step_done`, `verify`,
 `learn`). Copy the Ritus verbatim from the faction's Viae table — do not invent a
 new procedure here.

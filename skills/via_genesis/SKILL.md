@@ -19,14 +19,14 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Genesis"**), then walk its Ritus in order.
 Build nothing that already exists; build no more than the charge names.
 
-Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
 
-## Ritus — walk in order, one act at a time
+## Ritus — walk in order, one phase at a time
 
 1. **Recall prior art** (Lex Recordi). `sara recall --tag <topic>` and `sara recall "<keywords>"` — do not rebuild what exists. On `sara add`, read the `similar` hits.
 2. **Declare the shape.** `sara add` the charge; set `sara assignment` (what was asked, verbatim) and `sara rationale` (why). Write the acceptance criteria that will end it: `sara check <id> "<criterion>" --kind acceptance --verify "<cmd>"`. No criteria = no definition of done.
-3. **Build the smallest whole.** Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each act with a `result`.
+3. **Build the smallest whole.** Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each phase with a `result`.
 4. **Witness (Testes).** Every criterion demonstrably met; the build compiles and runs; a test covers the new behaviour. `sara verify <id>`; tick acceptance with evidence.
 5. **Record.** `sara learn --auto-files --tag <topic> "<what was built and why so>"`.
 

@@ -19,10 +19,10 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Validatio"**), then walk its Ritus in order.
 Read the true result, never the hoped one.
 
-Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
 
-## Ritus — walk in order, one act at a time
+## Ritus — walk in order, one phase at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior checks.
 2. **Found the charge.** `sara add`; set `assignment`/`rationale`; acceptance criteria as below.

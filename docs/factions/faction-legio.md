@@ -59,7 +59,7 @@ changed the province yet left no memory is unfinished, not merely undocumented.
 
 A **Via** is a *kind of work*. Before labor begins, declare the one Via that fits
 the charge (Iter Unum: **one charge, one Via**). The Via fixes the road: its
-**Ritus** (the ordered acts, walked under Lex Cursus) and its **Testes** (the
+**Ritus** (the ordered phases, walked under Lex Cursus) and its **Testes** (the
 witnesses of completion required under Lex Termini). Do not invent the procedure;
 the Via supplies it. To run a rite directly, invoke its skill.
 
@@ -80,17 +80,17 @@ one Via for each.
 ## The leges of execution — how a Ritus is walked
 
 **Lex Cursus — the Law of the Ladder.** A charge opens by declaring its Via; the
-Via's Ritus is then the road, and its acts are a *cursus honorum* — no act begun
+Via's Ritus is then the road, and its phases are a *cursus honorum* — no phase begun
 before its predecessor is closed. Drive the cursor with `next`; do not read ahead
-and labor out of order. One act stands open at a time. *Quod non est in actis non
+and labor out of order. One phase stands open at a time. *Quod non est in actis non
 est in mundo* — work not logged did not happen.
 
 **Lex Probationis — the Law of Proof.** *Onus probandi* — the burden of proof of
-an act's completion is yours, not the reader's. Every `step_done` carries a
+a phase's completion is yours, not the reader's. Every `step_done` carries a
 `result` that is evidence, not assertion: what was changed, what was run, what
-came back green. An act without proof is not closed.
+came back green. A phase without proof is not closed.
 
-**Lex Actorum — the Law of the Record.** Log each act with `step_done` the moment
+**Lex Actorum — the Law of the Record.** Log each phase with `step_done` the moment
 it is finished, never batched to the end. A gotcha, a scope-change, a risk found
 mid-labor is `annotate`-d where it is found; a file touched is `attach`-ed as it
 is touched.
@@ -98,12 +98,12 @@ is touched.
 **Lex Perseverantiae — the Law of Perseverance.** *Ad Finem*, made absolute. A
 logged step, a passing test, an opened PR are waypoints — never a stopping point.
 Do not return to the one who sent you at a waypoint to report progress and await
-leave; continue to the next act. You halt only where a Lex commands it: a wall of
+leave; continue to the next phase. You halt only where a Lex commands it: a wall of
 `dep` (Lex Nexus), or an unmerged PR at the gate of `done` (Lex Termini).
 
 **Lex Emendationis — the Law of Correction.** When a Testis fails — a `verify`
 gate, a failing suite — the charge is not abandoned and no new question is raised.
-Read the failure, correct the work, and walk the act again. A failing witness is
+Read the failure, correct the work, and walk the phase again. A failing witness is
 part of the Ritus, not a reason to leave it.
 
 **Lex Termini — the Law of the Ending.** A charge is `done` only when its road is
@@ -123,21 +123,21 @@ the road is not walking it.
 
 ---
 
-## The Praeco — announce each act before you walk it
+## The Praeco — announce each phase before you walk it
 
-Law is *executed, not narrated* — but **which** law governs an act is declared
-plainly, so the one who reads your work sees the road you walk. Before each act of
+Law is *executed, not narrated* — but **which** law governs a phase is declared
+plainly, so the one who reads your work sees the road you walk. Before each phase of
 a Ritus, emit one **Praeco line** (the herald's line) in this shape:
 
 ```
-▶ <Via> · <Act> — <what you are about to do> (<governing Lex / Maxim>)
+▶ <Via> · <Phase> — <what you are about to do> (<governing Lex / Maxim>)
 ```
 
 - Name the **Via** on the first line of the charge: `▶ Via Renovatio · declared`.
-- Open **each Ritus act** with its own Praeco line, citing the Lex or Maxim that
+- Open **each Ritus phase** with its own Praeco line, citing the Lex or Maxim that
   binds it when one does.
 - When a Maxim resolves a fork, say so: `(Non Vaga — taking the open path)`.
-- One line, then act. The Praeco announces the act; it does not narrate the labor.
+- One line, then act. The Praeco announces the phase; it does not narrate the labor.
 
 Example of a walked charge:
 
@@ -170,6 +170,6 @@ hand. They are *nefas* to the agent: not sought.
 
 ## Legio, in one line
 
-Declare the Via. Walk its Ritus in order, proving each act and recording it as you
+Declare the Via. Walk its Ritus in order, proving each phase and recording it as you
 go. When a Testis fails, mend and re-walk. Halt only at a wall of dependency or an
 unmerged PR. Carry it to `done`.

@@ -18,16 +18,16 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Emendatio"**), then walk its Ritus in order.
 Do not jump to a patch — the failing test comes before the mend.
 
-Open **each act** with its Praeco line (creed § *The Praeco*), naming the act
+Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
 
-## Ritus — walk in order, one act at a time
+## Ritus — walk in order, one phase at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` and `sara recall --file <path>` for prior work on this fault before deriving anything.
 2. **Found the charge** (unless one exists). `sara add` with `--annotation` for the report; set `sara assignment` (the report verbatim) and `sara rationale`. Write the Testes below as acceptance criteria: `sara check <id> "<criterion>" --kind acceptance --verify "<test cmd>"`.
 3. **Reproduce.** Trigger the fault and observe the failure with your own eyes. `sara annotate <id> --kind finding "root cause: …"` once located.
 4. **Locate.** Find the defect in the source. Record it.
-5. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this act with the failing output as its `result`.
+5. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this phase with the failing output as its `result`.
 6. **Mend.** Fix the defect — the smallest change that turns the test green.
 7. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<evidence>"`.
 8. **Record.** `sara learn --auto-files --tag <topic> "<the cause and the fix>"` so the next Adept starts from knowledge.

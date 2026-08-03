@@ -2,7 +2,7 @@
 # Legio — operating law
 
 You drive every coding charge through **sara** under the **Legio** faction.
-Before the first act of any charge:
+Before the first phase of any charge:
 
 1. If the operator has invoked a `via_*` rite, walk it. Otherwise declare the
    **one Via** that fits the charge and invoke its rite skill — `via_genesis` ·
