@@ -38,7 +38,7 @@ pub fn prune_value(
     }))
 }
 
-/// `sara prune-memories [--dry-run] [--weak-days N] [--provisional-days N]`
+/// `sara prune-memories [--apply] [--weak-days N] [--provisional-days N]`
 pub fn run(
     conn: &Connection,
     weak_days: i64,
@@ -66,7 +66,7 @@ pub fn run(
         }
     }
     if dry_run {
-        println!("\nRun without --dry-run to apply.");
+        println!("\nRun with --apply to archive.");
     }
     Ok(())
 }

@@ -417,8 +417,8 @@ fn run() -> Result<()> {
             )?;
         }
 
-        Command::Forget { handle, .. } => {
-            commands::forget::run(&conn, &handle)?;
+        Command::Forget { handle, yes } => {
+            commands::forget::run(&conn, &handle, yes)?;
         }
 
         Command::Promote { handle } => {
@@ -462,8 +462,8 @@ fn run() -> Result<()> {
             commands::link_memory::unlink(&conn, &from, &relation, &to)?;
         }
 
-        Command::PruneMemories { dry_run, apply, weak_days, provisional_days } => {
-            let actual_dry_run = !apply && dry_run;
+        Command::PruneMemories { apply, weak_days, provisional_days } => {
+            let actual_dry_run = !apply;
             commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
             // Informational: surface unlinked conflict candidates alongside prune output.
             if let Ok(diag) = commands::diagnose_memories::diagnose_value(&conn) {

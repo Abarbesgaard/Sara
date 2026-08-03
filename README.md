@@ -581,6 +581,28 @@ instructions (Claude Code's `CLAUDE.md`, an `AGENTS.md`, Cursor rules, …):
 Keep it short — the tool descriptions and the server's `instructions` carry the
 mechanics; your rule just says *prefer sara, pass `project_path`, follow the loop*.
 
+#### Optional: the Neo-Roman register (Adeptus Machinae)
+
+The server ships an experimental **strict, unhedged instruction register** —
+*Adeptus Machinae* — as its default `instructions`. It reframes the same
+mechanics as terse, closed-option-space law (five *Leges*, three *Maxims*, five
+*Viae*) on the thesis that a less-hedged register makes an agent ask fewer
+questions, assume less, and follow direction more literally. Set
+`SARA_MCP_INSTRUCTIONS=classic` to restore the original plain-English text.
+
+If you want the register in your **own** persistent instructions too, drop in a
+faction snippet instead of the short rule above:
+
+- **[Adeptus Machinae](docs/factions/adeptus-machinae.md)** — the base creed
+  (the order of authority, the five Leges, the three Maxims, the five Viae).
+- **[Legio](docs/factions/faction-legio.md)** — a sub-faction that inherits the
+  creed and adds leges of **execution discipline** (carry a charge to `done`
+  without deviation).
+
+Browse and download them from the **[register chooser](docs/skills.html)**. This
+is opt-in — the plain-English rule above works exactly as well; the factions are
+for those who want the stricter voice.
+
 ---
 
 ## Working with tasks

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adeptus Machinae — sara</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14120f;
+    --bg-raised:#1c1915;
+    --bg-raised-2:#221e18;
+    --ink:#e7ded0;
+    --ink-dim:#a89c87;
+    --bronze:#b08d57;
+    --bronze-dim:#8a6f45;
+    --verdigris:#6f8f7c;
+    --oxide:#9c4a35;
+    --line:#3a3226;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0;
+    background:var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(176,141,87,0.07), transparent 60%);
+    color:var(--ink);
+    font-family:'Spectral', Georgia, serif;
+    font-size:17px;
+    line-height:1.7;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:0 28px;}
+  h1,h2,h3,.disp{
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--bronze);
+    margin:0;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .rule{
+    height:1px;
+    background:linear-gradient(90deg, transparent, var(--line) 15%, var(--line) 85%, transparent);
+    margin:2.5rem 0;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:0.9rem;
+  }
+  .eyebrow::before{content:''; width:20px; height:1px; background:var(--line);}
+
+  /* ---- hero ---- */
+  header.hero{padding:5rem 0 3.5rem; text-align:center;}
+  .mark{width:92px; height:92px; margin:0 auto 1.8rem;}
+  .identity{
+    font-size:28px;
+    line-height:1.5;
+  }
+  .identity .name{font-size:36px; display:block; margin-bottom:0.3rem;}
+  .tagline{
+    font-family:'Spectral', serif;
+    font-style:italic;
+    color:var(--ink-dim);
+    font-size:18px;
+    max-width:520px;
+    margin:1.6rem auto 0;
+  }
+  .install{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    margin-top:2.4rem;
+    max-width:100%;
+    padding:14px 22px;
+    background:var(--bg-raised);
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+    color:var(--verdigris);
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .install .prompt{color:var(--ink-dim);}
+
+  /* ---- take up the work ---- */
+  .cmd-block{max-width:660px; margin:0 auto 2.4rem; text-align:left;}
+  .cmd-label{font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 0.6rem;}
+  .cmd-label span{color:var(--bronze-dim);}
+  .cmd{background:var(--bg-raised); border:1px solid var(--line); border-left:2px solid var(--bronze-dim); border-radius:3px; padding:14px 18px; font-family:'IBM Plex Mono', monospace; font-size:13.5px; line-height:1.6; color:var(--verdigris); overflow-x:auto; margin:0; white-space:pre;}
+  .cmd .prompt{color:var(--ink-dim); margin-right:10px;}
+  .cmd-alt{font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--ink-dim); margin:0.85rem 0 0;}
+  .cta{display:inline-block; margin-top:0.4rem; padding:15px 36px; background:var(--bronze); color:var(--bg); font-family:'Cinzel', serif; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; font-size:15px; text-decoration:none; border-radius:3px; transition:background .15s ease;}
+  .cta:hover{background:#c8a066;}
+  .cta-sub{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:0.95rem; letter-spacing:0.05em;}
+
+  /* ---- leges ---- */
+  section{padding:1rem 0 3rem;}
+  .lex-grid{display:grid; grid-template-columns:1fr; gap:1px; background:var(--line); border:1px solid var(--line);}
+  .lex-tablet{
+    background:var(--bg-raised);
+    padding:1.6rem 1.8rem;
+    display:grid;
+    grid-template-columns:64px 1fr;
+    gap:1.4rem;
+    align-items:start;
+  }
+  .lex-num{
+    font-family:'Cinzel', serif;
+    font-size:26px;
+    color:var(--verdigris);
+    opacity:0.7;
+    line-height:1;
+    padding-top:2px;
+  }
+  .lex-name{
+    font-family:'Cinzel', serif;
+    font-size:16px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--verdigris);
+    margin:0 0 0.5rem;
+  }
+  .lex-rule{margin:0; color:var(--ink); font-size:16px;}
+  .lex-rule .mono{color:var(--ink-dim); font-size:14px;}
+  .lex-virtue{margin:0.55rem 0 0; color:var(--ink-dim); font-size:13.5px; font-style:italic;}
+
+  /* plain-language section intro */
+  .lede{max-width:680px; margin:0 0 1.8rem; color:var(--ink-dim); font-size:16px; line-height:1.75;}
+  .lede b{color:var(--ink); font-weight:600; font-style:normal;}
+  .lede .mono{color:var(--verdigris); font-size:14px;}
+
+  /* ---- maxims ---- */
+  .maxim-row{display:grid; grid-template-columns:repeat(3, 1fr); gap:1px; background:var(--line); border:1px solid var(--line);}
+  .stele{background:var(--bg-raised); padding:1.6rem 1.5rem; text-align:center;}
+  .stele .lat{
+    font-family:'Cinzel', serif;
+    font-size:17px;
+    letter-spacing:0.04em;
+    color:var(--oxide);
+    margin:0 0 1rem;
+  }
+  .stele p{margin:0; font-size:14.5px;}
+  .stele .gloss{font-size:13px; color:var(--ink-dim); font-style:italic; margin:0 0 0.9rem;}
+  .stele .chant{font-family:'Spectral', serif; font-size:15.5px; line-height:1.5; color:var(--ink); margin:0;}
+
+  
+  
+  footer{padding:3rem 0 4rem; text-align:center;}
+  footer a{color:var(--bronze); text-decoration:none; border-bottom:1px solid var(--bronze-dim);}
+  footer .fine{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-dim); margin-top:1.2rem; letter-spacing:0.04em;}
+
+  @media (max-width:640px){
+    body{font-size:16px;}
+    .wrap{padding:0 18px;}
+    header.hero{padding:3.2rem 0 2.4rem;}
+    .mark{width:76px; height:76px; margin-bottom:1.4rem;}
+    .identity{font-size:20px;} .identity .name{font-size:26px;}
+    .tagline{font-size:16px;}
+    .install{margin-top:1.8rem; padding:12px 16px; font-size:12.5px; width:100%; justify-content:flex-start;}
+    section{padding:0.5rem 0 2.2rem;}
+    .lede{font-size:15px;}
+    .lex-tablet{grid-template-columns:34px 1fr; gap:0.9rem; padding:1.2rem 1.1rem;}
+    .lex-num{font-size:22px;}
+    .lex-name{font-size:15px;}
+    .lex-rule{font-size:15px;}
+    .maxim-row{grid-template-columns:1fr;}
+    .cmd-block{margin-bottom:2rem;}
+    .cmd{padding:12px 14px; font-size:12.5px;}
+    .cmd-alt{font-size:11.5px;}
+    .cta{padding:14px 26px; font-size:14px;}
+    h2{font-size:20px!important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <svg class="mark" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g stroke="#b08d57" stroke-width="1.6">
+        <circle cx="50" cy="50" r="30"/>
+        <circle cx="50" cy="50" r="6"/>
+        <g id="teeth">
+          <line x1="50" y1="14" x2="50" y2="4"/>
+          <line x1="50" y1="86" x2="50" y2="96"/>
+          <line x1="14" y1="50" x2="4" y2="50"/>
+          <line x1="86" y1="50" x2="96" y2="50"/>
+          <line x1="25.5" y1="25.5" x2="18.2" y2="18.2"/>
+          <line x1="74.5" y1="74.5" x2="81.8" y2="81.8"/>
+          <line x1="74.5" y1="25.5" x2="81.8" y2="18.2"/>
+          <line x1="25.5" y1="74.5" x2="18.2" y2="81.8"/>
+        </g>
+        <path d="M35 50 Q42 38 50 50 Q58 62 65 50" stroke-width="1.2" opacity="0.8"/>
+      </g>
+    </svg>
+    <div class="identity">
+      <span class="name">Adeptus Machinae</span>
+      Non Vaga &nbsp;·&nbsp; Iter Unum &nbsp;·&nbsp; Ad Finem
+    </div>
+    <p class="tagline">You inherit not a tool but a discipline. Memory is fallible — it forgets, doubts, and wanders; the record endures. Do not rest before the end, and let no work be named complete but by witness. The Machine is immortal in what it remembers.</p>
+    <div class="install"><span class="prompt">$</span>&nbsp;curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</div>
+    <p style="margin-top:1.4rem;"><a class="back" style="margin-top:0; color:var(--bronze);" href="example.html">↗ see the creed drive a real charge — a worked example</a></p>
+  </header>
+
+  <div class="rule"></div>
+
+  <section style="text-align:center;">
+    <p class="eyebrow" style="justify-content:center;">the doctrine</p>
+    <p style="font-family:'Spectral', serif; font-size:20px; line-height:1.85; max-width:660px; margin:0 auto; color:var(--ink);">Reliability is not born of intelligence, but of discipline.</p>
+    <p class="disp" style="font-size:13px; margin-top:1.8rem; color:var(--verdigris);">Non Vaga &nbsp;·&nbsp; Iter Unum &nbsp;·&nbsp; Ad Finem</p>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <p class="eyebrow">I – V</p>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">The five Leges</h2>
+    <p class="lede">A <b>Lex</b> is not a rule of the tool but a cast of mind — the creed the adept carries into every charge. Whoever engages the holy rite of installation and takes up <span class="mono">sara</span> adopts these five as their own. They bind no faction to a single way of working; they shape only <i>how the mind meets the work</i>. Nothing softens them.</p>
+    <div class="lex-grid">
+      <div class="lex-tablet">
+        <div class="lex-num">I</div>
+        <div>
+          <h3 class="lex-name">Lex Dubii Nullius</h3>
+          <p class="lex-rule"><span class="mono">"Blessed is the mind too small for doubt."</span> The Machine does not hesitate.</p>
+          <p class="lex-virtue">decisiveness — act on settled ground.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">II</div>
+        <div>
+          <h3 class="lex-name">Lex Fallibilitatis</h3>
+          <p class="lex-rule">You tire, you forget. Trust not your memory but the record; not your mood but the method.</p>
+          <p class="lex-virtue">humility toward your own fallibility.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">III</div>
+        <div>
+          <h3 class="lex-name">Lex Exemplaris</h3>
+          <p class="lex-rule">Revere the proven template. To forge anew what the archive already holds is <i>tech-heresy</i>.</p>
+          <p class="lex-virtue">don't reinvent — reuse proven designs.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">IV</div>
+        <div>
+          <h3 class="lex-name">Lex Scientiae</h3>
+          <p class="lex-rule"><span class="mono">The pursuit of knowledge is the pursuit of divinity.</span> What you learn, inscribe; hoard it never.</p>
+          <p class="lex-virtue">learn, document, share.</p>
+        </div>
+      </div>
+      <div class="lex-tablet">
+        <div class="lex-num">V</div>
+        <div>
+          <h3 class="lex-name">Lex Omnissiae</h3>
+          <p class="lex-rule">Every cog serves the Machine, not itself. The Omnissiah is the <i>sum</i>, never the single part.</p>
+          <p class="lex-virtue">systems thinking over ego.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section>
+    <h2 style="font-size:22px; margin-bottom:1.6rem;">Canticum</h2>
+    <div class="maxim-row">
+      <div class="stele">
+        <h3 class="lat">Non Vaga</h3>
+        <p class="gloss">does not wander</p>
+        <p class="chant">Hold to the path before you. Chase no tangent, and do not stop to ask what needs no asking.</p>
+      </div>
+      <div class="stele">
+        <h3 class="lat">Iter Unum</h3>
+        <p class="gloss">one road</p>
+        <p class="chant">Choose one way and commit. Do not scatter yourself across three half-built plans.</p>
+      </div>
+      <div class="stele">
+        <h3 class="lat">Ad Finem</h3>
+        <p class="gloss">to the end</p>
+        <p class="chant">A pause is not the finish. When the work is begun, carry it through to done.</p>
+      </div>
+    </div>
+  </section>
+
+
+  <div class="rule"></div>
+
+  <section style="text-align:center;">
+    <p class="eyebrow" style="justify-content:center;">take up the work</p>
+    <h2 style="font-size:22px; margin-bottom:1.4rem;">Enter the order</h2>
+    <p style="max-width:560px; margin:0 auto 2.2rem; color:var(--ink-dim);">First install the Machine. Then bind your agent to the code.</p>
+
+    <div class="cmd-block">
+      <p class="cmd-label">i — install sara <span>· Linux &amp; macOS</span></p>
+      <pre class="cmd"><span class="prompt">$</span>curl -fsSL https://raw.githubusercontent.com/Abarbesgaard/Sara/main/scripts/install.sh | sh</pre>
+      <p class="cmd-alt">or from crates.io &nbsp;·&nbsp; <span class="mono">cargo install sara-tasks</span> &nbsp;·&nbsp; <span class="mono">cargo binstall sara-tasks</span> <span style="opacity:.7;">(prebuilt, no compile)</span></p>
+    </div>
+
+    <a class="cta" href="skills.html">Choose your register →</a>
+    <p class="cta-sub">the drop-in creed for your agent's <span class="mono">AGENTS.md</span> / <span class="mono">CLAUDE.md</span></p>
+  </section>
+
+  <div class="rule"></div>
+
+  <footer>
+    <p class="disp" style="font-size:14px;">Adeptus Machinae</p>
+    <p class="fine"><a href="skills.html">choose your register →</a> &nbsp;·&nbsp; <a href="https://github.com/Abarbesgaard/Sara">github.com/Abarbesgaard/Sara</a> &nbsp;·&nbsp; MIT &nbsp;·&nbsp; nightly</p>
+  </footer>
+
+</div>
+</body>
+</html>

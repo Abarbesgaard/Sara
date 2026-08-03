@@ -543,11 +543,9 @@ pub enum Command {
     /// Runs in dry-run mode by default — pass --apply to actually archive.
     #[command(name = "prune-memories")]
     PruneMemories {
-        /// Show what would be archived without making changes (default)
-        #[arg(long, default_value = "true")]
-        dry_run: bool,
-        /// Actually archive the candidates (opposite of --dry-run)
-        #[arg(long, conflicts_with = "dry_run")]
+        /// Actually archive the candidates. Without this flag the command only
+        /// reports what would be archived (dry-run is the default).
+        #[arg(long)]
         apply: bool,
         /// Days before a Weak (no task link) memory is eligible (default 90)
         #[arg(long, default_value = "90")]

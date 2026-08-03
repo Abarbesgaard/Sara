@@ -8,10 +8,13 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
-use super::server::{CwdGuard, SaraServer};
+use super::server::{CwdGuard, SaraServer, resolve_instructions};
 
 // cwd is process-global; serialize the tests that mutate it.
 static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+// SARA_MCP_INSTRUCTIONS is process-global env; serialize tests that mutate it.
+static INSTRUCTIONS_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn server_with(conn: Connection) -> SaraServer {
     SaraServer::new(conn, Config::default())
@@ -94,6 +97,49 @@ fn get_info_advertises_sara_tools_and_instructions() {
             .contains("project_path"),
         "instructions should mention project_path"
     );
+}
+
+#[test]
+fn instructions_toggle_selects_register() {
+    let _lock = INSTRUCTIONS_ENV_LOCK.lock().unwrap();
+
+    // Default (unset) is the romanum register.
+    unsafe {
+        std::env::remove_var("SARA_MCP_INSTRUCTIONS");
+    }
+    let romanum = resolve_instructions();
+    assert!(
+        romanum.contains("ADEPTUS MACHINAE"),
+        "default register should be romanum"
+    );
+    assert!(
+        romanum.contains("project_path"),
+        "romanum must retain project_path"
+    );
+
+    // classic restores the original plain-English text.
+    unsafe {
+        std::env::set_var("SARA_MCP_INSTRUCTIONS", "classic");
+    }
+    let classic = resolve_instructions();
+    assert!(
+        !classic.contains("ADEPTUS MACHINAE"),
+        "classic must not be the romanum register"
+    );
+    assert!(
+        classic.contains("folder-aware task manager"),
+        "classic should be the original text"
+    );
+
+    // Unknown values fall back to the default, never empty.
+    unsafe {
+        std::env::set_var("SARA_MCP_INSTRUCTIONS", "nonsense");
+    }
+    assert!(resolve_instructions().contains("ADEPTUS MACHINAE"));
+
+    unsafe {
+        std::env::remove_var("SARA_MCP_INSTRUCTIONS");
+    }
 }
 
 #[test]
