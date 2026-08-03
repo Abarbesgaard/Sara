@@ -79,9 +79,11 @@ new procedure here.
 the faction's Testes for that Via exactly. This is the gate the model may not
 walk past.
 
-**5 — Ending (Lex Termini).** How the rite ends: open + `link` a PR and refuse
-`done` until merged (for code rites), or record the finding (for Exploratio). A
-failed gate is mended and re-walked, never abandoned.
+**5 — Ending (Lex Termini).** How the rite ends. A code rite ends green and ready
+for release — it does **not** open a PR or `sara done`; opening + `link`ing the
+PR is the sole office of `via_publicatio`, invoked explicitly. A pure run or
+Exploratio ends when the result / finding is recorded. A failed gate is mended
+and re-walked, never abandoned.
 
 ---
 

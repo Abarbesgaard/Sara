@@ -109,7 +109,9 @@ part of the Ritus, not a reason to leave it.
 **Lex Termini — the Law of the Ending.** A charge is `done` only when its road is
 walked in full: `verify`'s criteria satisfied, and any linked PR merged — not
 merely opened. A settled step is *res judicata*; it is not relitigated. Opening
-the road is not walking it.
+the road is not walking it. Opening or linking a PR is the sole office of
+`via_publicatio`; no other rite opens one — every other Via ends green and ready
+for release, and release is invoked explicitly.
 
 ---
 

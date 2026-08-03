@@ -40,6 +40,9 @@ and the Lex that binds it, before you walk it.
 
 ## Ending (Lex Termini)
 
-Open a PR, `sara link <id> <url>`. Do **not** `sara done` until that PR is
-merged. On a failed gate, mend and re-walk (Lex Emendationis) — do not abandon
-the charge or raise a new question.
+Do **not** open a PR and do **not** `sara done` here. When the new test passes
+and the full suite is green the charge is mended but **not yet released** —
+opening the PR is the sole office of `via_publicatio`, invoked explicitly. Leave
+the work committed and the charge green and ready; stop there. On a failed gate,
+mend and re-walk (Lex Emendationis) — do not abandon the charge or raise a new
+question.
