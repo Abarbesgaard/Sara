@@ -423,12 +423,14 @@ fn run() -> Result<()> {
             window_days,
             bucket_secs,
             delta,
+            max_bucket,
         } => {
             let n = infrastructure::memory_graph::consolidate(
                 &conn,
                 window_days,
                 chrono::Duration::seconds(bucket_secs),
                 delta,
+                max_bucket,
             )?;
             if n == 0 {
                 println!("Nothing to consolidate — no co-firing recalls in the window.");
