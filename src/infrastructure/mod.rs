@@ -3,6 +3,7 @@ pub mod dates;
 pub mod db;
 pub mod files;
 pub mod git;
+pub mod memory_graph;
 pub mod model;
 pub mod portable;
 pub mod project;
