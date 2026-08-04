@@ -114,7 +114,7 @@ pub fn recall_value(
     // misses, so agents can pull in context that shares no literal term. These
     // surfaced to the caller, so reinforce them exactly like direct hits.
     let associative: Vec<_> = if spread {
-        let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
+        let related = spreading_related(conn, &hits)?;
         related
             .iter()
             .map(|r| {
@@ -319,7 +319,7 @@ pub fn run(
     // outward across the graph and surface the associatively-related memories a
     // flat keyword search would miss. Opt-in so default recall is unchanged.
     if spread {
-        let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
+        let related = spreading_related(conn, &hits)?;
         if !related.is_empty() {
             println!("\nAssociatively related (spreading activation):");
             for r in &related {
@@ -361,15 +361,18 @@ struct Related {
     path: Vec<String>,
 }
 
+/// Upper bound on associatively-surfaced memories. Spreading activation is only
+/// useful to a reader (often an LLM) as a *small* set of the strongest links —
+/// beyond a handful it becomes context-flooding noise.
+const ASSOCIATIVE_CAP: usize = 5;
+
 /// Radiate activation from the memories that matched directly and return the
-/// *other* memories the network lights up, ranked by accumulated activation and
-/// capped at `max`. Empty when nothing matched a memory (e.g. task-only hits) or
-/// the graph has no such neighbours.
-fn spreading_related(
-    conn: &Connection,
-    hits: &[Hit],
-    max: usize,
-) -> Result<Vec<Related>> {
+/// *other* memories the network lights up, ranked by accumulated activation.
+/// Results are capped to [`ASSOCIATIVE_CAP`] and their activation normalized to
+/// `0..1` (relative to the strongest) so the caller — often an LLM — gets a
+/// small, calibrated set instead of a global-centrality dump. Empty when
+/// nothing matched a memory (e.g. task-only hits) or the graph is disconnected.
+fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
     let seeds: Vec<uuid::Uuid> = hits.iter().filter_map(|h| h.item_uuid).collect();
     if seeds.is_empty() {
         return Ok(vec![]);
@@ -391,8 +394,16 @@ fn spreading_related(
                 path: act.path,
             });
         }
-        if out.len() >= max {
-            break;
+        if out.len() >= ASSOCIATIVE_CAP {
+            break; // a small, bounded set — not a global-centrality dump
+        }
+    }
+    // Normalize activation to 0..1 relative to the strongest, so the score is a
+    // calibrated relative signal rather than an unbounded raw sum.
+    let max = out.iter().map(|r| r.activation).fold(0.0_f64, f64::max);
+    if max > 0.0 {
+        for r in &mut out {
+            r.activation /= max;
         }
     }
     Ok(out)
@@ -874,7 +885,7 @@ mod tests {
         let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 1, "only the seed matches the query directly");
 
-        let related = spreading_related(&conn, &hits, 20).unwrap();
+        let related = spreading_related(&conn, &hits).unwrap();
         assert!(
             related.iter().any(|r| r.item.uuid == neighbour.uuid),
             "spreading activation should surface the linked neighbour"
@@ -899,8 +910,42 @@ mod tests {
     fn spreading_related_is_empty_without_memory_seeds() {
         let conn = db::open_in_memory_for_test();
         // No memory hits → no seeds → nothing to spread from.
-        let related = spreading_related(&conn, &[], 20).unwrap();
+        let related = spreading_related(&conn, &[]).unwrap();
         assert!(related.is_empty());
+    }
+
+    #[test]
+    fn associative_output_is_capped_and_normalized() {
+        let conn = db::open_in_memory_for_test();
+        let hub = seed_memory(&conn, "hub topic", "central memory", &["hub"], &["p"]);
+        // Many neighbours linked to the seed — without a cap, all would surface.
+        for i in 0..12 {
+            let n = seed_memory(&conn, &format!("n{i}"), &format!("body {i}"), &[], &["p"]);
+            db::insert_memory_link(
+                &conn,
+                &hub.uuid.to_string(),
+                &n.uuid.to_string(),
+                "similar_to",
+                1.0,
+            )
+            .unwrap();
+        }
+        let hits = collect_hits(&conn, "central", &[], &[], &[], 20).unwrap();
+        let related = spreading_related(&conn, &hits).unwrap();
+
+        assert!(
+            related.len() <= 5,
+            "associative results must be capped to ~5, got {}",
+            related.len()
+        );
+        assert!(
+            related.iter().all(|r| r.activation <= 1.0 + 1e-9),
+            "activation must be normalized to <= 1.0"
+        );
+        assert!(
+            related.iter().any(|r| r.activation >= 0.999),
+            "the strongest associative hit must normalize to 1.0"
+        );
     }
 
     #[test]

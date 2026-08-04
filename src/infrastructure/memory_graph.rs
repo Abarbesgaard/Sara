@@ -135,14 +135,34 @@ impl MemoryGraph {
             }
         }
 
-        // Implicit (shared-anchor) edges.
+        // Implicit (shared-anchor) edges, IDF-weighted: a shared anchor binds
+        // in inverse proportion to how common it is. A tag on nearly every
+        // memory carries almost no associative signal (idf → 0); a tag on just
+        // two binds near its base weight. Without this, ubiquitous anchors
+        // (e.g. a `memory` tag on a third of the store) over-connect the graph
+        // until spreading activation degenerates into global centrality.
         let n = nodes.len();
+        let tag_df = document_frequencies(&tag_sets);
+        let file_df = document_frequencies(&file_sets);
+        let task_df = document_frequencies(&task_sets);
+        let idf = |df: usize| -> f64 {
+            if n < 2 || df == 0 || df >= n {
+                return 0.0;
+            }
+            (n as f64 / df as f64).ln() / (n as f64).ln()
+        };
         for i in 0..n {
             for j in (i + 1)..n {
                 let mut w = 0.0;
-                w += W_SHARED_TAG * count_shared(&tag_sets[i], &tag_sets[j]) as f64;
-                w += W_SHARED_FILE * count_shared(&file_sets[i], &file_sets[j]) as f64;
-                w += W_SHARED_TASK * count_shared(&task_sets[i], &task_sets[j]) as f64;
+                for t in shared(&tag_sets[i], &tag_sets[j]) {
+                    w += W_SHARED_TAG * idf(*tag_df.get(t).unwrap_or(&0));
+                }
+                for f in shared(&file_sets[i], &file_sets[j]) {
+                    w += W_SHARED_FILE * idf(*file_df.get(f).unwrap_or(&0));
+                }
+                for t in shared(&task_sets[i], &task_sets[j]) {
+                    w += W_SHARED_TASK * idf(*task_df.get(t).unwrap_or(&0));
+                }
                 if w > 0.0 {
                     add(i, j, w, &mut edges);
                 }
@@ -333,9 +353,27 @@ pub struct Activation {
     pub path: Vec<String>,
 }
 
-/// Count elements shared between two small unordered sets.
-fn count_shared<T: PartialEq>(a: &[T], b: &[T]) -> usize {
-    a.iter().filter(|x| b.contains(x)).count()
+/// Elements shared between two small unordered sets (each element yielded once,
+/// from `a`'s occurrences).
+fn shared<'a, T: PartialEq>(a: &'a [T], b: &[T]) -> impl Iterator<Item = &'a T> {
+    a.iter().filter(|x| b.contains(x))
+}
+
+/// Document frequency of each anchor: how many memories carry it. Duplicates
+/// within a single memory count once, so `df` is a true per-memory count.
+fn document_frequencies<T: Clone + Eq + std::hash::Hash>(
+    sets: &[Vec<T>],
+) -> HashMap<T, usize> {
+    let mut df: HashMap<T, usize> = HashMap::new();
+    for set in sets {
+        let mut seen = std::collections::HashSet::new();
+        for v in set {
+            if seen.insert(v.clone()) {
+                *df.entry(v.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    df
 }
 
 // ── Hebbian consolidation ────────────────────────────────────────────────────
@@ -347,6 +385,7 @@ fn count_shared<T: PartialEq>(a: &[T], b: &[T]) -> usize {
 pub fn coactivation_pairs(
     events: &[(Uuid, DateTime<Utc>)],
     bucket: Duration,
+    max_bucket: usize,
 ) -> Vec<(Uuid, Uuid, u32)> {
     if events.is_empty() || bucket <= Duration::zero() {
         return vec![];
@@ -365,6 +404,14 @@ pub fn coactivation_pairs(
         let mut uniq: Vec<Uuid> = members.clone();
         uniq.sort_unstable();
         uniq.dedup();
+        // Bulk-recall guard: a bucket with more distinct memories than
+        // `max_bucket` is a listing (e.g. `recall --tag` returning many
+        // memories at once), not genuine co-firing. Skip it so a single dump
+        // can't record O(k²) spurious synapses. `max_bucket == 0` disables the
+        // guard (pair everything).
+        if max_bucket > 0 && uniq.len() > max_bucket {
+            continue;
+        }
         for i in 0..uniq.len() {
             for j in (i + 1)..uniq.len() {
                 let key = if uniq[i] < uniq[j] {
@@ -393,10 +440,11 @@ pub fn consolidate(
     window_days: i64,
     bucket: Duration,
     delta: f64,
+    max_bucket: usize,
 ) -> Result<usize> {
     let cutoff = Utc::now() - Duration::days(window_days.max(0));
     let events = db::memory_recall_events_since(conn, &cutoff)?;
-    let pairs = coactivation_pairs(&events, bucket);
+    let pairs = coactivation_pairs(&events, bucket, max_bucket);
     for (a, b, count) in &pairs {
         db::reinforce_coactivation(conn, &a.to_string(), &b.to_string(), delta * *count as f64)?;
     }
@@ -425,7 +473,12 @@ mod tests {
 
         let g = MemoryGraph::build(&conn).unwrap();
         assert_eq!(g.nodes.len(), 3);
-        assert_eq!(g.edge_weight(&a, &b), Some(W_SHARED_TAG));
+        // IDF-weighted: 'auth' is on 2 of 3 memories, so the edge is the base
+        // tag weight scaled by idf(df=2, n=3) — positive but below the raw base.
+        let idf = (3.0_f64 / 2.0).ln() / 3.0_f64.ln();
+        let expected = W_SHARED_TAG * idf;
+        assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
+        assert!(expected > 0.0 && expected < W_SHARED_TAG);
         assert_eq!(g.edge_weight(&a, &c), None);
     }
 
@@ -437,8 +490,10 @@ mod tests {
         db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "similar_to", 1.0).unwrap();
 
         let g = MemoryGraph::build(&conn).unwrap();
-        // shared tag (0.3) + similar_to (0.7) = 1.0.
-        assert!((g.edge_weight(&a, &b).unwrap() - 1.0).abs() < 1e-9);
+        // Both memories carry 'auth' (df == n), so the tag is ubiquitous and
+        // idf → 0: the shared anchor adds nothing and only the explicit
+        // similar_to (0.7) remains.
+        assert!((g.edge_weight(&a, &b).unwrap() - 0.7).abs() < 1e-9);
     }
 
     #[test]
@@ -499,6 +554,42 @@ mod tests {
     }
 
     #[test]
+    fn rare_shared_anchor_binds_tighter_than_a_ubiquitous_one() {
+        let conn = db::open_in_memory_for_test();
+        // 'common' tag is on many memories; 'rare' tag only on the a–b pair.
+        let a = seed(&conn, &["common", "rare"]);
+        let b = seed(&conn, &["rare"]); // shares only the rare tag with a
+        let mut hubs = vec![];
+        for _ in 0..8 {
+            hubs.push(seed(&conn, &["common"])); // share only the ubiquitous tag with a
+        }
+
+        let g = MemoryGraph::build(&conn).unwrap();
+        let rare_edge = g.edge_weight(&a, &b).unwrap();
+        let hub_edge = g.edge_weight(&a, &hubs[0]).unwrap();
+        assert!(
+            rare_edge > hub_edge,
+            "a rare shared anchor must bind tighter than a ubiquitous one (idf): rare={rare_edge} hub={hub_edge}"
+        );
+    }
+
+    #[test]
+    fn bulk_recall_bucket_is_ignored_as_noise() {
+        let t0 = Utc::now();
+        // A bulk listing: 6 memories all recalled at the same instant — a
+        // `recall --tag` dump, not genuine co-firing.
+        let ids: Vec<Uuid> = (0..6).map(|_| Uuid::new_v4()).collect();
+        let events: Vec<_> = ids.iter().map(|u| (*u, t0)).collect();
+
+        let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
+        assert!(
+            pairs.is_empty(),
+            "a bucket over the max size must yield no co-firing pairs, got {}",
+            pairs.len()
+        );
+    }
+
+    #[test]
     fn coactivation_pairs_group_within_bucket() {
         let t0 = Utc::now();
         let a = Uuid::new_v4();
@@ -509,7 +600,7 @@ mod tests {
             (b, t0 + Duration::milliseconds(100)), // same bucket as a
             (c, t0 + Duration::seconds(60)),        // far away — own bucket
         ];
-        let pairs = coactivation_pairs(&events, Duration::seconds(2));
+        let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
         assert_eq!(pairs.len(), 1);
         let (x, y, count) = pairs[0];
         assert_eq!(count, 1);
@@ -530,7 +621,7 @@ mod tests {
             db::record_memory_recall(&conn, &b).unwrap();
         }
 
-        let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1).unwrap();
+        let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
         assert_eq!(reinforced, 1);
 
         // The learned edge now exists in the graph despite no shared anchor.

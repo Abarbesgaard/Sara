@@ -477,6 +477,11 @@ pub enum Command {
         /// Weight added to a synapse per co-firing
         #[arg(long, default_value_t = 0.1)]
         delta: f64,
+        /// Ignore bulk recalls: a co-firing window with more than this many
+        /// distinct memories is a listing, not genuine co-activation, and is
+        /// skipped (prevents `recall --tag` dumps from over-wiring the graph)
+        #[arg(long, default_value_t = 5)]
+        max_bucket: usize,
     },
 
     /// Archive (forget) a memory by its label — e.g. `sara forget m3`
