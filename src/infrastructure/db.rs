@@ -4142,6 +4142,43 @@ pub fn search_fts_tokens(
     Ok(rows)
 }
 
+/// Token-based OR search: like [`search_fts_tokens`] but tokens are joined with
+/// the FTS5 `OR` operator, so a row matching ANY meaningful token surfaces.
+/// Used as the loose Tier-3 fallback in recall — only when the phrase and the
+/// token-AND search both miss — so partial-vocabulary / paraphrased queries
+/// still return candidates instead of nothing. `ORDER BY rank` (bm25) floats
+/// the higher-coverage hits (more / rarer matching tokens) to the top.
+pub fn search_fts_tokens_or(
+    conn: &Connection,
+    tokens: &[String],
+    limit: i64,
+) -> Result<Vec<SearchHit>> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+    // Each token quoted as an FTS5 string literal; joined with OR.
+    let fts_query = tokens
+        .iter()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let mut stmt = conn.prepare(
+        "SELECT ref_kind, task_uuid, text FROM search_index
+         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![fts_query, limit], |r| {
+            Ok(SearchHit {
+                ref_kind: r.get(0)?,
+                task_uuid: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 // ── project env commands ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]

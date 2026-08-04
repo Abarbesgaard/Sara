@@ -29,6 +29,10 @@ struct Hit {
     /// True when this hit came from an exact `--tag`/`--project` match rather
     /// than plain-text FTS ranking.
     exact_match: bool,
+    /// True when this hit came from the loose Tier-3 token-OR fallback (only
+    /// SOME query terms matched, not the full phrase or every token). Signals
+    /// lower confidence so callers treat it as "maybe related", not exact.
+    loose: bool,
     /// bm25 relevance rank for free-text FTS hits: the hit's 0-based position in
     /// `db::search_fts`'s `ORDER BY rank` result (lower = better match). `None`
     /// for exact-filter hits, which are ordered by strength/recency instead.
@@ -88,6 +92,7 @@ pub fn recall_value(
                 "text": h.snippet,
                 "strength": h.strength,
                 "exact_match": h.exact_match,
+                "loose": h.loose,
                 "modified": h.modified.map(|m| m.to_rfc3339()),
                 "files": h.files,
                 "superseded_by": h.superseded_by,
@@ -178,6 +183,18 @@ fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str
         return ("high", "");
     }
 
+    // Loose Tier-3 (token-OR) hits: only some query terms overlapped, so these
+    // are weaker signals than a phrase or token-AND match. Flag them distinctly
+    // so callers don't treat a tangential hit as a confident one.
+    if hits.iter().any(|h| h.loose) {
+        return (
+            "low",
+            "Loose match: only SOME query terms overlapped (token-OR fallback). \
+             Results may be tangential and the best match need not be first — \
+             refine the query or use --tag to narrow.",
+        );
+    }
+
     (
         "medium",
         "Keyword-match only (literal FTS). Paraphrased or conceptually \
@@ -246,7 +263,13 @@ pub fn run(
         println!("Keyword matches:");
         for h in &hits {
             let age = h.modified.map(age_str).unwrap_or_default();
-            let marker = if h.exact_match { "=" } else { "~" };
+            let marker = if h.exact_match {
+                "="
+            } else if h.loose {
+                "≈"
+            } else {
+                "~"
+            };
             let files_str = if h.files.is_empty() {
                 String::new()
             } else {
@@ -543,20 +566,30 @@ fn collect_hits(
         None
     };
 
-    let fts_hits = if query.is_empty() {
-        vec![]
+    let (fts_hits, loose) = if query.is_empty() {
+        (vec![], false)
     } else {
         let phrase = db::search_fts(conn, query, limit.max(50))?;
         if !phrase.is_empty() {
-            phrase
+            (phrase, false)
         } else {
             // Phrase literal missed — fall back to token-AND (order-independent,
             // stop-word-stripped) so paraphrased queries still surface hits.
             let tokens = meaningful_tokens(query);
             if tokens.is_empty() {
-                vec![]
+                (vec![], false)
             } else {
-                db::search_fts_tokens(conn, &tokens, limit.max(50))?
+                let and_hits = db::search_fts_tokens(conn, &tokens, limit.max(50))?;
+                if !and_hits.is_empty() || tokens.len() < 2 {
+                    // token-AND found something, or a single token (where OR == AND
+                    // so the fallback would add nothing).
+                    (and_hits, false)
+                } else {
+                    // Tier 3: loose token-OR fallback — match ANY meaningful
+                    // token so a partial-vocabulary query returns candidates
+                    // instead of nothing. Flagged loose (lower confidence).
+                    (db::search_fts_tokens_or(conn, &tokens, limit.max(50))?, true)
+                }
             }
         }
     };
@@ -586,6 +619,7 @@ fn collect_hits(
                     if let Ok(item) = db::get_item_by_uuid(conn, &h.task_uuid) {
                         let mut hit = item_hit(conn, item, false);
                         hit.fts_rank = Some(rank);
+                        hit.loose = loose;
                         hits.push(hit);
                     }
                     continue;
@@ -614,6 +648,7 @@ fn collect_hits(
                     derived_from_labels: vec![],
                     derived_count: 0,
                     fts_rank: Some(rank),
+                    loose,
                 });
             }
         }
@@ -713,6 +748,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         derived_from_labels,
         derived_count,
         fts_rank: None,
+        loose: false,
     }
 }
 
@@ -1051,6 +1087,63 @@ mod tests {
         let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
+    }
+
+    #[test]
+    fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
+        // A memory about pruning. The query shares SOME terms ("pruning",
+        // "decay") but adds terms the memory lacks ("archive", "policy" absent
+        // from body) so token-AND requires all four and misses. The Tier-3
+        // token-OR fallback should still surface it, flagged loose / low.
+        let conn = db::open_in_memory_for_test();
+        seed_memory(
+            &conn,
+            "prune stale entries",
+            "pruning removes memories that decay over time",
+            &[],
+            &["engine"],
+        );
+
+        // token-AND over all four tokens finds nothing (memory lacks
+        // "archive"/"garbage"), so recall would previously be empty.
+        let and_only = db::search_fts_tokens(
+            &conn,
+            &["pruning".into(), "decay".into(), "archive".into(), "garbage".into()],
+            50,
+        )
+        .unwrap();
+        assert!(and_only.is_empty(), "precondition: token-AND misses");
+
+        let hits =
+            collect_hits(&conn, "pruning decay archive garbage", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1, "OR fallback surfaces the partial-overlap memory");
+        assert_eq!(hits[0].description, "prune stale entries");
+        assert!(hits[0].loose, "OR-fallback hit must be flagged loose");
+
+        // Confidence must reflect the loose match, not medium/high.
+        let (confidence, caveat) = match_confidence("pruning decay archive garbage", &[], &hits);
+        assert_eq!(confidence, "low");
+        assert!(caveat.contains("Loose match"));
+    }
+
+    #[test]
+    fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
+        // When token-AND (or phrase) already matches, the loose fallback must
+        // NOT fire and hits must NOT be flagged loose (no displacement).
+        let conn = db::open_in_memory_for_test();
+        seed_memory(
+            &conn,
+            "kafka consumer lag",
+            "monitor consumer group lag with burrow",
+            &[],
+            &["platform"],
+        );
+        // Both tokens present → token-AND matches → not loose.
+        let hits = collect_hits(&conn, "consumer lag", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(!hits[0].loose, "token-AND hit must not be flagged loose");
+        let (confidence, _) = match_confidence("consumer lag", &[], &hits);
+        assert_eq!(confidence, "medium");
     }
 
     #[test]
