@@ -620,6 +620,49 @@ fn bond_exists(bonds: &[Bond], a: usize, b: usize) -> bool {
     bonds.iter().any(|bd| (bd.a == a && bd.b == b) || (bd.a == b && bd.b == a))
 }
 
+/// A screen direction for spatial navigation across the constellation.
+#[derive(Clone, Copy)]
+enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// The star nearest to `from` in screen-direction `dir`. Only stars that lie
+/// genuinely that way are eligible; among them the closest wins, with sideways
+/// drift penalised so `→` favours a star to the right over one far above. Falls
+/// back to the current star if nothing lies in that direction (edge of the web).
+fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usize {
+    let (ox, oy) = (stars[from].x, stars[from].y);
+    let mut best = from;
+    let mut best_score = f64::MAX;
+    for (i, s) in stars.iter().enumerate() {
+        if i == from {
+            continue;
+        }
+        let (dx, dy) = (s.x - ox, s.y - oy);
+        // Component along the travel axis (must be forward) and perpendicular.
+        let (along, perp) = match dir {
+            Dir::Right => (dx, dy.abs()),
+            Dir::Left => (-dx, dy.abs()),
+            Dir::Up => (dy, dx.abs()),
+            Dir::Down => (-dy, dx.abs()),
+        };
+        if along <= 0.0 {
+            continue;
+        }
+        // Prefer straight-ahead: distance along the axis plus a heavy sideways
+        // penalty so the cone stays narrow.
+        let score = along + 2.0 * perp;
+        if score < best_score {
+            best_score = score;
+            best = i;
+        }
+    }
+    best
+}
+
 /// Force-layout tuning for the constellation. The memory graph hands us
 /// synapse weights in `0..=1`; these turn them into spring stiffnesses that
 /// separate the web into visible clusters instead of one uniform ball:
@@ -909,7 +952,7 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             break Ok(());
                         }
                     }
-                    KeyCode::Tab | KeyCode::Right | KeyCode::Down => {
+                    KeyCode::Tab => {
                         if let Some(d) = &dream {
                             if !d.neighbors.is_empty() {
                                 dream_selected = (dream_selected + 1) % d.neighbors.len();
@@ -918,7 +961,7 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             selected = (selected + 1) % web.stars.len();
                         }
                     }
-                    KeyCode::BackTab | KeyCode::Left | KeyCode::Up => {
+                    KeyCode::BackTab => {
                         if let Some(d) = &dream {
                             if !d.neighbors.is_empty() {
                                 dream_selected =
@@ -926,6 +969,47 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             }
                         } else {
                             selected = (selected + web.stars.len() - 1) % web.stars.len();
+                        }
+                    }
+                    // Arrows: in the neuron view, cycle dendrites; in the web,
+                    // glide the selection (and camera) to the nearest star that
+                    // way, so navigation feels spatial rather than by index.
+                    KeyCode::Right => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected = (dream_selected + 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Right);
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected = (dream_selected + 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Down);
+                        }
+                    }
+                    KeyCode::Left => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected =
+                                    (dream_selected + d.neighbors.len() - 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Left);
+                        }
+                    }
+                    KeyCode::Up => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected =
+                                    (dream_selected + d.neighbors.len() - 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Up);
                         }
                     }
                     KeyCode::Enter => {
@@ -1167,7 +1251,8 @@ fn ui_web(
             f,
             "the web",
             &[
-                ("Tab / arrows", "select a star"),
+                ("arrows", "move to the nearest star that way"),
+                ("Tab / ⇧Tab", "cycle stars in order"),
                 ("/", "search (label, tags, title, body)"),
                 ("n / N", "next / previous match"),
                 ("+ / - / 0", "zoom toward the selected star / reset"),
@@ -1371,6 +1456,32 @@ mod tests {
         assert!(bond_exists(&bonds, 1, 4));
         assert!(bond_exists(&bonds, 4, 1));
         assert!(!bond_exists(&bonds, 1, 2));
+    }
+
+    #[test]
+    fn nearest_in_direction_picks_the_star_that_way() {
+        let mk = |x: f64, y: f64| Star {
+            label: String::new(),
+            title: String::new(),
+            strength: 1.0,
+            provisional: false,
+            tags: vec![],
+            haystack: String::new(),
+            x,
+            y,
+            recently_recalled: false,
+        };
+        // 0 at origin; 1 right, 2 left, 3 up, 4 down.
+        let stars = vec![mk(0.0, 0.0), mk(10.0, 0.0), mk(-10.0, 0.0), mk(0.0, 10.0), mk(0.0, -10.0)];
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Right), 1);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Left), 2);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Up), 3);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Down), 4);
+        // Nothing to the right of the right-most star → stays put.
+        assert_eq!(nearest_in_direction(&stars, 1, Dir::Right), 1);
+        // A near star straight ahead beats a far one off to the side.
+        let stars2 = vec![mk(0.0, 0.0), mk(5.0, 1.0), mk(6.0, 40.0)];
+        assert_eq!(nearest_in_direction(&stars2, 0, Dir::Right), 1);
     }
 
     #[test]
