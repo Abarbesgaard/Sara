@@ -19,8 +19,11 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline, Wrap};
 use rusqlite::Connection;
 
 use crate::infrastructure::db;
+use crate::infrastructure::memory_graph::MemoryGraph;
 use crate::infrastructure::model::Item;
 use crate::infrastructure::tui;
+
+use std::collections::HashMap;
 
 const TICK_MS: u64 = 50;
 const PULSE_TICKS: u64 = 40;
@@ -596,19 +599,131 @@ struct Bond {
     relation: String,
 }
 
+/// A calibrated shared-anchor association between two stars, drawn as a faint
+/// thread whose brightness tracks `weight` (0..=1). Distinct from a [`Bond`],
+/// which is an explicit, authored `memory_link`.
+struct Assoc {
+    a: usize,
+    b: usize,
+    weight: f64,
+}
+
 struct WebData {
     stars: Vec<Star>,
     bonds: Vec<Bond>,
+    links: Vec<Assoc>,
 }
 
-fn shared_tags(a: &[String], b: &[String]) -> usize {
-    a.iter().filter(|t| b.contains(t)).count()
+/// True if an explicit authored bond already connects stars `a` and `b` (either
+/// direction) — used to avoid drawing a faint association thread under a bond.
+fn bond_exists(bonds: &[Bond], a: usize, b: usize) -> bool {
+    bonds.iter().any(|bd| (bd.a == a && bd.b == b) || (bd.a == b && bd.b == a))
 }
 
-/// Lightweight force-directed layout: golden-angle spiral seed, then a few
-/// hundred relaxation steps — bonds and shared tags pull memories together,
-/// everything else repels, weak gravity keeps the web centred.
-fn force_layout(stars: &mut [Star], bonds: &[Bond], iterations: usize) {
+/// A screen direction for spatial navigation across the constellation.
+#[derive(Clone, Copy)]
+enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// The star nearest to `from` in screen-direction `dir`. Only stars that lie
+/// genuinely that way are eligible; among them the closest wins, with sideways
+/// drift penalised so `→` favours a star to the right over one far above. Falls
+/// back to the current star if nothing lies in that direction (edge of the web).
+fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usize {
+    let (ox, oy) = (stars[from].x, stars[from].y);
+    let mut best = from;
+    let mut best_score = f64::MAX;
+    for (i, s) in stars.iter().enumerate() {
+        if i == from {
+            continue;
+        }
+        let (dx, dy) = (s.x - ox, s.y - oy);
+        // Component along the travel axis (must be forward) and perpendicular.
+        let (along, perp) = match dir {
+            Dir::Right => (dx, dy.abs()),
+            Dir::Left => (-dx, dy.abs()),
+            Dir::Up => (dy, dx.abs()),
+            Dir::Down => (-dy, dx.abs()),
+        };
+        if along <= 0.0 {
+            continue;
+        }
+        // Prefer straight-ahead: distance along the axis plus a heavy sideways
+        // penalty so the cone stays narrow.
+        let score = along + 2.0 * perp;
+        if score < best_score {
+            best_score = score;
+            best = i;
+        }
+    }
+    best
+}
+
+/// Force-layout tuning for the constellation. The memory graph hands us
+/// synapse weights in `0..=1`; these turn them into spring stiffnesses that
+/// separate the web into visible clusters instead of one uniform ball:
+///
+/// * `MIN_EDGE` — drop synapses below this weight. A tag shared across a third
+///   of the store carries almost no associative signal (IDF → ~0); keeping its
+///   spring just re-clumps everything. Cutting it lets real associations shape
+///   the layout.
+/// * `CONTRAST` — raise weights to this power before scaling. Strong, specific
+///   links stay near their value while weak ones collapse toward zero, so a
+///   rare shared anchor binds *dramatically* tighter than a common one.
+/// * `AFFINITY_SCALE` — final stiffness of a full-strength synapse. Enough to
+///   snap a tightly-bound pair together against the layout's repulsion.
+const MIN_EDGE: f64 = 0.15;
+const CONTRAST: f64 = 3.0;
+const AFFINITY_SCALE: f64 = 0.12;
+
+/// Per-pair repulsion strength (`REPULSION / distance²`) and centre-seeking
+/// gravity. Tuned together so ~150 stars settle into an evenly-spread island
+/// that floats clear of the canvas walls instead of jamming against them.
+const REPULSION: f64 = 190.0;
+const GRAVITY: f64 = 0.14;
+
+/// The calibrated associations between memories: each `(star_i, star_j,
+/// weight)` is a synapse from the memory graph — IDF-weighted shared anchors
+/// (tags/files/tasks) plus relation-weighted `memory_links` — filtered to those
+/// carrying real signal ([`MIN_EDGE`]). This is the single source of
+/// associative truth (the same graph recall spreads activation over); the web
+/// both *lays out* stars by these weights and *draws* them as faint threads, so
+/// what pulls two memories together is also what you see connecting them.
+fn graph_edges(graph: &MemoryGraph, index: &HashMap<String, usize>) -> Vec<(usize, usize, f64)> {
+    graph
+        .edges()
+        .into_iter()
+        .filter(|(_, _, w)| *w >= MIN_EDGE)
+        .filter_map(|(a, b, w)| {
+            let ia = *index.get(&a.to_string())?;
+            let ib = *index.get(&b.to_string())?;
+            Some((ia, ib, w))
+        })
+        .collect()
+}
+
+/// Turn a synapse weight (0..=1) into a force-layout spring stiffness. Strong,
+/// specific links stay near their value while weak ones collapse toward zero
+/// ([`CONTRAST`]), so a rare shared anchor binds dramatically tighter than a
+/// common one; [`AFFINITY_SCALE`] sets the absolute pull.
+fn spring_stiffness(weight: f64) -> f64 {
+    weight.powf(CONTRAST) * AFFINITY_SCALE
+}
+
+/// Force-directed layout: golden-angle spiral seed, then a few hundred
+/// relaxation steps. Repulsion pushes every star apart; the affinity springs
+/// (from the memory graph's calibrated synapses) pull associated memories
+/// together into clusters; gravity pulls the whole web toward the centre.
+///
+/// [`REPULSION`] and [`GRAVITY`] are balanced so the graph settles into an
+/// evenly-spread island that floats clear of the canvas edges — like an
+/// Obsidian graph view — rather than a ball that flies outward and jams
+/// against the boundary walls.
+fn force_layout(stars: &mut [Star], affinity: &[(usize, usize, f64)], iterations: usize) {
     let n = stars.len();
     if n < 2 {
         return;
@@ -620,19 +735,6 @@ fn force_layout(stars: &mut [Star], bonds: &[Bond], iterations: usize) {
         s.x = a.cos() * r * 1.3;
         s.y = a.sin() * r;
     }
-    // Tag-affinity springs (soft), bond springs (firm).
-    let mut affinity: Vec<(usize, usize, f64)> = vec![];
-    for i in 0..n {
-        for j in (i + 1)..n {
-            let shared = shared_tags(&stars[i].tags, &stars[j].tags);
-            if shared > 0 {
-                affinity.push((i, j, 0.002 * shared as f64));
-            }
-        }
-    }
-    for b in bonds {
-        affinity.push((b.a, b.b, 0.02));
-    }
 
     for _ in 0..iterations {
         let mut fx = vec![0.0f64; n];
@@ -642,18 +744,18 @@ fn force_layout(stars: &mut [Star], bonds: &[Bond], iterations: usize) {
                 let dx = stars[i].x - stars[j].x;
                 let dy = stars[i].y - stars[j].y;
                 let d2 = (dx * dx + dy * dy).max(4.0);
-                let rep = 220.0 / d2;
+                let rep = REPULSION / d2;
                 let d = d2.sqrt();
                 fx[i] += dx / d * rep;
                 fy[i] += dy / d * rep;
                 fx[j] -= dx / d * rep;
                 fy[j] -= dy / d * rep;
             }
-            // gentle gravity toward centre
-            fx[i] -= stars[i].x * 0.01;
-            fy[i] -= stars[i].y * 0.01;
+            // Gravity toward centre — strong enough to keep the web off the walls.
+            fx[i] -= stars[i].x * GRAVITY;
+            fy[i] -= stars[i].y * GRAVITY;
         }
-        for &(i, j, k) in &affinity {
+        for &(i, j, k) in affinity {
             let dx = stars[j].x - stars[i].x;
             let dy = stars[j].y - stars[i].y;
             fx[i] += dx * k;
@@ -670,7 +772,7 @@ fn force_layout(stars: &mut [Star], bonds: &[Bond], iterations: usize) {
 
 fn load_web(conn: &Connection) -> Result<WebData> {
     let memories = db::list_memories(conn)?;
-    let mut index = std::collections::HashMap::new();
+    let mut index = HashMap::new();
     let mut stars: Vec<Star> = memories
         .iter()
         .enumerate()
@@ -709,8 +811,19 @@ fn load_web(conn: &Connection) -> Result<WebData> {
             })
         })
         .collect();
-    force_layout(&mut stars, &bonds, 250);
-    Ok(WebData { stars, bonds })
+    // Drive the layout from the calibrated nervous-system graph rather than a
+    // flat shared-tag/uniform-bond heuristic, so the constellation reflects the
+    // same associations recall spreads over. The same edges are kept as faint
+    // threads (`links`) so what pulls stars together is also what's drawn.
+    // Falls back to no springs/threads if the graph can't be built.
+    let edges = MemoryGraph::build(conn)
+        .map(|g| graph_edges(&g, &index))
+        .unwrap_or_default();
+    let affinity: Vec<(usize, usize, f64)> =
+        edges.iter().map(|&(a, b, w)| (a, b, spring_stiffness(w))).collect();
+    force_layout(&mut stars, &affinity, 250);
+    let links: Vec<Assoc> = edges.into_iter().map(|(a, b, weight)| Assoc { a, b, weight }).collect();
+    Ok(WebData { stars, bonds, links })
 }
 
 /// `sara dream` with no label: the whole brain at once. Enter dives into the
@@ -839,7 +952,7 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             break Ok(());
                         }
                     }
-                    KeyCode::Tab | KeyCode::Right | KeyCode::Down => {
+                    KeyCode::Tab => {
                         if let Some(d) = &dream {
                             if !d.neighbors.is_empty() {
                                 dream_selected = (dream_selected + 1) % d.neighbors.len();
@@ -848,7 +961,7 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             selected = (selected + 1) % web.stars.len();
                         }
                     }
-                    KeyCode::BackTab | KeyCode::Left | KeyCode::Up => {
+                    KeyCode::BackTab => {
                         if let Some(d) = &dream {
                             if !d.neighbors.is_empty() {
                                 dream_selected =
@@ -856,6 +969,47 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             }
                         } else {
                             selected = (selected + web.stars.len() - 1) % web.stars.len();
+                        }
+                    }
+                    // Arrows: in the neuron view, cycle dendrites; in the web,
+                    // glide the selection (and camera) to the nearest star that
+                    // way, so navigation feels spatial rather than by index.
+                    KeyCode::Right => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected = (dream_selected + 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Right);
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected = (dream_selected + 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Down);
+                        }
+                    }
+                    KeyCode::Left => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected =
+                                    (dream_selected + d.neighbors.len() - 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Left);
+                        }
+                    }
+                    KeyCode::Up => {
+                        if let Some(d) = &dream {
+                            if !d.neighbors.is_empty() {
+                                dream_selected =
+                                    (dream_selected + d.neighbors.len() - 1) % d.neighbors.len();
+                            }
+                        } else {
+                            selected = nearest_in_direction(&web.stars, selected, Dir::Up);
                         }
                     }
                     KeyCode::Enter => {
@@ -963,7 +1117,37 @@ fn ui_web(
         .x_bounds([-100.0, 100.0])
         .y_bounds([-75.0, 75.0])
         .paint(move |ctx| {
-            // Bonds first, so stars render on top.
+            // Faint association threads underneath everything: the shared-anchor
+            // synapses that actually pull the layout together. Skip pairs that
+            // also have an explicit bond (drawn brighter, just below). Brightness
+            // tracks synapse weight; the selected star's threads warm up.
+            for l in &web.links {
+                if bond_exists(&web.bonds, l.a, l.b) {
+                    continue;
+                }
+                let (sa, sb) = (&web.stars[l.a], &web.stars[l.b]);
+                let touches_sel = l.a == selected || l.b == selected;
+                let faded = searching && !(sa.matches(query) || sb.matches(query));
+                // weight 0.15..1.0 → dim..less-dim grey; selected neighbourhood tints teal.
+                let t = ((l.weight - MIN_EDGE) / (1.0 - MIN_EDGE)).clamp(0.0, 1.0);
+                let color = if faded {
+                    Color::Rgb(18, 19, 23)
+                } else if touches_sel {
+                    let v = (60.0 + 90.0 * t) as u8;
+                    Color::Rgb(30, v, v)
+                } else {
+                    let v = (26.0 + 34.0 * t) as u8;
+                    Color::Rgb(v, v, (v as u16 + 8) as u8)
+                };
+                ctx.draw(&CanvasLine {
+                    x1: tx(sa.x),
+                    y1: ty(sa.y),
+                    x2: tx(sb.x),
+                    y2: ty(sb.y),
+                    color,
+                });
+            }
+            // Explicit authored bonds on top of the threads, stars on top of all.
             for b in &web.bonds {
                 let (sa, sb) = (&web.stars[b.a], &web.stars[b.b]);
                 let touches_sel = b.a == selected || b.b == selected;
@@ -1010,9 +1194,9 @@ fn ui_web(
                     Style::default().fg(color)
                 };
                 let text = if is_sel {
-                    format!("{glyph} {} ◄", s.label)
+                    format!("{glyph} ◄")
                 } else {
-                    format!("{glyph} {}", s.label)
+                    glyph.to_string()
                 };
                 ctx.print(tx(s.x), ty(s.y), Line::from(Span::styled(text, style)));
             }
@@ -1067,7 +1251,8 @@ fn ui_web(
             f,
             "the web",
             &[
-                ("Tab / arrows", "select a star"),
+                ("arrows", "move to the nearest star that way"),
+                ("Tab / ⇧Tab", "cycle stars in order"),
                 ("/", "search (label, tags, title, body)"),
                 ("n / N", "next / previous match"),
                 ("+ / - / 0", "zoom toward the selected star / reset"),
@@ -1175,24 +1360,128 @@ mod tests {
             recently_recalled: false,
         };
         let mut stars = vec![mk(&["a"]), mk(&["a"]), mk(&["b"]), mk(&["c"])];
-        let bonds = vec![Bond { a: 0, b: 1, relation: "supersedes".into() }];
-        force_layout(&mut stars, &bonds, 250);
+        // A firm spring between stars 0 and 1; strangers (2,3) share nothing.
+        let affinity = vec![(0usize, 1usize, 0.02f64)];
+        force_layout(&mut stars, &affinity, 250);
         let d = |i: usize, j: usize| {
             let (dx, dy) = (stars[i].x - stars[j].x, stars[i].y - stars[j].y);
             (dx * dx + dy * dy).sqrt()
         };
-        assert!(d(0, 1) < d(2, 3), "bonded+tag pair should sit closer than strangers");
+        assert!(d(0, 1) < d(2, 3), "sprung pair should sit closer than strangers");
         // Everything stays inside the canvas.
         assert!(stars.iter().all(|s| s.x.abs() <= 95.0 && s.y.abs() <= 68.0));
     }
 
     #[test]
-    fn shared_tags_counts_overlap() {
-        let a = vec!["memory".to_string(), "tui".to_string()];
-        let b = vec!["tui".to_string(), "dream".to_string()];
-        assert_eq!(shared_tags(&a, &b), 1);
-        assert_eq!(shared_tags(&a, &a), 2);
-        assert_eq!(shared_tags(&a, &[]), 0);
+    fn affinity_springs_derive_from_calibrated_graph_weights() {
+        use crate::infrastructure::model::Item;
+        let conn = db::open_in_memory_for_test();
+        let seed = |tags: &[&str]| -> String {
+            let mut item = Item::new_memory("t".into(), "b".into(), None);
+            item.tags = tags.iter().map(|s| s.to_string()).collect();
+            item.path = Some(String::new());
+            db::insert_item(&conn, &mut item).unwrap();
+            item.uuid.to_string()
+        };
+        // 'common' is on many memories (ubiquitous → low IDF); 'rare' is only on
+        // the a–b pair (high IDF → binds tighter).
+        let a = seed(&["common", "rare"]);
+        let b = seed(&["rare"]);
+        let c = seed(&["common"]);
+        for _ in 0..6 {
+            seed(&["common"]);
+        }
+
+        let mut index = HashMap::new();
+        for (i, m) in db::list_memories(&conn).unwrap().iter().enumerate() {
+            index.insert(m.uuid.to_string(), i);
+        }
+        let graph = MemoryGraph::build(&conn).unwrap();
+        let affinity: Vec<(usize, usize, f64)> = graph_edges(&graph, &index)
+            .into_iter()
+            .map(|(a, b, w)| (a, b, spring_stiffness(w)))
+            .collect();
+
+        let spring = |u: &str, v: &str| -> f64 {
+            let (iu, iv) = (index[u], index[v]);
+            affinity
+                .iter()
+                .find(|(i, j, _)| (*i == iu && *j == iv) || (*i == iv && *j == iu))
+                .map(|(_, _, k)| *k)
+                .unwrap_or(0.0)
+        };
+        let rare_pair = spring(&a, &b);
+        let common_pair = spring(&a, &c);
+        assert!(rare_pair > 0.0, "rare-anchor pair must keep a real spring");
+        assert!(
+            rare_pair > common_pair,
+            "rare shared anchor ({rare_pair}) must bind tighter than ubiquitous ({common_pair}); \
+             ubiquitous anchors below MIN_EDGE are dropped to 0 to de-clump the web",
+        );
+    }
+
+    #[test]
+    fn shared_anchor_pairs_become_association_threads() {
+        use crate::infrastructure::model::Item;
+        let conn = db::open_in_memory_for_test();
+        let seed = |tags: &[&str]| {
+            let mut item = Item::new_memory("t".into(), "b".into(), None);
+            item.tags = tags.iter().map(|s| s.to_string()).collect();
+            item.path = Some(String::new());
+            db::insert_item(&conn, &mut item).unwrap();
+        };
+        // Two memories share a rare tag but have NO explicit memory_link;
+        // padding memories make the tag genuinely rare (df < n, so idf > 0).
+        seed(&["rare"]);
+        seed(&["rare"]);
+        for _ in 0..6 {
+            seed(&["filler"]);
+        }
+
+        let web = load_web(&conn).unwrap();
+        assert!(web.bonds.is_empty(), "no explicit links were authored");
+        assert!(
+            !web.links.is_empty(),
+            "a shared-anchor association must surface as a drawable thread even without a bond",
+        );
+        assert!(
+            web.links.iter().all(|l| l.weight >= MIN_EDGE),
+            "only real-signal associations (>= MIN_EDGE) are kept as threads",
+        );
+    }
+
+    #[test]
+    fn bond_exists_matches_either_direction() {
+        let bonds = vec![Bond { a: 1, b: 4, relation: "similar_to".into() }];
+        assert!(bond_exists(&bonds, 1, 4));
+        assert!(bond_exists(&bonds, 4, 1));
+        assert!(!bond_exists(&bonds, 1, 2));
+    }
+
+    #[test]
+    fn nearest_in_direction_picks_the_star_that_way() {
+        let mk = |x: f64, y: f64| Star {
+            label: String::new(),
+            title: String::new(),
+            strength: 1.0,
+            provisional: false,
+            tags: vec![],
+            haystack: String::new(),
+            x,
+            y,
+            recently_recalled: false,
+        };
+        // 0 at origin; 1 right, 2 left, 3 up, 4 down.
+        let stars = vec![mk(0.0, 0.0), mk(10.0, 0.0), mk(-10.0, 0.0), mk(0.0, 10.0), mk(0.0, -10.0)];
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Right), 1);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Left), 2);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Up), 3);
+        assert_eq!(nearest_in_direction(&stars, 0, Dir::Down), 4);
+        // Nothing to the right of the right-most star → stays put.
+        assert_eq!(nearest_in_direction(&stars, 1, Dir::Right), 1);
+        // A near star straight ahead beats a far one off to the side.
+        let stars2 = vec![mk(0.0, 0.0), mk(5.0, 1.0), mk(6.0, 40.0)];
+        assert_eq!(nearest_in_direction(&stars2, 0, Dir::Right), 1);
     }
 
     #[test]
