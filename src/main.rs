@@ -402,6 +402,7 @@ fn run() -> Result<()> {
             file,
             top,
             limit,
+            spread,
             json,
         } => {
             let effective_limit = top.unwrap_or(limit);
@@ -413,8 +414,27 @@ fn run() -> Result<()> {
                 &project,
                 &file,
                 effective_limit,
+                spread,
                 json,
             )?;
+        }
+
+        Command::Consolidate {
+            window_days,
+            bucket_secs,
+            delta,
+        } => {
+            let n = infrastructure::memory_graph::consolidate(
+                &conn,
+                window_days,
+                chrono::Duration::seconds(bucket_secs),
+                delta,
+            )?;
+            if n == 0 {
+                println!("Nothing to consolidate — no co-firing recalls in the window.");
+            } else {
+                println!("Consolidated {n} co-activation synapse(s) from recent recalls.");
+            }
         }
 
         Command::Forget { handle, .. } => {

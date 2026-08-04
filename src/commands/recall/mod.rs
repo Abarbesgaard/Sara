@@ -170,6 +170,7 @@ pub fn run(
     projects: &[String],
     files: &[String],
     limit: i64,
+    spread: bool,
     as_json: bool,
 ) -> Result<()> {
     if as_json {
@@ -288,7 +289,64 @@ pub fn run(
             println!("  task {id} ({score:.2}): {desc}");
         }
     }
+
+    // Spreading activation: from the memories that matched directly, radiate
+    // outward across the graph and surface the associatively-related memories a
+    // flat keyword search would miss. Opt-in so default recall is unchanged.
+    if spread {
+        let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
+        if !related.is_empty() {
+            println!("\nAssociatively related (spreading activation):");
+            for (item, activation) in &related {
+                let label = format!("m{}", item.display_id.unwrap_or(0));
+                let snippet: String = item
+                    .summary
+                    .clone()
+                    .unwrap_or_else(|| item.body.clone())
+                    .chars()
+                    .take(100)
+                    .collect();
+                println!("  ~{label} ({activation:.2}): {}", snippet.trim());
+                // These surfaced to the caller — reinforce, exactly like direct
+                // hits, so they feed future Hebbian consolidation. Fire-and-forget.
+                let _ = db::record_memory_recall(conn, &item.uuid);
+            }
+        }
+    }
     Ok(())
+}
+
+/// Radiate activation from the memories that matched directly and return the
+/// *other* memories the network lights up, ranked by accumulated activation and
+/// capped at `max`. Empty when nothing matched a memory (e.g. task-only hits) or
+/// the graph has no such neighbours.
+fn spreading_related(
+    conn: &Connection,
+    hits: &[Hit],
+    max: usize,
+) -> Result<Vec<(Item, f64)>> {
+    let seeds: Vec<uuid::Uuid> = hits.iter().filter_map(|h| h.item_uuid).collect();
+    if seeds.is_empty() {
+        return Ok(vec![]);
+    }
+    let graph = crate::infrastructure::memory_graph::MemoryGraph::build(conn)?;
+    if graph.is_empty() {
+        return Ok(vec![]);
+    }
+    let seed_set: HashSet<uuid::Uuid> = seeds.iter().copied().collect();
+    let mut out = vec![];
+    for (uuid, activation) in graph.spread_activation(&seeds, 2, 0.6, 1e-6) {
+        if seed_set.contains(&uuid) {
+            continue; // already shown as a direct hit
+        }
+        if let Ok(item) = db::get_item_by_uuid(conn, &uuid.to_string()) {
+            out.push((item, activation));
+        }
+        if out.len() >= max {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 /// Trim, drop empty entries.
@@ -683,6 +741,55 @@ mod tests {
         let hits = collect_hits(&conn, "frobnicator", &[], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 1);
         assert!(hits[0].provisional, "provisional flag must be set");
+    }
+
+    #[test]
+    fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
+        let conn = db::open_in_memory_for_test();
+        // Direct hit on the query, and a linked neighbour that shares no query term.
+        let seed = seed_memory(
+            &conn,
+            "postgres connection pooling",
+            "use pgbouncer in front of postgres",
+            &[],
+            &["web-app"],
+        );
+        let neighbour = seed_memory(
+            &conn,
+            "supavisor tuning",
+            "raise pool_size for burst traffic",
+            &[],
+            &["web-app"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &seed.uuid.to_string(),
+            &neighbour.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
+
+        let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 1, "only the seed matches the query directly");
+
+        let related = spreading_related(&conn, &hits, 20).unwrap();
+        assert!(
+            related.iter().any(|(item, _)| item.uuid == neighbour.uuid),
+            "spreading activation should surface the linked neighbour"
+        );
+        assert!(
+            related.iter().all(|(item, _)| item.uuid != seed.uuid),
+            "direct hits must not be repeated in the associative section"
+        );
+    }
+
+    #[test]
+    fn spreading_related_is_empty_without_memory_seeds() {
+        let conn = db::open_in_memory_for_test();
+        // No memory hits → no seeds → nothing to spread from.
+        let related = spreading_related(&conn, &[], 20).unwrap();
+        assert!(related.is_empty());
     }
 
     #[test]
