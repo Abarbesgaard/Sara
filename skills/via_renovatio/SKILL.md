@@ -1,11 +1,12 @@
 ---
 name: via_renovatio
 description: >-
-  Improve an existing capability without changing its behaviour, under the
-  Adeptus rite of Via Renovatio. Invoke for refactors and internal
-  improvements: observe → PIN behaviour with a test FIRST → change → witness the
-  pinning tests pass identically → record. Completion requires behaviour-pinning
-  tests that pass unchanged before and after, with no new behaviour introduced.
+  Invoke to improve existing code WITHOUT changing its behaviour — refactors and
+  internal improvements — under the Adeptus rite of Via Renovatio. Observe → PIN
+  behaviour with a test FIRST → change → witness the pinning tests pass
+  identically → record. Completion requires behaviour-pinning tests that pass
+  unchanged before and after, with no new behaviour. New behaviour is
+  via_genesis; a bug fix is via_emendatio.
 argument-hint: <what to improve, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---

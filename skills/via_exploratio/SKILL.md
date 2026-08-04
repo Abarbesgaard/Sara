@@ -1,11 +1,11 @@
 ---
 name: via_exploratio
 description: >-
-  Investigate and understand without changing production code, under the Adeptus
-  rite of Via Exploratio. Invoke for research, root-cause hunts, and design
-  questions: frame one question → gather evidence → draw only conclusions the
+  Invoke to investigate or understand WITHOUT changing any production code —
+  research, root-cause hunts, design questions — under the Adeptus rite of Via
+  Exploratio. Frame one question → gather evidence → draw only conclusions the
   evidence carries → record findings. Completion requires each conclusion to
-  cite its evidence and no source file to be changed.
+  cite its evidence and no source file changed.
 argument-hint: <the question to answer, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Read, Glob, Grep, Bash(python3:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(rg:*), Bash(ls:*)
 ---

@@ -1,10 +1,11 @@
 ---
 name: via_publicatio
 description: >-
-  Carry finished work to the gate under the Adeptus rite of Via Publicatio.
-  Invoke to release: confirm every charge's Testes are already green → assemble
-  the record from the Acta → open and link the PR → halt at the gate.
-  Completion is the merge, not the opening — nothing is called done before it.
+  Invoke to release finished, green work to the gate — the Adeptus rite of Via
+  Publicatio, the SOLE rite that opens a PR. Confirm every charge's Testes are
+  already green → assemble the record from the Acta → open and link the PR →
+  halt at the gate. Completion is the merge, not the opening — nothing is called
+  done before it.
 argument-hint: <what to release, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Glob, Grep, Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---

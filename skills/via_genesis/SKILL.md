@@ -1,11 +1,12 @@
 ---
 name: via_genesis
 description: >-
-  Build a new capability under the Adeptus rite of Via Genesis. Invoke when
-  creating something where none stood: recall prior art → declare acceptance
-  criteria → build the smallest whole that meets one → witness → record.
-  Completion requires every acceptance criterion met, the build compiling and
-  running, and a test covering the new behaviour.
+  Invoke when building a new capability where none stood — the Adeptus rite of
+  Via Genesis. Recall prior art → declare acceptance criteria → build the
+  smallest whole that meets one → witness → record. Completion requires every
+  acceptance criterion met, the build compiling and running, and a test covering
+  the new behaviour. Improving existing behaviour is via_renovatio; fixing a bug
+  is via_emendatio.
 argument-hint: <what to build, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---

@@ -1,10 +1,12 @@
 ---
 name: via_emendatio
 description: >-
-  Run a defect repair under the Adeptus rite of Via Emendatio. Invoke for bug
-  fixes: reproduce → locate → prove with a FAILING test → mend → witness the
-  test passes and none regress → record the cause. Completion requires a test
-  that failed before and passes after, with the full suite green.
+  Invoke when a defect can be reproduced by a test — repair a bug under the
+  Adeptus rite of Via Emendatio. Reproduce → locate → prove with a FAILING test
+  → mend → witness the test passes and none regress → record the cause.
+  Completion requires a test that failed before and passes after, with the full
+  suite green. A broken build/config is via_restitutio; a static-analysis alert
+  is via_purgatio.
 argument-hint: <bug description or sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---

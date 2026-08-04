@@ -1,14 +1,14 @@
 ---
 name: via_restitutio
 description: >-
-  Restore a broken build, dependency set, or CI/config to a working, consistent
-  state under the Adeptus rite of Via Restitutio. Invoke when the red signal is a
-  command — a failing build, restore, install, or CI job — and the mend is
-  mechanical (version, manifest, lockfile, config), not logic: reproduce the red
-  command → locate the offending manifest/version/config → align (smallest mend) →
-  witness the same command green and the suite still green → record the cause.
-  Completion requires the command that was red to be green and the full suite
-  still green, with NO new test authored — the command itself is the Testis.
+  Invoke when the red signal is a COMMAND — a failing build, restore, install,
+  or CI job — and the mend is mechanical (version, manifest, lockfile, config),
+  not logic: restore a broken build/deps/CI to a consistent state under the
+  Adeptus rite of Via Restitutio. Reproduce the red command → locate the
+  offending manifest/version/config → align (smallest mend) → witness the same
+  command green and the suite still green → record the cause. Completion
+  requires the red command green and the full suite still green, with NO new
+  test authored — the command itself is the Testis.
 argument-hint: <the broken build/deps/config, the failing command, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---

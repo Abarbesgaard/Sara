@@ -1,10 +1,10 @@
 ---
 name: via_validatio
 description: >-
-  Write or run verification under the Adeptus rite of Via Validatio. Invoke to
-  add tests, prove a claim, or run a suite honestly: name what must be proven →
-  write/identify the check → run it and read the TRUE result → record the
-  outcome. Completion requires the check to exist and be run, with its real
+  Invoke to write or run verification honestly — add tests, prove a claim, or
+  run a suite — under the Adeptus rite of Via Validatio. Name what must be
+  proven → write/identify the check → run it and read the TRUE result → record
+  the outcome. Completion requires the check to exist and be run, with its real
   result recorded and any failure reported, never buried.
 argument-hint: <what to prove, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
