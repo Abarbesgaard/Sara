@@ -89,6 +89,10 @@ pub(crate) struct RecallParams {
     pub(crate) files: Option<Vec<String>>,
     /// Max results (default 20).
     pub(crate) limit: Option<i64>,
+    /// Also surface associatively-related memories by spreading activation
+    /// across the memory graph (links + shared tag/file/task anchors), returned
+    /// in an `associative` array alongside `keyword`. Off by default.
+    pub(crate) spread: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

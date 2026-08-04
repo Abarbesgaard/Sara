@@ -3102,6 +3102,9 @@ pub const MEMORY_LINK_RELATIONS: &[&str] = &[
     "similar_to",
     "derived_from",
     "used_in",
+    // Hebbian, machine-learned: two memories that fired together in the same
+    // recall. Undirected in spirit; stored canonically (smaller uuid first).
+    "co_activated",
 ];
 
 /// Insert a typed directed edge between two memories/tasks.
@@ -3248,6 +3251,51 @@ pub fn delete_memory_link(
         rusqlite::params![from_uuid, to_uuid, relation],
     )?;
     Ok(changed > 0)
+}
+
+/// Hebbian reinforcement: strengthen (or create) an undirected `co_activated`
+/// edge between two memories that fired together in recall. Stored canonically
+/// with the lexicographically smaller uuid as `from_uuid`, so the pair collapses
+/// to one row regardless of argument order. Weight accumulates across calls;
+/// a brand-new edge starts at `delta`. No-op when `a == b`.
+pub fn reinforce_coactivation(conn: &Connection, a: &str, b: &str, delta: f64) -> Result<()> {
+    if a == b {
+        return Ok(());
+    }
+    let (from, to) = if a < b { (a, b) } else { (b, a) };
+    conn.execute(
+        "INSERT INTO memory_links (from_uuid, to_uuid, relation, weight, created)
+         VALUES (?1, ?2, 'co_activated', ?3, ?4)
+         ON CONFLICT(from_uuid, to_uuid, relation)
+         DO UPDATE SET weight = weight + excluded.weight",
+        rusqlite::params![from, to, delta, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+/// Read `memory_recalled` events at or after `cutoff`, oldest first, as
+/// `(memory uuid, when)` pairs. Powers Hebbian consolidation: memories whose
+/// recall events cluster in time fired together (see `memory_graph`).
+pub fn memory_recall_events_since(
+    conn: &Connection,
+    cutoff: &DateTime<Utc>,
+) -> Result<Vec<(Uuid, DateTime<Utc>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT ref_uuid, at FROM events
+         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1
+         ORDER BY at ASC",
+    )?;
+    let rows = stmt.query_map([dt_to_str(cutoff)], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = vec![];
+    for r in rows {
+        let (u, at) = r?;
+        if let (Ok(uuid), Ok(dt)) = (Uuid::parse_str(&u), str_to_dt(&at)) {
+            out.push((uuid, dt));
+        }
+    }
+    Ok(out)
 }
 
 /// Whether any memory has ever been learned (active `items` row with

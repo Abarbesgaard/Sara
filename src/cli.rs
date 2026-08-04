@@ -454,9 +454,29 @@ pub enum Command {
         /// Max results
         #[arg(long, default_value_t = 20)]
         limit: i64,
+        /// Also surface associatively-related memories by spreading activation
+        /// across the memory graph (synapses = links + shared anchors), not just
+        /// direct keyword/tag matches
+        #[arg(long)]
+        spread: bool,
         /// Emit as JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// Consolidate memory (Hebbian): turn co-firing recalls — memories that
+    /// surfaced together — into reinforced `co_activated` synapses, so the
+    /// memory graph learns its own wiring from use.
+    Consolidate {
+        /// Look back this many days of recall events
+        #[arg(long, default_value_t = 30)]
+        window_days: i64,
+        /// Co-firing time window in seconds (recalls within it fired together)
+        #[arg(long, default_value_t = 5)]
+        bucket_secs: i64,
+        /// Weight added to a synapse per co-firing
+        #[arg(long, default_value_t = 0.1)]
+        delta: f64,
     },
 
     /// Archive (forget) a memory by its label — e.g. `sara forget m3`
