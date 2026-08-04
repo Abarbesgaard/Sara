@@ -66,7 +66,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics)."
+        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
         let v = self
@@ -79,6 +79,7 @@ impl SaraServer {
                     p.project.as_deref().unwrap_or(&[]),
                     p.files.as_deref().unwrap_or(&[]),
                     p.limit.unwrap_or(20),
+                    p.spread.unwrap_or(false),
                 )
             })
             .map_err(mcp_err)?;

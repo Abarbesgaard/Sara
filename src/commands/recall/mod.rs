@@ -63,6 +63,7 @@ pub fn recall_value(
     projects: &[String],
     files: &[String],
     limit: i64,
+    spread: bool,
 ) -> Result<serde_json::Value> {
     let query = query.trim();
     let tags = normalize(tags);
@@ -108,6 +109,28 @@ pub fn recall_value(
     // Only meaningful when a free-text query drove the search (tag/file-only = high).
     let (confidence, caveat) = match_confidence(query, &tags, &hits);
 
+    // Spreading activation (opt-in): radiate from the direct memory hits across
+    // the graph and return the associatively-related memories a keyword search
+    // misses, so agents can pull in context that shares no literal term. These
+    // surfaced to the caller, so reinforce them exactly like direct hits.
+    let associative: Vec<_> = if spread {
+        let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
+        related
+            .iter()
+            .map(|(item, activation)| {
+                let _ = db::record_memory_recall(conn, &item.uuid);
+                json!({
+                    "label": format!("m{}", item.display_id.unwrap_or(0)),
+                    "text": item.summary.clone().unwrap_or_else(|| item.body.clone()),
+                    "activation": activation,
+                    "strength": db::item_strength(conn, item),
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
     Ok(json!({
         "query": query,
         "tag": tags,
@@ -115,6 +138,7 @@ pub fn recall_value(
         "files": files,
         "keyword": keyword,
         "semantic": sem,
+        "associative": associative,
         "confidence": confidence,
         "caveat": caveat,
     }))
@@ -177,7 +201,7 @@ pub fn run(
         println!(
             "{}",
             serde_json::to_string_pretty(&recall_value(
-                conn, cfg, query, tags, projects, files, limit
+                conn, cfg, query, tags, projects, files, limit, spread
             )?)?
         );
         return Ok(());
@@ -744,6 +768,52 @@ mod tests {
     }
 
     #[test]
+    fn recall_value_associative_array_is_empty_by_default_and_populated_with_spread() {
+        let conn = db::open_in_memory_for_test();
+        let seed = seed_memory(
+            &conn,
+            "redis eviction policy",
+            "set maxmemory-policy allkeys-lru",
+            &[],
+            &["web-app"],
+        );
+        let neighbour = seed_memory(
+            &conn,
+            "cache stampede guard",
+            "add a mutex around cold-cache fills",
+            &[],
+            &["web-app"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &seed.uuid.to_string(),
+            &neighbour.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
+
+        // Default: no associative expansion, existing shape preserved.
+        let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, false).unwrap();
+        assert!(v["associative"].as_array().unwrap().is_empty());
+        assert_eq!(v["keyword"].as_array().unwrap().len(), 1);
+
+        // With spread: the linked neighbour appears associatively, not in keyword.
+        let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, true).unwrap();
+        let assoc = v["associative"].as_array().unwrap();
+        assert!(
+            assoc
+                .iter()
+                .any(|a| a["text"].as_str().unwrap().contains("mutex")),
+            "spread should surface the linked neighbour in the associative array"
+        );
+        assert!(
+            assoc.iter().all(|a| a["activation"].is_number()),
+            "each associative hit carries an activation score"
+        );
+    }
+
+    #[test]
     fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
         let conn = db::open_in_memory_for_test();
         // Direct hit on the query, and a linked neighbour that shares no query term.
@@ -820,7 +890,7 @@ mod tests {
     fn recall_with_no_memories_and_no_tasks_reports_none_recorded() {
         let conn = db::open_in_memory_for_test();
         let v =
-            recall_value(&conn, &cfg(), "", &["service-a".to_string()], &[], &[], 20).unwrap();
+            recall_value(&conn, &cfg(), "", &["service-a".to_string()], &[], &[], 20, false).unwrap();
         assert!(v["keyword"].as_array().unwrap().is_empty());
         assert!(!db::has_any_memories(&conn).unwrap());
     }
