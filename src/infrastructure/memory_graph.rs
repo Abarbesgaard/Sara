@@ -190,6 +190,23 @@ impl MemoryGraph {
         self.adj.iter().map(|v| v.len()).sum::<usize>() / 2
     }
 
+    /// Every undirected synapse once, as `(a_uuid, b_uuid, weight)`. For
+    /// consumers that drive geometry from synapse strength — `sara dream`'s
+    /// constellation uses these calibrated weights as its spring stiffness,
+    /// so the same rare-anchor-binds-tighter shape recall spreads over is what
+    /// the web draws.
+    pub fn edges(&self) -> Vec<(Uuid, Uuid, f64)> {
+        let mut out = Vec::with_capacity(self.edge_count());
+        for (i, neighbours) in self.adj.iter().enumerate() {
+            for &(j, w) in neighbours {
+                if i < j {
+                    out.push((self.nodes[i].uuid, self.nodes[j].uuid, w));
+                }
+            }
+        }
+        out
+    }
+
     /// Weight of the direct edge between two memories, if any (test/introspection).
     pub fn edge_weight(&self, a: &Uuid, b: &Uuid) -> Option<f64> {
         let (&ia, &ib) = (self.index.get(a)?, self.index.get(b)?);
