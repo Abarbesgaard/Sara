@@ -1,6 +1,9 @@
 ---
 name: via_purgatio
 description: >-
+  Use when a static-analysis alert (CodeQL/SAST/linter/non-fatal warning) flags
+  code that already builds and runs and your tests can't see — NOT a failing test
+  or broken build.
   PREREQUISITE — invoke ONLY when all hold: (1) the red signal is a static-analysis
   alert (CodeQL / SAST / security linter / a NON-FATAL compiler warning), NOT a
   failing test or a broken build; (2) the code already compiles and runs; (3) the
