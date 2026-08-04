@@ -45,26 +45,6 @@ pub struct Config {
     pub urgency: UrgencyConfig,
     /// Absolute path to Sara's private knowledge store (markdown notes/links).
     pub vault_path: Option<PathBuf>,
-    /// Embeddings provider settings (optional, for semantic search).
-    pub embeddings: EmbeddingsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct EmbeddingsConfig {
-    pub provider: String,
-    pub model: String,
-    pub base_url: Option<String>,
-}
-
-impl Default for EmbeddingsConfig {
-    fn default() -> Self {
-        EmbeddingsConfig {
-            provider: "ollama".to_string(),
-            model: "nomic-embed-text".to_string(),
-            base_url: None,
-        }
-    }
 }
 
 impl Default for Config {
@@ -74,25 +54,7 @@ impl Default for Config {
             date_dialect: "uk".to_string(),
             urgency: UrgencyConfig::default(),
             vault_path: None,
-            embeddings: EmbeddingsConfig::default(),
         }
-    }
-}
-
-impl Config {
-    /// True when [embeddings] was never customized (still Ollama defaults).
-    pub fn embeddings_at_default(&self) -> bool {
-        self.embeddings.provider == "ollama" && self.embeddings.model == "nomic-embed-text"
-    }
-
-    /// Embeddings provider.
-    pub fn effective_embeddings_provider(&self) -> String {
-        self.embeddings.provider.clone()
-    }
-
-    /// Deployment/model name for embeddings API calls.
-    pub fn effective_embeddings_model(&self) -> String {
-        self.embeddings.model.clone()
     }
 }
 

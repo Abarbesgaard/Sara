@@ -3838,27 +3838,6 @@ pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
     Ok(n)
 }
 
-pub fn upsert_embedding(conn: &Connection, ref_uuid: &Uuid, vector: &[f32]) -> Result<()> {
-    let vector_json = serde_json::to_string(vector)?;
-    conn.execute(
-        "INSERT INTO embeddings (ref_uuid, vector_json) VALUES (?1, ?2)
-         ON CONFLICT(ref_uuid) DO UPDATE SET vector_json = excluded.vector_json",
-        rusqlite::params![ref_uuid.to_string(), vector_json],
-    )?;
-    Ok(())
-}
-
-pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
-    let mut stmt = conn.prepare("SELECT ref_uuid, vector_json FROM embeddings")?;
-    let rows = stmt.query_map([], |r| {
-        let uuid: String = r.get(0)?;
-        let json: String = r.get(1)?;
-        let vec: Vec<f32> = serde_json::from_str(&json).unwrap_or_default();
-        Ok((uuid, vec))
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-}
-
 // ── code anchors (task_files with reason + symbol/lines) ─────────────────────
 
 #[derive(Debug, Clone)]
