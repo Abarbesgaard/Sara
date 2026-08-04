@@ -1,15 +1,20 @@
 ---
 name: via_purgatio
 description: >-
+  PREREQUISITE — invoke ONLY when all hold: (1) the red signal is a static-analysis
+  alert (CodeQL / SAST / security linter / a NON-FATAL compiler warning), NOT a
+  failing test or a broken build; (2) the code already compiles and runs; (3) the
+  functional tests are BLIND to the flaw, so a passing suite cannot prove the cure;
+  (4) the fix is behaviour-preserving (a mechanical mend, or a justified suppression
+  of a false positive) — no new logic. If the diagnostic breaks the build → Via
+  Restitutio; if a failing test can reproduce it → Via Emendatio; if it needs new
+  behaviour → Emendatio/Genesis.
   Cleanse a static-analysis finding from working code under the Adeptus rite of
-  Via Purgatio. Invoke when the red signal is an analyzer alert — CodeQL, a SAST
-  or security linter, a non-fatal compiler diagnostic — not a failing test or build: the
-  code runs, but a scanner flags a latent flaw (an undisposed IDisposable, a
-  tainted flow, an unencoded output). Behaviour must not change and functional
-  tests are BLIND to the flaw, so the analyzer re-scan — not the unit suite — is
-  the completion Testis. Findings of the SAME rule may be batched into one charge.
-  Completion requires the analyzer to report the finding(s) resolved and the
-  existing suite still green, with no new behaviour introduced.
+  Via Purgatio: the code runs, but a scanner flags a latent flaw (an undisposed
+  IDisposable, a tainted flow, an unencoded output). The analyzer re-scan — not the
+  unit suite — is the completion Testis. Findings of the SAME rule may be batched
+  into one charge. Completion requires the analyzer to report the finding(s)
+  resolved and the existing suite still green, with no new behaviour introduced.
 argument-hint: <the analyzer finding(s) — rule id + file:line — or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---
