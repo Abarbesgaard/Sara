@@ -223,7 +223,7 @@
       <h4>Purgatio</h4>
       <p class="for">cleanse a static-analysis finding (CodeQL/SAST), behaviour unchanged</p>
       <span class="lbl">Ritus</span>
-      <p class="ritus">confirm the alert → pin no-regression with the <b>existing green suite</b> → cleanse (smallest behaviour-preserving mend) → witness the <b>analyzer re-scan</b> clean and suite still green → record the rule and fix pattern</p>
+      <p class="ritus">confirm the alert → pin no-regression with the <b>existing green suite</b> → cleanse (smallest behaviour-preserving mend, or a justified suppression with recorded rationale) → witness the <b>analyzer re-scan</b> clean and suite still green → record the rule and fix pattern</p>
       <span class="lbl">Testes</span>
       <p class="testes">the <b>analyzer</b> reports the finding(s) resolved (the scan is the witness, not the blind unit suite); suite still green; no new behaviour; same-rule findings may be batched; CI-only scan defers completion to the pipeline</p>
     </div>
