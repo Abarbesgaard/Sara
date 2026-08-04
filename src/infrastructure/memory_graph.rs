@@ -231,6 +231,106 @@ impl MemoryGraph {
         });
         out.into_iter().map(|(_, u, a)| (u, a)).collect()
     }
+
+    /// Like [`spread_activation`], but also reconstructs *why* each memory lit
+    /// up: the strongest synaptic path back to a seed. For every activated node
+    /// we remember the single neighbour that delivered the largest activation
+    /// contribution; following those predecessors yields the dominant path
+    /// (`seed → … → node`), returned as memory labels. Seeds have a one-element
+    /// path (themselves). Ranking and thresholds match `spread_activation`.
+    pub fn spread_activation_explained(
+        &self,
+        seeds: &[Uuid],
+        hops: usize,
+        decay: f64,
+        threshold: f64,
+    ) -> Vec<Activation> {
+        let n = self.nodes.len();
+        let mut total = vec![0.0f64; n];
+        let mut layer = vec![0.0f64; n];
+        // Strongest single incoming contribution per node, and its source.
+        let mut best_in = vec![0.0f64; n];
+        let mut parent: Vec<Option<usize>> = vec![None; n];
+        let mut is_seed = vec![false; n];
+
+        for s in seeds {
+            if let Some(&i) = self.index.get(s) {
+                let a = self.nodes[i].strength.max(0.0);
+                layer[i] += a;
+                total[i] += a;
+                is_seed[i] = true;
+            }
+        }
+
+        for _ in 0..hops {
+            let mut next = vec![0.0f64; n];
+            for (i, &src) in layer.iter().enumerate() {
+                if src <= threshold {
+                    continue;
+                }
+                for &(j, w) in &self.adj[i] {
+                    let delta = src * w * decay;
+                    if delta > threshold {
+                        next[j] += delta;
+                        // Record the dominant synapse into j (strongest single
+                        // hop), but never overwrite a seed's own identity.
+                        if !is_seed[j] && delta > best_in[j] {
+                            best_in[j] = delta;
+                            parent[j] = Some(i);
+                        }
+                    }
+                }
+            }
+            for (t, nx) in total.iter_mut().zip(next.iter()) {
+                *t += *nx;
+            }
+            layer = next;
+        }
+
+        let mut out: Vec<(usize, f64)> = (0..n)
+            .filter(|&i| total[i] > threshold)
+            .map(|i| (i, total[i]))
+            .collect();
+        out.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+
+        out.into_iter()
+            .map(|(i, activation)| Activation {
+                uuid: self.nodes[i].uuid,
+                activation,
+                path: self.trace_path(i, &parent),
+            })
+            .collect()
+    }
+
+    /// Walk the predecessor chain from `node` back to a seed, returning the
+    /// labels in seed→node order. Cycle-guarded (a node can appear only once).
+    fn trace_path(&self, node: usize, parent: &[Option<usize>]) -> Vec<String> {
+        let mut chain = vec![node];
+        let mut seen = std::collections::HashSet::from([node]);
+        let mut cur = node;
+        while let Some(p) = parent[cur] {
+            if !seen.insert(p) {
+                break;
+            }
+            chain.push(p);
+            cur = p;
+        }
+        chain.reverse(); // seed first
+        chain.into_iter().map(|i| self.nodes[i].label.clone()).collect()
+    }
+}
+
+/// One activated memory with its accumulated activation and the dominant
+/// synaptic path (`seed → … → this`) as memory labels — recall's "why".
+#[derive(Debug, Clone)]
+pub struct Activation {
+    pub uuid: Uuid,
+    pub activation: f64,
+    pub path: Vec<String>,
 }
 
 /// Count elements shared between two small unordered sets.
@@ -357,6 +457,30 @@ mod tests {
         assert!(act[&a] > act[&b]);
         assert!(act[&b] > act[&c]);
         assert!(act[&c] > 0.0, "two-hop neighbour must be activated");
+    }
+
+    #[test]
+    fn explained_spread_reconstructs_the_synaptic_path() {
+        let conn = db::open_in_memory_for_test();
+        // Chain a — b — c via shared tags (a,b share "x"; b,c share "y").
+        let a = seed(&conn, &["x"]);
+        let b = seed(&conn, &["x", "y"]);
+        let c = seed(&conn, &["y"]);
+
+        let g = MemoryGraph::build(&conn).unwrap();
+        let explained = g.spread_activation_explained(&[a], 2, 0.6, 1e-6);
+
+        let seed_label = g.nodes[g.index[&a]].label.clone();
+        let mid_label = g.nodes[g.index[&b]].label.clone();
+        let far_label = g.nodes[g.index[&c]].label.clone();
+
+        // The seed's path is just itself.
+        let seed_act = explained.iter().find(|e| e.uuid == a).unwrap();
+        assert_eq!(seed_act.path, vec![seed_label.clone()]);
+
+        // The two-hop neighbour's dominant path is a → b → c.
+        let far = explained.iter().find(|e| e.uuid == c).unwrap();
+        assert_eq!(far.path, vec![seed_label, mid_label, far_label]);
     }
 
     #[test]

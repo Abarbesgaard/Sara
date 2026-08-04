@@ -117,13 +117,14 @@ pub fn recall_value(
         let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
         related
             .iter()
-            .map(|(item, activation)| {
-                let _ = db::record_memory_recall(conn, &item.uuid);
+            .map(|r| {
+                let _ = db::record_memory_recall(conn, &r.item.uuid);
                 json!({
-                    "label": format!("m{}", item.display_id.unwrap_or(0)),
-                    "text": item.summary.clone().unwrap_or_else(|| item.body.clone()),
-                    "activation": activation,
-                    "strength": db::item_strength(conn, item),
+                    "label": format!("m{}", r.item.display_id.unwrap_or(0)),
+                    "text": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()),
+                    "activation": r.activation,
+                    "strength": db::item_strength(conn, &r.item),
+                    "via": r.path,
                 })
             })
             .collect()
@@ -321,23 +322,43 @@ pub fn run(
         let related = spreading_related(conn, &hits, limit.max(1) as usize)?;
         if !related.is_empty() {
             println!("\nAssociatively related (spreading activation):");
-            for (item, activation) in &related {
-                let label = format!("m{}", item.display_id.unwrap_or(0));
-                let snippet: String = item
+            for r in &related {
+                let label = format!("m{}", r.item.display_id.unwrap_or(0));
+                let snippet: String = r
+                    .item
                     .summary
                     .clone()
-                    .unwrap_or_else(|| item.body.clone())
+                    .unwrap_or_else(|| r.item.body.clone())
                     .chars()
                     .take(100)
                     .collect();
-                println!("  ~{label} ({activation:.2}): {}", snippet.trim());
+                // Show the path minus the node itself: seed → … → (this).
+                let via = if r.path.len() > 1 {
+                    format!("  [via {}]", r.path[..r.path.len() - 1].join(" → "))
+                } else {
+                    String::new()
+                };
+                println!(
+                    "  ~{label} ({:.2}): {}{}",
+                    r.activation,
+                    snippet.trim(),
+                    via
+                );
                 // These surfaced to the caller — reinforce, exactly like direct
                 // hits, so they feed future Hebbian consolidation. Fire-and-forget.
-                let _ = db::record_memory_recall(conn, &item.uuid);
+                let _ = db::record_memory_recall(conn, &r.item.uuid);
             }
         }
     }
     Ok(())
+}
+
+/// A memory reached by spreading activation, with the dominant synaptic path
+/// (`seed → … → this`, as labels) that explains why it lit up.
+struct Related {
+    item: Item,
+    activation: f64,
+    path: Vec<String>,
 }
 
 /// Radiate activation from the memories that matched directly and return the
@@ -348,7 +369,7 @@ fn spreading_related(
     conn: &Connection,
     hits: &[Hit],
     max: usize,
-) -> Result<Vec<(Item, f64)>> {
+) -> Result<Vec<Related>> {
     let seeds: Vec<uuid::Uuid> = hits.iter().filter_map(|h| h.item_uuid).collect();
     if seeds.is_empty() {
         return Ok(vec![]);
@@ -359,12 +380,16 @@ fn spreading_related(
     }
     let seed_set: HashSet<uuid::Uuid> = seeds.iter().copied().collect();
     let mut out = vec![];
-    for (uuid, activation) in graph.spread_activation(&seeds, 2, 0.6, 1e-6) {
-        if seed_set.contains(&uuid) {
+    for act in graph.spread_activation_explained(&seeds, 2, 0.6, 1e-6) {
+        if seed_set.contains(&act.uuid) {
             continue; // already shown as a direct hit
         }
-        if let Ok(item) = db::get_item_by_uuid(conn, &uuid.to_string()) {
-            out.push((item, activation));
+        if let Ok(item) = db::get_item_by_uuid(conn, &act.uuid.to_string()) {
+            out.push(Related {
+                item,
+                activation: act.activation,
+                path: act.path,
+            });
         }
         if out.len() >= max {
             break;
@@ -811,6 +836,12 @@ mod tests {
             assoc.iter().all(|a| a["activation"].is_number()),
             "each associative hit carries an activation score"
         );
+        assert!(
+            assoc
+                .iter()
+                .all(|a| a["via"].as_array().is_some_and(|p| !p.is_empty())),
+            "each associative hit carries a non-empty 'via' synaptic path"
+        );
     }
 
     #[test]
@@ -845,13 +876,23 @@ mod tests {
 
         let related = spreading_related(&conn, &hits, 20).unwrap();
         assert!(
-            related.iter().any(|(item, _)| item.uuid == neighbour.uuid),
+            related.iter().any(|r| r.item.uuid == neighbour.uuid),
             "spreading activation should surface the linked neighbour"
         );
         assert!(
-            related.iter().all(|(item, _)| item.uuid != seed.uuid),
+            related.iter().all(|r| r.item.uuid != seed.uuid),
             "direct hits must not be repeated in the associative section"
         );
+        // The neighbour's path explains the hop: it ends at the neighbour and
+        // starts at the seed memory.
+        let n = related
+            .iter()
+            .find(|r| r.item.uuid == neighbour.uuid)
+            .unwrap();
+        let seed_lbl = format!("m{}", seed.display_id.unwrap_or(0));
+        let neighbour_lbl = format!("m{}", neighbour.display_id.unwrap_or(0));
+        assert_eq!(n.path.first(), Some(&seed_lbl));
+        assert_eq!(n.path.last(), Some(&neighbour_lbl));
     }
 
     #[test]
