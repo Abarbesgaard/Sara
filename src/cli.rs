@@ -397,6 +397,10 @@ pub enum Command {
         /// Actually run the verification command(s)
         #[arg(long)]
         run: bool,
+        /// Run each step/criterion's own verify command and tick it done only
+        /// when it exits 0, recording the result (implies running)
+        #[arg(long)]
+        tick_on_pass: bool,
     },
 
     /// Save a distilled, freeform memory for future recall (global, not
@@ -720,6 +724,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Reopen step N
     Undone {
@@ -730,6 +737,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove step N (a checklist item / acceptance criterion)
     #[command(visible_alias = "rm")]
@@ -741,6 +751,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 

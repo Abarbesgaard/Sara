@@ -349,6 +349,7 @@ fn run() -> Result<()> {
                 n,
                 result,
                 kind,
+                json,
             } => {
                 commands::guide::step_done(
                     &conn,
@@ -357,18 +358,24 @@ fn run() -> Result<()> {
                     n,
                     result.as_deref(),
                     kind.as_deref(),
+                    json,
                 )?;
             }
-            cli::StepAction::Undone { id, n, kind } => {
-                commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref())?;
+            cli::StepAction::Undone { id, n, kind, json } => {
+                commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref(), json)?;
             }
-            cli::StepAction::Remove { id, n, kind } => {
-                commands::guide::step_remove(&conn, &cfg, &id, n, kind.as_deref())?;
+            cli::StepAction::Remove { id, n, kind, json } => {
+                commands::guide::step_remove(&conn, &cfg, &id, n, kind.as_deref(), json)?;
             }
         },
 
-        Command::Verify { id, step, run } => {
-            commands::guide::verify(&conn, &cfg, &id, step, run)?;
+        Command::Verify {
+            id,
+            step,
+            run,
+            tick_on_pass,
+        } => {
+            commands::guide::verify(&conn, &cfg, &id, step, run, tick_on_pass)?;
         }
 
         Command::Learn {

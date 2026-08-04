@@ -3994,6 +3994,21 @@ pub fn set_meta_json(conn: &Connection, task_uuid: &Uuid, json: &str) -> Result<
     Ok(())
 }
 
+/// Mark a task active (start its timer) if it is not already running. Sets
+/// `started_at`/`modified` to now and returns `true` when the task transitioned
+/// from idle to active, `false` if it was already active. Used to auto-transition
+/// a task to "in progress" the first time work is recorded against it (a
+/// step marked done or a verification run), so status reflects reality without
+/// the caller remembering a separate `sara start`.
+pub fn ensure_started(conn: &Connection, task_uuid: &Uuid) -> Result<bool> {
+    let now = dt_to_str(&Utc::now());
+    let changed = conn.execute(
+        "UPDATE tasks SET started_at=?2, modified=?2 WHERE uuid=?1 AND started_at IS NULL",
+        params![task_uuid.to_string(), now],
+    )?;
+    Ok(changed > 0)
+}
+
 // ── AI run audit trail ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -5160,6 +5175,28 @@ mod tests {
             )
             .unwrap();
         assert_eq!(removed, 1);
+    }
+
+    #[test]
+    fn ensure_started_transitions_idle_task_once() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        assert!(task.started_at.is_none());
+
+        // First call flips it from idle → active.
+        assert!(ensure_started(&conn, &task.uuid).unwrap());
+        let reloaded = get_task_by_uuid_prefix(&conn, &task.uuid.to_string())
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.started_at.is_some());
+
+        // Second call is a no-op (already active) and must not reset the clock.
+        let first_started = reloaded.started_at;
+        assert!(!ensure_started(&conn, &task.uuid).unwrap());
+        let again = get_task_by_uuid_prefix(&conn, &task.uuid.to_string())
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.started_at, first_started);
     }
 
     #[test]
