@@ -32,6 +32,12 @@ struct Hit {
     /// True when this hit came from an exact `--tag`/`--project` match rather
     /// than plain-text FTS ranking.
     exact_match: bool,
+    /// bm25 relevance rank for free-text FTS hits: the hit's 0-based position in
+    /// `db::search_fts`'s `ORDER BY rank` result (lower = better match). `None`
+    /// for exact-filter hits, which are ordered by strength/recency instead.
+    /// Used as the primary tie-break among equal-strength FTS hits so the most
+    /// query-relevant memory leads (matters for LLM retrieval accuracy).
+    fts_rank: Option<usize>,
     modified: Option<DateTime<Utc>>,
     /// File paths the memory is associated with (from `item_files`).
     files: Vec<String>,
@@ -590,10 +596,12 @@ fn collect_hits(
             }
         }
         None => {
-            for h in &fts_hits {
+            for (rank, h) in fts_hits.iter().enumerate() {
                 if h.ref_kind.starts_with("item_") {
                     if let Ok(item) = db::get_item_by_uuid(conn, &h.task_uuid) {
-                        hits.push(item_hit(conn, item, false));
+                        let mut hit = item_hit(conn, item, false);
+                        hit.fts_rank = Some(rank);
+                        hits.push(hit);
                     }
                     continue;
                 }
@@ -620,18 +628,27 @@ fn collect_hits(
                     item_uuid: None,
                     derived_from_labels: vec![],
                     derived_count: 0,
+                    fts_rank: Some(rank),
                 });
             }
         }
     }
 
     hits.sort_by(|a, b| {
+        // Exact tag/file matches lead; then linkage-derived strength; then bm25
+        // relevance (lower fts_rank = better match, `None` sorts last so exact
+        // hits fall through to recency); finally most-recently-modified.
         b.exact_match
             .cmp(&a.exact_match)
             .then(
                 b.strength
                     .partial_cmp(&a.strength)
                     .unwrap_or(std::cmp::Ordering::Equal),
+            )
+            .then(
+                a.fts_rank
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.fts_rank.unwrap_or(usize::MAX)),
             )
             .then(b.modified.cmp(&a.modified))
     });
@@ -710,6 +727,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         item_uuid: Some(item.uuid),
         derived_from_labels,
         derived_count,
+        fts_rank: None,
     }
 }
 
@@ -1054,6 +1072,33 @@ mod tests {
         let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
+    }
+
+    #[test]
+    fn bm25_relevance_orders_equal_strength_fts_hits_over_recency() {
+        let conn = db::open_in_memory_for_test();
+        // Strong bm25 match: term-dense, short document. Plain memory (1.0).
+        let relevant = seed_memory(&conn, "widget widget widget", "widget", &[], &[]);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Weak bm25 match: the term appears once in a long, mostly-unrelated
+        // body. Inserted later, so it is MORE RECENT — under the old recency
+        // tie-break it wrongly led despite being the poorer match.
+        let recent_but_weak = seed_memory(
+            &conn,
+            "misc note",
+            "this is a long note about many unrelated things and it merely \
+             mentions a widget once among lots of filler words and more filler",
+            &[],
+            &[],
+        );
+        assert!(recent_but_weak.modified >= relevant.modified);
+
+        let hits = collect_hits(&conn, "widget", &[], &[], &[], 20).unwrap();
+        assert_eq!(hits.len(), 2, "both memories match the query");
+        assert_eq!(
+            hits[0].description, "widget widget widget",
+            "the stronger bm25 match must lead over the more-recent weaker match"
+        );
     }
 
     #[test]
