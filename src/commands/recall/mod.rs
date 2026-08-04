@@ -15,9 +15,6 @@ use crate::infrastructure::model::{Item, Task};
 /// (`sara learn`), indexed via `item_tags`/`item_projects` rather than FTS
 /// ranking, so a known topic can be found precisely instead of by keyword luck.
 ///
-/// When the `embeddings` table has been populated, semantic hits are blended in
-/// (hybrid keyword + vector recall); today FTS5 is the active engine.
-///
 /// A single resolved hit, unifying task-level FTS matches and memory
 /// (`items`) hits so both can be ranked together.
 struct Hit {
@@ -60,7 +57,7 @@ struct Hit {
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
-/// path: keyword (FTS5) hits, exact tag/project hits, plus any semantic hits.
+/// path: keyword (FTS5) hits and exact tag/project hits.
 pub fn recall_value(
     conn: &Connection,
     _cfg: &Config,
@@ -106,10 +103,6 @@ pub fn recall_value(
             })
         })
         .collect();
-    let sem: Vec<_> = semantic_hits(conn, query, limit)
-        .iter()
-        .map(|(id, desc, score)| json!({ "task": id, "task_description": desc, "score": score }))
-        .collect();
 
     // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
     // Only meaningful when a free-text query drove the search (tag/file-only = high).
@@ -144,7 +137,6 @@ pub fn recall_value(
         "project": projects,
         "files": files,
         "keyword": keyword,
-        "semantic": sem,
         "associative": associative,
         "confidence": confidence,
         "caveat": caveat,
@@ -224,9 +216,8 @@ pub fn run(
     }
 
     let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
-    let semantic = semantic_hits(conn, query, limit);
 
-    if hits.is_empty() && semantic.is_empty() {
+    if hits.is_empty() {
         if !files.is_empty() {
             println!("No memories tied to the given file(s).");
         } else if !tags.is_empty() || !projects.is_empty() {
@@ -312,12 +303,6 @@ pub fn run(
                     format!(" ({age})")
                 }
             );
-        }
-    }
-    if !semantic.is_empty() {
-        println!("\nSemantically related:");
-        for (id, desc, score) in &semantic {
-            println!("  task {id} ({score:.2}): {desc}");
         }
     }
 
@@ -749,12 +734,6 @@ fn age_str(dt: DateTime<Utc>) -> String {
     }
 }
 
-/// Best-effort vector recall over any stored embeddings. Returns empty until the
-/// embeddings table is populated (no query-side embedding is computed otherwise).
-fn semantic_hits(_conn: &Connection, _query: &str, _limit: i64) -> Vec<(i64, String, f32)> {
-    Vec::new()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1072,6 +1051,26 @@ mod tests {
         let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
+    }
+
+    #[test]
+    fn recall_value_keyword_and_confidence_are_stable() {
+        // Pins the observable recall_value contract that must survive the
+        // removal of the dead semantic scaffold: a matching free-text query
+        // yields its keyword hit and a medium confidence signal.
+        let conn = db::open_in_memory_for_test();
+        seed_memory(
+            &conn,
+            "kafka consumer lag",
+            "monitor consumer group lag with burrow",
+            &[],
+            &["platform"],
+        );
+        let v = recall_value(&conn, &cfg(), "burrow", &[], &[], &[], 20, false).unwrap();
+        let keyword = v["keyword"].as_array().unwrap();
+        assert_eq!(keyword.len(), 1, "the matching memory surfaces as a keyword hit");
+        assert_eq!(keyword[0]["description"], "kafka consumer lag");
+        assert_eq!(v["confidence"], "medium", "free-text FTS hit => medium confidence");
     }
 
     #[test]
