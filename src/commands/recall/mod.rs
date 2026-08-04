@@ -78,36 +78,30 @@ pub fn recall_value(
     let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
 
     if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
-        anyhow::bail!("Provide a search query, --tag, --project, or --file to recall.");
+        // Bare recall: surface the most recent memories instead of erroring, so
+        // the cheap exploratory "what do I know?" call just works.
+        let hits = recent_hits(conn, limit)?;
+        for h in &hits {
+            if let Some(u) = h.item_uuid {
+                let _ = db::record_memory_recall(conn, &u);
+            }
+        }
+        let keyword = keyword_json(&hits);
+        return Ok(json!({
+            "query": query,
+            "tag": tags,
+            "project": projects,
+            "files": files,
+            "keyword": keyword,
+            "associative": [],
+            "confidence": "recent",
+            "caveat": "Most recent memories (no query or filter given).",
+            "recent": true,
+        }));
     }
 
     let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
-    let keyword: Vec<_> = hits
-        .iter()
-        .map(|h| {
-            json!({
-                "ref_kind": h.ref_kind,
-                "label": h.label,
-                "description": h.description,
-                "text": h.snippet,
-                "strength": h.strength,
-                "exact_match": h.exact_match,
-                "loose": h.loose,
-                "modified": h.modified.map(|m| m.to_rfc3339()),
-                "files": h.files,
-                "superseded_by": h.superseded_by,
-                "provisional": h.provisional,
-                "canonical": h.derived_count > 0,
-                "derived_count": h.derived_count,
-                "derived_from": h.derived_from_labels,
-                "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
-                    "id": t.id.unwrap_or(0),
-                    "description": t.description,
-                    "source": src,
-                })).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
+    let keyword = keyword_json(&hits);
 
     // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
     // Only meaningful when a free-text query drove the search (tag/file-only = high).
@@ -228,14 +222,18 @@ pub fn run(
     let projects = normalize(projects);
     let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
 
-    if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
-        anyhow::bail!("Provide a search query, --tag, --project, or --file to recall.");
-    }
+    let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
 
-    let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
+    let hits = if recent {
+        recent_hits(conn, limit)?
+    } else {
+        collect_hits(conn, query, &tags, &projects, &files, limit)?
+    };
 
     if hits.is_empty() {
-        if !files.is_empty() {
+        if recent {
+            println!("No memories recorded yet. Use `sara learn \"...\"` to save one.");
+        } else if !files.is_empty() {
             println!("No memories tied to the given file(s).");
         } else if !tags.is_empty() || !projects.is_empty() {
             if !db::has_any_memories(conn)? {
@@ -253,7 +251,15 @@ pub fn run(
         return Ok(());
     }
 
-    if !hits.is_empty() {
+    if recent {
+        // Bare recall reinforces the surfaced memories, mirroring collect_hits.
+        for h in &hits {
+            if let Some(u) = h.item_uuid {
+                let _ = db::record_memory_recall(conn, &u);
+            }
+        }
+        println!("Recent memories (no query given):");
+    } else {
         // Show confidence caveat for FTS-only results so callers know the absence
         // of further hits is not a guarantee that nothing similar exists.
         let (_, caveat) = match_confidence(query, &tags, &hits);
@@ -261,7 +267,9 @@ pub fn run(
             println!("Note: {caveat}");
         }
         println!("Keyword matches:");
-        for h in &hits {
+    }
+
+    for h in &hits {
             let age = h.modified.map(age_str).unwrap_or_default();
             let marker = if h.exact_match {
                 "="
@@ -327,7 +335,6 @@ pub fn run(
                 }
             );
         }
-    }
 
     // Spreading activation: from the memories that matched directly, radiate
     // outward across the graph and surface the associatively-related memories a
@@ -684,6 +691,48 @@ fn collect_hits(
     }
 
     Ok(hits)
+}
+
+/// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
+/// and query-driven paths.
+fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
+    hits.iter()
+        .map(|h| {
+            json!({
+                "ref_kind": h.ref_kind,
+                "label": h.label,
+                "description": h.description,
+                "text": h.snippet,
+                "strength": h.strength,
+                "exact_match": h.exact_match,
+                "loose": h.loose,
+                "modified": h.modified.map(|m| m.to_rfc3339()),
+                "files": h.files,
+                "superseded_by": h.superseded_by,
+                "provisional": h.provisional,
+                "canonical": h.derived_count > 0,
+                "derived_count": h.derived_count,
+                "derived_from": h.derived_from_labels,
+                "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
+                    "id": t.id.unwrap_or(0),
+                    "description": t.description,
+                    "source": src,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect()
+}
+
+/// Recent memories for a bare `sara recall` (no query, no filters): newest
+/// memories first, truncated to `limit`. Lets the cheap exploratory recall
+/// just work instead of erroring, so an agent can survey what it knows.
+fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {
+    let mut memories = db::list_memories(conn)?;
+    memories.truncate(limit.max(0) as usize);
+    Ok(memories
+        .into_iter()
+        .map(|m| item_hit(conn, m, false))
+        .collect())
 }
 
 fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
@@ -1144,6 +1193,21 @@ mod tests {
         assert!(!hits[0].loose, "token-AND hit must not be flagged loose");
         let (confidence, _) = match_confidence("consumer lag", &[], &hits);
         assert_eq!(confidence, "medium");
+    }
+
+    #[test]
+    fn bare_recall_returns_recent_memories_instead_of_erroring() {
+        // A `sara recall` with no query/tag/project/file must not error — it
+        // surfaces the most recent memories so exploratory recall just works.
+        let conn = db::open_in_memory_for_test();
+        seed_memory(&conn, "alpha note", "first insight", &[], &["proj"]);
+        seed_memory(&conn, "beta note", "second insight", &[], &["proj"]);
+
+        let v = recall_value(&conn, &cfg(), "", &[], &[], &[], 20, false).unwrap();
+        assert_eq!(v["confidence"], "recent");
+        assert_eq!(v["recent"], true);
+        let keyword = v["keyword"].as_array().unwrap();
+        assert_eq!(keyword.len(), 2, "both memories surface as recent hits");
     }
 
     #[test]

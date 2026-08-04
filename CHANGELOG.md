@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Features
+
+- **`sara verify --tick-on-pass`** — runs each step/acceptance criterion's own stored verify command and marks it done **only** when it exits 0, recording the pass/fail as the item's execution result. Collapses "run the check", "read the output", and "tick the box" into a single call (`sara verify <id> --tick-on-pass`), instead of running the test by hand and then ticking manually.
+- **`--json` on `sara step done` / `step undone` / `step remove`** — these write commands now emit the same structured record the MCP tools return (task, uuid, kind, index, commit, `activated`) when passed `--json`, so agents can act on fields instead of parsing human text.
+- **Auto-transition to active on first work** — the first `sara step done` or `sara verify --run`/`--tick-on-pass` against an idle task now starts its timer automatically (`ensure_started`), so a task's active state reflects reality without remembering a separate `sara start`. `step done --json` reports whether it `activated` the task.
+- **`sara recall` with no arguments returns recent memories** — a bare `sara recall` (no query, `--tag`, `--project`, or `--file`) now surfaces the most recent memories with `confidence: "recent"` instead of erroring, so the cheap exploratory "what do I know?" call just works.
+
+### Changes
+
+- **Learn memory size limit raised to 4000 chars and made configurable** — the guard against pasting a raw conversation into `sara learn` now defaults to 4000 characters (was 2000) and honours the `SARA_MEMORY_CHAR_LIMIT` environment variable to raise (or lower) it without editing the binary. `--force` still bypasses the check entirely.
+
 ## [0.9.0] - 2026-07-06
 
 ### Features

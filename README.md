@@ -193,14 +193,16 @@ sara learn --supersedes m7 --tag codeql "Sanitiser is LogSanitizer.escape(), not
   will surface it whenever an agent revisits that file.
 - `--auto-files` reads `git diff --name-only HEAD` and attaches every changed
   file automatically — ideal at the end of a work session.
-- Memories over 2 000 chars or containing secret-like patterns are rejected by
-  default; pass `--force` only when the content is legitimately safe.
+- Memories over 4 000 chars (configurable via `SARA_MEMORY_CHAR_LIMIT`) or
+  containing secret-like patterns are rejected by default; pass `--force` only
+  when the content is legitimately safe.
 
 ### Recalling (`sara recall`)
 
 Before starting any new feature or investigation, always recall:
 
 ```bash
+sara recall                             # no args → most recent memories ("what do I know?")
 sara recall --tag auth -p web-app       # tag-scoped lookup (fast, reliable)
 sara recall "refresh token"             # full-text keyword search
 sara recall --file src/auth/login.rs    # everything linked to a specific file
@@ -673,6 +675,22 @@ sara step remove 1 2              # delete step 2 (alias: sara step rm); later s
 Add `--kind acceptance` to any `sara step …` command to act on the task's
 acceptance criteria instead of its steps. Toggle items with `Space` in `sara info`.
 
+The first `sara step done` (or `sara verify --run`/`--tick-on-pass`) on an idle
+task **auto-starts its timer**, so its active state reflects reality without a
+separate `sara start`. Add `--json` to `sara step done|undone|remove` for a
+structured record (the `activated` field reports whether that call started the task).
+
+```bash
+sara check 1 "tests pass" --kind acceptance --verify "cargo test"
+sara verify 1 --run            # run every verification command, print pass/fail
+sara verify 1 --tick-on-pass   # run each criterion's verify cmd; tick the ones that exit 0
+```
+
+`--tick-on-pass` collapses "run the check", "read the output", and "tick the
+box" into one call: each step/acceptance criterion that carries a stored verify
+command is executed and marked done **only** when it exits 0, with the pass/fail
+recorded as that item's execution result.
+
 ### Notes, comments & links
 
 ```bash
@@ -910,14 +928,14 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |
 | `sara dep <id> on\|off\|list` / `sara dep chain <id>...` | Manage dependencies, or wire a linear chain in one command |
 | `sara check <id> <text>`           | Add a checklist item                                     |
-| `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`)|
+| `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`, `--json`)|
 | `sara annotate <id> <text>`        | Add a comment (alias `comment`); `sara denotate <n>` removes |
 | `sara link <id> <url>`             | Add a link; `sara unlink <n>` removes                    |
 | `sara attach <id> <path>`          | Attach a file path (alias `pr`)                          |
 | `sara addbranch <id>`              | Tie the current git branch to a task (`--clear`)         |
 | `sara export <id>`                 | Export a task + its deps to a portable blob (`-o <file>`) |
 | `sara import [src]`                | Import a task blob (file, arg, or stdin; `-p <project>`)  |
-| `sara recall <query>`              | Full-text search across tasks and memories (`-a` all projects, `--tag`, `--file`, `--top N`) |
+| `sara recall [query]`              | Full-text search across tasks and memories; **no args → recent memories** (`-a` all projects, `--tag`, `--file`, `--top N`) |
 | `sara learn [FLAGS] "<text>"`      | Save a knowledge memory (`--tag`, `-p`, `--file`, `--auto-files`, `--task`, `--supersedes`, `--force`; flags before text) |
 | `sara memories`                    | Browse all saved memories newest-first with **Strong / Linked / Weak** labels |
 | `sara tags`                        | List all memory tags with counts |

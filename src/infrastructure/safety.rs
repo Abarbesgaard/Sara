@@ -6,9 +6,26 @@
 
 use anyhow::Result;
 
-/// Maximum body length in Unicode characters. Above this we assume the caller
-/// is pasting a raw conversation rather than a distilled paragraph.
-pub const SIZE_LIMIT_CHARS: usize = 2000;
+/// Default maximum body length in Unicode characters. Above this we assume the
+/// caller is pasting a raw conversation rather than a distilled paragraph.
+/// The effective limit is resolved by [`size_limit`], which honours the
+/// `SARA_MEMORY_CHAR_LIMIT` environment override.
+pub const SIZE_LIMIT_CHARS: usize = 4000;
+
+/// Environment variable that overrides the memory body size limit.
+pub const SIZE_LIMIT_ENV: &str = "SARA_MEMORY_CHAR_LIMIT";
+
+/// Resolve the effective size limit: the `SARA_MEMORY_CHAR_LIMIT` env var when
+/// set to a positive integer, otherwise [`SIZE_LIMIT_CHARS`]. Lets an operator
+/// raise (or stream in) a larger distilled note without editing the binary,
+/// while keeping the default guard against pasted raw conversations.
+pub fn size_limit() -> usize {
+    std::env::var(SIZE_LIMIT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(SIZE_LIMIT_CHARS)
+}
 
 /// Run the full guardrail suite: size check then secret detection.
 ///
@@ -21,15 +38,16 @@ pub fn check_memory_body(text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Body length guard. Rejects texts longer than [`SIZE_LIMIT_CHARS`].
+/// Body length guard. Rejects texts longer than the effective [`size_limit`].
 pub fn check_size(text: &str) -> Result<()> {
     let len = text.chars().count();
-    if len > SIZE_LIMIT_CHARS {
+    let limit = size_limit();
+    if len > limit {
         anyhow::bail!(
             "Memory body is {len} characters — that looks like a raw conversation paste, \
-not a distilled paragraph ({SIZE_LIMIT_CHARS} char limit).\n\
+not a distilled paragraph ({limit} char limit).\n\
 Distill the key insight into one short paragraph first, then run sara learn again.\n\
-To save anyway (not recommended): add --force."
+Raise the limit with {SIZE_LIMIT_ENV}=<n>, or save anyway (not recommended) with --force."
         );
     }
     Ok(())

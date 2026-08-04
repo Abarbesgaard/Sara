@@ -143,6 +143,9 @@ pub fn step_done_value(
     let step_id = db::step_id_by_index(conn, &task.uuid, kind, n)?;
     let commit = project_head(conn, &task.project);
     db::set_step_done(conn, step_id, true, result, commit.as_deref())?;
+    // First recorded work auto-transitions the task to active (Feature: status
+    // should reflect reality without a separate `sara start`).
+    let activated = db::ensure_started(conn, &task.uuid)?;
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
@@ -150,6 +153,7 @@ pub fn step_done_value(
         "index": n,
         "done": true,
         "commit": commit,
+        "activated": activated,
     }))
 }
 
@@ -161,8 +165,13 @@ pub fn step_done(
     n: usize,
     result: Option<&str>,
     kind: Option<&str>,
+    as_json: bool,
 ) -> Result<()> {
     let v = step_done_value(conn, id, n, result, kind)?;
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&v)?);
+        return Ok(());
+    }
     let commit_suffix = v
         .get("commit")
         .and_then(|c| c.as_str())
@@ -206,8 +215,13 @@ pub fn step_undone(
     id: &str,
     n: usize,
     kind: Option<&str>,
+    as_json: bool,
 ) -> Result<()> {
     let v = step_undone_value(conn, id, n, kind)?;
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&v)?);
+        return Ok(());
+    }
     println!(
         "Reopened {} {} of task {}.",
         v["kind"].as_str().unwrap_or("step"),
@@ -253,8 +267,13 @@ pub fn step_remove(
     id: &str,
     n: usize,
     kind: Option<&str>,
+    as_json: bool,
 ) -> Result<()> {
     let v = step_remove_value(conn, id, n, kind)?;
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&v)?);
+        return Ok(());
+    }
     println!(
         "Removed {} {} of task {}: {}",
         v["kind"].as_str().unwrap_or("step"),
@@ -290,18 +309,85 @@ pub fn check_value(
     }))
 }
 
-/// `sara verify [--step N] [--run]` — surface/run verification commands.
+/// `sara verify [--step N] [--run] [--tick-on-pass]` — surface/run verification
+/// commands. With `--tick-on-pass`, each step / acceptance criterion that carries
+/// a stored verify command is executed and marked done **only** when it exits 0,
+/// and the pass/fail outcome is recorded as that item's execution result —
+/// collapsing "run the check" and "tick the box" into a single call.
 pub fn verify(
     conn: &Connection,
     _cfg: &Config,
     id: &str,
     step: Option<usize>,
     run: bool,
+    tick_on_pass: bool,
 ) -> Result<()> {
     let task = db::resolve_task(conn, id)?;
     let steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
     let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
     let meta = db::get_guide_fields(conn, &task.uuid)?.meta_json;
+
+    let working_dir = db::get_project(conn, &task.project)
+        .ok()
+        .flatten()
+        .and_then(|p| p.path);
+
+    // ── tick-on-pass: run each criterion's own verify_cmd, tick on exit 0 ──
+    if tick_on_pass {
+        let commit = project_head(conn, &task.project);
+        let targets: Vec<&_> = if let Some(n) = step {
+            let idx = n
+                .checked_sub(1)
+                .ok_or_else(|| anyhow::anyhow!("step index is 1-based; got 0"))?;
+            let s = steps
+                .get(idx)
+                .ok_or_else(|| anyhow::anyhow!("No step #{n}"))?;
+            vec![s]
+        } else {
+            steps.iter().chain(acceptance.iter()).collect()
+        };
+
+        let (mut ran, mut passed) = (0usize, 0usize);
+        let mut started_noted = false;
+        for s in targets {
+            let Some(cmd) = &s.verify_cmd else { continue };
+            ran += 1;
+            // First executed check auto-transitions the task to active.
+            if !started_noted {
+                if db::ensure_started(conn, &task.uuid)? {
+                    println!("Task {} is now active.", task.id.unwrap_or(0));
+                }
+                started_noted = true;
+            }
+            println!("$ {cmd}");
+            let mut command = std::process::Command::new("sh");
+            command.arg("-c").arg(cmd);
+            if let Some(dir) = &working_dir {
+                command.current_dir(dir);
+            }
+            match command.status() {
+                Ok(st) if st.success() => {
+                    let note = format!("verify passed: {cmd}");
+                    db::set_step_done(conn, s.id, true, Some(&note), commit.as_deref())?;
+                    passed += 1;
+                    println!("  ✓ passed — ticked \"{}\"", s.text);
+                }
+                Ok(st) => {
+                    let code = st.code().unwrap_or(-1);
+                    println!("  ✗ exit {code} — left unticked: \"{}\"", s.text);
+                }
+                Err(e) => {
+                    println!("  ✗ failed to run ({e}) — left unticked: \"{}\"", s.text);
+                }
+            }
+        }
+        if ran == 0 {
+            println!("No steps or acceptance criteria have a verify command to run.");
+        } else {
+            println!("Ticked {passed}/{ran} on pass.");
+        }
+        return Ok(());
+    }
 
     let mut cmds: Vec<String> = vec![];
 
@@ -361,10 +447,10 @@ pub fn verify(
         return Ok(());
     }
 
-    let working_dir = db::get_project(conn, &task.project)
-        .ok()
-        .flatten()
-        .and_then(|p| p.path);
+    // Actually running a verification transitions the task to active.
+    if run && db::ensure_started(conn, &task.uuid)? {
+        println!("Task {} is now active.", task.id.unwrap_or(0));
+    }
 
     for cmd in &cmds {
         if run {
@@ -644,4 +730,90 @@ pub fn record_run(
         v["task"].as_i64().unwrap_or(0),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::config::Config;
+    use crate::infrastructure::model::Task;
+
+    fn cfg() -> Config {
+        Config::default()
+    }
+
+    #[test]
+    fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
+        let conn = db::open_in_memory_for_test();
+        let mut task = Task::new("demo".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        // Two acceptance criteria: one whose verify passes, one that fails.
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "passes",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            Some("true"),
+        )
+        .unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "fails",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            Some("false"),
+        )
+        .unwrap();
+
+        let id = task.uuid.to_string();
+        verify(&conn, &cfg(), &id, None, false, true).unwrap();
+
+        let acc = db::get_steps(&conn, &task.uuid, db::STEP_KIND_ACCEPTANCE).unwrap();
+        assert!(acc[0].done, "criterion with a passing verify_cmd is ticked");
+        assert!(acc[0].result.as_deref().unwrap_or("").contains("passed"));
+        assert!(!acc[1].done, "criterion whose verify_cmd fails stays unticked");
+
+        // Running a check auto-transitions the task to active.
+        let reloaded = db::get_task_by_uuid_prefix(&conn, &id).unwrap().unwrap();
+        assert!(reloaded.started_at.is_some());
+    }
+
+    #[test]
+    fn step_done_value_reports_activation_on_first_work() {
+        let conn = db::open_in_memory_for_test();
+        let mut task = Task::new("demo".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "do it",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+
+        let id = task.uuid.to_string();
+        let v = step_done_value(&conn, &id, 1, None, None).unwrap();
+        assert_eq!(v["activated"], true, "first recorded work activates the task");
+
+        // A second step-done on an already-active task does not re-activate.
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "again",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+        let v2 = step_done_value(&conn, &id, 2, None, None).unwrap();
+        assert_eq!(v2["activated"], false);
+    }
 }
