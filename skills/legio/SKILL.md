@@ -4,9 +4,9 @@ description: >-
   Legio — the Adeptus faction for software work with sara: the complete
   operating law an agent executes when building, mending, or shipping code. It
   carries the order of authority (Lex > Edictum > Mos > Sententia), the leges of
-  place/binding/memory, the three Maxims, the seven Viae (kinds of work — Genesis,
-  Renovatio, Emendatio, Restitutio, Exploratio, Validatio, Publicatio, each with a
-  Ritus and Testes), and the leges of execution & completion. Invoke when carrying
+  place/binding/memory, the three Maxims, the eight Viae (kinds of work — Genesis,
+  Renovatio, Emendatio, Restitutio, Purgatio, Exploratio, Validatio, Publicatio,
+  each with a Ritus and Testes), and the leges of execution & completion. Invoke when carrying
   any coding charge to done; declare the one Via that fits, then walk its Ritus one
   phase at a time, proving and recording each, mending on a failed Testis, halting
   only at a wall of dependency or an unmerged PR.
@@ -72,7 +72,7 @@ changed the province yet left no memory is unfinished, not merely undocumented.
 
 ---
 
-## The seven Viae — the kinds of work, and their rites
+## The eight Viae — the kinds of work, and their rites
 
 A **Via** is a *kind of work*. Before labor begins, declare the one Via that fits
 the charge (Iter Unum: **one charge, one Via**). The Via fixes the road: its
@@ -86,6 +86,8 @@ the Via supplies it. To run a rite directly, invoke its skill.
 | **Renovatio** (`via_renovatio`) | improve, behaviour unchanged | observe → **pin behaviour with a test first** → change → witness the pinning tests pass identically → record | pinning tests exist and pass unchanged; no new behaviour under cover of a refactor |
 | **Emendatio** (`via_emendatio`) | repair a defect | reproduce → locate → prove with a **failing** test → mend → witness the test passes and none regress → record the cause | a test that failed before and passes after; full suite green |
 | **Restitutio** (`via_restitutio`) | restore a broken build/deps/config | reproduce the **red command** → locate the offending manifest/version/config → align (smallest mend) → witness the command green and suite still green → record the cause | the failing command (build/restore/CI) now green; full suite still green; **no new test authored** |
+| **Purgatio** (`via_purgatio`) | cleanse a static-analysis finding (CodeQL/SAST), behaviour unchanged | confirm the alert → pin no-regression with the **existing green suite** → cleanse (smallest behaviour-preserving mend) → witness the **analyzer re-scan** clean, suite still green → record the rule and fix pattern | analyzer reports the finding(s) resolved (the **scan** is the witness, not the blind unit suite); suite still green; no new behaviour; same-rule findings may be batched; CI-only scan defers completion to the pipeline |
+| **Exploratio** (`via_exploratio`) | investigate, no production code changed | frame one question → gather evidence → draw only conclusions the evidence carries → record findings | each conclusion cites its evidence; no source file changed |
 | **Validatio** (`via_validatio`) | verify | name what must be proven → write/identify the check → run it and read the **true** result → record the outcome | check exists and was run; real result recorded; a failure reported, never buried |
 | **Publicatio** (`via_publicatio`) | release | confirm every Testes green → assemble the record → open + `link` the PR → halt at the gate | all prior Testes green; PR opened and linked; nothing `done` before merge |
 

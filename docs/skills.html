@@ -76,7 +76,7 @@
   .leges li:first-child{border-top:none;}
   .leges li b{color:var(--verdigris); font-weight:500;}
   .leges .cmd{color:var(--bronze); font-weight:500;}
-  /* the seven Viae */
+  /* the eight Viae */
   .viae{display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin:1.6rem auto 0; max-width:840px;}
   @media(max-width:640px){.viae{grid-template-columns:1fr;}}
   .via{background:var(--bg-raised); border:1px solid var(--line); border-top:2px solid var(--bronze-dim); border-radius:4px; padding:1.1rem 1.25rem;}
@@ -173,13 +173,13 @@
     <p class="tag">faction</p>
     <h3>Legio</h3>
     <p class="lat">a charge, once taken, is carried to its end</p>
-    <p class="desc">The operating law an agent runs to do software work: the order of authority, the leges, the Maxims, and the seven Viae below. Drop it into your <span class="mono">AGENTS.md</span> and the machine is bound.</p>
+    <p class="desc">The operating law an agent runs to do software work: the order of authority, the leges, the Maxims, and the eight Viae below. Drop it into your <span class="mono">AGENTS.md</span> and the machine is bound.</p>
     <a class="dl" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/legio/SKILL.md">↗ legio/SKILL.md</a>
   </div>
 
   <div class="rule"></div>
 
-  <p class="eyebrow" style="text-align:center; margin-top:2.2rem;">the seven Viae — Legio's kinds of work</p>
+  <p class="eyebrow" style="text-align:center; margin-top:2.2rem;">the eight Viae — Legio's kinds of work</p>
   <p class="note" style="padding:0 0 0.3rem; max-width:660px;">A <span class="mono">Via</span> is a <i>kind of work</i>. Declare one per charge — it fixes the <b>Ritus</b> (the ordered phases) and the <b>Testes</b> (the witnesses of completion). Click any <span class="mono">/command</span> to read its full <span class="mono">SKILL.md</span> on GitHub.</p>
   <div class="viae">
     <div class="via">
@@ -217,6 +217,15 @@
       <p class="ritus">reproduce the <b>red command</b> → locate the offending manifest/version/config → align (smallest mend) → witness the command green and suite still green → record the cause</p>
       <span class="lbl">Testes</span>
       <p class="testes">the failing command (build/restore/CI) now green; full suite still green; <b>no new test authored</b></p>
+    </div>
+    <div class="via">
+      <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_purgatio/SKILL.md">/via_purgatio</a>
+      <h4>Purgatio</h4>
+      <p class="for">cleanse a static-analysis finding (CodeQL/SAST), behaviour unchanged</p>
+      <span class="lbl">Ritus</span>
+      <p class="ritus">confirm the alert → pin no-regression with the <b>existing green suite</b> → cleanse (smallest behaviour-preserving mend) → witness the <b>analyzer re-scan</b> clean and suite still green → record the rule and fix pattern</p>
+      <span class="lbl">Testes</span>
+      <p class="testes">the <b>analyzer</b> reports the finding(s) resolved (the scan is the witness, not the blind unit suite); suite still green; no new behaviour; same-rule findings may be batched; CI-only scan defers completion to the pipeline</p>
     </div>
     <div class="via">
       <a class="cmd" href="https://github.com/Abarbesgaard/Sara/blob/spqr/skills/via_exploratio/SKILL.md">/via_exploratio</a>
