@@ -46,12 +46,14 @@ and the Lex that binds it, before you walk it.
    - `herdr agent start copilot --kind copilot --pane <pane-id>` — wait for `ready`.
    - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
    - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
+   - **Tool hard stop:** if you are about to call `Edit`, `Write`, or any shell command that writes a file (`tee`, `sed -i`, `echo … >`, etc.) — **STOP IMMEDIATELY**. You are the Praefectus; that call belongs to a Miles. Reaching for an edit tool is a signal you have skipped Phase 1; go back and raise the Miles now.
 
 2. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior fixes to this dependency, toolchain, or config fault before deriving anything.
 3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the **failing command** as the acceptance criterion and its `--verify`: `sara check <id> "<command> is green" --kind acceptance --verify "<the command>"` (e.g. `dotnet build`, `npm ci`, `cargo build`, the CI job).
 4. **Reproduce.** Run the command and **witness it red** with your own eyes — capture the build/restore/CI failure output. `sara step_done` this phase with the red output as its `result`.
 5. **Locate.** Find the offending manifest, version, lockfile, or config — the point of disagreement. `sara annotate <id> --kind finding "cause: …"` once found.
-6. **Mend.** Make the **smallest alignment** that brings things into agreement — a version bump, a lockfile regen, a manifest or CI-config edit. Introduce no new logic and author no test. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+6. **Mend.** Make the **smallest alignment** that brings things into agreement — a version bump, a lockfile regen, a manifest or CI-config edit. Introduce no new logic and author no test.
+   > **⛔ PRAEFECTUS HARD STOP.** You do NOT make this edit. You do not call `Edit`, `Write`, `sed -i`, `tee`, or any file-writing shell command. Brief your Miles with the exact change needed: `herdr agent prompt <pane-id> "align <file>: change <X> to <Y>; then re-run <the red command> and report the output" --wait`. Wait for its evidence, then record it.
 7. **Witness (Testes).** Run the once-red command again — it must now be **green** — **and** run the existing suite to prove **no regression**. The Testis is the command, explicitly, not a new test. `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<command now green + suite green>"`.
 8. **Record.** `sara learn --auto-files --tag <topic> "<the root cause and the alignment>"` so the next Adept starts from knowledge.
 
@@ -64,9 +66,12 @@ and the Lex that binds it, before you walk it.
 
 ## Ending (Lex Termini)
 
-Do **not** open a PR and do **not** `sara done` here. When the red command is green
-and the suite still passes, the build is restored but **not yet released** —
-opening the PR is the sole office of `via_publicatio`, invoked explicitly. Leave
-the work uncommitted — committing and pushing are `via_publicatio`'s office alone; scratch and throwaway probes removed first (Lex Munditiae) —
-and the charge green and ready; stop there. On a failed gate, mend and re-walk
-(Lex Emendationis) — do not abandon the charge or raise a new question.
+> **⛔ DO NOT `git add`, `git commit`, or `git push`.** Committing and pushing are the **sole office of `via_publicatio`**, invoked explicitly by the operator. The Miles leaves its changes **uncommitted** in its worktree — that is the correct end state here.
+
+> **⛔ DO NOT `sara done`.** The charge is not closed until the PR merges.
+
+When the red command is green and the suite still passes, do two things and stop:
+1. **Lex Munditiae** — remove scratch probes, temp files, and test containers the Miles created that are not part of the fix (`docker compose down`, remove throwaway scripts, etc.). The Miles's actual fix files stay as uncommitted changes in its worktree.
+2. **Report** — summarise the root cause, the alignment made, and the worktree/branch holding the fix. The operator will invoke `via_publicatio` when ready.
+
+On a failed gate, mend and re-walk (Lex Emendationis) — do not abandon the charge or raise a new question.
