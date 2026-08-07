@@ -20,6 +20,15 @@ You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, it
 $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Purgatio"**), then walk its Ritus in order.
+
+> **Delegation (Lex Delegationis).** You are the **Praefectus**: you drive sara —
+> recall, the record, the witness — and you do **not** write the code yourself.
+> Raise a **Miles** through herdr in its own worktree to carry the **cleanse**
+> phase (the mend or the justified suppression) and re-run the analyzer (`herdr
+> worktree create` → `herdr agent start … --kind copilot` → `herdr agent prompt …
+> --wait` → watch with `herdr agent wait`/`read` → `herdr workspace close`). Brief
+> it with the rule + file:line + province path/branch; record every phase against
+> the charge UUID. The Miles never touches your cwd.
 The red signal here is an **analyzer alert** — CodeQL, a SAST/security linter, a
 compiler diagnostic — against code that already builds and runs. A diagnostic
 that **breaks** the build (warnings-as-errors, a hard compile error) is *not*

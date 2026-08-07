@@ -19,6 +19,12 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Publicatio"**), then walk its Ritus in
 order. This rite opens the road; it does not walk another's.
 
+> **Delegation (Lex Delegationis).** Publicatio is the **Praefectus's own gate
+> office** — assembling the record and opening + linking the PR is sara/gh work you
+> do yourself; no Miles is raised. Any Miles that carried the code phases is
+> dismissed (`herdr workspace close`) before you release, its worktree merged or
+> its branch pushed.
+
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
 

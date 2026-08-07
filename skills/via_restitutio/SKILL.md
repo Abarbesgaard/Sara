@@ -20,6 +20,15 @@ You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, it
 $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Restitutio"**), then walk its Ritus in order.
+
+> **Delegation (Lex Delegationis).** You are the **Praefectus**: you drive sara —
+> recall, the record, the witness — and you do **not** touch the manifests
+> yourself. Raise a **Miles** through herdr in its own worktree to carry the
+> **align** phase and re-run the red command (`herdr worktree create` → `herdr
+> agent start … --kind copilot` → `herdr agent prompt … --wait` → watch with
+> `herdr agent wait`/`read` → `herdr workspace close`). Brief it with the red
+> command + province path/branch; record every phase against the charge UUID. The
+> Miles never touches your cwd.
 The red signal here is a **command**, not a written test — a build, restore,
 install, or CI job. Do not fabricate a unit test to satisfy Emendatio's gate: the
 failing command *is* the Testis. The mend is a mechanical alignment (version,

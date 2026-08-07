@@ -19,6 +19,12 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Exploratio"**), then walk its Ritus in
 order. Change no production code; the output is understanding, recorded.
 
+> **Delegation (Lex Delegationis).** Exploratio changes no code, so it is the
+> **Praefectus's** own to walk — no Miles is required. If a search is large enough
+> to warrant a separate context, you MAY raise a **read-only Miles** through herdr
+> in its own worktree to gather evidence, but the framing of the question and the
+> recorded conclusions stay with you.
+
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
 
