@@ -19,7 +19,7 @@ $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Renovatio"**), then walk its Ritus in order.
 
-> **Delegation (Lex Delegationis).** You are the **Praefectus**: you drive sara —
+> **STOP — this rite is delegated. You do NOT edit any file yourself.** You are the **Praefectus**: you drive sara —
 > recall, the record, the witness — and you do **not** write the code yourself.
 > Raise a **Miles** through herdr in its own worktree to write the pinning test and
 > the **change** (`herdr worktree create` → `herdr agent start … --kind copilot` →
@@ -32,13 +32,21 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior work.
-2. **Found the charge.** `sara add`; set `assignment`/`rationale`. Acceptance criteria as below.
-3. **Observe** the standing behaviour — what must remain true.
-4. **Pin it FIRST.** Write (or confirm) tests that fix the current behaviour in place, and **run them green** *before a line is changed*. **If coverage already exists, running it green IS the pin** — do not author redundant tests; only write new ones when the behaviour you are about to touch is genuinely unpinned. `sara step_done` with the passing baseline as `result`. *(If the flaw you are fixing is one a functional test cannot see — a static-analysis finding like an undisposed `IDisposable`, where the real witness is an analyzer re-scan, not the suite — this is not Renovatio; take `via_purgatio`.)*
-5. **Change.** Refactor. Introduce no new behaviour under cover of the change. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
-6. **Witness (Testes).** Run the pinning tests — they must pass **identically**, before and after. `sara verify <id>`; tick acceptance.
-7. **Record.** `sara learn --auto-files --tag <topic> "<what changed and what stayed fixed>"`.
+1. **Delegatio (Lex Delegationis) — walk this FIRST, before anything else.** You
+   are the **Praefectus**; you will **not** edit a single source file this charge.
+   Raise your **Miles** now, and confirm it is live before you walk any further:
+   - `herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --focus` — from the JSON, read the new `workspace_id` and its pane id (e.g. `w25:p1`).
+   - `herdr agent start copilot --kind copilot --pane <pane-id>` — wait for `ready`.
+   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
+   - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
+
+2. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior work.
+3. **Found the charge.** `sara add`; set `assignment`/`rationale`. Acceptance criteria as below.
+4. **Observe** the standing behaviour — what must remain true.
+5. **Pin it FIRST.** Write (or confirm) tests that fix the current behaviour in place, and **run them green** *before a line is changed*. **If coverage already exists, running it green IS the pin** — do not author redundant tests; only write new ones when the behaviour you are about to touch is genuinely unpinned. `sara step_done` with the passing baseline as `result`. *(If the flaw you are fixing is one a functional test cannot see — a static-analysis finding like an undisposed `IDisposable`, where the real witness is an analyzer re-scan, not the suite — this is not Renovatio; take `via_purgatio`.)*
+6. **Change.** Refactor. Introduce no new behaviour under cover of the change. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+7. **Witness (Testes).** Run the pinning tests — they must pass **identically**, before and after. `sara verify <id>`; tick acceptance.
+8. **Record.** `sara learn --auto-files --tag <topic> "<what changed and what stayed fixed>"`.
 
 ## Testes — no completion without these
 

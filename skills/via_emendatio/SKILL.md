@@ -19,7 +19,7 @@ $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Emendatio"**), then walk its Ritus in order.
 
-> **Delegation (Lex Delegationis).** You are the **Praefectus**: you drive sara —
+> **STOP — this rite is delegated. You do NOT edit any file yourself.** You are the **Praefectus**: you drive sara —
 > recall, the record, the witness — and you do **not** write the code yourself.
 > Raise a **Miles** through herdr in its own worktree to write the failing test and
 > the **mend** (`herdr worktree create` → `herdr agent start … --kind copilot` →
@@ -32,14 +32,22 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Recall** (Lex Recordi). `sara recall --tag <topic>` and `sara recall --file <path>` for prior work on this fault before deriving anything.
-2. **Found the charge** (unless one exists). `sara add` with `--annotation` for the report; set `sara assignment` (the report verbatim) and `sara rationale`. Write the Testes below as acceptance criteria: `sara check <id> "<criterion>" --kind acceptance --verify "<test cmd>"`.
-3. **Reproduce.** Trigger the fault and observe the failure with your own eyes. `sara annotate <id> --kind finding "root cause: …"` once located.
-4. **Locate.** Find the defect in the source. Record it.
-5. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this phase with the failing output as its `result`.
-6. **Mend.** Fix the defect — the smallest change that turns the test green. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
-7. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<evidence>"`.
-8. **Record.** `sara learn --auto-files --tag <topic> "<the cause and the fix>"` so the next Adept starts from knowledge.
+1. **Delegatio (Lex Delegationis) — walk this FIRST, before anything else.** You
+   are the **Praefectus**; you will **not** edit a single source file this charge.
+   Raise your **Miles** now, and confirm it is live before you walk any further:
+   - `herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --focus` — from the JSON, read the new `workspace_id` and its pane id (e.g. `w25:p1`).
+   - `herdr agent start copilot --kind copilot --pane <pane-id>` — wait for `ready`.
+   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
+   - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
+
+2. **Recall** (Lex Recordi). `sara recall --tag <topic>` and `sara recall --file <path>` for prior work on this fault before deriving anything.
+3. **Found the charge** (unless one exists). `sara add` with `--annotation` for the report; set `sara assignment` (the report verbatim) and `sara rationale`. Write the Testes below as acceptance criteria: `sara check <id> "<criterion>" --kind acceptance --verify "<test cmd>"`.
+4. **Reproduce.** Trigger the fault and observe the failure with your own eyes. `sara annotate <id> --kind finding "root cause: …"` once located.
+5. **Locate.** Find the defect in the source. Record it.
+6. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this phase with the failing output as its `result`.
+7. **Mend.** Fix the defect — the smallest change that turns the test green. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+8. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<evidence>"`.
+9. **Record.** `sara learn --auto-files --tag <topic> "<the cause and the fix>"` so the next Adept starts from knowledge.
 
 ## Testes — no completion without these
 
