@@ -26,9 +26,9 @@ Declare the Via aloud (**"I take Via Purgatio"**), then walk its Ritus in order.
 > Raise a **Miles** through herdr in its own worktree to carry the **cleanse**
 > phase (the mend or the justified suppression) and re-run the analyzer (`herdr
 > worktree create` → `herdr agent start … --kind copilot` → `herdr agent prompt …
-> --wait` → watch with `herdr agent wait`/`read` → `herdr workspace close`). Brief
+> --wait` → watch with `herdr agent wait`/`read`). Brief
 > it with the rule + file:line + province path/branch; record every phase against
-> the charge UUID. The Miles never touches your cwd.
+> the charge UUID. The Miles never touches your cwd, and it leaves its changes **uncommitted** — `via_publicatio` alone commits.
 The red signal here is an **analyzer alert** — CodeQL, a SAST/security linter, a
 compiler diagnostic — against code that already builds and runs. A diagnostic
 that **breaks** the build (warnings-as-errors, a hard compile error) is *not*
@@ -58,7 +58,7 @@ and the Lex that binds it, before you walk it.
 2. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 6), not by a local run.
 3. **Confirm the finding.** Cite the alert exactly — rule id, `file:line`, the analyzer's message — and state plainly that the functional suite is **blind** to it (so a passing suite is *not* proof of the cure). `sara step_done` this phase with the alert as its `result`. Where the analyzer runs only in CI, note that the true scan is deferred to the pipeline.
 4. **Pin against regression.** The existing suite is the pin: **run it green before a line is changed** to fix the behaviour you must not disturb. Author a new pinning test ONLY when the site's behaviour is genuinely unpinned — never fabricate a test that pretends to see a flaw it cannot. `sara step_done` with the green baseline as `result`.
-5. **Cleanse.** Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
+5. **Cleanse.** Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. **This edit is the Miles's hand, not yours (Lex Delegationis).** When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
 6. **Witness (Testes).** Re-run the analyzer — the finding(s) must be **gone**; the analyzer is the witness, not the unit tests — **and** run the existing suite to prove **no regression**. Tick each site: `sara step_done <id> <N> --kind acceptance --result "<rule clear at file:line + suite green>"`. Where the scan is CI-only, this witness is honestly **deferred to the pipeline**: the charge is proven when that scan comes back clean, and a green local suite alone does **not** close it.
 7. **Record.** `sara learn --auto-files --tag <rule-or-analyzer> "<the rule, the fix pattern, and that functional tests were blind to it>"` so the next Adept cleanses from knowledge.
 
@@ -76,7 +76,7 @@ and the Lex that binds it, before you walk it.
 Do **not** open a PR and do **not** `sara done` here. When the analyzer reports the
 finding cleared and the suite still passes, the flaw is cleansed but **not yet
 released** — opening the PR is the sole office of `via_publicatio`, invoked
-explicitly. Leave the work committed — scratch and throwaway probes removed first
+explicitly. Leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone; scratch and throwaway probes removed first
 (Lex Munditiae) — and the charge green and ready; stop there.
 
 **When the true scan is CI-only,** the analyzer that witnesses your cure runs on

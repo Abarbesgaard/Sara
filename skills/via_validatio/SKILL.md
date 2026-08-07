@@ -49,7 +49,7 @@ and the Lex that binds it, before you walk it.
 
 Do **not** open a PR and do **not** `sara done` here. If the work produced code
 (new tests), the charge ends green and ready for release — opening the PR is the
-sole office of `via_publicatio`, invoked explicitly; leave the work committed —
+sole office of `via_publicatio`, invoked explicitly; leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone;
 scratch and throwaway probes removed first (Lex Munditiae) — and stop there. If
 it was a pure run, the charge ends when the true result is
 recorded.

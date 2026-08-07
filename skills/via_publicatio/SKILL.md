@@ -20,10 +20,12 @@ Declare the Via aloud (**"I take Via Publicatio"**), then walk its Ritus in
 order. This rite opens the road; it does not walk another's.
 
 > **Delegation (Lex Delegationis).** Publicatio is the **Praefectus's own gate
-> office** — assembling the record and opening + linking the PR is sara/gh work you
-> do yourself; no Miles is raised. Any Miles that carried the code phases is
-> dismissed (`herdr workspace close`) before you release, its worktree merged or
-> its branch pushed.
+> office** and the **sole committer**: staging, `git commit`, `git push`, and
+> `gh pr create` happen **here and nowhere else** — no rite and no Miles commits
+> before this gate. The Miles left its changes **uncommitted** in the worktree;
+> you commit them now. Dismiss any lingering Miles agent, but close its workspace
+> (`herdr workspace close`) only **after** you have committed and pushed from its
+> worktree — never before, or the uncommitted work is lost.
 
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
@@ -32,7 +34,7 @@ and the Lex that binds it, before you walk it.
 
 1. **Confirm the Testes are already green** (Lex Termini). Every charge being released must have its own Ritus complete and its Testes satisfied. `sara verify <id>` for each; if any gate is red, **halt** — release is not the place to do the work. Send it back to its Via.
 2. **Assemble the record from the Acta.** Build the PR body / changelog from the charges' steps, results, and annotations (`sara info <id> --md`). The record is faithful to what was actually done.
-3. **Open the PR.** Branch, commit **only the work in scope** — never the scratch, ad-hoc scripts, or throwaway fixtures used to probe along the way (Lex Munditiae); delete or `git restore`/exclude them first. Push, `gh pr create`. `sara link <id> <url>` on each charge released.
+3. **Open the PR.** In the Miles's worktree (where the uncommitted changes live), stage and commit **only the work in scope** — never the scratch, ad-hoc scripts, or throwaway fixtures used to probe along the way (Lex Munditiae); delete or `git restore`/exclude them first. This is the **first and only commit** of the charge. Push, `gh pr create`. `sara link <id> <url>` on each charge released.
 4. **Halt at the gate.** The rite ends at the opened, linked PR.
 
 ## Testes — no completion without these

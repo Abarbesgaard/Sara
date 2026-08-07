@@ -23,9 +23,8 @@ Declare the Via aloud (**"I take Via Genesis"**), then walk its Ritus in order.
 > recall, the record, the witness — and you do **not** write the code yourself.
 > Raise a **Miles** through herdr in its own worktree to carry the **build** phase
 > (`herdr worktree create` → `herdr agent start … --kind copilot` → `herdr agent
-> prompt … --wait` → watch with `herdr agent wait`/`read` → `herdr workspace
-> close`). Brief it with the acceptance criteria + province path/branch; record
-> every phase against the charge UUID. The Miles never touches your cwd.
+> prompt … --wait` → watch with `herdr agent wait`/`read`). Brief it with the acceptance criteria + province path/branch; record
+> every phase against the charge UUID. The Miles never touches your cwd, and it leaves its changes **uncommitted** — `via_publicatio` alone commits.
 Build nothing that already exists; build no more than the charge names.
 
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
@@ -35,7 +34,7 @@ and the Lex that binds it, before you walk it.
 
 1. **Recall prior art** (Lex Recordi). `sara recall --tag <topic>` and `sara recall "<keywords>"` — do not rebuild what exists. On `sara add`, read the `similar` hits.
 2. **Declare the shape.** `sara add` the charge; set `sara assignment` (what was asked, verbatim) and `sara rationale` (why). Write the acceptance criteria that will end it: `sara check <id> "<criterion>" --kind acceptance --verify "<cmd>"`. No criteria = no definition of done.
-3. **Build the smallest whole.** Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each phase with a `result`.
+3. **Build the smallest whole.** Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each phase with a `result`. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
 4. **Witness (Testes).** Every criterion demonstrably met; the build compiles and runs; a test covers the new behaviour. `sara verify <id>`; tick acceptance with evidence.
 5. **Record.** `sara learn --auto-files --tag <topic> "<what was built and why so>"`.
 
@@ -50,7 +49,7 @@ and the Lex that binds it, before you walk it.
 
 Do **not** open a PR and do **not** `sara done` here. When the Testes are green
 the charge is built and proven but **not yet released** — opening the PR is the
-sole office of `via_publicatio`, invoked explicitly. Leave the work committed —
+sole office of `via_publicatio`, invoked explicitly. Leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone;
 scratch and throwaway probes removed first (Lex Munditiae) — and the charge green
 and ready; stop there. On a failed gate, mend and re-walk — do
 not abandon or ask anew.

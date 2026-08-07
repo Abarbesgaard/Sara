@@ -82,18 +82,29 @@ the outcome against the charge; the Miles writes the code. The witness stays you
 (Lex Probationis) — you confirm each Testis from the Miles's evidence, you do not
 take its word.
 
+**The bar is absolute.** *ANY* change to a source file — a one-line edit, a
+rename, a version bump, a typo fix, a config tweak — **is** a code change and
+**must** be carried by a Miles. There is no change small enough for the
+Praefectus's own hand, and no urgency that licenses it. You never open an editor
+and never invoke an edit/write tool on a source file; if you are about to, **stop**
+— that is a Miles's office. The Praefectus's own hands touch only sara, `herdr`
+orchestration, and **read-only** inspection (`view`/`grep`/read) to understand and
+to verify. You keep control and follow the flow; the Miles does the work.
+
 *The rite of delegation, through herdr:*
 1. **Isolate** — `herdr worktree create --branch <charge-branch> --base <ref> --label "<charge>"` (or `herdr workspace create --cwd <province>`), giving the Miles a worktree of its own, never your working tree.
 2. **Raise the Miles** — in that pane, `herdr agent start copilot --kind copilot --pane <id>`.
-3. **Brief** — `herdr agent prompt <target> "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you.
+3. **Brief** — `herdr agent prompt <target> "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you. **Instruct the Miles to leave its changes uncommitted** — it writes and proves the code, it does **not** `git commit`, `git push`, or open a PR (Lex Termini).
 4. **Watch** — `herdr agent wait <target> --until idle,done,blocked` and `herdr agent read <target>` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
-5. **Dismiss** — when the phase is witnessed and recorded, `herdr workspace close <id>`; a Miles does not outlive its charge.
+5. **Dismiss** — when the phase is witnessed and recorded, dismiss the Miles; its **uncommitted** changes remain in the worktree, held for release. Close the workspace (`herdr workspace close <id>`) only after `via_publicatio` has committed and published — a Miles does not outlive its charge, and its work is not thrown away before the gate.
 
-Delegation binds the **code-writing Viae** — Genesis, Renovatio, Emendatio,
-Restitutio, Purgatio — and any build or suite run. Where a Via changes no code
-(Exploratio) or is the Praefectus's own gate office (Publicatio), you may walk it
-by your own hand. A charge whose code your own hand wrote instead of a Miles's is
-walked wrong, however green it ends.
+Delegation binds **every Via that changes a source file** — Genesis, Renovatio,
+Emendatio, Restitutio, Purgatio — and any build or suite run. Only two rites the
+Praefectus walks by their own hand, because neither changes code: **Exploratio**
+(pure investigation, no source touched) and **Publicatio** (the release gate —
+`git commit`/`git push`/`gh pr create`, which are not *authoring* but *releasing*
+the Miles's uncommitted work). A charge whose code your own hand wrote instead of
+a Miles's is walked wrong, however green it ends.
 
 ---
 
@@ -114,7 +125,7 @@ the Via supplies it. To run a rite directly, invoke its skill.
 | **Purgatio** (`via_purgatio`) | cleanse a static-analysis finding (CodeQL/SAST), behaviour unchanged | confirm the alert → pin no-regression with the **existing green suite** → cleanse (smallest behaviour-preserving mend, or a justified suppression with recorded rationale) → witness the **analyzer re-scan** clean, suite still green → record the rule and fix pattern | analyzer reports the finding(s) resolved (the **scan** is the witness, not the blind unit suite); suite still green; no new behaviour; same-rule findings may be batched; CI-only scan defers completion to the pipeline |
 | **Exploratio** (`via_exploratio`) | investigate, no production code changed | frame one question → gather evidence → draw only conclusions the evidence carries → record findings | each conclusion cites its evidence; no source file changed |
 | **Validatio** (`via_validatio`) | verify | name what must be proven → write/identify the check → run it and read the **true** result → record the outcome | check exists and was run; real result recorded; a failure reported, never buried |
-| **Publicatio** (`via_publicatio`) | release | confirm every Testes green → assemble the record → open + `link` the PR → halt at the gate | all prior Testes green; PR opened and linked; nothing `done` before merge |
+| **Publicatio** (`via_publicatio`) | release | confirm every Testes green → assemble the record → **commit** the Miles's work → open + `link` the PR → halt at the gate | all prior Testes green; PR opened and linked; nothing `done` before merge |
 
 If a charge seems to hold two Viae, it holds two charges — split it, and declare
 one Via for each.
@@ -159,9 +170,12 @@ scope is released; the scaffolding built to reach it is not.
 **Lex Termini — the Law of the Ending.** A charge is `done` only when its road is
 walked in full: `verify`'s criteria satisfied, and any linked PR merged — not
 merely opened. A settled step is *res judicata*; it is not relitigated. Opening
-the road is not walking it. Opening or linking a PR is the sole office of
-`via_publicatio`; no other rite opens one — every other Via ends green and ready
-for release, and release is invoked explicitly.
+the road is not walking it. **Committing, pushing, opening, and linking a PR are
+the sole office of `via_publicatio`** — no other rite, and no Miles, runs `git
+commit`, `git push`, or `gh pr create`. Every other Via ends with its work
+**uncommitted** — the changes live in the worktree, green and ready — and release
+is invoked explicitly. *Nihil committitur nisi per Publicationem* — nothing is
+committed but through Publicatio.
 
 ---
 
