@@ -10,7 +10,7 @@ description: >-
   the diagnostic breaks the build use via_restitutio; if a failing test reproduces
   it use via_emendatio.
 argument-hint: <the analyzer finding(s) — rule id + file:line — or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---
 
 # Via Purgatio — the rite of cleansing

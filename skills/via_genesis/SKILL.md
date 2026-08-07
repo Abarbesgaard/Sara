@@ -8,7 +8,7 @@ description: >-
   the new behaviour. Improving existing behaviour is via_renovatio; fixing a bug
   is via_emendatio.
 argument-hint: <what to build, or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---
 
 # Via Genesis — the rite of founding

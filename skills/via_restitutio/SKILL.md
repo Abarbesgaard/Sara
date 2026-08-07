@@ -10,7 +10,7 @@ description: >-
   requires the red command green and the full suite still green, with NO new
   test authored — the command itself is the Testis.
 argument-hint: <the broken build/deps/config, the failing command, or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:*), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Edit, Write, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---
 
 # Via Restitutio — the rite of restoration
