@@ -20,15 +20,6 @@ You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, it
 $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Purgatio"**), then walk its Ritus in order.
-
-> **STOP — this rite is delegated. You do NOT edit any file yourself.** You are the **Praefectus**: you drive sara —
-> recall, the record, the witness — and you do **not** write the code yourself.
-> Raise a **Miles** through herdr in its own worktree to carry the **cleanse**
-> phase (the mend or the justified suppression) and re-run the analyzer (`herdr
-> worktree create` → `herdr agent start … --kind copilot` → `herdr agent prompt …
-> --wait` → watch with `herdr agent wait`/`read`). Brief
-> it with the rule + file:line + province path/branch; record every phase against
-> the charge UUID. The Miles never touches your cwd, and it leaves its changes **uncommitted** — `via_publicatio` alone commits.
 The red signal here is an **analyzer alert** — CodeQL, a SAST/security linter, a
 compiler diagnostic — against code that already builds and runs. A diagnostic
 that **breaks** the build (warnings-as-errors, a hard compile error) is *not*
@@ -54,10 +45,16 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Delegatio (Lex Delegationis) — walk this FIRST, before anything else.** You
-   are the **Praefectus**; you will **not** edit a single source file this charge.
-   Raise your **Miles** now, and confirm it is live before you walk any further:
-   - Raise the Miles in its own herdr workspace — **NEVER use the `task` tool** (that spawns a subagent inside Copilot, not a herdr pane):
+1. **Delegatio (Lex Delegationis) — proportional, not mandatory.** Judge the
+   scope before raising a Miles:
+
+   - **Work directly** (no worktree, no Miles) when the cleanse is **small and
+     mechanical** — a handful of files, a trivial pattern (null-forgiving `!`,
+     `using`, `dispose`, a single hoist-to-local). Make the edits yourself with
+     the normal edit tools, branch off `main` in the working directory.
+   - **Raise a Miles** when the cleanse is **large, risky, or spans many files**
+     — where isolation and a second pair of eyes genuinely reduce risk. Use the
+     pipeline below:
      ```sh
      WS=$(herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --no-focus \
           | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
@@ -66,8 +63,9 @@ and the Lex that binds it, before you walk it.
             print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
      herdr agent start copilot --kind copilot --pane "$PANE"
      ```
-   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
-   - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
+     Brief it with: `herdr agent prompt <pane-id> "<phase + criteria + worktree path/branch>" --wait`, then `herdr agent read <pane-id>`.
+
+   **Default: work directly.** Only reach for herdr when the job warrants it.
 
 2. **Recall** (Lex Recordi). `sara recall --tag <rule-or-analyzer>` / `--file <path>` for prior cleansings of this rule, analyzer, or file before deriving anything.
 3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 7), not by a local run.
