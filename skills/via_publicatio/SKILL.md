@@ -1,11 +1,8 @@
 ---
 name: via_publicatio
 description: >-
-  Invoke to release finished, green work to the gate — the Adeptus rite of Via
-  Publicatio, the SOLE rite that opens a PR. Confirm every charge's Testes are
-  already green → assemble the record from the Acta → open and link the PR →
-  halt at the gate. Completion is the merge, not the opening — nothing is called
-  done before it.
+  Invoke to release finished, green work — commit the changes, open a PR, and
+  link it. Confirm everything is green first. Halt at the opened PR.
 argument-hint: <what to release, or a sara task id>
 allowed-tools: Bash(sara:*), Bash(git:*), Bash(gh:*), Read, Glob, Grep, Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
 ---
@@ -32,9 +29,26 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Confirm the Testes are already green** (Lex Termini). Every charge being released must have its own Ritus complete and its Testes satisfied. `sara verify <id>` for each; if any gate is red, **halt** — release is not the place to do the work. Send it back to its Via.
-2. **Assemble the record from the Acta.** Build the PR body / changelog from the charges' steps, results, and annotations (`sara info <id> --md`). The record is faithful to what was actually done.
-3. **Open the PR.** In the Miles's worktree (where the uncommitted changes live), stage and commit **only the work in scope** — never the scratch, ad-hoc scripts, or throwaway fixtures used to probe along the way (Lex Munditiae); delete or `git restore`/exclude them first. This is the **first and only commit** of the charge. Push, `gh pr create`. `sara link <id> <url>` on each charge released.
+> **External language rule — applies to ALL output visible outside this session.**
+> PR titles, PR descriptions, commit messages, and any comments or labels are
+> read by other people. They must use **plain standard coding language only**.
+> Strip all internal terminology before writing anything external:
+>
+> | Never write | Write instead |
+> |---|---|
+> | Via Purgatio / Emendatio / Genesis / … | fix / refactor / feat / chore / … |
+> | Witness / Testes / Acta | test results / verification / changelog |
+> | Praefectus / Miles / Legio / Adeptus | agent / assistant |
+> | sara / sara task / charge | (omit — internal tooling, not relevant to reviewers) |
+> | Lex Termini / Lex Delegationis / … | (omit entirely) |
+> | Ritus / Via / Iter Unum | (omit entirely) |
+>
+> Write as a professional engineer explaining the change to a colleague who has
+> never heard of any of this. If it sounds like internal jargon, rewrite it.
+
+1. **Confirm everything is green.** Every change being released must be proven — tests passing, build clean. If anything is red, halt and send it back to be fixed first.
+2. **Assemble the PR description.** Gather what was actually done — the changes, the reasoning, the test evidence. Write it in plain language (see rule above).
+3. **Commit and open the PR.** Stage only the work in scope — remove any scratch scripts, temp files, or throwaway fixtures first. Commit with a conventional commit message in plain language. Push, `gh pr create`. `sara link <id> <url>` on each charge released.
 4. **Halt at the gate.** The rite ends at the opened, linked PR.
 
 ## Testes — no completion without these
@@ -43,8 +57,6 @@ and the Lex that binds it, before you walk it.
 - The **PR is opened and linked**.
 - **Nothing is `sara done`** until the PR is **merged** — opening is not walking.
 
-## Ending (Lex Termini)
+## Ending
 
-Do not `sara done` on merge-of-hope. When the PR is truly merged, `sara validate`
-then `sara done`; review the provisional memory sara synthesises and
-`promote`/`relearn`/`forget` it.
+When the PR is truly merged, `sara validate` then `sara done`.
