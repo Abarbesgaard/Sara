@@ -21,10 +21,15 @@ Read the true result, never the hoped one.
 
 > **Delegation (Lex Delegationis).** As **Praefectus** you own the sara record and
 > the judgment of the result. When the check is a build or suite **run**, hand the
-> run to a **Miles** through herdr in its own worktree (`herdr worktree create` →
-> `herdr agent start … --kind copilot` → `herdr agent prompt … --wait` → `herdr
-> agent read` → `herdr workspace close`) and record the **true** result it returns.
-> Identifying and naming what must be proven stays with you.
+> run to a **Miles** in a new tab in the current workspace — no worktree needed:
+> ```sh
+> WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
+> PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+>      | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
+> herdr agent start copilot --kind copilot --pane "$PANE"
+> ```
+> Brief: `herdr agent prompt "$PANE" "<what to run + report back>" --wait`, then `herdr agent read "$PANE"`.
+> Record the **true** result it returns. Identifying and naming what must be proven stays with you.
 
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
@@ -47,9 +52,6 @@ and the Lex that binds it, before you walk it.
 
 ## Ending (Lex Termini)
 
-Do **not** open a PR and do **not** `sara done` here. If the work produced code
-(new tests), the charge ends green and ready for release — opening the PR is the
-sole office of `via_publicatio`, invoked explicitly; leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone;
-scratch and throwaway probes removed first (Lex Munditiae) — and stop there. If
-it was a pure run, the charge ends when the true result is
-recorded.
+When the check exists, was run, and its true result is recorded, the charge is
+complete — call `sara done`. If the work produced code (new tests), clean up
+scratch probes first (Lex Munditiae).

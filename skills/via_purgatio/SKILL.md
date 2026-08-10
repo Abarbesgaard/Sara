@@ -10,7 +10,7 @@ description: >-
   the diagnostic breaks the build use via_restitutio; if a failing test reproduces
   it use via_emendatio.
 argument-hint: <the analyzer finding(s) — rule id + file:line — or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*)
 ---
 
 # Via Purgatio — the rite of cleansing
@@ -20,15 +20,6 @@ You are bound by the `adeptus` creed and, as a rite of the **Legio** faction, it
 $ARGUMENTS
 
 Declare the Via aloud (**"I take Via Purgatio"**), then walk its Ritus in order.
-
-> **STOP — this rite is delegated. You do NOT edit any file yourself.** You are the **Praefectus**: you drive sara —
-> recall, the record, the witness — and you do **not** write the code yourself.
-> Raise a **Miles** through herdr in its own worktree to carry the **cleanse**
-> phase (the mend or the justified suppression) and re-run the analyzer (`herdr
-> worktree create` → `herdr agent start … --kind copilot` → `herdr agent prompt …
-> --wait` → watch with `herdr agent wait`/`read`). Brief
-> it with the rule + file:line + province path/branch; record every phase against
-> the charge UUID. The Miles never touches your cwd, and it leaves its changes **uncommitted** — `via_publicatio` alone commits.
 The red signal here is an **analyzer alert** — CodeQL, a SAST/security linter, a
 compiler diagnostic — against code that already builds and runs. A diagnostic
 that **breaks** the build (warnings-as-errors, a hard compile error) is *not*
@@ -54,19 +45,31 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Delegatio (Lex Delegationis) — walk this FIRST, before anything else.** You
-   are the **Praefectus**; you will **not** edit a single source file this charge.
-   Raise your **Miles** now, and confirm it is live before you walk any further:
-   - `herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --focus` — from the JSON, read the new `workspace_id` and its pane id (e.g. `w25:p1`).
-   - `herdr agent start copilot --kind copilot --pane <pane-id>` — wait for `ready`.
-   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
-   - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
+1. **Delegatio (Lex Delegationis) — raise a Miles in a new pane, FIRST.** You are
+   the **Praefectus**: you drive sara and herdr, the Miles writes the code.
+   Raise the Miles in a new tab inside the **current workspace** — no worktree
+   needed, just a fresh pane at the same cwd:
+   ```sh
+   # Get the current workspace id
+   WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
+
+   # Open a new tab in that workspace and grab its pane id
+   PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
+
+   # Start Copilot in that pane — NEVER use the task tool (spawns inside Copilot, not a herdr pane)
+   herdr agent start copilot --kind copilot --pane "$PANE"
+   ```
+   Brief it: `herdr agent prompt "$PANE" "<phase + acceptance criteria + province path/branch>" --wait`
+   Watch it: `herdr agent wait "$PANE" --until idle` then `herdr agent read "$PANE"`
 
 2. **Recall** (Lex Recordi). `sara recall --tag <rule-or-analyzer>` / `--file <path>` for prior cleansings of this rule, analyzer, or file before deriving anything.
 3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 7), not by a local run.
 4. **Confirm the finding.** Cite the alert exactly — rule id, `file:line`, the analyzer's message — and state plainly that the functional suite is **blind** to it (so a passing suite is *not* proof of the cure). `sara step_done` this phase with the alert as its `result`. Where the analyzer runs only in CI, note that the true scan is deferred to the pipeline.
 5. **Pin against regression.** The existing suite is the pin: **run it green before a line is changed** to fix the behaviour you must not disturb. Author a new pinning test ONLY when the site's behaviour is genuinely unpinned — never fabricate a test that pretends to see a flaw it cannot. `sara step_done` with the green baseline as `result`.
-6. **Cleanse.** Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. **This edit is the Miles's hand, not yours (Lex Delegationis).** When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
+6. **Cleanse.** ⛔ **HARD GATE — before any edit:** You do not have `Edit` or build tools. If you are about to modify a file or run a build, **stop** — brief your Miles instead: `herdr agent prompt "$PANE" "apply these mends: <exact changes> in <province-path>" --wait`. The Miles edits; you read its evidence.
+
+   Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. **This edit is the Miles's hand, not yours (Lex Delegationis).** When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
 7. **Witness (Testes).** Re-run the analyzer — the finding(s) must be **gone**; the analyzer is the witness, not the unit tests — **and** run the existing suite to prove **no regression**. Tick each site: `sara step_done <id> <N> --kind acceptance --result "<rule clear at file:line + suite green>"`. Where the scan is CI-only, this witness is honestly **deferred to the pipeline**: the charge is proven when that scan comes back clean, and a green local suite alone does **not** close it.
 8. **Record.** `sara learn --auto-files --tag <rule-or-analyzer> "<the rule, the fix pattern, and that functional tests were blind to it>"` so the next Adept cleanses from knowledge.
 
@@ -81,15 +84,11 @@ and the Lex that binds it, before you walk it.
 
 ## Ending (Lex Termini)
 
-Do **not** open a PR and do **not** `sara done` here. When the analyzer reports the
-finding cleared and the suite still passes, the flaw is cleansed but **not yet
-released** — opening the PR is the sole office of `via_publicatio`, invoked
-explicitly. Leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone; scratch and throwaway probes removed first
-(Lex Munditiae) — and the charge green and ready; stop there.
+When the analyzer reports the finding cleared and the suite still passes, the
+charge is complete — call `sara done`. Clean up scratch and throwaway probes first
+(Lex Munditiae).
 
-**When the true scan is CI-only,** the analyzer that witnesses your cure runs on
-the pipeline the PR triggers. The charge is proven only when that scan is clean;
-so it is not `done` until the scan is green **and** the PR merged. Opening the PR
-early to summon the scan is still `via_publicatio`'s office — the cleanse waits at
-the gate, it does not open its own. On a failed scan, mend and re-walk (Lex
-Emendationis) — do not abandon the charge or raise a new question.
+**When the true scan is CI-only,** the analyzer runs on the pipeline the PR
+triggers. Open the PR via `via_publicatio`, then call `sara done` once that scan
+is green. On a failed scan, mend and re-walk (Lex Emendationis) — do not abandon
+the charge or raise a new question.
