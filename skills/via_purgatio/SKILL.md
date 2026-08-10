@@ -45,33 +45,13 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Delegatio (Lex Delegationis) — raise a Miles in a new pane, FIRST.** You are
-   the **Praefectus**: you drive sara and herdr, the Miles writes the code.
-   Raise the Miles in a new tab inside the **current workspace** — no worktree
-   needed, just a fresh pane at the same cwd:
-   ```sh
-   # Get the current workspace id
-   WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
-
-   # Open a new tab in that workspace and grab its pane id
-   PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
-        | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
-
-   # Start Copilot in that pane — NEVER use the task tool (spawns inside Copilot, not a herdr pane)
-   herdr agent start copilot --kind copilot --pane "$PANE"
-   ```
-   Brief it: `herdr agent prompt "$PANE" "<phase + acceptance criteria + province path/branch>" --wait`
-   Watch it: `herdr agent wait "$PANE" --until idle` then `herdr agent read "$PANE"`
-
-2. **Recall** (Lex Recordi). `sara recall --tag <rule-or-analyzer>` / `--file <path>` for prior cleansings of this rule, analyzer, or file before deriving anything.
-3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 7), not by a local run.
-4. **Confirm the finding.** Cite the alert exactly — rule id, `file:line`, the analyzer's message — and state plainly that the functional suite is **blind** to it (so a passing suite is *not* proof of the cure). `sara step_done` this phase with the alert as its `result`. Where the analyzer runs only in CI, note that the true scan is deferred to the pipeline.
-5. **Pin against regression.** The existing suite is the pin: **run it green before a line is changed** to fix the behaviour you must not disturb. Author a new pinning test ONLY when the site's behaviour is genuinely unpinned — never fabricate a test that pretends to see a flaw it cannot. `sara step_done` with the green baseline as `result`.
-6. **Cleanse.** ⛔ **HARD GATE — before any edit:** You do not have `Edit` or build tools. If you are about to modify a file or run a build, **stop** — brief your Miles instead: `herdr agent prompt "$PANE" "apply these mends: <exact changes> in <province-path>" --wait`. The Miles edits; you read its evidence.
-
-   Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. **This edit is the Miles's hand, not yours (Lex Delegationis).** When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
-7. **Witness (Testes).** Re-run the analyzer — the finding(s) must be **gone**; the analyzer is the witness, not the unit tests — **and** run the existing suite to prove **no regression**. Tick each site: `sara step_done <id> <N> --kind acceptance --result "<rule clear at file:line + suite green>"`. Where the scan is CI-only, this witness is honestly **deferred to the pipeline**: the charge is proven when that scan comes back clean, and a green local suite alone does **not** close it.
-8. **Record.** `sara learn --auto-files --tag <rule-or-analyzer> "<the rule, the fix pattern, and that functional tests were blind to it>"` so the next Adept cleanses from knowledge.
+1. **Recall** (Lex Recordi). `sara recall --tag <rule-or-analyzer>` / `--file <path>` for prior cleansings of this rule, analyzer, or file before deriving anything.
+2. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 7), not by a local run.
+3. **Confirm the finding.** Cite the alert exactly — rule id, `file:line`, the analyzer's message — and state plainly that the functional suite is **blind** to it (so a passing suite is *not* proof of the cure). `sara step_done` this phase with the alert as its `result`. Where the analyzer runs only in CI, note that the true scan is deferred to the pipeline.
+4. **Pin against regression.** The existing suite is the pin: **run it green before a line is changed** to fix the behaviour you must not disturb. Author a new pinning test ONLY when the site's behaviour is genuinely unpinned — never fabricate a test that pretends to see a flaw it cannot. `sara step_done` with the green baseline as `result`.
+5. **Cleanse.** Make the **smallest behaviour-preserving mend** that removes the flaw — add the `using`/dispose, parameterise the query, encode the output. Introduce no new behaviour. When batching, apply the same fix pattern to every registered site. **Where the finding is a false positive**, cleanse it by a **justified suppression** instead of a code change — dismiss it in the analyzer, or add a **scoped** `query-filter` to `.github/codeql/codeql-config.yml` (the recorded global-suppression pattern) — and write the **rationale** into the charge (`sara annotate`). A bare suppression with no recorded reason is not a cleanse; and never reshape sound code to satisfy a wrong alert.
+6. **Witness (Testes).** Re-run the analyzer — the finding(s) must be **gone**; the analyzer is the witness, not the unit tests — **and** run the existing suite to prove **no regression**. Tick each site: `sara step_done <id> <N> --kind acceptance --result "<rule clear at file:line + suite green>"`. Where the scan is CI-only, this witness is honestly **deferred to the pipeline**: the charge is proven when that scan comes back clean, and a green local suite alone does **not** close it.
+7. **Record.** `sara learn --auto-files --tag <rule-or-analyzer> "<the rule, the fix pattern, and that functional tests were blind to it>"` so the next Adept cleanses from knowledge.
 
 ## Testes — no completion without these
 

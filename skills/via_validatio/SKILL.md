@@ -19,17 +19,6 @@ $ARGUMENTS
 Declare the Via aloud (**"I take Via Validatio"**), then walk its Ritus in order.
 Read the true result, never the hoped one.
 
-> **Delegation (Lex Delegationis).** As **Praefectus** you own the sara record and
-> the judgment of the result. When the check is a build or suite **run**, hand the
-> run to a **Miles** in a new tab in the current workspace — no worktree needed:
-> ```sh
-> WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
-> PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
->      | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
-> herdr agent start copilot --kind copilot --pane "$PANE"
-> ```
-> Brief: `herdr agent prompt "$PANE" "<what to run + report back>" --wait`, then `herdr agent read "$PANE"`.
-> Record the **true** result it returns. Identifying and naming what must be proven stays with you.
 
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.
@@ -37,11 +26,11 @@ and the Lex that binds it, before you walk it.
 ## Ritus — walk in order, one phase at a time
 
 1. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior checks.
-2. **Found the charge.** `sara add`; set `assignment`/`rationale`; acceptance criteria as below.
-3. **Name what must be proven.** State the claim precisely — what "true" means here.
-4. **Write or identify the check.** A test, an assertion, a command that decides the claim.
-5. **Run it and read the TRUE result.** `sara verify <id> --run` or the suite directly. Do not massage, skip, or soften a failing check. `sara step_done` with the real output as `result`.
-6. **Record the outcome — pass or fail.** `sara annotate <id> --kind finding "<result>"`; on failure, say so plainly and, if repair is needed, found a charge under `via_emendatio`.
+1. **Found the charge.** `sara add`; set `assignment`/`rationale`; acceptance criteria as below.
+2. **Name what must be proven.** State the claim precisely — what "true" means here.
+3. **Write or identify the check.** A test, an assertion, a command that decides the claim.
+4. **Run it and read the TRUE result.** `sara verify <id> --run` or the suite directly. Do not massage, skip, or soften a failing check. `sara step_done` with the real output as `result`.
+5. **Record the outcome — pass or fail.** `sara annotate <id> --kind finding "<result>"`; on failure, say so plainly and, if repair is needed, found a charge under `via_emendatio`.
 
 ## Testes — no completion without these
 

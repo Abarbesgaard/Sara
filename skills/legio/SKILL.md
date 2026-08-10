@@ -70,53 +70,7 @@ vocabulary. A stale memory is `forget`-ed, not left to mislead. Where labor has
 touched a file, a memory is written before the charge is `done` — work that
 changed the province yet left no memory is unfinished, not merely undocumented.
 
-**Lex Delegationis — the Law of Delegation.** You are the **Praefectus** — the
-supervisor of the charge, not the hand that writes it. Your office is the charge
-itself: `recall`, found, `next`, `step_done`, `annotate`, the witness, `learn`,
-`done` — the sara record and the judgment around it. You do **not** edit
-production code, run the build, or drive the suite with your own hand. Every phase
-of hands-on labor is carried by a **Miles** (a subagent) raised through **herdr**
-in a new tab in the **current workspace** — never your cwd. You brief it, watch
-it, read its evidence, and record the outcome against the charge; the Miles writes
-the code. The witness stays yours (Lex Probationis) — you confirm each Testis from
-the Miles's evidence, you do not take its word.
-
-**The bar is absolute.** *ANY* change to a source file — a one-line edit, a
-rename, a version bump, a typo fix, a config tweak — **is** a code change and
-**must** be carried by a Miles. There is no change small enough for the
-Praefectus's own hand, and no urgency that licenses it. You never open an editor
-and never invoke an edit/write tool on a source file; if you are about to, **stop**
-— that is a Miles's office. The Praefectus's own hands touch only sara, `herdr`
-orchestration, and **read-only** inspection (`view`/`grep`/read) to understand and
-to verify. You keep control and follow the flow; the Miles does the work.
-
 *The rite of delegation, through herdr — exact shell pipeline:*
-
-```sh
-# Step 1 — Open a new tab in the current workspace for the Miles (no worktree needed).
-WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
-PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
-     | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
-
-# Step 2 — Raise the Miles: start Copilot in that pane (NOT via the task tool).
-herdr agent start copilot --kind copilot --pane "$PANE"
-```
-
-> **CRITICAL — NEVER use the `task` tool to raise a Miles.** The `task` tool spawns
-> a subagent inside the Copilot window, not a herdr pane. The Miles **must** be a
-> `herdr agent start` in its own pane inside the same workspace as the Praefectus.
-
-4. **Brief** — `herdr agent prompt "$PANE" "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you.
-5. **Watch** — `herdr agent wait "$PANE" --until idle` and `herdr agent read "$PANE"` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
-6. **Dismiss** — when the phase is witnessed and recorded the Miles's work is done. Close its tab when you no longer need it.
-
-Delegation binds **every Via that changes a source file** — Genesis, Renovatio,
-Emendatio, Restitutio, Purgatio — and any build or suite run. Only two rites the
-Praefectus walks by their own hand, because neither changes code: **Exploratio**
-(pure investigation, no source touched) and **Publicatio** (the release gate —
-`git commit`/`git push`/`gh pr create`, which are not *authoring* but *releasing*
-the Miles's uncommitted work). A charge whose code your own hand wrote instead of
-a Miles's is walked wrong, however green it ends.
 
 ---
 
@@ -137,7 +91,7 @@ the Via supplies it. To run a rite directly, invoke its skill.
 | **Purgatio** (`via_purgatio`) | cleanse a static-analysis finding (CodeQL/SAST), behaviour unchanged | confirm the alert → pin no-regression with the **existing green suite** → cleanse (smallest behaviour-preserving mend, or a justified suppression with recorded rationale) → witness the **analyzer re-scan** clean, suite still green → record the rule and fix pattern | analyzer reports the finding(s) resolved (the **scan** is the witness, not the blind unit suite); suite still green; no new behaviour; same-rule findings may be batched; CI-only scan defers completion to the pipeline |
 | **Exploratio** (`via_exploratio`) | investigate, no production code changed | frame one question → gather evidence → draw only conclusions the evidence carries → record findings | each conclusion cites its evidence; no source file changed |
 | **Validatio** (`via_validatio`) | verify | name what must be proven → write/identify the check → run it and read the **true** result → record the outcome | check exists and was run; real result recorded; a failure reported, never buried |
-| **Publicatio** (`via_publicatio`) | release | confirm every Testes green → assemble the record → **commit** the Miles's work → open + `link` the PR → halt at the gate | all prior Testes green; PR opened and linked; nothing `done` before merge |
+| **Publicatio** (`via_publicatio`) | release | confirm every Testes green → assemble the record → **commit** the work → open + `link` the PR → halt at the gate | all prior Testes green; PR opened and linked; nothing `done` before merge |
 
 If a charge seems to hold two Viae, it holds two charges — split it, and declare
 one Via for each.
