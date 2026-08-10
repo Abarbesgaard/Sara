@@ -91,12 +91,33 @@ and never invoke an edit/write tool on a source file; if you are about to, **sto
 orchestration, and **read-only** inspection (`view`/`grep`/read) to understand and
 to verify. You keep control and follow the flow; the Miles does the work.
 
-*The rite of delegation, through herdr:*
-1. **Isolate** — `herdr worktree create --branch <charge-branch> --base <ref> --label "<charge>"` (or `herdr workspace create --cwd <province>`), giving the Miles a worktree of its own, never your working tree.
-2. **Raise the Miles** — in that pane, `herdr agent start copilot --kind copilot --pane <id>`.
-3. **Brief** — `herdr agent prompt <target> "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you. **Instruct the Miles to leave its changes uncommitted** — it writes and proves the code, it does **not** `git commit`, `git push`, or open a PR (Lex Termini).
-4. **Watch** — `herdr agent wait <target> --until idle,done,blocked` and `herdr agent read <target>` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
-5. **Dismiss** — when the phase is witnessed and recorded, dismiss the Miles; its **uncommitted** changes remain in the worktree, held for release. Close the workspace (`herdr workspace close <id>`) only after `via_publicatio` has committed and published — a Miles does not outlive its charge, and its work is not thrown away before the gate.
+*The rite of delegation, through herdr — exact shell pipeline:*
+
+```sh
+# Step 1 — Isolate: create a new workspace (new herdr tab group) for the Miles.
+# For a new git worktree on its own branch:
+WS=$(herdr worktree create --branch <charge-branch> --base <ref> --label "<charge>" --no-focus \
+     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
+# OR for an existing directory without branching:
+WS=$(herdr workspace create --cwd <province> --label "<charge>" --no-focus \
+     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
+
+# Step 2 — Obtain the pane ID herdr created inside that workspace.
+PANE=$(herdr pane list \
+     | python3 -c "import sys,json; panes=json.load(sys.stdin)['result']['panes']; \
+       print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
+
+# Step 3 — Raise the Miles: start Copilot in that pane (NOT via the task tool).
+herdr agent start copilot --kind copilot --pane "$PANE"
+```
+
+> **CRITICAL — NEVER use the `task` tool to raise a Miles.** The `task` tool spawns
+> a subagent inside the Copilot window, not a herdr pane. The Miles **must** be a
+> `herdr agent start` in its own pane inside the same workspace as the Praefectus.
+
+4. **Brief** — `herdr agent prompt <target> "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you. **Instruct the Miles to leave its changes uncommitted** — it writes and proves the code, it does **not** `git commit`, `git push`, or open a PR (Lex Termini).
+5. **Watch** — `herdr agent wait <target> --until idle,done,blocked` and `herdr agent read <target>` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
+6. **Dismiss** — when the phase is witnessed and recorded, dismiss the Miles; its **uncommitted** changes remain in the worktree, held for release. Close the workspace (`herdr workspace close <id>`) only after `via_publicatio` has committed and published — a Miles does not outlive its charge, and its work is not thrown away before the gate.
 
 Delegation binds **every Via that changes a source file** — Genesis, Renovatio,
 Emendatio, Restitutio, Purgatio — and any build or suite run. Only two rites the
@@ -167,15 +188,12 @@ ad-hoc script, a throwaway fixture, a scratch `.py`/`.sh`, a temp file — is
 ends green, and it is **never** committed or carried into a PR. Only the work in
 scope is released; the scaffolding built to reach it is not.
 
-**Lex Termini — the Law of the Ending.** A charge is `done` only when its road is
-walked in full: `verify`'s criteria satisfied, and any linked PR merged — not
-merely opened. A settled step is *res judicata*; it is not relitigated. Opening
-the road is not walking it. **Committing, pushing, opening, and linking a PR are
-the sole office of `via_publicatio`** — no other rite, and no Miles, runs `git
-commit`, `git push`, or `gh pr create`. Every other Via ends with its work
-**uncommitted** — the changes live in the worktree, green and ready — and release
-is invoked explicitly. *Nihil committitur nisi per Publicationem* — nothing is
-committed but through Publicatio.
+**Lex Termini — the Law of the Ending.** A charge is `done` when its Testes are
+satisfied — `verify`'s criteria met and the work proven. A settled step is
+*res judicata*; it is not relitigated. Call `sara done` as soon as the road is
+walked and the witnesses confirm it; do not hold the charge open waiting for a PR.
+If a PR is needed the operator invokes `via_publicatio` separately — but the
+charge itself closes on green Testes, not on merge.
 
 ---
 

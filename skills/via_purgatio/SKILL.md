@@ -57,8 +57,15 @@ and the Lex that binds it, before you walk it.
 1. **Delegatio (Lex Delegationis) — walk this FIRST, before anything else.** You
    are the **Praefectus**; you will **not** edit a single source file this charge.
    Raise your **Miles** now, and confirm it is live before you walk any further:
-   - `herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --focus` — from the JSON, read the new `workspace_id` and its pane id (e.g. `w25:p1`).
-   - `herdr agent start copilot --kind copilot --pane <pane-id>` — wait for `ready`.
+   - Raise the Miles in its own herdr workspace — **NEVER use the `task` tool** (that spawns a subagent inside Copilot, not a herdr pane):
+     ```sh
+     WS=$(herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --no-focus \
+          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
+     PANE=$(herdr pane list \
+          | python3 -c "import sys,json; panes=json.load(sys.stdin)['result']['panes']; \
+            print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
+     herdr agent start copilot --kind copilot --pane "$PANE"
+     ```
    - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
    - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
 
@@ -81,15 +88,11 @@ and the Lex that binds it, before you walk it.
 
 ## Ending (Lex Termini)
 
-Do **not** open a PR and do **not** `sara done` here. When the analyzer reports the
-finding cleared and the suite still passes, the flaw is cleansed but **not yet
-released** — opening the PR is the sole office of `via_publicatio`, invoked
-explicitly. Leave the work uncommitted — committing and pushing are `via_publicatio`'s office alone; scratch and throwaway probes removed first
-(Lex Munditiae) — and the charge green and ready; stop there.
+When the analyzer reports the finding cleared and the suite still passes, the
+charge is complete — call `sara done`. Clean up scratch and throwaway probes first
+(Lex Munditiae).
 
-**When the true scan is CI-only,** the analyzer that witnesses your cure runs on
-the pipeline the PR triggers. The charge is proven only when that scan is clean;
-so it is not `done` until the scan is green **and** the PR merged. Opening the PR
-early to summon the scan is still `via_publicatio`'s office — the cleanse waits at
-the gate, it does not open its own. On a failed scan, mend and re-walk (Lex
-Emendationis) — do not abandon the charge or raise a new question.
+**When the true scan is CI-only,** the analyzer runs on the pipeline the PR
+triggers. Open the PR via `via_publicatio`, then call `sara done` once that scan
+is green. On a failed scan, mend and re-walk (Lex Emendationis) — do not abandon
+the charge or raise a new question.
