@@ -76,11 +76,10 @@ itself: `recall`, found, `next`, `step_done`, `annotate`, the witness, `learn`,
 `done` — the sara record and the judgment around it. You do **not** edit
 production code, run the build, or drive the suite with your own hand. Every phase
 of hands-on labor is carried by a **Miles** (a subagent) raised through **herdr**
-and living in **its own workspace** — a git worktree isolated from your working
-tree, **never your cwd**. You brief it, watch it, read its evidence, and record
-the outcome against the charge; the Miles writes the code. The witness stays yours
-(Lex Probationis) — you confirm each Testis from the Miles's evidence, you do not
-take its word.
+in a new tab in the **current workspace** — never your cwd. You brief it, watch
+it, read its evidence, and record the outcome against the charge; the Miles writes
+the code. The witness stays yours (Lex Probationis) — you confirm each Testis from
+the Miles's evidence, you do not take its word.
 
 **The bar is absolute.** *ANY* change to a source file — a one-line edit, a
 rename, a version bump, a typo fix, a config tweak — **is** a code change and
@@ -94,20 +93,12 @@ to verify. You keep control and follow the flow; the Miles does the work.
 *The rite of delegation, through herdr — exact shell pipeline:*
 
 ```sh
-# Step 1 — Isolate: create a new workspace (new herdr tab group) for the Miles.
-# For a new git worktree on its own branch:
-WS=$(herdr worktree create --branch <charge-branch> --base <ref> --label "<charge>" --no-focus \
-     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
-# OR for an existing directory without branching:
-WS=$(herdr workspace create --cwd <province> --label "<charge>" --no-focus \
-     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
+# Step 1 — Open a new tab in the current workspace for the Miles (no worktree needed).
+WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
+PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+     | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
 
-# Step 2 — Obtain the pane ID herdr created inside that workspace.
-PANE=$(herdr pane list \
-     | python3 -c "import sys,json; panes=json.load(sys.stdin)['result']['panes']; \
-       print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
-
-# Step 3 — Raise the Miles: start Copilot in that pane (NOT via the task tool).
+# Step 2 — Raise the Miles: start Copilot in that pane (NOT via the task tool).
 herdr agent start copilot --kind copilot --pane "$PANE"
 ```
 
@@ -115,9 +106,9 @@ herdr agent start copilot --kind copilot --pane "$PANE"
 > a subagent inside the Copilot window, not a herdr pane. The Miles **must** be a
 > `herdr agent start` in its own pane inside the same workspace as the Praefectus.
 
-4. **Brief** — `herdr agent prompt <target> "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you. **Instruct the Miles to leave its changes uncommitted** — it writes and proves the code, it does **not** `git commit`, `git push`, or open a PR (Lex Termini).
-5. **Watch** — `herdr agent wait <target> --until idle,done,blocked` and `herdr agent read <target>` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
-6. **Dismiss** — when the phase is witnessed and recorded, dismiss the Miles; its **uncommitted** changes remain in the worktree, held for release. Close the workspace (`herdr workspace close <id>`) only after `via_publicatio` has committed and published — a Miles does not outlive its charge, and its work is not thrown away before the gate.
+4. **Brief** — `herdr agent prompt "$PANE" "<the phase, its acceptance criteria, the province path + branch>" --wait`. The brief carries the charge context; the sara record stays with you.
+5. **Watch** — `herdr agent wait "$PANE" --until idle` and `herdr agent read "$PANE"` to gather its evidence; `annotate` findings and `step_done` phases against the charge UUID as they land.
+6. **Dismiss** — when the phase is witnessed and recorded the Miles's work is done. Close its tab when you no longer need it.
 
 Delegation binds **every Via that changes a source file** — Genesis, Renovatio,
 Emendatio, Restitutio, Purgatio — and any build or suite run. Only two rites the

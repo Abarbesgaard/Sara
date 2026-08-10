@@ -45,27 +45,23 @@ and the Lex that binds it, before you walk it.
 
 ## Ritus — walk in order, one phase at a time
 
-1. **Delegatio (Lex Delegationis) — proportional, not mandatory.** Judge the
-   scope before raising a Miles:
+1. **Delegatio (Lex Delegationis) — raise a Miles in a new pane, FIRST.** You are
+   the **Praefectus**: you drive sara and herdr, the Miles writes the code.
+   Raise the Miles in a new tab inside the **current workspace** — no worktree
+   needed, just a fresh pane at the same cwd:
+   ```sh
+   # Get the current workspace id
+   WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
 
-   - **Work directly** (no worktree, no Miles) when the cleanse is **small and
-     mechanical** — a handful of files, a trivial pattern (null-forgiving `!`,
-     `using`, `dispose`, a single hoist-to-local). Make the edits yourself with
-     the normal edit tools, branch off `main` in the working directory.
-   - **Raise a Miles** when the cleanse is **large, risky, or spans many files**
-     — where isolation and a second pair of eyes genuinely reduce risk. Use the
-     pipeline below:
-     ```sh
-     WS=$(herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --no-focus \
-          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
-     PANE=$(herdr pane list \
-          | python3 -c "import sys,json; panes=json.load(sys.stdin)['result']['panes']; \
-            print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
-     herdr agent start copilot --kind copilot --pane "$PANE"
-     ```
-     Brief it with: `herdr agent prompt <pane-id> "<phase + criteria + worktree path/branch>" --wait`, then `herdr agent read <pane-id>`.
+   # Open a new tab in that workspace and grab its pane id
+   PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
 
-   **Default: work directly.** Only reach for herdr when the job warrants it.
+   # Start Copilot in that pane — NEVER use the task tool (spawns inside Copilot, not a herdr pane)
+   herdr agent start copilot --kind copilot --pane "$PANE"
+   ```
+   Brief it: `herdr agent prompt "$PANE" "<phase + acceptance criteria + province path/branch>" --wait`
+   Watch it: `herdr agent wait "$PANE" --until idle` then `herdr agent read "$PANE"`
 
 2. **Recall** (Lex Recordi). `sara recall --tag <rule-or-analyzer>` / `--file <path>` for prior cleansings of this rule, analyzer, or file before deriving anything.
 3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the finding as the acceptance criterion — one per site when batching a rule — naming the analyzer scan as its `--verify`: `sara check <id> "<rule> resolved at <file:line>" --kind acceptance --verify "<the scan command, e.g. codeql database analyze … / semgrep … / the CI security job>"`. **When the scan is CI-only there is no local command to run** — the `--verify` is then a **deferred descriptor** (e.g. `"the CI security job"`), a marker `sara verify` cannot execute; record it as such and prove it in the pipeline (step 7), not by a local run.

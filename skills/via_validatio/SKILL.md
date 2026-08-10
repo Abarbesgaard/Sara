@@ -21,10 +21,15 @@ Read the true result, never the hoped one.
 
 > **Delegation (Lex Delegationis).** As **Praefectus** you own the sara record and
 > the judgment of the result. When the check is a build or suite **run**, hand the
-> run to a **Miles** through herdr in its own worktree (`herdr worktree create` →
-> `herdr agent start … --kind copilot` → `herdr agent prompt … --wait` → `herdr
-> agent read` → `herdr workspace close`) and record the **true** result it returns.
-> Identifying and naming what must be proven stays with you.
+> run to a **Miles** in a new tab in the current workspace — no worktree needed:
+> ```sh
+> WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
+> PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+>      | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
+> herdr agent start copilot --kind copilot --pane "$PANE"
+> ```
+> Brief: `herdr agent prompt "$PANE" "<what to run + report back>" --wait`, then `herdr agent read "$PANE"`.
+> Record the **true** result it returns. Identifying and naming what must be proven stays with you.
 
 Open **each phase** with its Praeco line (creed § *The Praeco*), naming the phase
 and the Lex that binds it, before you walk it.

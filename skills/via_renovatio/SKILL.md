@@ -21,8 +21,8 @@ Declare the Via aloud (**"I take Via Renovatio"**), then walk its Ritus in order
 
 > **STOP — this rite is delegated. You do NOT edit any file yourself.** You are the **Praefectus**: you drive sara —
 > recall, the record, the witness — and you do **not** write the code yourself.
-> Raise a **Miles** through herdr in its own worktree to write the pinning test and
-> the **change** (`herdr worktree create` → `herdr agent start … --kind copilot` →
+> Raise a **Miles** through herdr in a new tab to write the pinning test and
+> the **change** (`herdr tab create` → `herdr agent start … --kind copilot` →
 > `herdr agent prompt … --wait` → watch with `herdr agent wait`/`read`). Brief it with the behaviour to preserve + province
 > path/branch; record every phase against the charge UUID. The Miles never touches your cwd, and it leaves its changes **uncommitted** — `via_publicatio` alone commits.
 Behaviour must not change; pin it before you touch it.
@@ -37,14 +37,17 @@ and the Lex that binds it, before you walk it.
    Raise your **Miles** now, and confirm it is live before you walk any further:
    - Raise the Miles in its own herdr workspace — **NEVER use the `task` tool** (that spawns a subagent inside Copilot, not a herdr pane):
      ```sh
-     WS=$(herdr worktree create --branch <charge-branch> --base <base-ref> --label "<charge>" --no-focus \
-          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['workspace_id'])")
-     PANE=$(herdr pane list \
-          | python3 -c "import sys,json; panes=json.load(sys.stdin)['result']['panes']; \
-            print(next(p['pane_id'] for p in panes if p['workspace_id']=='$WS'))")
-     herdr agent start copilot --kind copilot --pane "$PANE"
-     ```
-   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the worktree path/branch>" --wait --until idle,done,blocked`, then `herdr agent read <pane-id>` for its evidence.
+   # Get the current workspace id
+   WS=$(herdr pane current | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['workspace_id'])")
+
+   # Open a new tab in that workspace and grab its pane id
+   PANE=$(herdr tab create --workspace "$WS" --cwd <province-path> --label "Miles: <charge>" --no-focus \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['pane_id'])")
+
+   # Start Copilot — NEVER use the task tool (spawns inside Copilot, not a herdr pane)
+   herdr agent start copilot --kind copilot --pane "$PANE"
+   ```
+   - Hold that pane id. **Every** file-changing phase below is briefed to THIS Miles: `herdr agent prompt <pane-id> "<the phase + its acceptance criteria + the province path/branch>" --wait`, then `herdr agent read <pane-id>` for its evidence.
    - **Gate:** if you ever reach a phase that writes to a file and no Miles is running, you have walked the rite wrong — **STOP** and raise one before proceeding. The Praefectus's own hands touch only `sara`, `herdr`, and read-only `view`/`grep`.
 
 2. **Recall** (Lex Recordi). `sara recall --tag <topic>` / `--file <path>` for prior work.
