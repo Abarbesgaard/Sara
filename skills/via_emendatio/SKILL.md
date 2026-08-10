@@ -8,7 +8,7 @@ description: >-
   suite green. A broken build/config is via_restitutio; a static-analysis alert
   is via_purgatio.
 argument-hint: <bug description or sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*)
 ---
 
 # Via Emendatio — the rite of repair
@@ -55,7 +55,9 @@ and the Lex that binds it, before you walk it.
 4. **Reproduce.** Trigger the fault and observe the failure with your own eyes. `sara annotate <id> --kind finding "root cause: …"` once located.
 5. **Locate.** Find the defect in the source. Record it.
 6. **Prove.** Write a test that exercises the fault and **run it — confirm it FAILS (red).** A fix you cannot first make fail is not proven. `sara step_done` this phase with the failing output as its `result`.
-7. **Mend.** Fix the defect — the smallest change that turns the test green. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+7. **Mend.**
+
+   ⛔ **HARD GATE — you have no Edit or build tools.** Brief your Miles: `herdr agent prompt "$PANE" "<exact changes + province path>" --wait`, then `herdr agent read "$PANE"`. The Miles edits and builds; you record the evidence. Fix the defect — the smallest change that turns the test green. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
 8. **Witness (Testes).** Run the new test (now passes) **and the full suite** (no regressions). `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<evidence>"`.
 9. **Record.** `sara learn --auto-files --tag <topic> "<the cause and the fix>"` so the next Adept starts from knowledge.
 

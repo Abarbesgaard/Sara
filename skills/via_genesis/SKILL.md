@@ -8,7 +8,7 @@ description: >-
   the new behaviour. Improving existing behaviour is via_renovatio; fixing a bug
   is via_emendatio.
 argument-hint: <what to build, or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*)
 ---
 
 # Via Genesis — the rite of founding
@@ -52,7 +52,9 @@ and the Lex that binds it, before you walk it.
 
 2. **Recall prior art** (Lex Recordi). `sara recall --tag <topic>` and `sara recall "<keywords>"` — do not rebuild what exists. On `sara add`, read the `similar` hits.
 3. **Declare the shape.** `sara add` the charge; set `sara assignment` (what was asked, verbatim) and `sara rationale` (why). Write the acceptance criteria that will end it: `sara check <id> "<criterion>" --kind acceptance --verify "<cmd>"`. No criteria = no definition of done.
-4. **Build the smallest whole.** Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each phase with a `result`. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+4. **Build the smallest whole.**
+
+   ⛔ **HARD GATE — you have no Edit or build tools.** Brief your Miles: `herdr agent prompt "$PANE" "<exact changes + province path>" --wait`, then `herdr agent read "$PANE"`. The Miles edits and builds; you record the evidence. Implement the least that satisfies one criterion end-to-end before broadening. Drive with `sara next`; `sara step_done` each phase with a `result`. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
 5. **Witness (Testes).** Every criterion demonstrably met; the build compiles and runs; a test covers the new behaviour. `sara verify <id>`; tick acceptance with evidence.
 6. **Record.** `sara learn --auto-files --tag <topic> "<what was built and why so>"`.
 

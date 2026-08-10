@@ -8,7 +8,7 @@ description: >-
   unchanged before and after, with no new behaviour. New behaviour is
   via_genesis; a bug fix is via_emendatio.
 argument-hint: <what to improve, or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*)
 ---
 
 # Via Renovatio — the rite of renewal
@@ -54,7 +54,9 @@ and the Lex that binds it, before you walk it.
 3. **Found the charge.** `sara add`; set `assignment`/`rationale`. Acceptance criteria as below.
 4. **Observe** the standing behaviour — what must remain true.
 5. **Pin it FIRST.** Write (or confirm) tests that fix the current behaviour in place, and **run them green** *before a line is changed*. **If coverage already exists, running it green IS the pin** — do not author redundant tests; only write new ones when the behaviour you are about to touch is genuinely unpinned. `sara step_done` with the passing baseline as `result`. *(If the flaw you are fixing is one a functional test cannot see — a static-analysis finding like an undisposed `IDisposable`, where the real witness is an analyzer re-scan, not the suite — this is not Renovatio; take `via_purgatio`.)*
-6. **Change.** Refactor. Introduce no new behaviour under cover of the change. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
+6. **Change.**
+
+   ⛔ **HARD GATE — you have no Edit or build tools.** Brief your Miles: `herdr agent prompt "$PANE" "<exact changes + province path>" --wait`, then `herdr agent read "$PANE"`. The Miles edits and builds; you record the evidence. Refactor. Introduce no new behaviour under cover of the change. **This edit is the Miles's hand, not yours (Lex Delegationis)** — brief it, then witness and record its result.
 7. **Witness (Testes).** Run the pinning tests — they must pass **identically**, before and after. `sara verify <id>`; tick acceptance.
 8. **Record.** `sara learn --auto-files --tag <topic> "<what changed and what stayed fixed>"`.
 

@@ -10,7 +10,7 @@ description: >-
   requires the red command green and the full suite still green, with NO new
   test authored — the command itself is the Testis.
 argument-hint: <the broken build/deps/config, the failing command, or a sara task id>
-allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*), Bash(pytest:*), Bash(cargo:*), Bash(dotnet:*), Bash(npm:*), Bash(pnpm:*), Bash(make:*)
+allowed-tools: Bash(sara:*), Bash(herdr:*), Bash(git:status), Bash(git:log), Bash(git:diff), Bash(git:show), Bash(git:branch), Bash(git:fetch), Bash(git:ls-files), Bash(git:stash), Bash(gh:*), Read, Glob, Grep, Bash(python3:*)
 ---
 
 # Via Restitutio — the rite of restoration
@@ -62,7 +62,9 @@ and the Lex that binds it, before you walk it.
 3. **Found the charge** (unless one exists). `sara add`; set `assignment`/`rationale`. Register the **failing command** as the acceptance criterion and its `--verify`: `sara check <id> "<command> is green" --kind acceptance --verify "<the command>"` (e.g. `dotnet build`, `npm ci`, `cargo build`, the CI job).
 4. **Reproduce.** Run the command and **witness it red** with your own eyes — capture the build/restore/CI failure output. `sara step_done` this phase with the red output as its `result`.
 5. **Locate.** Find the offending manifest, version, lockfile, or config — the point of disagreement. `sara annotate <id> --kind finding "cause: …"` once found.
-6. **Mend.** Make the **smallest alignment** that brings things into agreement — a version bump, a lockfile regen, a manifest or CI-config edit. Introduce no new logic and author no test.
+6. **Mend.**
+
+   ⛔ **HARD GATE — you have no Edit or build tools.** Brief your Miles: `herdr agent prompt "$PANE" "<exact changes + province path>" --wait`, then `herdr agent read "$PANE"`. The Miles edits and builds; you record the evidence. Make the **smallest alignment** that brings things into agreement — a version bump, a lockfile regen, a manifest or CI-config edit. Introduce no new logic and author no test.
    > **⛔ PRAEFECTUS HARD STOP.** You do NOT make this edit. You do not call `Edit`, `Write`, `sed -i`, `tee`, or any file-writing shell command. Brief your Miles with the exact change needed: `herdr agent prompt <pane-id> "align <file>: change <X> to <Y>; then re-run <the red command> and report the output" --wait`. Wait for its evidence, then record it.
 7. **Witness (Testes).** Run the once-red command again — it must now be **green** — **and** run the existing suite to prove **no regression**. The Testis is the command, explicitly, not a new test. `sara verify <id>`; tick acceptance via `sara step_done <id> <N> --kind acceptance --result "<command now green + suite green>"`.
 8. **Record.** `sara learn --auto-files --tag <topic> "<the root cause and the alignment>"` so the next Adept starts from knowledge.
