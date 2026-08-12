@@ -55,9 +55,10 @@ struct Hit {
     /// Labels of memories this one is derived from (outgoing `derived_from` edges).
     /// Non-empty means this is a per-application copy of a canonical pattern memory.
     derived_from_labels: Vec<String>,
-    /// Number of memories that derive from this one (incoming `derived_from` edges).
-    /// Non-zero means this is a canonical pattern memory.
-    derived_count: usize,
+    /// Labels of memories that derive from this one (incoming `derived_from` edges).
+    /// Non-empty means this is a canonical pattern memory; the labels are its
+    /// per-application evidence cards, so recall can point straight at them.
+    derived_children: Vec<String>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -305,10 +306,14 @@ pub fn run(
             } else {
                 String::new()
             };
-            let canonical_str = if h.derived_count > 0 {
-                format!(" [canonical, {} derived]", h.derived_count)
-            } else {
+            let canonical_str = if h.derived_children.is_empty() {
                 String::new()
+            } else {
+                format!(
+                    " [canonical, {} derived: {}]",
+                    h.derived_children.len(),
+                    h.derived_children.join(", ")
+                )
             };
             let derived_from_str = if h.derived_from_labels.is_empty() {
                 String::new()
@@ -653,7 +658,7 @@ fn collect_hits(
                     provisional: false,
                     item_uuid: None,
                     derived_from_labels: vec![],
-                    derived_count: 0,
+                    derived_children: vec![],
                     fts_rank: Some(rank),
                     loose,
                 });
@@ -710,8 +715,9 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                 "files": h.files,
                 "superseded_by": h.superseded_by,
                 "provisional": h.provisional,
-                "canonical": h.derived_count > 0,
-                "derived_count": h.derived_count,
+                "canonical": !h.derived_children.is_empty(),
+                "derived_count": h.derived_children.len(),
+                "derived_children": h.derived_children,
                 "derived_from": h.derived_from_labels,
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
@@ -776,11 +782,17 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         })
         .collect();
     // Incoming `derived_from` edges — other memories derive from this canonical.
-    let derived_count = db::get_memory_links_to(conn, &item.uuid.to_string())
+    let derived_children: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
         .unwrap_or_default()
         .into_iter()
         .filter(|l| l.relation == "derived_from")
-        .count();
+        .map(|l| {
+            db::get_item_by_uuid(conn, &l.from_uuid)
+                .ok()
+                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .unwrap_or_else(|| l.from_uuid[..8].to_string())
+        })
+        .collect();
     Hit {
         ref_kind: format!("item_{}", item.kind),
         strength: db::item_strength(conn, &item),
@@ -795,7 +807,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         provisional: item.status == "provisional",
         item_uuid: Some(item.uuid),
         derived_from_labels,
-        derived_count,
+        derived_children,
         fts_rank: None,
         loose: false,
     }
@@ -1384,14 +1396,21 @@ mod tests {
         let derived_a_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-a").unwrap();
         let derived_b_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-b").unwrap();
 
-        // Canonical: has derived_count=2, no derived_from_labels.
-        assert_eq!(canonical_hit.derived_count, 2, "canonical must report 2 derived memories");
+        // Canonical: has 2 derived children (by label), no derived_from_labels.
+        assert_eq!(canonical_hit.derived_children.len(), 2, "canonical must report 2 derived memories");
         assert!(canonical_hit.derived_from_labels.is_empty(), "canonical must not be derived from anything");
+        // The canonical's child labels must be exactly its two derived memories.
+        assert!(
+            canonical_hit.derived_children.contains(&derived_a_hit.label)
+                && canonical_hit.derived_children.contains(&derived_b_hit.label),
+            "canonical must list both derived child labels, got {:?}",
+            canonical_hit.derived_children
+        );
 
-        // Derived: has derived_count=0, derived_from_labels pointing to canonical.
-        assert_eq!(derived_a_hit.derived_count, 0);
+        // Derived: has no children, derived_from_labels pointing to canonical.
+        assert!(derived_a_hit.derived_children.is_empty());
         assert_eq!(derived_a_hit.derived_from_labels.len(), 1);
-        assert_eq!(derived_b_hit.derived_count, 0);
+        assert!(derived_b_hit.derived_children.is_empty());
         assert_eq!(derived_b_hit.derived_from_labels.len(), 1);
 
         // Both derived memories point to the same canonical label.
