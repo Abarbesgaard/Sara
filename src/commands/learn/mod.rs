@@ -24,8 +24,10 @@ pub fn run(
     auto_files: bool,
     force: bool,
     supersedes: &[String],
+    derived_from: &[String],
+    similar_to: &[String],
 ) -> Result<()> {
-    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force, supersedes)?;
+    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force, supersedes, derived_from, similar_to)?;
     let label = v["label"].as_str().unwrap_or("m?");
     let uuid  = v["uuid"].as_str().unwrap_or("");
     let body  = v["text"].as_str().unwrap_or("");
@@ -70,6 +72,20 @@ pub fn run(
             }
         }
     }
+    if let Some(links) = v["derived_from"].as_array() {
+        for link in links {
+            if let Some(canon_label) = link.as_str() {
+                println!("  ↳ derived from {canon_label}");
+            }
+        }
+    }
+    if let Some(links) = v["similar_to"].as_array() {
+        for link in links {
+            if let Some(other_label) = link.as_str() {
+                println!("  ↳ similar to {other_label}");
+            }
+        }
+    }
     Ok(())
 }
 
@@ -85,6 +101,8 @@ pub fn learn_value(
     auto_files: bool,
     force: bool,
     supersedes: &[String],
+    derived_from: &[String],
+    similar_to: &[String],
 ) -> Result<Value> {
     let text = text.trim();
     let resolved_files = collect_files(files, auto_files)?;
@@ -98,29 +116,43 @@ pub fn learn_value(
 
     let new_uuid = item.uuid.to_string();
 
-    // Resolve and insert supersedes links atomically with the learn.
-    let mut superseded_labels: Vec<String> = Vec::new();
-    for handle in supersedes {
-        match db::get_item_by_handle(conn, handle) {
-            Ok(old_item) => {
-                db::insert_memory_link(
-                    conn,
-                    &new_uuid,
-                    &old_item.uuid.to_string(),
-                    "supersedes",
-                    1.0,
-                )?;
-                let old_label = old_item
-                    .display_id
-                    .map(|id| format!("m{id}"))
-                    .unwrap_or_else(|| handle.clone());
-                superseded_labels.push(old_label);
+    // Resolve and insert typed links atomically with the learn. `supersedes` and
+    // `derived_from` point FROM the new memory TO the existing one; `similar_to`
+    // is symmetric intent but stored new→existing. An unresolvable label warns
+    // and is skipped — it never aborts the learn.
+    let resolve_and_link =
+        |handles: &[String], relation: &str, flag: &str| -> Result<Vec<String>> {
+            let mut labels: Vec<String> = Vec::new();
+            for handle in handles {
+                match db::get_item_by_handle(conn, handle) {
+                    Ok(target) => {
+                        db::insert_memory_link(
+                            conn,
+                            &new_uuid,
+                            &target.uuid.to_string(),
+                            relation,
+                            1.0,
+                        )?;
+                        let target_label = target
+                            .display_id
+                            .map(|id| format!("m{id}"))
+                            .unwrap_or_else(|| handle.clone());
+                        labels.push(target_label);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "warning: could not resolve memory '{}' for {flag}: {e}",
+                            handle
+                        );
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("warning: could not resolve memory '{}' for --supersedes: {e}", handle);
-            }
-        }
-    }
+            Ok(labels)
+        };
+
+    let superseded_labels = resolve_and_link(supersedes, "supersedes", "--supersedes")?;
+    let derived_from_labels = resolve_and_link(derived_from, "derived_from", "--derived-from")?;
+    let similar_to_labels = resolve_and_link(similar_to, "similar_to", "--similar-to")?;
 
     let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
     let tasks_json: Vec<Value> = item.linked_tasks.iter().map(|(id, desc, src)| json!({
@@ -137,7 +169,28 @@ pub fn learn_value(
         "files": files_json,
         "linked_tasks": tasks_json,
         "superseded": superseded_labels,
+        "derived_from": derived_from_labels,
+        "similar_to": similar_to_labels,
     }))
+}
+
+/// Build the copy-pasteable typed-link suggestion for a near-duplicate overlap
+/// (existing memory shares ALL of the new memory's tags). A near-dupe is either
+/// a specialisation (→ `derived_from`) or a replacement (→ `supersedes`).
+pub(crate) fn near_dupe_suggestion(label: &str) -> String {
+    format!(
+        "→ Link it typed: re-run with `--derived-from {label}` if this specialises it, \
+         or `--supersedes {label}` if it replaces it (or --force to keep both)."
+    )
+}
+
+/// Build the copy-pasteable typed-link suggestion for a partial overlap
+/// (shares ≥50% but not all tags). A partial overlap is a lateral relation
+/// (→ `similar_to`).
+pub(crate) fn partial_overlap_suggestion(label: &str) -> String {
+    format!(
+        "→ Link it typed: re-run with `--similar-to {label}` to connect them in the memory graph."
+    )
 }
 
 /// Detect existing memories whose tags overlap significantly with the new one,
@@ -207,28 +260,38 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
             if near_dupes.len() == 1 { "memory" } else { "memories" },
             normalized.join(", ")
         );
+        let mut labels: Vec<String> = Vec::new();
         for u in &near_dupes {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
+                labels.push(label);
             }
         }
-        eprintln!("Consider updating an existing memory with `sara forget <label>` + re-learn, or pass --force to create anyway.");
+        // Offer a concrete, copy-pasteable typed link rather than a vague note.
+        if let Some(first) = labels.first() {
+            eprintln!("{}", near_dupe_suggestion(first));
+        }
     }
 
     if !significant_partial.is_empty() {
         eprintln!(
-            "Note: {} potentially related {} (partial tag overlap — possible contradiction):",
+            "Note: {} potentially related {} (partial tag overlap):",
             significant_partial.len(),
             if significant_partial.len() == 1 { "memory" } else { "memories" }
         );
+        let mut labels: Vec<String> = Vec::new();
         for u in &significant_partial {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
+                labels.push(label);
             }
+        }
+        if let Some(first) = labels.first() {
+            eprintln!("{}", partial_overlap_suggestion(first));
         }
     }
 
@@ -511,7 +574,7 @@ mod tests {
 
         // Learn a first memory to supersede.
         let old = super::learn_value(
-            &conn, &cfg, "old finding", &["tag-a".to_string()], &[], &[], &[], false, true, &[],
+            &conn, &cfg, "old finding", &["tag-a".to_string()], &[], &[], &[], false, true, &[], &[], &[],
         )
         .unwrap();
         let old_label = old["label"].as_str().unwrap().to_string();
@@ -528,6 +591,8 @@ mod tests {
             false,
             true,
             &[old_label.clone()],
+            &[],
+            &[],
         )
         .unwrap();
 
@@ -557,6 +622,8 @@ mod tests {
             false,
             true, // force — skip safety guardrails
             &[],
+            &[],
+            &[],
         )
         .unwrap();
 
@@ -565,5 +632,99 @@ mod tests {
         // verifies check_overlap() itself doesn't error out.
         let result = super::check_overlap(&conn, &["tag-y".to_string()], &[file_path.clone()]);
         assert!(result.is_ok(), "check_overlap should not error on file overlap");
+    }
+
+    #[test]
+    fn learn_creates_typed_links() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // A canonical memory and a lateral one to link against.
+        let canon = super::learn_value(
+            &conn, &cfg, "canonical pattern", &["pat".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+        )
+        .unwrap();
+        let canon_label = canon["label"].as_str().unwrap().to_string();
+
+        let sibling = super::learn_value(
+            &conn, &cfg, "sibling note", &["side".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+        )
+        .unwrap();
+        let sibling_label = sibling["label"].as_str().unwrap().to_string();
+
+        // Learn a new memory that is derived_from the canonical AND similar_to the sibling.
+        let new_v = super::learn_value(
+            &conn,
+            &cfg,
+            "applied specialisation of the pattern",
+            &["apply".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[canon_label.clone()],
+            &[sibling_label.clone()],
+        )
+        .unwrap();
+
+        let derived = new_v["derived_from"].as_array().unwrap();
+        assert_eq!(derived.len(), 1);
+        assert_eq!(derived[0].as_str().unwrap(), canon_label);
+
+        let similar = new_v["similar_to"].as_array().unwrap();
+        assert_eq!(similar.len(), 1);
+        assert_eq!(similar[0].as_str().unwrap(), sibling_label);
+
+        // The typed edges must actually exist in the graph.
+        let new_uuid = db::get_item_by_handle(&conn, new_v["label"].as_str().unwrap())
+            .unwrap()
+            .uuid
+            .to_string();
+        let out = db::get_memory_links_from(&conn, &new_uuid).unwrap();
+        assert!(out.iter().any(|l| l.relation == "derived_from"), "derived_from edge exists");
+        assert!(out.iter().any(|l| l.relation == "similar_to"), "similar_to edge exists");
+    }
+
+    #[test]
+    fn learn_unresolvable_link_warns_not_aborts() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Reference a memory label that does not exist — learn must still succeed.
+        let v = super::learn_value(
+            &conn,
+            &cfg,
+            "a memory with a dangling link",
+            &["solo".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &["m9999".to_string()],
+            &[],
+        );
+        assert!(v.is_ok(), "unresolvable --derived-from must not abort the learn");
+        let v = v.unwrap();
+        // The link was skipped, so the reported array is empty.
+        assert_eq!(v["derived_from"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn overlap_suggests_typed_link() {
+        // Near-duplicate → derived-from / supersedes; partial → similar-to.
+        let near = super::near_dupe_suggestion("m26");
+        assert!(near.contains("--derived-from m26"), "near-dupe offers --derived-from: {near}");
+        assert!(near.contains("--supersedes m26"), "near-dupe offers --supersedes: {near}");
+
+        let partial = super::partial_overlap_suggestion("m30");
+        assert!(partial.contains("--similar-to m30"), "partial offers --similar-to: {partial}");
+        // No longer the vague untyped "possible contradiction" wording.
+        assert!(!partial.to_lowercase().contains("possible contradiction"));
     }
 }
