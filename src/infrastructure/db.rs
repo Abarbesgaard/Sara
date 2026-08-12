@@ -6353,7 +6353,6 @@ mod tests {
         let task = seed_task(&conn);
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
         item.path = Some(String::new());
-        item.path = Some(String::new());
         insert_item(&conn, &mut item).unwrap();
 
         let loaded = list_items(&conn, Some("memory")).unwrap();
@@ -6375,7 +6374,6 @@ mod tests {
         update_task(&conn, &task).unwrap();
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
         item.path = Some(String::new());
-        item.path = Some(String::new());
 
         assert_eq!(item_strength(&conn, &item), 2.0);
     }
@@ -6386,7 +6384,6 @@ mod tests {
         let task = seed_task(&conn);
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
         item.path = Some(String::new());
-        item.path = Some(String::new());
 
         assert_eq!(item_strength(&conn, &item), 1.5);
     }
@@ -6395,7 +6392,6 @@ mod tests {
     fn item_strength_falls_back_to_baseline_when_source_task_is_gone() {
         let conn = mem();
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(Uuid::new_v4()));
-        item.path = Some(String::new());
         item.path = Some(String::new());
 
         assert_eq!(item_strength(&conn, &item), 1.0);
@@ -6410,7 +6406,6 @@ mod tests {
 
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
         item.path = Some(String::new());
-        item.path = Some(String::new());
         insert_item(&conn, &mut item).unwrap();
         set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
 
@@ -6423,7 +6418,6 @@ mod tests {
         let task = seed_task(&conn);
 
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
-        item.path = Some(String::new());
         item.path = Some(String::new());
         insert_item(&conn, &mut item).unwrap();
         set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
