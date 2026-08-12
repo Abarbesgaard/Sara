@@ -19,13 +19,45 @@ fn kind_arg(kind: Option<&str>) -> &str {
     }
 }
 
+/// Max memories surfaced on the execution cursor. Tighter than the task-start
+/// guide (5): `sara next` is hit on every step, so it must stay a glance, not a
+/// wall.
+const NEXT_MEMORY_LIMIT: usize = 3;
+
+/// Strong memories relevant to a task's description + tags, as `(label, snippet)`
+/// pairs — the same signal `sara info`/`guide` surfaces at task-start, brought
+/// into the per-step execution cursor so the agent never works memory-blind.
+/// Empty when nothing Strong matches (the caller then omits the block entirely).
+fn relevant_memories(conn: &Connection, task: &crate::infrastructure::model::Task) -> Vec<(String, String)> {
+    db::find_similar_strong_memories(conn, &task.description, &task.tags)
+        .unwrap_or_default()
+        .into_iter()
+        .take(NEXT_MEMORY_LIMIT)
+        .map(|item| {
+            let label = format!("m{}", item.display_id.unwrap_or(0));
+            let snippet: String = item
+                .summary
+                .clone()
+                .unwrap_or_else(|| item.body.clone())
+                .chars()
+                .take(160)
+                .collect();
+            (label, snippet.trim().to_string())
+        })
+        .collect()
+}
+
 /// Structured form of the execution cursor (first not-done step). Shared by the
 /// `--json` CLI path and the MCP `next` tool so there is a single serializer.
 pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
     let next = steps.iter().enumerate().find(|(_, s)| !s.done);
-    Ok(match next {
+    let relevant: Vec<serde_json::Value> = relevant_memories(conn, &task)
+        .into_iter()
+        .map(|(label, snippet)| json!({ "label": label, "snippet": snippet }))
+        .collect();
+    let mut value = match next {
         Some((i, s)) => json!({
             "task": task.id,
             "index": i + 1,
@@ -36,7 +68,13 @@ pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
             "source": s.source,
         }),
         None => json!({ "task": task.id, "done": true, "total": steps.len() }),
-    })
+    };
+    if !relevant.is_empty() {
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("relevant_memories".to_string(), serde_json::Value::Array(relevant));
+        }
+    }
+    Ok(value)
 }
 
 /// `sara next` — the execution cursor: first not-done step.
@@ -62,6 +100,14 @@ pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result
         }
         None if steps.is_empty() => println!("No steps defined for task {}.", task.id.unwrap_or(0)),
         None => println!("All steps complete for task {}.", task.id.unwrap_or(0)),
+    }
+
+    let relevant = relevant_memories(conn, &task);
+    if !relevant.is_empty() {
+        println!("\nRelevant memory ({}) — recall before you act:", relevant.len());
+        for (label, snippet) in &relevant {
+            println!("  {label}: {snippet}");
+        }
     }
     Ok(())
 }
@@ -740,6 +786,59 @@ mod tests {
 
     fn cfg() -> Config {
         Config::default()
+    }
+
+    #[test]
+    fn next_surfaces_a_strong_relevant_memory() {
+        use crate::infrastructure::model::Item;
+        let conn = db::open_in_memory_for_test();
+
+        // A completed source task lifts memories derived from it to Strong (2.0).
+        let mut src = Task::new("source work".into(), "proj".into());
+        src.status = crate::infrastructure::model::Status::Completed;
+        db::insert_task(&conn, &mut src).unwrap();
+
+        // A Strong memory tagged `dependabot`, derived from the completed task.
+        let mut mem = Item::new_memory(
+            "dependabot bump restore pattern".into(),
+            "dependabot bump broke restore; align versions".into(),
+            Some(src.uuid),
+        );
+        mem.tags = vec!["dependabot".into()];
+        mem.path = Some(String::new());
+        db::insert_item(&conn, &mut mem).unwrap();
+        db::set_item_tags(&conn, &mem.uuid, &["dependabot".into()]).unwrap();
+
+        // The current task shares the tag, so the memory is relevant to it.
+        let mut task = Task::new("do the dependabot bump".into(), "proj".into());
+        task.tags = vec!["dependabot".into()];
+        db::insert_task(&conn, &mut task).unwrap();
+        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
+            .unwrap();
+
+        let v = next_value(&conn, &task.uuid.to_string()).unwrap();
+        let mems = v["relevant_memories"]
+            .as_array()
+            .expect("relevant_memories present when a Strong memory matches");
+        assert_eq!(mems.len(), 1);
+        assert!(mems[0]["label"].as_str().unwrap().starts_with('m'));
+        assert!(!mems[0]["snippet"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn next_omits_the_block_when_no_memory_matches() {
+        let conn = db::open_in_memory_for_test();
+        let mut task = Task::new("unrelated task".into(), "proj".into());
+        task.tags = vec!["nothing-matches-this".into()];
+        db::insert_task(&conn, &mut task).unwrap();
+        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
+            .unwrap();
+
+        let v = next_value(&conn, &task.uuid.to_string()).unwrap();
+        assert!(
+            v.get("relevant_memories").is_none(),
+            "no relevant_memories key when nothing Strong matches"
+        );
     }
 
     #[test]

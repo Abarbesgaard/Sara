@@ -55,9 +55,10 @@ struct Hit {
     /// Labels of memories this one is derived from (outgoing `derived_from` edges).
     /// Non-empty means this is a per-application copy of a canonical pattern memory.
     derived_from_labels: Vec<String>,
-    /// Number of memories that derive from this one (incoming `derived_from` edges).
-    /// Non-zero means this is a canonical pattern memory.
-    derived_count: usize,
+    /// Labels of memories that derive from this one (incoming `derived_from` edges).
+    /// Non-empty means this is a canonical pattern memory; the labels are its
+    /// per-application evidence cards, so recall can point straight at them.
+    derived_children: Vec<String>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -107,11 +108,16 @@ pub fn recall_value(
     // Only meaningful when a free-text query drove the search (tag/file-only = high).
     let (confidence, caveat) = match_confidence(query, &tags, &hits);
 
-    // Spreading activation (opt-in): radiate from the direct memory hits across
-    // the graph and return the associatively-related memories a keyword search
-    // misses, so agents can pull in context that shares no literal term. These
-    // surfaced to the caller, so reinforce them exactly like direct hits.
-    let associative: Vec<_> = if spread {
+    // Spreading activation: radiate from the direct memory hits across the graph
+    // and return the associatively-related memories a keyword search misses, so
+    // agents can pull in context that shares no literal term. Fires when either
+    // explicitly requested (`--spread`) or a *free-text* query returned thin
+    // literal hits (see `should_auto_spread`) — a plentiful lexical result stays
+    // lexical, and a bare tag/file lookup (no query) is already precise so it
+    // never auto-radiates. Surfaced memories are reinforced exactly like direct hits.
+    let auto_spread = !spread && !query.trim().is_empty() && should_auto_spread(&hits);
+    let do_spread = spread || auto_spread;
+    let associative: Vec<_> = if do_spread {
         let related = spreading_related(conn, &hits)?;
         related
             .iter()
@@ -137,6 +143,7 @@ pub fn recall_value(
         "files": files,
         "keyword": keyword,
         "associative": associative,
+        "spread": if spread { "explicit" } else if auto_spread { "auto" } else { "off" },
         "confidence": confidence,
         "caveat": caveat,
     }))
@@ -305,10 +312,14 @@ pub fn run(
             } else {
                 String::new()
             };
-            let canonical_str = if h.derived_count > 0 {
-                format!(" [canonical, {} derived]", h.derived_count)
-            } else {
+            let canonical_str = if h.derived_children.is_empty() {
                 String::new()
+            } else {
+                format!(
+                    " [canonical, {} derived: {}]",
+                    h.derived_children.len(),
+                    h.derived_children.join(", ")
+                )
             };
             let derived_from_str = if h.derived_from_labels.is_empty() {
                 String::new()
@@ -338,11 +349,18 @@ pub fn run(
 
     // Spreading activation: from the memories that matched directly, radiate
     // outward across the graph and surface the associatively-related memories a
-    // flat keyword search would miss. Opt-in so default recall is unchanged.
-    if spread {
+    // flat keyword search would miss. Fires on explicit `--spread`, or
+    // automatically when a non-bare query returned thin literal hits.
+    let auto_spread = !spread && !recent && !query.trim().is_empty() && should_auto_spread(&hits);
+    if spread || auto_spread {
         let related = spreading_related(conn, &hits)?;
         if !related.is_empty() {
-            println!("\nAssociatively related (spreading activation):");
+            let header = if auto_spread {
+                "Associatively related (auto-spread — literal hits were thin):"
+            } else {
+                "Associatively related (spreading activation):"
+            };
+            println!("\n{header}");
             for r in &related {
                 let label = format!("m{}", r.item.display_id.unwrap_or(0));
                 let snippet: String = r
@@ -386,6 +404,22 @@ struct Related {
 /// useful to a reader (often an LLM) as a *small* set of the strongest links —
 /// beyond a handful it becomes context-flooding noise.
 const ASSOCIATIVE_CAP: usize = 5;
+
+/// Direct memory hits below this count are "thin" — too few for confidence that
+/// the literal keyword search surfaced everything relevant. When recall is
+/// *not* given an explicit `--spread`, thin results auto-radiate across the
+/// graph so the caller still gets associatively-related context. Zero direct
+/// memory hits cannot seed spreading activation, so auto-spread fires only with
+/// `1..AUTO_SPREAD_HIT_FLOOR` seeds — a plentiful literal result set stays
+/// lexical (and noise-free).
+const AUTO_SPREAD_HIT_FLOOR: usize = 3;
+
+/// Whether recall should auto-radiate: true when there are some (but few) direct
+/// memory hits to seed from. Explicit `--spread` bypasses this and always spreads.
+fn should_auto_spread(hits: &[Hit]) -> bool {
+    let memory_hits = hits.iter().filter(|h| h.item_uuid.is_some()).count();
+    (1..AUTO_SPREAD_HIT_FLOOR).contains(&memory_hits)
+}
 
 /// Radiate activation from the memories that matched directly and return the
 /// *other* memories the network lights up, ranked by accumulated activation.
@@ -653,7 +687,7 @@ fn collect_hits(
                     provisional: false,
                     item_uuid: None,
                     derived_from_labels: vec![],
-                    derived_count: 0,
+                    derived_children: vec![],
                     fts_rank: Some(rank),
                     loose,
                 });
@@ -710,8 +744,9 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                 "files": h.files,
                 "superseded_by": h.superseded_by,
                 "provisional": h.provisional,
-                "canonical": h.derived_count > 0,
-                "derived_count": h.derived_count,
+                "canonical": !h.derived_children.is_empty(),
+                "derived_count": h.derived_children.len(),
+                "derived_children": h.derived_children,
                 "derived_from": h.derived_from_labels,
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
@@ -776,11 +811,17 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         })
         .collect();
     // Incoming `derived_from` edges — other memories derive from this canonical.
-    let derived_count = db::get_memory_links_to(conn, &item.uuid.to_string())
+    let derived_children: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
         .unwrap_or_default()
         .into_iter()
         .filter(|l| l.relation == "derived_from")
-        .count();
+        .map(|l| {
+            db::get_item_by_uuid(conn, &l.from_uuid)
+                .ok()
+                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .unwrap_or_else(|| l.from_uuid[..8].to_string())
+        })
+        .collect();
     Hit {
         ref_kind: format!("item_{}", item.kind),
         strength: db::item_strength(conn, &item),
@@ -795,7 +836,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         provisional: item.status == "provisional",
         item_uuid: Some(item.uuid),
         derived_from_labels,
-        derived_count,
+        derived_children,
         fts_rank: None,
         loose: false,
     }
@@ -886,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn recall_value_associative_array_is_empty_by_default_and_populated_with_spread() {
+    fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
         let conn = db::open_in_memory_for_test();
         let seed = seed_memory(
             &conn,
@@ -911,13 +952,23 @@ mod tests {
         )
         .unwrap();
 
-        // Default: no associative expansion, existing shape preserved.
+        // Thin literal result (1 direct hit) now AUTO-spreads without --spread:
+        // the linked neighbour surfaces associatively and the mode is "auto".
         let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, false).unwrap();
-        assert!(v["associative"].as_array().unwrap().is_empty());
         assert_eq!(v["keyword"].as_array().unwrap().len(), 1);
+        assert_eq!(v["spread"], "auto", "one thin hit triggers auto-spread");
+        assert!(
+            v["associative"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a["text"].as_str().unwrap().contains("mutex")),
+            "auto-spread should surface the linked neighbour"
+        );
 
-        // With spread: the linked neighbour appears associatively, not in keyword.
+        // With explicit --spread: same surfacing, but the mode is "explicit".
         let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, true).unwrap();
+        assert_eq!(v["spread"], "explicit");
         let assoc = v["associative"].as_array().unwrap();
         assert!(
             assoc
@@ -935,6 +986,52 @@ mod tests {
                 .all(|a| a["via"].as_array().is_some_and(|p| !p.is_empty())),
             "each associative hit carries a non-empty 'via' synaptic path"
         );
+    }
+
+    #[test]
+    fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
+        let conn = db::open_in_memory_for_test();
+        // Three memories all match "cache" directly → not thin → no auto-spread.
+        let a = seed_memory(&conn, "cache one", "cache eviction note one", &[], &["web-app"]);
+        let b = seed_memory(&conn, "cache two", "cache warming note two", &[], &["web-app"]);
+        seed_memory(&conn, "cache three", "cache stampede note three", &[], &["web-app"]);
+        // A linked outsider that auto-spread WOULD surface if it fired.
+        let outsider = seed_memory(&conn, "outsider", "unrelated mutex trick", &[], &["web-app"]);
+        db::insert_memory_link(&conn, &a.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+        db::insert_memory_link(&conn, &b.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+
+        let v = recall_value(&conn, &cfg(), "cache", &[], &[], &[], 20, false).unwrap();
+        assert!(v["keyword"].as_array().unwrap().len() >= 3, "plentiful direct hits");
+        assert_eq!(v["spread"], "off", "plentiful literal hits stay lexical");
+        assert!(v["associative"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn recall_zero_hits_does_not_spread() {
+        let conn = db::open_in_memory_for_test();
+        seed_memory(&conn, "unrelated", "nothing to do with the query", &[], &["web-app"]);
+
+        let v = recall_value(&conn, &cfg(), "zzzznomatchqqq", &[], &[], &[], 20, false).unwrap();
+        assert!(v["keyword"].as_array().unwrap().is_empty(), "no direct hits");
+        assert_eq!(v["spread"], "off", "zero hits cannot seed spreading");
+        assert!(v["associative"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn recall_bare_tag_lookup_does_not_auto_spread() {
+        let conn = db::open_in_memory_for_test();
+        // A single tag-matched memory (thin) linked to an outsider. A bare
+        // tag lookup is already precise, so it must NOT auto-radiate even
+        // though the hit count (1) is in the thin band.
+        let a = seed_memory(&conn, "billing note", "billing invoice edge case", &["billing"], &["web-app"]);
+        let outsider = seed_memory(&conn, "outsider", "unrelated mutex trick", &[], &["web-app"]);
+        db::insert_memory_link(&conn, &a.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+
+        // Empty query + tag filter → bare lookup.
+        let v = recall_value(&conn, &cfg(), "", &["billing".to_string()], &[], &[], 20, false).unwrap();
+        assert_eq!(v["keyword"].as_array().unwrap().len(), 1, "one thin tag hit");
+        assert_eq!(v["spread"], "off", "a bare tag lookup never auto-spreads");
+        assert!(v["associative"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -1384,14 +1481,21 @@ mod tests {
         let derived_a_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-a").unwrap();
         let derived_b_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-b").unwrap();
 
-        // Canonical: has derived_count=2, no derived_from_labels.
-        assert_eq!(canonical_hit.derived_count, 2, "canonical must report 2 derived memories");
+        // Canonical: has 2 derived children (by label), no derived_from_labels.
+        assert_eq!(canonical_hit.derived_children.len(), 2, "canonical must report 2 derived memories");
         assert!(canonical_hit.derived_from_labels.is_empty(), "canonical must not be derived from anything");
+        // The canonical's child labels must be exactly its two derived memories.
+        assert!(
+            canonical_hit.derived_children.contains(&derived_a_hit.label)
+                && canonical_hit.derived_children.contains(&derived_b_hit.label),
+            "canonical must list both derived child labels, got {:?}",
+            canonical_hit.derived_children
+        );
 
-        // Derived: has derived_count=0, derived_from_labels pointing to canonical.
-        assert_eq!(derived_a_hit.derived_count, 0);
+        // Derived: has no children, derived_from_labels pointing to canonical.
+        assert!(derived_a_hit.derived_children.is_empty());
         assert_eq!(derived_a_hit.derived_from_labels.len(), 1);
-        assert_eq!(derived_b_hit.derived_count, 0);
+        assert!(derived_b_hit.derived_children.is_empty());
         assert_eq!(derived_b_hit.derived_from_labels.len(), 1);
 
         // Both derived memories point to the same canonical label.

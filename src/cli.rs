@@ -433,6 +433,14 @@ pub enum Command {
         /// Accepts memory labels like "m7".
         #[arg(long, add = ArgValueCandidates::new(memory_labels))]
         supersedes: Vec<String>,
+        /// Mark the new memory as derived from an existing canonical one (repeatable).
+        /// Atomically creates a derived_from link. Accepts memory labels like "m7".
+        #[arg(long = "derived-from", add = ArgValueCandidates::new(memory_labels))]
+        derived_from: Vec<String>,
+        /// Link the new memory as similar to an existing one (repeatable).
+        /// Atomically creates a similar_to link. Accepts memory labels like "m7".
+        #[arg(long = "similar-to", add = ArgValueCandidates::new(memory_labels))]
+        similar_to: Vec<String>,
     },
 
     /// Cross-task memory: keyword search across tasks/findings/anchors, or an
