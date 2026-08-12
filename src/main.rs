@@ -387,6 +387,8 @@ fn run() -> Result<()> {
             auto_files,
             force,
             supersedes,
+            derived_from,
+            similar_to,
         } => {
             commands::learn::run(
                 &conn,
@@ -399,6 +401,8 @@ fn run() -> Result<()> {
                 auto_files,
                 force,
                 &supersedes,
+                &derived_from,
+                &similar_to,
             )?;
         }
 
