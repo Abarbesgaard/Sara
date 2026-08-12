@@ -603,6 +603,10 @@ pub enum Command {
         /// Minimum synapse weight for two memories to be treated as related.
         #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MIN_WEIGHT)]
         min_weight: f64,
+        /// Materialise the proposed consolidations (create the derived_from
+        /// links) instead of only printing them. Idempotent and cycle-guarded.
+        #[arg(long)]
+        apply: bool,
         /// Output as JSON
         #[arg(long)]
         json: bool,

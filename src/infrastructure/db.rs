@@ -3148,8 +3148,12 @@ pub fn insert_memory_link(
     Ok(())
 }
 
-/// BFS to check whether any directed path exists from `start` to `target`
-/// through `memory_links` edges (relation-agnostic — conservative).
+/// BFS to check whether a *hierarchical* path exists from `start` to `target`
+/// through `memory_links`. Only hierarchical relations (`supersedes`,
+/// `derived_from`) are traversed: symmetric associations like `similar_to`
+/// and usage edges like `used_in` cannot form a hierarchical cycle, and
+/// counting them would wrongly block consolidating a `similar_to` cluster
+/// into `derived_from` links.
 fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Result<bool> {
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
@@ -3162,7 +3166,8 @@ fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Resu
             continue;
         }
         let mut stmt = conn.prepare(
-            "SELECT to_uuid FROM memory_links WHERE from_uuid = ?1",
+            "SELECT to_uuid FROM memory_links
+             WHERE from_uuid = ?1 AND relation IN ('supersedes', 'derived_from')",
         )?;
         let neighbours: Vec<String> = stmt
             .query_map([&current], |r| r.get(0))?
@@ -6237,6 +6242,28 @@ mod tests {
         let conn = mem();
         let item = make_memory("standalone", &[]);
         assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn similar_to_does_not_block_a_hierarchical_link_but_real_cycles_do() {
+        let conn = mem();
+        let mut a = Item::new_memory("a".into(), "a".into(), None);
+        a.path = Some(String::new());
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = Item::new_memory("b".into(), "b".into(), None);
+        b.path = Some(String::new());
+        insert_item(&conn, &mut b).unwrap();
+
+        // A symmetric association a~b must NOT count as a hierarchical path,
+        // so consolidating into derived_from b->a is allowed.
+        insert_memory_link(&conn, &a.uuid.to_string(), &b.uuid.to_string(), "similar_to", 0.7).unwrap();
+        insert_memory_link(&conn, &b.uuid.to_string(), &a.uuid.to_string(), "derived_from", 0.8)
+            .expect("similar_to must not trip the hierarchical cycle guard");
+
+        // But a genuine hierarchical cycle (a->b derived_from already exists) is refused.
+        let err = insert_memory_link(&conn, &a.uuid.to_string(), &b.uuid.to_string(), "derived_from", 0.8)
+            .unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("cycle"), "got: {err}");
     }
 
     #[test]
