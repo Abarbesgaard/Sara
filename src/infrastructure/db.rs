@@ -3571,6 +3571,133 @@ pub fn prune_memories(
     Ok(candidates)
 }
 
+/// Summary of memories that are eligible for pruning but require human judgement
+/// (stale provisionals, weak-and-old) — counted, never archived. Used by the
+/// opportunistic hygiene pass to nudge for review without deleting anything.
+#[derive(Debug, Default, Clone)]
+pub struct ReviewSummary {
+    /// How many memories are review-eligible right now.
+    pub count: usize,
+    /// Age in days of the oldest review-eligible memory (0 when none).
+    pub oldest_age_days: i64,
+}
+
+/// Archive ONLY the lossless "superseded" signal: memories that are the target
+/// (`to_uuid`) of a `supersedes` edge whose source (the newer memory) is still
+/// active. A superseder that has itself been archived does not justify losing
+/// the older memory, so those are skipped. Returns the archived candidates.
+///
+/// Safe to run opportunistically: superseding is by definition "this replaces
+/// that", so no information is lost, and archiving is reversible at the DB level.
+pub fn archive_superseded_memories(conn: &Connection) -> Result<Vec<PruneCandidate>> {
+    let now = Utc::now();
+    let mut stmt = conn.prepare(
+        "SELECT old.uuid, old.kind, old.display_id, old.title, old.url, old.project, \
+                old.tags_json, old.path, old.summary, old.body, old.created, old.modified, \
+                old.status, old.source_task_uuid \
+         FROM items old \
+         JOIN memory_links ml ON ml.to_uuid = old.uuid AND ml.relation = 'supersedes' \
+         JOIN items newer ON newer.uuid = ml.from_uuid AND newer.status = 'active' \
+         WHERE old.kind = 'memory' AND old.status IN ('active','provisional') \
+         GROUP BY old.uuid",
+    )?;
+    let rows = stmt.query_map([], row_to_item)?;
+    let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+
+    let mut archived: Vec<PruneCandidate> = vec![];
+    for item in &items {
+        let label = format!(
+            "{}{}",
+            item.kind.chars().next().unwrap_or('m'),
+            item.display_id.unwrap_or(0)
+        );
+        conn.execute(
+            "UPDATE items SET status='archived', modified=?1 WHERE uuid=?2",
+            rusqlite::params![dt_to_str(&now), item.uuid.to_string()],
+        )?;
+        archived.push(PruneCandidate {
+            label,
+            uuid: item.uuid.to_string(),
+            title: item.title.clone(),
+            reason: "superseded by a newer memory",
+        });
+    }
+    Ok(archived)
+}
+
+/// Count (never archive) the judgement-call prune candidates: provisional
+/// auto-memories that were never reviewed within `provisional_days`, and weak
+/// (no task link, strength < 1.5) memories older than `weak_days`. Superseded
+/// memories are handled losslessly elsewhere and excluded here.
+pub fn count_review_candidates(
+    conn: &Connection,
+    weak_days: i64,
+    provisional_days: i64,
+) -> Result<ReviewSummary> {
+    let all = {
+        let mut stmt = conn.prepare(
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE kind='memory' AND status IN ('active','provisional') ORDER BY created ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_item)?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    };
+
+    let now = Utc::now();
+    let mut count = 0usize;
+    let mut oldest_age_days = 0i64;
+    for item in &all {
+        let age_days = (now - item.created).num_days();
+        let provisional_stale = item.status == "provisional" && age_days >= provisional_days;
+        let weak_old = item_strength(conn, item) < 1.5 && age_days >= weak_days;
+        if provisional_stale || weak_old {
+            count += 1;
+            if age_days > oldest_age_days {
+                oldest_age_days = age_days;
+            }
+        }
+    }
+    Ok(ReviewSummary {
+        count,
+        oldest_age_days,
+    })
+}
+
+/// Age thresholds for the opportunistic hygiene pass (mirrors the manual
+/// `prune-memories` defaults). Weak (no task link) memories become review
+/// candidates after this many days; provisional auto-memories after fewer.
+pub const AUTO_HYGIENE_WEAK_DAYS: i64 = 90;
+pub const AUTO_HYGIENE_PROVISIONAL_DAYS: i64 = 30;
+
+/// Result of an opportunistic hygiene pass: what was auto-archived (lossless)
+/// and how many memories await human review.
+#[derive(Debug, Default, Clone)]
+pub struct HygieneReport {
+    /// Labels of superseded memories archived losslessly.
+    pub archived: Vec<String>,
+    /// Count of judgement-call candidates (stale provisionals, weak-old) left in place.
+    pub review_pending: usize,
+    /// Age in days of the oldest review candidate.
+    pub oldest_age_days: i64,
+}
+
+/// Opportunistic hygiene pass for the natural `sara done` trigger. Archives the
+/// lossless "superseded" signal and *counts* the judgement-call candidates
+/// (stale provisionals, weak-old) so the caller can nudge for review without
+/// deleting anything.
+pub fn hygiene_pass(conn: &Connection) -> Result<HygieneReport> {
+    let archived = archive_superseded_memories(conn)?
+        .into_iter()
+        .map(|c| c.label)
+        .collect();
+    let review =
+        count_review_candidates(conn, AUTO_HYGIENE_WEAK_DAYS, AUTO_HYGIENE_PROVISIONAL_DAYS)?;
+    Ok(HygieneReport {
+        archived,
+        review_pending: review.count,
+        oldest_age_days: review.oldest_age_days,
+    })
+}
 
 ///
 /// Called from `done_value()` after a task is marked completed. The memory is
@@ -6571,5 +6698,82 @@ mod tests {
             |r| r.get(0),
         ).unwrap();
         assert!(body.contains("Keep all SQL in db.rs"), "body should include the decision annotation");
+    }
+
+    #[test]
+    fn done_surfaces_review_nudge_without_archiving() {
+        let conn = mem();
+        // A provisional memory backdated past the 30-day floor.
+        let mut item = Item::new_memory("stale provisional".into(), "body".into(), None);
+        item.path = Some(String::new());
+        item.status = "provisional".into();
+        insert_item(&conn, &mut item).unwrap();
+        let old_ts = dt_to_str(&(Utc::now() - chrono::Duration::days(40)));
+        conn.execute(
+            "UPDATE items SET created=?1 WHERE uuid=?2",
+            rusqlite::params![old_ts, item.uuid.to_string()],
+        )
+        .unwrap();
+
+        let report = hygiene_pass(&conn).unwrap();
+        assert!(report.review_pending >= 1, "stale provisional is counted for review");
+        assert!(report.oldest_age_days >= 40, "oldest age is surfaced");
+        assert!(report.archived.is_empty(), "nothing lossless to archive");
+
+        // It was surfaced, NOT deleted.
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                rusqlite::params![item.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "provisional", "review candidate is not archived");
+    }
+
+    #[test]
+    fn archive_superseded_respects_active_superseder() {
+        let conn = mem();
+        // Pair 1: superseder active -> old archived.
+        let mut a1 = Item::new_memory("pair1 old".into(), "b".into(), None);
+        a1.path = Some(String::new());
+        insert_item(&conn, &mut a1).unwrap();
+        let mut b1 = Item::new_memory("pair1 new".into(), "b".into(), None);
+        b1.path = Some(String::new());
+        insert_item(&conn, &mut b1).unwrap();
+        insert_memory_link(&conn, &b1.uuid.to_string(), &a1.uuid.to_string(), "supersedes", 1.0)
+            .unwrap();
+
+        // Pair 2: superseder archived -> old preserved.
+        let mut a2 = Item::new_memory("pair2 old".into(), "b".into(), None);
+        a2.path = Some(String::new());
+        insert_item(&conn, &mut a2).unwrap();
+        let mut b2 = Item::new_memory("pair2 new".into(), "b".into(), None);
+        b2.path = Some(String::new());
+        insert_item(&conn, &mut b2).unwrap();
+        insert_memory_link(&conn, &b2.uuid.to_string(), &a2.uuid.to_string(), "supersedes", 1.0)
+            .unwrap();
+        conn.execute(
+            "UPDATE items SET status='archived' WHERE uuid=?1",
+            rusqlite::params![b2.uuid.to_string()],
+        )
+        .unwrap();
+
+        let archived = archive_superseded_memories(&conn).unwrap();
+        let labels: Vec<String> = archived.iter().map(|c| c.label.clone()).collect();
+
+        let a1_label = format!("m{}", a1.display_id.unwrap_or(0));
+        let a2_label = format!("m{}", a2.display_id.unwrap_or(0));
+        assert!(labels.contains(&a1_label), "old with an ACTIVE superseder is archived");
+        assert!(!labels.contains(&a2_label), "old with an ARCHIVED superseder is preserved");
+
+        let a2_status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                rusqlite::params![a2.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(a2_status, "active", "a2 remains active");
     }
 }
