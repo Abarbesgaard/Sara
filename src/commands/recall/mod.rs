@@ -110,10 +110,11 @@ pub fn recall_value(
     // Spreading activation: radiate from the direct memory hits across the graph
     // and return the associatively-related memories a keyword search misses, so
     // agents can pull in context that shares no literal term. Fires when either
-    // explicitly requested (`--spread`) or the literal result set was thin (see
-    // `should_auto_spread`) — a plentiful lexical result stays lexical. Surfaced
-    // memories are reinforced exactly like direct hits.
-    let auto_spread = !spread && should_auto_spread(&hits);
+    // explicitly requested (`--spread`) or a *free-text* query returned thin
+    // literal hits (see `should_auto_spread`) — a plentiful lexical result stays
+    // lexical, and a bare tag/file lookup (no query) is already precise so it
+    // never auto-radiates. Surfaced memories are reinforced exactly like direct hits.
+    let auto_spread = !spread && !query.trim().is_empty() && should_auto_spread(&hits);
     let do_spread = spread || auto_spread;
     let associative: Vec<_> = if do_spread {
         let related = spreading_related(conn, &hits)?;
@@ -345,7 +346,7 @@ pub fn run(
     // outward across the graph and surface the associatively-related memories a
     // flat keyword search would miss. Fires on explicit `--spread`, or
     // automatically when a non-bare query returned thin literal hits.
-    let auto_spread = !spread && !recent && should_auto_spread(&hits);
+    let auto_spread = !spread && !recent && !query.trim().is_empty() && should_auto_spread(&hits);
     if spread || auto_spread {
         let related = spreading_related(conn, &hits)?;
         if !related.is_empty() {
@@ -1001,6 +1002,23 @@ mod tests {
         let v = recall_value(&conn, &cfg(), "zzzznomatchqqq", &[], &[], &[], 20, false).unwrap();
         assert!(v["keyword"].as_array().unwrap().is_empty(), "no direct hits");
         assert_eq!(v["spread"], "off", "zero hits cannot seed spreading");
+        assert!(v["associative"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn recall_bare_tag_lookup_does_not_auto_spread() {
+        let conn = db::open_in_memory_for_test();
+        // A single tag-matched memory (thin) linked to an outsider. A bare
+        // tag lookup is already precise, so it must NOT auto-radiate even
+        // though the hit count (1) is in the thin band.
+        let a = seed_memory(&conn, "billing note", "billing invoice edge case", &["billing"], &["web-app"]);
+        let outsider = seed_memory(&conn, "outsider", "unrelated mutex trick", &[], &["web-app"]);
+        db::insert_memory_link(&conn, &a.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+
+        // Empty query + tag filter → bare lookup.
+        let v = recall_value(&conn, &cfg(), "", &["billing".to_string()], &[], &[], 20, false).unwrap();
+        assert_eq!(v["keyword"].as_array().unwrap().len(), 1, "one thin tag hit");
+        assert_eq!(v["spread"], "off", "a bare tag lookup never auto-spreads");
         assert!(v["associative"].as_array().unwrap().is_empty());
     }
 
