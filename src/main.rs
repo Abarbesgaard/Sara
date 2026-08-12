@@ -507,6 +507,10 @@ fn run() -> Result<()> {
             commands::diagnose_memories::run(&conn, json)?;
         }
 
+        Command::Reflect { min_weight, json } => {
+            commands::reflect::run(&conn, min_weight, json)?;
+        }
+
         Command::Assignment { id, text } => {
             commands::guide::assignment(&conn, &id, &text.join(" "))?;
         }

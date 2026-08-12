@@ -596,6 +596,18 @@ pub enum Command {
         json: bool,
     },
 
+    /// Reflect over the memory graph: cluster related, not-yet-consolidated
+    /// memories and propose a canonical + `derived_from` links to tidy each
+    /// cluster. Read-only — prints the `sara link-memory` lines to apply.
+    Reflect {
+        /// Minimum synapse weight for two memories to be treated as related.
+        #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MIN_WEIGHT)]
+        min_weight: f64,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Set the originating assignment/prompt for a task
     Assignment {
         /// Task id or uuid prefix
