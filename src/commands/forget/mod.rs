@@ -8,6 +8,9 @@ use crate::infrastructure::db;
 pub fn forget_value(conn: &Connection, handle: &str) -> Result<Value> {
     let item = db::get_item_by_handle(conn, handle)?;
     db::archive_item(conn, &item.uuid)?;
+    // Drop any semantic-index entry too, so a forgotten memory can never
+    // resurface via `recall --semantic`.
+    let _ = db::delete_embedding(conn, &item.uuid.to_string());
     Ok(json!({
         "label": handle,
         "uuid": item.uuid.to_string(),

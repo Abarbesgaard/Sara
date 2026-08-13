@@ -414,9 +414,16 @@ fn run() -> Result<()> {
             top,
             limit,
             spread,
+            semantic,
             json,
         } => {
             let effective_limit = top.unwrap_or(limit);
+            // `--semantic` flips on embedding recall for this one call, on top of
+            // whatever the config default is.
+            let mut cfg = cfg.clone();
+            if semantic {
+                cfg.recall.semantic = true;
+            }
             commands::recall::run(
                 &conn,
                 &cfg,
@@ -428,6 +435,11 @@ fn run() -> Result<()> {
                 spread,
                 json,
             )?;
+        }
+
+        Command::ReindexEmbeddings => {
+            let n = infrastructure::embedding::reindex_all(&conn)?;
+            println!("Embedded {n} memories into the semantic index.");
         }
 
         Command::Consolidate {

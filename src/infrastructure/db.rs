@@ -2817,6 +2817,59 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     Ok(items)
 }
 
+/// Store (or replace) the embedding vector for a memory/item, keyed by its uuid.
+/// Vectors are persisted as a JSON array of f32 in the `embeddings` table.
+/// Best-effort by convention: callers treat a failure as "no semantic index".
+pub fn upsert_embedding(conn: &Connection, ref_uuid: &str, vector: &[f32]) -> Result<()> {
+    let vector_json = serde_json::to_string(vector)?;
+    conn.execute(
+        "INSERT INTO embeddings (ref_uuid, vector_json) VALUES (?1, ?2)
+         ON CONFLICT(ref_uuid) DO UPDATE SET vector_json = excluded.vector_json",
+        rusqlite::params![ref_uuid, vector_json],
+    )?;
+    Ok(())
+}
+
+/// Read back a single stored embedding, if present.
+pub fn get_embedding(conn: &Connection, ref_uuid: &str) -> Result<Option<Vec<f32>>> {
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT vector_json FROM embeddings WHERE ref_uuid = ?1",
+            [ref_uuid],
+            |r| r.get(0),
+        )
+        .optional()?;
+    match row {
+        Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+        None => Ok(None),
+    }
+}
+
+/// All stored embeddings as `(ref_uuid, vector)` pairs — the corpus semantic
+/// recall ranks the query against.
+pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
+    let mut stmt = conn.prepare("SELECT ref_uuid, vector_json FROM embeddings")?;
+    let rows = stmt.query_map([], |r| {
+        let uuid: String = r.get(0)?;
+        let json: String = r.get(1)?;
+        Ok((uuid, json))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (uuid, json) = r?;
+        if let Ok(v) = serde_json::from_str::<Vec<f32>>(&json) {
+            out.push((uuid, v));
+        }
+    }
+    Ok(out)
+}
+
+/// Remove a stored embedding (e.g. when a memory is forgotten). Idempotent.
+pub fn delete_embedding(conn: &Connection, ref_uuid: &str) -> Result<()> {
+    conn.execute("DELETE FROM embeddings WHERE ref_uuid = ?1", [ref_uuid])?;
+    Ok(())
+}
+
 /// All active memories (`kind = 'memory'`), sorted newest-created first.
 /// Use this for the `sara memories` browse command — display_id order is not
 /// guaranteed to match creation order, so sort explicitly on `created`.
@@ -4626,6 +4679,28 @@ mod tests {
             .unwrap()
             .collect::<rusqlite::Result<_>>()
             .unwrap()
+    }
+
+    #[test]
+    fn embedding_upsert_roundtrip() {
+        let conn = mem();
+        let uuid = Uuid::new_v4().to_string();
+        let v = vec![0.1_f32, -0.2, 0.3, 0.4];
+        upsert_embedding(&conn, &uuid, &v).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v.clone()));
+
+        // Upsert replaces (does not duplicate).
+        let v2 = vec![1.0_f32, 2.0, 3.0, 4.0];
+        upsert_embedding(&conn, &uuid, &v2).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v2.clone()));
+
+        let all = all_embeddings(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0], (uuid.clone(), v2));
+
+        delete_embedding(&conn, &uuid).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), None);
+        assert!(all_embeddings(&conn).unwrap().is_empty());
     }
 
     #[test]
