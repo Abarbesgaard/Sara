@@ -59,13 +59,18 @@ struct Hit {
     /// Non-empty means this is a canonical pattern memory; the labels are its
     /// per-application evidence cards, so recall can point straight at them.
     derived_children: Vec<String>,
+    /// True when this hit was surfaced by semantic (embedding-cosine) matching
+    /// rather than lexical FTS — it may share no literal token with the query.
+    semantic: bool,
+    /// Cosine similarity to the query for a semantic hit (`None` for lexical hits).
+    cosine: Option<f32>,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
 /// path: keyword (FTS5) hits and exact tag/project hits.
 pub fn recall_value(
     conn: &Connection,
-    _cfg: &Config,
+    cfg: &Config,
     query: &str,
     tags: &[String],
     projects: &[String],
@@ -101,7 +106,7 @@ pub fn recall_value(
         }));
     }
 
-    let hits = collect_hits(conn, query, &tags, &projects, &files, limit)?;
+    let hits = collect_hits(conn, query, &tags, &projects, &files, limit, &SemanticOpts::from_cfg(cfg))?;
     let keyword = keyword_json(&hits);
 
     // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
@@ -184,6 +189,16 @@ fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str
         return ("high", "");
     }
 
+    // Semantic hits present: recall matched by meaning (embedding cosine), so
+    // the "literal-only, paraphrases may not surface" caveat no longer applies.
+    if hits.iter().any(|h| h.semantic) {
+        return (
+            "semantic",
+            "Includes semantic matches (embedding similarity, marked *): these \
+             may share no literal keyword with the query — verify relevance.",
+        );
+    }
+
     // Loose Tier-3 (token-OR) hits: only some query terms overlapped, so these
     // are weaker signals than a phrase or token-AND match. Flag them distinctly
     // so callers don't treat a tangential hit as a confident one.
@@ -234,7 +249,7 @@ pub fn run(
     let hits = if recent {
         recent_hits(conn, limit)?
     } else {
-        collect_hits(conn, query, &tags, &projects, &files, limit)?
+        collect_hits(conn, query, &tags, &projects, &files, limit, &SemanticOpts::from_cfg(cfg))?
     };
 
     if hits.is_empty() {
@@ -280,6 +295,8 @@ pub fn run(
             let age = h.modified.map(age_str).unwrap_or_default();
             let marker = if h.exact_match {
                 "="
+            } else if h.semantic {
+                "*"
             } else if h.loose {
                 "≈"
             } else {
@@ -520,6 +537,79 @@ fn resolve_file_path(path: &str) -> String {
 /// Resolve query/tag/project/file inputs into a single ranked list of hits:
 /// Strong (linkage-derived) memories first, then exact tag/project matches,
 /// then plain FTS hits; ties broken by most-recently-modified.
+/// Per-invocation semantic-recall settings, resolved from `Config` (and the
+/// `--semantic` flag, which flips `enabled` for one call).
+struct SemanticOpts {
+    enabled: bool,
+    threshold: f32,
+    top_k: usize,
+}
+
+impl SemanticOpts {
+    fn from_cfg(cfg: &Config) -> Self {
+        SemanticOpts {
+            enabled: cfg.recall.semantic,
+            threshold: cfg.recall.semantic_threshold,
+            top_k: cfg.recall.semantic_top_k,
+        }
+    }
+
+    /// Lexical-only (semantic disabled) — the default used everywhere recall is
+    /// not explicitly opted into semantic mode.
+    fn off() -> Self {
+        SemanticOpts {
+            enabled: false,
+            threshold: 1.0,
+            top_k: 0,
+        }
+    }
+}
+
+/// Rank the stored memory embeddings against the query embedding and fold the
+/// strongest matches into `hits` (deduped against memories already surfaced
+/// lexically). This is what lets recall find a paraphrase that shares no literal
+/// term with the query. Best-effort: any storage/embed hiccup leaves the lexical
+/// hits untouched rather than breaking recall.
+fn merge_semantic_hits(
+    conn: &Connection,
+    query: &str,
+    opts: &SemanticOpts,
+    hits: &mut Vec<Hit>,
+) -> Result<()> {
+    use crate::infrastructure::embedding::{self, Embedder};
+
+    let qv = embedding::bundled().embed(query);
+    if qv.iter().all(|&x| x == 0.0) {
+        return Ok(()); // query had no in-vocabulary content
+    }
+
+    let mut scored: Vec<(String, f32)> = db::all_embeddings(conn)?
+        .into_iter()
+        .map(|(uuid, v)| (uuid, embedding::cosine(&qv, &v)))
+        .filter(|(_, c)| *c >= opts.threshold)
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(opts.top_k);
+
+    let already: HashSet<String> = hits
+        .iter()
+        .filter_map(|h| h.item_uuid.map(|u| u.to_string()))
+        .collect();
+
+    for (uuid, cos) in scored {
+        if already.contains(&uuid) {
+            continue; // lexical hit already carries this memory
+        }
+        if let Ok(item) = db::get_item_by_uuid(conn, &uuid) {
+            let mut hit = item_hit(conn, item, false);
+            hit.semantic = true;
+            hit.cosine = Some(cos);
+            hits.push(hit);
+        }
+    }
+    Ok(())
+}
+
 fn collect_hits(
     conn: &Connection,
     query: &str,
@@ -527,6 +617,7 @@ fn collect_hits(
     projects: &[String],
     files: &[String],
     limit: i64,
+    semantic: &SemanticOpts,
 ) -> Result<Vec<Hit>> {
     // File filter: intersect items across all --file values (AND semantics).
     let file_uuids: Option<HashSet<uuid::Uuid>> = if !files.is_empty() {
@@ -690,9 +781,19 @@ fn collect_hits(
                     derived_children: vec![],
                     fts_rank: Some(rank),
                     loose,
+                    semantic: false,
+                    cosine: None,
                 });
             }
         }
+    }
+
+    // Semantic (embedding) recall: rank the memory corpus by cosine to the
+    // query embedding and fold in the strong matches a lexical search missed —
+    // the whole point being to surface paraphrases sharing no literal token.
+    // Off by default (config/flag), so lexical behaviour stays byte-identical.
+    if semantic.enabled && !query.is_empty() {
+        merge_semantic_hits(conn, query, semantic, &mut hits)?;
     }
 
     hits.sort_by(|a, b| {
@@ -710,6 +811,12 @@ fn collect_hits(
                 a.fts_rank
                     .unwrap_or(usize::MAX)
                     .cmp(&b.fts_rank.unwrap_or(usize::MAX)),
+            )
+            .then(
+                b.cosine
+                    .unwrap_or(f32::MIN)
+                    .partial_cmp(&a.cosine.unwrap_or(f32::MIN))
+                    .unwrap_or(std::cmp::Ordering::Equal),
             )
             .then(b.modified.cmp(&a.modified))
     });
@@ -740,6 +847,8 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                 "strength": h.strength,
                 "exact_match": h.exact_match,
                 "loose": h.loose,
+                "semantic": h.semantic,
+                "cosine": h.cosine,
                 "modified": h.modified.map(|m| m.to_rfc3339()),
                 "files": h.files,
                 "superseded_by": h.superseded_by,
@@ -839,6 +948,8 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         derived_children,
         fts_rank: None,
         loose: false,
+        semantic: false,
+        cosine: None,
     }
 }
 
@@ -890,6 +1001,90 @@ mod tests {
         item
     }
 
+    /// A Config with semantic recall enabled, for the semantic-path tests.
+    fn cfg_semantic() -> Config {
+        let mut c = Config::default();
+        c.recall.semantic = true;
+        c
+    }
+
+    #[test]
+    fn recall_semantic_surfaces_paraphrase() {
+        // The core value of the embedder: a query that shares NO literal token
+        // with a memory still surfaces it via embedding cosine — something the
+        // lexical FTS path (validated in the same test) cannot do.
+        let conn = db::open_in_memory_for_test();
+        let m = seed_memory(
+            &conn,
+            "CI restore step failed",
+            "a dependabot bump broke the build; pin the lockfile version to fix it",
+            &[],
+            &[],
+        );
+        crate::infrastructure::embedding::index_memory(&conn, &m);
+
+        // A paraphrase with no shared content word ("automated" "dependency"
+        // "update" "wrecked" "pipeline" vs "dependabot" "bump" "broke" "build").
+        let query = "automated dependency update wrecked the pipeline";
+
+        // Lexical-only recall misses it (no literal overlap).
+        let lexical = collect_hits(&conn, query, &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        assert!(
+            lexical.is_empty(),
+            "lexical recall should NOT surface the paraphrase, got {} hits",
+            lexical.len()
+        );
+
+        // Semantic recall surfaces it, flagged as a semantic hit with a cosine.
+        let semantic = collect_hits(
+            &conn,
+            query,
+            &[],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::from_cfg(&cfg_semantic()),
+        )
+        .unwrap();
+        assert_eq!(semantic.len(), 1, "semantic recall should surface the memory");
+        assert!(semantic[0].semantic, "hit must be flagged semantic");
+        assert!(
+            semantic[0].cosine.unwrap() > 0.30,
+            "cosine {:?} should clear the threshold",
+            semantic[0].cosine
+        );
+    }
+
+    #[test]
+    fn recall_default_is_lexical_only_byte_identical() {
+        // Default config (semantic OFF) must not inject any semantic hit, even
+        // when an embedding exists — recall stays byte-identical to before.
+        let conn = db::open_in_memory_for_test();
+        let m = seed_memory(
+            &conn,
+            "CI restore step failed",
+            "a dependabot bump broke the build; pin the lockfile version",
+            &[],
+            &[],
+        );
+        crate::infrastructure::embedding::index_memory(&conn, &m);
+
+        let query = "automated dependency update wrecked the pipeline";
+        let v = recall_value(&conn, &cfg(), query, &[], &[], &[], 20, false).unwrap();
+        assert!(
+            v["keyword"].as_array().unwrap().is_empty(),
+            "semantic-off recall must not surface the paraphrase"
+        );
+        // And no hit carries the semantic flag.
+        assert!(
+            !v["keyword"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|h| h["semantic"] == serde_json::json!(true))
+        );
+    }
+
     #[test]
     fn recall_falls_back_to_token_and_when_phrase_misses() {
         let conn = db::open_in_memory_for_test();
@@ -903,7 +1098,7 @@ mod tests {
 
         // Word order differs from the stored text → phrase literal misses,
         // token-AND fallback should still surface the memory.
-        let hits = collect_hits(&conn, "pagination MudTable", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "pagination MudTable", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "MudTable pagination gotcha");
         assert!(!hits[0].exact_match);
@@ -921,7 +1116,7 @@ mod tests {
         item.path = Some(String::new());
         db::insert_item(&conn, &mut item).unwrap();
 
-        let hits = collect_hits(&conn, "frobnicator", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "frobnicator", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert!(hits[0].provisional, "provisional flag must be set");
     }
@@ -1061,7 +1256,7 @@ mod tests {
         )
         .unwrap();
 
-        let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1, "only the seed matches the query directly");
 
         let related = spreading_related(&conn, &hits).unwrap();
@@ -1109,7 +1304,7 @@ mod tests {
             )
             .unwrap();
         }
-        let hits = collect_hits(&conn, "central", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "central", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         let related = spreading_related(&conn, &hits).unwrap();
 
         assert!(
@@ -1145,7 +1340,7 @@ mod tests {
             &["web-app"],
         );
 
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "about service-a");
         assert!(hits[0].exact_match);
@@ -1184,7 +1379,7 @@ mod tests {
         unlinked.path = Some(String::new());
         db::insert_item(&conn, &mut unlinked).unwrap();
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert!(!hits.is_empty());
         assert_eq!(hits[0].description, "service-a auth fix");
     }
@@ -1203,10 +1398,10 @@ mod tests {
         // Regression: FTS5 treats bare hyphens as NOT; --tag must never go
         // through MATCH at all (find_items_by_tag uses a plain WHERE clause),
         // and a free-text query containing a hyphen must still be quoted.
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
     }
 
@@ -1230,7 +1425,7 @@ mod tests {
         );
         assert!(newer.modified >= older.modified);
 
-        let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
     }
@@ -1261,7 +1456,7 @@ mod tests {
         assert!(and_only.is_empty(), "precondition: token-AND misses");
 
         let hits =
-            collect_hits(&conn, "pruning decay archive garbage", &[], &[], &[], 20).unwrap();
+            collect_hits(&conn, "pruning decay archive garbage", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1, "OR fallback surfaces the partial-overlap memory");
         assert_eq!(hits[0].description, "prune stale entries");
         assert!(hits[0].loose, "OR-fallback hit must be flagged loose");
@@ -1285,7 +1480,7 @@ mod tests {
             &["platform"],
         );
         // Both tokens present → token-AND matches → not loose.
-        let hits = collect_hits(&conn, "consumer lag", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "consumer lag", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert!(!hits[0].loose, "token-AND hit must not be flagged loose");
         let (confidence, _) = match_confidence("consumer lag", &[], &hits);
@@ -1346,7 +1541,7 @@ mod tests {
         );
         assert!(recent_but_weak.modified >= relevant.modified);
 
-        let hits = collect_hits(&conn, "widget", &[], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "widget", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 2, "both memories match the query");
         assert_eq!(
             hits[0].description, "widget widget widget",
@@ -1364,7 +1559,7 @@ mod tests {
         seed_memory(&conn, "unrelated notes", "something else", &[], &[]);
 
         let hits =
-            collect_hits(&conn, "", &[], &[], &["src/auth.rs".to_string()], 20).unwrap();
+            collect_hits(&conn, "", &[], &[], &["src/auth.rs".to_string()], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "auth notes");
         assert_eq!(hits[0].files, vec!["src/auth.rs"]);
@@ -1382,7 +1577,7 @@ mod tests {
 
         seed_memory(&conn, "unrelated", "outside src", &[], &[]);
 
-        let hits = collect_hits(&conn, "", &[], &[], &["src/".to_string()], 20).unwrap();
+        let hits = collect_hits(&conn, "", &[], &[], &["src/".to_string()], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 2);
     }
 
@@ -1403,6 +1598,7 @@ mod tests {
             &[],
             &["src/auth.rs".to_string()],
             20,
+            &SemanticOpts::off(),
         )
         .unwrap();
         assert_eq!(hits.len(), 1);
@@ -1420,7 +1616,7 @@ mod tests {
         let item = seed_memory(&conn, "auth memory", "auth body", &["auth"], &[]);
         db::set_item_task_links(&conn, &item.uuid, &[(task.uuid, "explicit")]).unwrap();
 
-        let hits = collect_hits(&conn, "", &["auth".to_string()], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["auth".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].linked_tasks.len(), 1);
         assert_eq!(hits[0].linked_tasks[0].0.description, "fix auth");
@@ -1473,7 +1669,7 @@ mod tests {
         )
         .unwrap();
 
-        let hits = collect_hits(&conn, "", &["codeql".to_string()], &[], &[], 20).unwrap();
+        let hits = collect_hits(&conn, "", &["codeql".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 3);
 
         // Find each hit by description.

@@ -471,12 +471,20 @@ pub enum Command {
         /// direct keyword/tag matches
         #[arg(long)]
         spread: bool,
+        /// Also rank memories by semantic similarity (embedding cosine), so
+        /// paraphrases and conceptually-related wording surface even when they
+        /// share no literal keyword. Uses Sara's bundled local model (no network).
+        #[arg(long)]
+        semantic: bool,
         /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Consolidate memory (Hebbian): turn co-firing recalls — memories that
+    /// (Re)build the semantic index: embed every memory with Sara's bundled
+    /// model so `sara recall --semantic` can match by meaning. Run once after
+    /// enabling semantic recall, or after a bulk import.
+    ReindexEmbeddings,
     /// surfaced together — into reinforced `co_activated` synapses, so the
     /// memory graph learns its own wiring from use.
     Consolidate {

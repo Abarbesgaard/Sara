@@ -1,6 +1,7 @@
 pub mod config;
 pub mod dates;
 pub mod db;
+pub mod embedding;
 pub mod files;
 pub mod git;
 pub mod memory_graph;

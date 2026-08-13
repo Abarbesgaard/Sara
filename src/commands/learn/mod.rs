@@ -447,6 +447,13 @@ fn save(
     db::insert_item(conn, &mut item)?;
     db::set_item_projects(conn, &item.uuid, &projects)?;
 
+    // Keep the semantic index current: when semantic recall is enabled, embed
+    // the freshly-learned memory so future `recall --semantic` can match it by
+    // meaning. Best-effort — never blocks learning.
+    if cfg.recall.semantic {
+        crate::infrastructure::embedding::index_memory(conn, &item);
+    }
+
     // Store file associations.
     if !files.is_empty() {
         db::set_item_files(conn, &item.uuid, files)?;

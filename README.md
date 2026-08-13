@@ -207,11 +207,29 @@ sara recall --tag auth -p web-app       # tag-scoped lookup (fast, reliable)
 sara recall "refresh token"             # full-text keyword search
 sara recall --file src/auth/login.rs    # everything linked to a specific file
 sara recall --file src/ --top 5         # most recent memories for any file under src/
+sara recall --semantic "auth bug"       # also match by meaning (embeddings), not just keywords
 ```
 
 `recall` searches both memories **and** tasks in one pass — memory hits are
 prefixed `[item_memory]`. If a memory was superseded by a newer one, recall
 shows a `[superseded by: mN]` warning so you don't act on stale knowledge.
+
+**Semantic recall (`--semantic`).** By default recall is lexical (FTS5), so a
+paraphrase with no shared keyword is missed. `sara recall --semantic` also ranks
+memories by embedding cosine using a small model bundled into the binary — no
+daemon, no network, no runtime download — so conceptually-similar memories
+surface (marked `*`). It's **off by default**; enable it permanently in
+`config.toml`:
+
+```toml
+[recall]
+semantic = true            # default false
+semantic_threshold = 0.30  # minimum cosine to surface a semantic hit
+semantic_top_k = 5         # max semantic hits merged per recall
+```
+
+Run `sara reindex-embeddings` once after enabling it to embed existing memories
+(new memories are indexed automatically on `sara learn` while semantic is on).
 
 **Overlap warnings:** when `sara learn` detects an existing memory with the same
 tag or file association, it prints an overlap warning. Always resolve it before

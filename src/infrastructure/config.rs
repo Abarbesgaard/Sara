@@ -37,6 +37,32 @@ impl Default for UrgencyConfig {
     }
 }
 
+/// Semantic (embedding-based) recall tuning. Recall stays lexical-only unless
+/// `enabled` is set (or `sara recall --semantic` flips it for one call), so the
+/// default behaviour — and every existing test — is byte-identical.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecallConfig {
+    /// When true, recall also ranks memories by embedding cosine so paraphrases
+    /// and conceptually-similar wording surface. Default OFF.
+    pub semantic: bool,
+    /// Minimum cosine similarity for a semantic hit to be surfaced. Guards
+    /// against flooding recall with weakly-related noise.
+    pub semantic_threshold: f32,
+    /// Upper bound on semantic hits merged into a single recall.
+    pub semantic_top_k: usize,
+}
+
+impl Default for RecallConfig {
+    fn default() -> Self {
+        RecallConfig {
+            semantic: false,
+            semantic_threshold: 0.30,
+            semantic_top_k: 5,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -45,6 +71,8 @@ pub struct Config {
     pub urgency: UrgencyConfig,
     /// Absolute path to Sara's private knowledge store (markdown notes/links).
     pub vault_path: Option<PathBuf>,
+    /// Semantic-recall settings (default OFF — recall stays lexical).
+    pub recall: RecallConfig,
 }
 
 impl Default for Config {
@@ -54,6 +82,7 @@ impl Default for Config {
             date_dialect: "uk".to_string(),
             urgency: UrgencyConfig::default(),
             vault_path: None,
+            recall: RecallConfig::default(),
         }
     }
 }
