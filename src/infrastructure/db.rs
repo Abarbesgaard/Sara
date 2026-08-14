@@ -823,11 +823,24 @@ pub fn get_task_by_id(conn: &Connection, id: i64) -> Result<Option<Task>> {
     Ok(rows.next().transpose()?)
 }
 
+/// Build a SQL `LIKE` pattern that matches rows *starting with* `prefix`,
+/// treating any `%`, `_`, or `\` in `prefix` as literal characters rather than
+/// wildcards. Must be paired with an `ESCAPE '\'` clause in the query. Without
+/// this, an underscore in a directory path (very common) would wildcard-match
+/// sibling paths and over-match on prefix lookups.
+fn like_prefix_pattern(prefix: &str) -> String {
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("{escaped}%")
+}
+
 pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option<Task>> {
-    let pattern = format!("{prefix}%");
+    let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
         "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur
-         FROM tasks WHERE uuid LIKE ?1 LIMIT 2",
+         FROM tasks WHERE uuid LIKE ?1 ESCAPE '\\' LIMIT 2",
     )?;
     let mut tasks = stmt
         .query_map([pattern], row_to_task)?
@@ -3047,10 +3060,10 @@ pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
         let mut stmt = conn.prepare(
             "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
              FROM items i JOIN item_files f ON f.item_uuid = i.uuid
-             WHERE i.status IN ('active','provisional') AND f.file_path LIKE ?1 || '%'
+             WHERE i.status IN ('active','provisional') AND f.file_path LIKE ?1 ESCAPE '\\'
              ORDER BY i.modified DESC",
         )?;
-        let rows = stmt.query_map([path], row_to_item)?;
+        let rows = stmt.query_map([like_prefix_pattern(path)], row_to_item)?;
         for r in rows {
             items.push(r?);
         }
@@ -3099,10 +3112,10 @@ pub fn find_tasks_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
         let mut stmt = conn.prepare(&format!(
             "SELECT DISTINCT t.{TASK_COLUMNS} FROM tasks t
              JOIN task_files f ON f.task_uuid = t.uuid
-             WHERE t.status = 'completed' AND f.path LIKE ?1 || '%'
+             WHERE t.status = 'completed' AND f.path LIKE ?1 ESCAPE '\\'
              ORDER BY t.modified DESC"
         ))?;
-        let rows = stmt.query_map([path], row_to_task)?;
+        let rows = stmt.query_map([like_prefix_pattern(path)], row_to_task)?;
         for r in rows {
             tasks.push(r?);
         }
@@ -5232,6 +5245,78 @@ mod tests {
         // "ab12" is not a numeric display id, falls through to uuid prefix,
         // which is ambiguous → error rather than a silent wrong pick.
         assert!(resolve_task(&conn, "ab12").is_err());
+    }
+
+    #[test]
+    fn get_task_by_uuid_prefix_treats_underscore_as_literal() {
+        let conn = mem();
+
+        // A single task whose uuid does NOT contain the queried prefix except
+        // where an unescaped `_` would wildcard-match any character.
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("ab1c0000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+
+        // "ab_c" contains a literal underscore. If `_` is not escaped it acts as
+        // a wildcard and matches "ab1c…"; escaped, it must NOT match.
+        assert!(
+            get_task_by_uuid_prefix(&conn, "ab_c").unwrap().is_none(),
+            "underscore in a uuid prefix must be matched literally, not as a wildcard"
+        );
+
+        // The real prefix still resolves.
+        assert_eq!(
+            get_task_by_uuid_prefix(&conn, "ab1c").unwrap().unwrap().uuid,
+            a.uuid
+        );
+    }
+
+    #[test]
+    fn find_items_by_file_prefix_escapes_underscore_wildcard() {
+        let conn = mem();
+
+        // A memory attached under a directory containing an underscore.
+        let mut hit = make_memory("in the underscore dir", &[]);
+        insert_item(&conn, &mut hit).unwrap();
+        set_item_files(&conn, &hit.uuid, &["/repo/foo_bar/x.rs".into()]).unwrap();
+
+        // A memory under a sibling dir that only matches if `_` is a wildcard.
+        let mut miss = make_memory("in the wildcard-collision dir", &[]);
+        insert_item(&conn, &mut miss).unwrap();
+        set_item_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
+
+        let items = find_items_by_file(&conn, "/repo/foo_bar/", true).unwrap();
+        let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
+        assert!(
+            titles.contains(&"in the underscore dir"),
+            "the genuinely-matching path must still be found"
+        );
+        assert!(
+            !titles.contains(&"in the wildcard-collision dir"),
+            "an underscore in the query path must not wildcard-match a sibling directory"
+        );
+    }
+
+    #[test]
+    fn find_tasks_by_file_prefix_escapes_underscore_wildcard() {
+        let conn = mem();
+
+        let mut hit = Task::new("under underscore dir".into(), "proj".into());
+        insert_task(&conn, &mut hit).unwrap();
+        set_task_files(&conn, &hit.uuid, &["/repo/foo_bar/x.rs".into()]).unwrap();
+        let mut miss = Task::new("under collision dir".into(), "proj".into());
+        insert_task(&conn, &mut miss).unwrap();
+        set_task_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
+        // find_tasks_by_file only considers completed tasks.
+        conn.execute("UPDATE tasks SET status='completed'", []).unwrap();
+
+        let tasks = find_tasks_by_file(&conn, "/repo/foo_bar/", true).unwrap();
+        let descs: Vec<&str> = tasks.iter().map(|t| t.description.as_str()).collect();
+        assert!(descs.contains(&"under underscore dir"));
+        assert!(
+            !descs.contains(&"under collision dir"),
+            "an underscore in the query path must not wildcard-match a sibling directory"
+        );
     }
 
     #[test]
