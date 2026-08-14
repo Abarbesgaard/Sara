@@ -425,9 +425,8 @@ fn save(
     // item_strength). All tasks (explicit + auto-detected) go into item_task_links.
     let first_task_uuid: Option<Uuid> = match task_prefixes.first() {
         Some(prefix) => Some(
-            db::get_task_by_uuid_prefix(conn, prefix)
-                .context("looking up --task")?
-                .ok_or_else(|| anyhow::anyhow!("No task found for prefix '{prefix}'"))?
+            db::resolve_task(conn, prefix)
+                .with_context(|| format!("looking up --task '{prefix}'"))?
                 .uuid,
         ),
         None => None,
@@ -471,11 +470,11 @@ fn save(
         }
     }
 
-    // Resolve all explicit --task prefixes and merge (explicit wins).
+    // Resolve all explicit --task prefixes and merge (explicit wins). Resolution
+    // is display-id-first (db::resolve_task), consistent with every other
+    // task-referencing command; a bare number is a display id, not a uuid prefix.
     for prefix in task_prefixes {
-        if let Some(t) = db::get_task_by_uuid_prefix(conn, prefix)
-            .context("looking up --task")?
-        {
+        if let Ok(t) = db::resolve_task(conn, prefix) {
             if let Some(pos) = task_links.iter().position(|(u, _)| *u == t.uuid) {
                 task_links[pos].1 = "explicit";
             } else {
@@ -570,6 +569,54 @@ mod tests {
                 "AuthAppUri is a UUID like a2923ccd-a496-4cbd-9673-f40156552a92 in the config"
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn learn_task_prefers_display_id_over_uuid_collision() {
+        use crate::infrastructure::{config::Config, db, model::Task};
+        use uuid::Uuid;
+
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Task A: the intended target. Its UUID deliberately does NOT start with "1".
+        let mut task_a = Task::new("intended target".into(), "proj".into());
+        task_a.uuid = Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
+        db::insert_task(&conn, &mut task_a).unwrap();
+        let a_id = task_a.id.unwrap(); // display id 1
+
+        // Task B: an unrelated task whose UUID starts with the same digit as A's
+        // display id. A raw uuid-prefix lookup on "1" would wrongly match this.
+        let mut task_b = Task::new("unrelated task".into(), "proj".into());
+        task_b.uuid = Uuid::parse_str("1bbbbbbb-0000-0000-0000-000000000002").unwrap();
+        db::insert_task(&conn, &mut task_b).unwrap();
+
+        // Learn a memory with --task <A's display id>.
+        let v = super::learn_value(
+            &conn,
+            &cfg,
+            "finding tied to task A",
+            &["tag-r".to_string()],
+            &[],
+            &[a_id.to_string()],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+
+        // The memory must be linked to task A (by display id), never task B.
+        let item = db::get_item_by_handle(&conn, v["label"].as_str().unwrap()).unwrap();
+        let linked = db::get_item_task_links(&conn, &item.uuid).unwrap();
+        assert_eq!(linked.len(), 1, "expected exactly one task link");
+        assert_eq!(
+            linked[0].0.uuid,
+            task_a.uuid,
+            "memory linked to the wrong task (uuid-prefix collision instead of display id)"
         );
     }
 
