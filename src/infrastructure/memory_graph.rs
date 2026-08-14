@@ -93,22 +93,29 @@ impl MemoryGraph {
         let mut file_sets: Vec<Vec<String>> = Vec::with_capacity(memories.len());
         let mut task_sets: Vec<Vec<Uuid>> = Vec::with_capacity(memories.len());
 
+        // All per-memory anchors and scores in a handful of bulk queries instead
+        // of several per node: recall boosts, base strengths, file anchors and
+        // task anchors are each fetched once for the whole store.
+        let boosts = db::recall_usage_boosts(conn);
+        let base_strengths = db::item_base_strengths(conn, &memories);
+        let mut all_files = db::all_item_files(conn);
+        let mut all_tasks = db::all_item_task_uuids(conn);
+
         for (i, m) in memories.iter().enumerate() {
             index.insert(m.uuid, i);
             nodes.push(Node {
                 uuid: m.uuid,
                 label: format!("m{}", m.display_id.unwrap_or(0)),
-                strength: db::item_strength(conn, m),
+                strength: base_strengths.get(&m.uuid).copied().unwrap_or(1.0)
+                    + boosts.get(&m.uuid).copied().unwrap_or(0.0),
             });
-            tag_sets.push(m.tags.clone());
-            file_sets.push(db::get_item_files(conn, &m.uuid).unwrap_or_default());
-            task_sets.push(
-                db::get_item_task_links(conn, &m.uuid)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(t, _)| t.uuid)
-                    .collect(),
-            );
+            // Dedup each anchor set: a memory carrying the same tag/file/task
+            // twice must count once, so a duplicated anchor can't inflate a
+            // pair's shared-anchor weight (document frequencies already dedup,
+            // so this keeps both sides of the IDF consistent).
+            tag_sets.push(dedup(m.tags.clone()));
+            file_sets.push(dedup(all_files.remove(&m.uuid).unwrap_or_default()));
+            task_sets.push(dedup(all_tasks.remove(&m.uuid).unwrap_or_default()));
         }
 
         // Accumulate every edge into a single (min,max)->weight map so parallel
@@ -376,6 +383,14 @@ fn shared<'a, T: PartialEq>(a: &'a [T], b: &[T]) -> impl Iterator<Item = &'a T> 
     a.iter().filter(|x| b.contains(x))
 }
 
+/// Return `v` with duplicate elements removed, preserving first-seen order.
+/// Keeps anchor sets true per-memory sets so a repeated tag/file/task can't
+/// double-count when weighting a shared-anchor edge.
+fn dedup<T: Clone + Eq + std::hash::Hash>(v: Vec<T>) -> Vec<T> {
+    let mut seen = std::collections::HashSet::new();
+    v.into_iter().filter(|x| seen.insert(x.clone())).collect()
+}
+
 /// Document frequency of each anchor: how many memories carry it. Duplicates
 /// within a single memory count once, so `df` is a true per-memory count.
 fn document_frequencies<T: Clone + Eq + std::hash::Hash>(
@@ -497,6 +512,22 @@ mod tests {
         assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
         assert!(expected > 0.0 && expected < W_SHARED_TAG);
         assert_eq!(g.edge_weight(&a, &c), None);
+    }
+
+    #[test]
+    fn duplicate_anchor_within_a_memory_does_not_inflate_edge() {
+        let conn = db::open_in_memory_for_test();
+        // `a` carries the same tag twice; `c` keeps df(auth)=2 over n=3 so the
+        // IDF matches `shared_tag_creates_a_weighted_edge`. The duplicated tag
+        // must not double the edge weight.
+        let a = seed(&conn, &["auth", "auth"]);
+        let b = seed(&conn, &["auth"]);
+        let _c = seed(&conn, &["billing"]);
+
+        let g = MemoryGraph::build(&conn).unwrap();
+        let idf = (3.0_f64 / 2.0).ln() / 3.0_f64.ln();
+        let expected = W_SHARED_TAG * idf; // single contribution, not doubled
+        assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
     }
 
     #[test]

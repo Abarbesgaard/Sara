@@ -201,17 +201,11 @@ pub(crate) fn partial_overlap_suggestion(label: &str) -> String {
 /// File-overlap: any memory already linked to one of the new memory's files → warn.
 /// Prints warnings to stderr; never blocks the write (use --force to silence).
 pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]) -> Result<()> {
-    if tags.is_empty() {
-        return Ok(());
-    }
     let normalized: Vec<String> = tags
         .iter()
         .map(|t| t.trim().to_lowercase())
         .filter(|t| !t.is_empty())
         .collect();
-    if normalized.is_empty() {
-        return Ok(());
-    }
 
     // Build UUID sets per tag, then intersect (near-dupe) and union (any overlap).
     let mut any_union: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
@@ -296,19 +290,10 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
     }
 
     // File-overlap check: warn for any existing memory sharing a file path.
+    // Runs whether or not tags were given, so a `--file`-only learn still
+    // surfaces "this file already has a memory".
     if !files.is_empty() {
-        let mut file_overlap: Vec<(String, uuid::Uuid)> = Vec::new();
-        for path in files {
-            let matches = db::find_items_by_file(conn, path, false)?;
-            for item in matches {
-                if item.kind == "memory"
-                    && !file_overlap.iter().any(|(_, u)| *u == item.uuid)
-                    && !near_dupes.contains(&item.uuid)
-                {
-                    file_overlap.push((path.clone(), item.uuid));
-                }
-            }
-        }
+        let file_overlap = file_overlaps(conn, files, &near_dupes)?;
         if !file_overlap.is_empty() {
             eprintln!(
                 "Note: {} existing {} linked to the same file(s) — consider --supersedes or sara relearn:",
@@ -330,6 +315,29 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
     }
 
     Ok(())
+}
+
+/// Existing *memory* items linked to any of `files`, excluding those in
+/// `exclude` (already reported as tag near-dupes). Each memory appears once,
+/// paired with the first file path that matched it. Pure detection — no I/O
+/// beyond the DB — so it runs regardless of whether tags were supplied.
+pub(crate) fn file_overlaps(
+    conn: &Connection,
+    files: &[String],
+    exclude: &std::collections::HashSet<uuid::Uuid>,
+) -> Result<Vec<(String, uuid::Uuid)>> {
+    let mut out: Vec<(String, uuid::Uuid)> = Vec::new();
+    for path in files {
+        for item in db::find_items_by_file(conn, path, false)? {
+            if item.kind == "memory"
+                && !out.iter().any(|(_, u)| *u == item.uuid)
+                && !exclude.contains(&item.uuid)
+            {
+                out.push((path.clone(), item.uuid));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Collect file paths from explicit --file flags and optionally --auto-files.
@@ -618,6 +626,30 @@ mod tests {
             task_a.uuid,
             "memory linked to the wrong task (uuid-prefix collision instead of display id)"
         );
+    }
+
+    #[test]
+    fn file_overlaps_detects_tagless_memory_sharing_a_file() {
+        use crate::infrastructure::{config::Config, db};
+        use std::collections::HashSet;
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+        let path = "/repo/src/auth.rs".to_string();
+
+        // A memory saved with a file but NO tags — the exact case the overlap
+        // check used to skip via an early return, hiding the file collision.
+        super::learn_value(
+            &conn, &cfg, "auth finding", &[], &[], &[], &[path.clone()], false, true, &[], &[], &[],
+        )
+        .unwrap();
+
+        let overlaps = super::file_overlaps(&conn, &[path.clone()], &HashSet::new()).unwrap();
+        assert_eq!(
+            overlaps.len(),
+            1,
+            "a tagless memory sharing the file must still be detected"
+        );
+        assert_eq!(overlaps[0].0, path);
     }
 
     #[test]

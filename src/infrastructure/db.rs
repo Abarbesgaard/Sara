@@ -2890,6 +2890,33 @@ pub fn delete_embedding(conn: &Connection, ref_uuid: &str) -> Result<()> {
     Ok(())
 }
 
+/// Stored embeddings for *active/provisional* memories only, as
+/// `(ref_uuid, vector)` — the set semantic recall can actually surface.
+/// Archived, superseded and pruned memories keep their embeddings (only
+/// `forget` deletes one), so ranking the whole table wastes a JSON parse and a
+/// cosine on every vector [`get_item_by_uuid`] would discard anyway. Joining to
+/// live items drops them before scoring, which is the bulk of a large store.
+pub fn active_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT e.ref_uuid, e.vector_json FROM embeddings e
+         JOIN items i ON i.uuid = e.ref_uuid
+         WHERE i.status IN ('active','provisional')",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let uuid: String = r.get(0)?;
+        let json: String = r.get(1)?;
+        Ok((uuid, json))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (uuid, json) = r?;
+        if let Ok(v) = serde_json::from_str::<Vec<f32>>(&json) {
+            out.push((uuid, v));
+        }
+    }
+    Ok(out)
+}
+
 /// All active memories (`kind = 'memory'`), sorted newest-created first.
 /// Use this for the `sara memories` browse command — display_id order is not
 /// guaranteed to match creation order, so sort explicitly on `created`.
@@ -3482,16 +3509,128 @@ fn item_base_strength(conn: &Connection, item: &Item) -> f64 {
     // Fall back to item_task_links: memories linked via `sara learn --task` /
     // file auto-detection carry real task linkage even without a
     // source_task_uuid, and must not be scored (and pruned) as Weak.
-    let linked = get_item_task_links(conn, &item.uuid).unwrap_or_default();
+    let linked: Vec<Status> = get_item_task_links(conn, &item.uuid)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(t, _)| t.status)
+        .collect();
+    base_strength_from_links(&linked)
+}
+
+/// Shared core of the base-strength fallback: given the statuses of a memory's
+/// explicitly-linked tasks, a completed link makes it Strong (2.0), an
+/// otherwise-pending link Linked (1.5), and nothing keeps it Weak (1.0). Used
+/// by both [`item_base_strength`] and its batched form so they can never drift.
+fn base_strength_from_links(linked: &[Status]) -> f64 {
     let mut best = 1.0_f64;
-    for (task, _) in &linked {
-        match task.status {
+    for st in linked {
+        match st {
             Status::Completed => return 2.0,
             Status::Pending => best = 1.5,
             _ => {}
         }
     }
     best
+}
+
+/// Batched form of [`item_base_strength`] for scoring many memories at once
+/// (the graph build). Two bulk queries — every task's status, and every
+/// item→task link's status — replace the 1–2 queries `item_base_strength` runs
+/// per memory. The value for each item is identical to `item_base_strength`.
+pub fn item_base_strengths(conn: &Connection, items: &[Item]) -> std::collections::HashMap<Uuid, f64> {
+    // Every task's status (source_task_uuid resolution). A full uuid resolves
+    // to exactly one row, matching `get_task_by_uuid_prefix`; deleted tasks are
+    // included, matching that helper's status-agnostic lookup.
+    let mut task_status: std::collections::HashMap<String, Status> =
+        std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT uuid, status FROM tasks") {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
+            for (u, s) in rows.flatten() {
+                task_status.insert(u, status_from_str(&s));
+            }
+        }
+    }
+    // Every item's linked-task statuses (the fallback path), keyed by item uuid.
+    let mut link_status: std::collections::HashMap<Uuid, Vec<Status>> =
+        std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT l.item_uuid, t.status FROM item_task_links l JOIN tasks t ON t.uuid = l.task_uuid",
+    ) {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
+            for (item_uuid, status) in rows.flatten() {
+                if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                    link_status.entry(u).or_default().push(status_from_str(&status));
+                }
+            }
+        }
+    }
+
+    let mut out = std::collections::HashMap::with_capacity(items.len());
+    for item in items {
+        let strength = match item
+            .source_task_uuid
+            .and_then(|s| task_status.get(&s.to_string()))
+        {
+            Some(Status::Completed) => 2.0,
+            Some(_) => 1.5,
+            None => base_strength_from_links(link_status.get(&item.uuid).map_or(&[], |v| v)),
+        };
+        out.insert(item.uuid, strength);
+    }
+    out
+}
+
+/// Map a stored task-status string to [`Status`] (mirrors `row_to_task`).
+fn status_from_str(s: &str) -> Status {
+    match s {
+        "completed" => Status::Completed,
+        "deleted" => Status::Deleted,
+        _ => Status::Pending,
+    }
+}
+
+/// All memories' file anchors in one query, keyed by item uuid (the batched
+/// form of [`get_item_files`] for the graph build).
+pub fn all_item_files(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<String>> {
+    let mut map: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT item_uuid, file_path FROM item_files ORDER BY item_uuid, file_path")
+    {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
+            for (item_uuid, path) in rows.flatten() {
+                if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                    map.entry(u).or_default().push(path);
+                }
+            }
+        }
+    }
+    map
+}
+
+/// All memories' linked task uuids in one query, keyed by item uuid (the
+/// batched form of the task-anchor half of [`get_item_task_links`] for the
+/// graph build).
+pub fn all_item_task_uuids(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<Uuid>> {
+    let mut map: std::collections::HashMap<Uuid, Vec<Uuid>> = std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT item_uuid, task_uuid FROM item_task_links") {
+        if let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        {
+            for (item_uuid, task_uuid) in rows.flatten() {
+                if let (Ok(iu), Ok(tu)) = (Uuid::parse_str(&item_uuid), Uuid::parse_str(&task_uuid))
+                {
+                    map.entry(iu).or_default().push(tu);
+                }
+            }
+        }
+    }
+    map
 }
 
 /// Usage-reinforcement window and weights: each time a memory surfaces in
@@ -3530,6 +3669,43 @@ fn recall_usage_boost(conn: &Connection, item_uuid: &Uuid) -> f64 {
         )
         .unwrap_or(0);
     (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP)
+}
+
+/// Batched form of [`recall_usage_boost`]: the recall-usage boost for *every*
+/// memory that surfaced in the window, computed in a single grouped query.
+/// A consumer scoring many memories at once (e.g. building the memory graph)
+/// runs one query here instead of one `COUNT(*)` per memory. Memories absent
+/// from the map earned no recalls in the window (boost 0.0). The per-memory
+/// value is identical to [`recall_usage_boost`].
+pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
+    let cutoff = dt_to_str(&(Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS)));
+    let mut map: std::collections::HashMap<Uuid, f64> = std::collections::HashMap::new();
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT ref_uuid, COUNT(*) FROM events
+         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1
+         GROUP BY ref_uuid",
+    ) else {
+        return map;
+    };
+    let rows = stmt.query_map([cutoff], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    });
+    if let Ok(rows) = rows {
+        for (uuid_str, count) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&uuid_str) {
+                map.insert(u, (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP));
+            }
+        }
+    }
+    map
+}
+
+/// [`item_strength`] with a pre-computed recall-usage boost supplied by the
+/// caller (see [`recall_usage_boosts`]). Behaviourally identical to
+/// `item_strength` when `recall_boost` is that memory's boost; it just lets a
+/// batch consumer avoid the per-item boost query.
+pub fn item_strength_with_boost(conn: &Connection, item: &Item, recall_boost: f64) -> f64 {
+    item_base_strength(conn, item) + recall_boost
 }
 
 /// Per-day recall counts for the last `days` days (oldest day first). Powers
@@ -3607,7 +3783,10 @@ pub fn prune_memories(
     let now = Utc::now();
     let mut candidates: Vec<PruneCandidate> = vec![];
     let mut superseded_stmt = conn.prepare(
-        "SELECT COUNT(*) FROM memory_links WHERE to_uuid=?1 AND relation='supersedes'",
+        "SELECT COUNT(*) FROM memory_links ml \
+         JOIN items newer ON newer.uuid = ml.from_uuid \
+            AND newer.status = 'active' AND newer.kind = 'memory' \
+         WHERE ml.to_uuid = ?1 AND ml.relation = 'supersedes'",
     )?;
 
     for item in &all {
@@ -3695,7 +3874,7 @@ pub fn archive_superseded_memories(conn: &Connection) -> Result<Vec<PruneCandida
                 old.status, old.source_task_uuid \
          FROM items old \
          JOIN memory_links ml ON ml.to_uuid = old.uuid AND ml.relation = 'supersedes' \
-         JOIN items newer ON newer.uuid = ml.from_uuid AND newer.status = 'active' \
+         JOIN items newer ON newer.uuid = ml.from_uuid AND newer.status = 'active' AND newer.kind = 'memory' \
          WHERE old.kind = 'memory' AND old.status IN ('active','provisional') \
          GROUP BY old.uuid",
     )?;
@@ -4746,6 +4925,26 @@ mod tests {
         delete_embedding(&conn, &uuid).unwrap();
         assert_eq!(get_embedding(&conn, &uuid).unwrap(), None);
         assert!(all_embeddings(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn active_embeddings_excludes_archived_memories() {
+        let conn = mem();
+        let mut live = make_memory("live", &[]);
+        insert_item(&conn, &mut live).unwrap();
+        let mut dead = make_memory("archived", &[]);
+        insert_item(&conn, &mut dead).unwrap();
+
+        upsert_embedding(&conn, &live.uuid.to_string(), &[0.1_f32, 0.2, 0.3]).unwrap();
+        upsert_embedding(&conn, &dead.uuid.to_string(), &[0.4_f32, 0.5, 0.6]).unwrap();
+        archive_item(&conn, &dead.uuid).unwrap();
+
+        // The whole table still holds both vectors...
+        assert_eq!(all_embeddings(&conn).unwrap().len(), 2);
+        // ...but the active-only scan (what recall ranks) sees only the live one.
+        let active = active_embeddings(&conn).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].0, live.uuid.to_string());
     }
 
     #[test]
@@ -6497,6 +6696,37 @@ mod tests {
     }
 
     #[test]
+    fn recall_usage_boosts_batch_matches_per_item_strength() {
+        let conn = mem();
+        let mut a = make_memory("recalled thrice", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = make_memory("recalled once", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        let mut c = make_memory("never recalled", &[]);
+        insert_item(&conn, &mut c).unwrap();
+
+        for _ in 0..3 {
+            record_memory_recall(&conn, &a.uuid).unwrap();
+        }
+        record_memory_recall(&conn, &b.uuid).unwrap();
+
+        let boosts = recall_usage_boosts(&conn);
+        assert!((boosts.get(&a.uuid).copied().unwrap_or(0.0) - 0.3).abs() < 1e-9);
+        assert!((boosts.get(&b.uuid).copied().unwrap_or(0.0) - 0.1).abs() < 1e-9);
+        assert!(boosts.get(&c.uuid).is_none(), "no events → absent from map");
+
+        // The batched path must reproduce item_strength exactly for every item.
+        for item in [&a, &b, &c] {
+            let via_batch = item_strength_with_boost(
+                &conn,
+                item,
+                boosts.get(&item.uuid).copied().unwrap_or(0.0),
+            );
+            assert!((via_batch - item_strength(&conn, item)).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn promote_item_activates_only_provisional() {
         let conn = mem();
         let mut item = make_memory("auto memory", &[]);
@@ -6684,6 +6914,55 @@ mod tests {
         set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
 
         assert_eq!(item_strength(&conn, &item), 1.5);
+    }
+
+    #[test]
+    fn item_base_strengths_batch_matches_per_item() {
+        let conn = mem();
+
+        // Completed source task -> Strong.
+        let mut done_task = seed_task(&conn);
+        done_task.status = Status::Completed;
+        update_task(&conn, &done_task).unwrap();
+        let mut m_done = Item::new_memory("done".into(), "b".into(), Some(done_task.uuid));
+        m_done.path = Some(String::new());
+        insert_item(&conn, &mut m_done).unwrap();
+
+        // Pending source task -> Linked.
+        let pending_task = seed_task(&conn);
+        let mut m_pending = Item::new_memory("pending".into(), "b".into(), Some(pending_task.uuid));
+        m_pending.path = Some(String::new());
+        insert_item(&conn, &mut m_pending).unwrap();
+
+        // Source task gone -> falls back to Weak.
+        let mut m_gone = Item::new_memory("gone".into(), "b".into(), Some(Uuid::new_v4()));
+        m_gone.path = Some(String::new());
+        insert_item(&conn, &mut m_gone).unwrap();
+
+        // No source, but a completed *linked* task -> Strong via fallback.
+        let mut linked_done = seed_task(&conn);
+        linked_done.status = Status::Completed;
+        update_task(&conn, &linked_done).unwrap();
+        let mut m_linked = Item::new_memory("linked".into(), "b".into(), None);
+        m_linked.path = Some(String::new());
+        insert_item(&conn, &mut m_linked).unwrap();
+        set_item_task_links(&conn, &m_linked.uuid, &[(linked_done.uuid, "auto")]).unwrap();
+
+        // Standalone -> Weak.
+        let mut m_weak = make_memory("weak", &[]);
+        insert_item(&conn, &mut m_weak).unwrap();
+
+        let items = vec![m_done, m_pending, m_gone, m_linked, m_weak];
+        let batch = item_base_strengths(&conn, &items);
+        for item in &items {
+            let expected = item_strength(&conn, item); // no recalls => base only
+            let got = batch.get(&item.uuid).copied().unwrap();
+            assert!(
+                (got - expected).abs() < 1e-9,
+                "batch base strength diverged for {}: got {got}, want {expected}",
+                item.uuid
+            );
+        }
     }
 
     #[test]
