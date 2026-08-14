@@ -22,7 +22,11 @@ struct Hit {
     /// "task <id>" or the item's short handle (e.g. "m3").
     label: String,
     description: String,
+    /// Short preview (≤160 chars) for the human terminal view.
     snippet: String,
+    /// The complete, untruncated memory text — emitted in the JSON/MCP path so
+    /// agents receive the full memory, not just the preview.
+    body: String,
     /// Task-linkage-derived confidence (see `db::item_strength`); 1.0 baseline
     /// for plain task hits, which have no such linkage to derive from.
     strength: f64,
@@ -130,7 +134,8 @@ pub fn recall_value(
                 let _ = db::record_memory_recall(conn, &r.item.uuid);
                 json!({
                     "label": format!("m{}", r.item.display_id.unwrap_or(0)),
-                    "text": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()),
+                    "text": r.item.body.clone(),
+                    "preview": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()).chars().take(160).collect::<String>(),
                     "activation": r.activation,
                     "strength": db::item_strength(conn, &r.item),
                     "via": r.path,
@@ -769,6 +774,7 @@ fn collect_hits(
                     label: format!("task {id}"),
                     description: desc,
                     snippet: h.text.chars().take(160).collect(),
+                    body: h.text.clone(),
                     strength: 1.0,
                     exact_match: false,
                     modified,
@@ -843,7 +849,8 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                 "ref_kind": h.ref_kind,
                 "label": h.label,
                 "description": h.description,
-                "text": h.snippet,
+                "text": h.body,
+                "preview": h.snippet,
                 "strength": h.strength,
                 "exact_match": h.exact_match,
                 "loose": h.loose,
@@ -937,6 +944,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         label: handle,
         description: item.title.clone(),
         snippet,
+        body: item.body.clone(),
         exact_match,
         modified: Some(item.modified),
         files,
@@ -1052,6 +1060,39 @@ mod tests {
             semantic[0].cosine.unwrap() > 0.30,
             "cosine {:?} should clear the threshold",
             semantic[0].cosine
+        );
+    }
+
+    #[test]
+    fn recall_full_body_reaches_agent_json_untruncated() {
+        let conn = db::open_in_memory_for_test();
+        let long_body = format!(
+            "uniquewidget {}",
+            "the full memory body must reach the agent intact. ".repeat(6)
+        );
+        assert!(
+            long_body.chars().count() > 160,
+            "the test body must exceed the 160-char preview cap"
+        );
+        let item = seed_memory(&conn, "long memory", &long_body, &[], &[]);
+
+        // JSON path (the MCP recall tool / `--json`): the agent must receive the
+        // full, untruncated memory body.
+        let v = recall_value(&conn, &cfg(), "uniquewidget", &[], &[], &[], 20, false).unwrap();
+        let hits = v["keyword"].as_array().unwrap();
+        assert_eq!(hits.len(), 1, "the memory should surface");
+        assert_eq!(
+            hits[0]["text"].as_str().unwrap(),
+            long_body,
+            "recall JSON must carry the complete memory body, not a 160-char preview"
+        );
+
+        // The human terminal view still gets a short preview.
+        let hit = item_hit(&conn, item, false);
+        assert!(
+            hit.snippet.chars().count() <= 160,
+            "terminal preview must stay capped, got {}",
+            hit.snippet.chars().count()
         );
     }
 
