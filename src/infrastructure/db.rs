@@ -827,10 +827,17 @@ pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option
     let pattern = format!("{prefix}%");
     let mut stmt = conn.prepare(
         "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur
-         FROM tasks WHERE uuid LIKE ?1 LIMIT 1",
+         FROM tasks WHERE uuid LIKE ?1 LIMIT 2",
     )?;
-    let mut rows = stmt.query_map([pattern], row_to_task)?;
-    Ok(rows.next().transpose()?)
+    let mut tasks = stmt
+        .query_map([pattern], row_to_task)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if tasks.len() > 1 {
+        return Err(anyhow::anyhow!(
+            "Ambiguous task uuid prefix '{prefix}' matches multiple tasks — use a longer prefix or the display id"
+        ));
+    }
+    Ok(tasks.pop())
 }
 
 /// Resolve "3" (display id) or a uuid prefix to a Task
@@ -5183,6 +5190,48 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn get_task_by_uuid_prefix_errors_on_ambiguous_prefix() {
+        let conn = mem();
+
+        // Two tasks whose UUIDs share the leading prefix "5cb0".
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("5cb00000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+        let mut b = Task::new("task b".into(), "proj".into());
+        b.uuid = uuid::Uuid::parse_str("5cb01111-0000-0000-0000-00000000000b").unwrap();
+        insert_task(&conn, &mut b).unwrap();
+
+        // An ambiguous prefix must error, not silently pick one.
+        assert!(
+            get_task_by_uuid_prefix(&conn, "5cb0").is_err(),
+            "ambiguous prefix should error instead of arbitrarily returning one task"
+        );
+
+        // A prefix long enough to be unique still resolves.
+        let only = get_task_by_uuid_prefix(&conn, "5cb00000").unwrap().unwrap();
+        assert_eq!(only.uuid, a.uuid);
+
+        // A non-matching prefix is still a clean None.
+        assert!(get_task_by_uuid_prefix(&conn, "ffffffff").unwrap().is_none());
+    }
+
+    #[test]
+    fn resolve_task_errors_on_ambiguous_uuid_prefix() {
+        let conn = mem();
+
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("ab120000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+        let mut b = Task::new("task b".into(), "proj".into());
+        b.uuid = uuid::Uuid::parse_str("ab121111-0000-0000-0000-00000000000b").unwrap();
+        insert_task(&conn, &mut b).unwrap();
+
+        // "ab12" is not a numeric display id, falls through to uuid prefix,
+        // which is ambiguous → error rather than a silent wrong pick.
+        assert!(resolve_task(&conn, "ab12").is_err());
     }
 
     #[test]
