@@ -588,7 +588,7 @@ fn merge_semantic_hits(
         return Ok(()); // query had no in-vocabulary content
     }
 
-    let mut scored: Vec<(String, f32)> = db::all_embeddings(conn)?
+    let mut scored: Vec<(String, f32)> = db::active_embeddings(conn)?
         .into_iter()
         .map(|(uuid, v)| (uuid, embedding::cosine(&qv, &v)))
         .filter(|(_, c)| *c >= opts.threshold)
@@ -911,7 +911,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
                 .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
-                .unwrap_or_else(|| l.from_uuid[..8].to_string())
+                .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
     // Outgoing `derived_from` edges — this memory is derived from a canonical.
@@ -923,7 +923,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
             db::get_item_by_uuid(conn, &l.to_uuid)
                 .ok()
                 .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
-                .unwrap_or_else(|| l.to_uuid[..8].to_string())
+                .unwrap_or_else(|| l.to_uuid.chars().take(8).collect::<String>())
         })
         .collect();
     // Incoming `derived_from` edges — other memories derive from this canonical.
@@ -935,7 +935,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
                 .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
-                .unwrap_or_else(|| l.from_uuid[..8].to_string())
+                .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
     Hit {

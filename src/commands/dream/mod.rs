@@ -1280,6 +1280,10 @@ fn run_web_plain(conn: &Connection) -> Result<()> {
 
 fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
     let data = load(conn, handle)?;
+    // Peeking is a recall: reinforce, exactly as the TTY path does. Scripted /
+    // piped reads must strengthen a memory too, or automation silently starves
+    // the usage signal that lifts a Weak memory to Linked. Fire-and-forget.
+    let _ = db::record_memory_recall(conn, &data.item.uuid);
     println!(
         "{} — {} ({:.1}){}",
         data.label,
