@@ -2915,7 +2915,11 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     } else if let Some(rest) = handle.strip_prefix('m') {
         ("memory", rest)
     } else {
-        anyhow::bail!("Item handle must start with n, l, or m (e.g. n1, l2, m3)");
+        // Not an nN/lN/mN display handle. Uuids are hex ([0-9a-f]) and so never
+        // start with n/l/m — fall through to a uuid-prefix lookup, honoring the
+        // "8-char uuid prefix" that the link-memory docs advertise. The uuid
+        // prefix is also the *stable* handle (display ids get recompacted).
+        return get_item_by_uuid_prefix(conn, &handle);
     };
     let id: i64 = id_str.parse().context("Invalid item id")?;
     conn.query_row(
@@ -2925,6 +2929,27 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
         row_to_item,
     )
     .map_err(|_| anyhow::anyhow!("No active {kind} with id {id}"))
+}
+
+/// Resolve an active item by a uuid prefix, ambiguity-safe. Returns an error if
+/// the prefix matches more than one item (mirrors [`get_task_by_uuid_prefix`]).
+pub fn get_item_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Item> {
+    let pattern = like_prefix_pattern(prefix);
+    let mut stmt = conn.prepare(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE uuid LIKE ?1 ESCAPE '\\' AND status IN ('active','provisional') LIMIT 2",
+    )?;
+    let mut items = stmt
+        .query_map([pattern], row_to_item)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if items.len() > 1 {
+        return Err(anyhow::anyhow!(
+            "Ambiguous item uuid prefix '{prefix}' matches multiple items — use a longer prefix or the mN/nN/lN handle"
+        ));
+    }
+    items
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("No active item with handle or uuid matching '{prefix}'"))
 }
 
 /// Look up an active item by its own uuid (as opposed to `get_item_by_handle`,
@@ -6689,6 +6714,47 @@ mod tests {
         let hits = find_items_by_file(&conn, "/repo/src/auth.rs", false).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].uuid, a.uuid);
+    }
+
+    #[test]
+    fn get_item_by_handle_resolves_display_handle_and_uuid_prefix() {
+        let conn = mem();
+        let mut item = make_memory("stable-handle memory", &[]);
+        item.uuid = uuid::Uuid::parse_str("abcd1234-0000-0000-0000-00000000000a").unwrap();
+        insert_item(&conn, &mut item).unwrap();
+
+        // Display handle still works.
+        let by_handle =
+            get_item_by_handle(&conn, &format!("m{}", item.display_id.unwrap())).unwrap();
+        assert_eq!(by_handle.uuid, item.uuid);
+
+        // Full uuid works.
+        let by_uuid = get_item_by_handle(&conn, &item.uuid.to_string()).unwrap();
+        assert_eq!(by_uuid.uuid, item.uuid);
+
+        // 8-char uuid prefix (as the MCP link-memory docs advertise) works.
+        let by_prefix = get_item_by_handle(&conn, "abcd1234").unwrap();
+        assert_eq!(by_prefix.uuid, item.uuid);
+
+        // A non-matching prefix is a clean error.
+        assert!(get_item_by_handle(&conn, "ffffffff").is_err());
+    }
+
+    #[test]
+    fn get_item_by_handle_errors_on_ambiguous_uuid_prefix() {
+        let conn = mem();
+        let mut a = make_memory("mem a", &[]);
+        a.uuid = uuid::Uuid::parse_str("dead0000-0000-0000-0000-00000000000a").unwrap();
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = make_memory("mem b", &[]);
+        b.uuid = uuid::Uuid::parse_str("dead1111-0000-0000-0000-00000000000b").unwrap();
+        insert_item(&conn, &mut b).unwrap();
+
+        // "dead" matches both — must error, not silently pick one.
+        assert!(
+            get_item_by_handle(&conn, "dead").is_err(),
+            "ambiguous uuid prefix must error instead of arbitrarily returning one item"
+        );
     }
 
     #[test]
