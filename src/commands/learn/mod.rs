@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
-use crate::infrastructure::project::detect_current_project;
+use crate::infrastructure::project::{detect_current_project, resolve_file_link_here};
 
 /// Size threshold in characters above which we warn that the text is probably
 /// not a distilled paragraph. A full conversation paste defeats the
@@ -346,7 +346,7 @@ pub(crate) fn file_overlaps(
 fn collect_files(explicit: &[String], auto_files: bool) -> Result<Vec<String>> {
     let mut paths: Vec<String> = explicit
         .iter()
-        .map(|p| resolve_to_absolute(Path::new(p)))
+        .map(|p| resolve_file_link_here(p))
         .collect();
 
     if auto_files {
@@ -399,21 +399,8 @@ fn git_diff_files(git_root: &Path) -> Result<Vec<String>> {
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
-        .map(|l| resolve_to_absolute(&git_root.join(l)))
+        .map(|l| git_root.join(l).to_string_lossy().into_owned())
         .collect())
-}
-
-/// Resolve a path to absolute without requiring it to exist on disk.
-fn resolve_to_absolute(path: &Path) -> String {
-    if path.is_absolute() {
-        path.to_string_lossy().into_owned()
-    } else {
-        std::env::current_dir()
-            .map(|cwd| cwd.join(path))
-            .unwrap_or_else(|_| path.to_path_buf())
-            .to_string_lossy()
-            .into_owned()
-    }
 }
 
 fn save(
