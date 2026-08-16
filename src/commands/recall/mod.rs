@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Item, Task};
+use crate::infrastructure::project;
 
 /// `sara recall <query>` — cross-task memory. Uses the FTS5 index over task
 /// descriptions/rationale/assignment, annotations (findings/decisions/…), and
@@ -85,7 +86,7 @@ pub fn recall_value(
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
-    let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
+    let files: Vec<String> = normalize(files).iter().map(|p| project::resolve_file_link_here(p)).collect();
 
     if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
         // Bare recall: surface the most recent memories instead of erroring, so
@@ -247,7 +248,7 @@ pub fn run(
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
-    let files: Vec<String> = normalize(files).iter().map(|p| resolve_file_path(p)).collect();
+    let files: Vec<String> = normalize(files).iter().map(|p| project::resolve_file_link_here(p)).collect();
 
     let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
 
@@ -514,29 +515,6 @@ fn meaningful_tokens(text: &str) -> Vec<String> {
         .filter(|w| w.len() >= 3 && !STOP_WORDS.contains(&w.as_str()))
         .take(MAX_AND_TOKENS)
         .collect()
-}
-
-/// Resolve a file path (or directory prefix ending with '/') to absolute form.
-/// The trailing '/' is preserved for prefix matching.
-fn resolve_file_path(path: &str) -> String {
-    if path.ends_with('/') {
-        // Directory prefix: resolve the dir part, re-append the slash.
-        let dir = path.trim_end_matches('/');
-        let resolved = if std::path::Path::new(dir).is_absolute() {
-            dir.to_string()
-        } else {
-            std::env::current_dir()
-                .map(|cwd| cwd.join(dir).to_string_lossy().into_owned())
-                .unwrap_or_else(|_| dir.to_string())
-        };
-        format!("{resolved}/")
-    } else if std::path::Path::new(path).is_absolute() {
-        path.to_string()
-    } else {
-        std::env::current_dir()
-            .map(|cwd| cwd.join(path).to_string_lossy().into_owned())
-            .unwrap_or_else(|_| path.to_string())
-    }
 }
 
 /// Resolve query/tag/project/file inputs into a single ranked list of hits:
