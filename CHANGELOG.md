@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-17
+
 ### Features
 
 - **`sara verify --tick-on-pass`** — runs each step/acceptance criterion's own stored verify command and marks it done **only** when it exits 0, recording the pass/fail as the item's execution result. Collapses "run the check", "read the output", and "tick the box" into a single call (`sara verify <id> --tick-on-pass`), instead of running the test by hand and then ticking manually.
@@ -12,6 +14,12 @@
 ### Changes
 
 - **Learn memory size limit raised to 4000 chars and made configurable** — the guard against pasting a raw conversation into `sara learn` now defaults to 4000 characters (was 2000) and honours the `SARA_MEMORY_CHAR_LIMIT` environment variable to raise (or lower) it without editing the binary. `--force` still bypasses the check entirely.
+
+### Bug Fixes
+
+- **`sara relearn` now refreshes the semantic embedding** — editing a memory's body re-indexed FTS (via the `items` update trigger) but left the semantic embedding stale, so `recall --semantic` kept matching the old text. `relearn` now re-embeds when the body changes, but only for memories that were already indexed (never fabricating an embedding for one that had none).
+- **Semantic recall respects exact `--tag`/`--project`/`--file` filters** — `merge_semantic_hits` scored the whole embedding corpus and appended matches regardless of the active exact filter, leaking memories outside the requested set. Semantic candidates are now restricted to the exact-filter allowlist, preserving AND semantics.
+- **`sara dream` back-navigation no longer loses breadcrumbs** — `Esc`/`Backspace` popped the breadcrumb before confirming the target still loaded, so a since-forgotten crumb silently failed and was consumed. Back-nav now skips dead crumbs and only lands on a memory that still exists.
 
 ## [0.9.0] - 2026-07-06
 
