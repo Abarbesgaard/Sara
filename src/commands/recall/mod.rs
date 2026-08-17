@@ -520,8 +520,10 @@ fn meaningful_tokens(text: &str) -> Vec<String> {
 /// Resolve query/tag/project/file inputs into a single ranked list of hits:
 /// Strong (linkage-derived) memories first, then exact tag/project matches,
 /// then plain FTS hits; ties broken by most-recently-modified.
-/// Per-invocation semantic-recall settings, resolved from `Config` (and the
-/// `--semantic` flag, which flips `enabled` for one call).
+/// Per-invocation semantic-recall settings. Semantic recall is **always on**:
+/// `threshold`/`top_k` still come from `Config`, but `enabled` is never gated —
+/// the legacy `[recall] semantic` toggle and `--semantic` flag are retained for
+/// backward compatibility and no longer decide whether embeddings are ranked.
 struct SemanticOpts {
     enabled: bool,
     threshold: f32,
@@ -529,9 +531,12 @@ struct SemanticOpts {
 }
 
 impl SemanticOpts {
+    /// Semantic recall is ALWAYS enabled, so every free-text `sara recall` also
+    /// ranks memories by embedding cosine and surfaces paraphrases that share no
+    /// literal keyword. `threshold` and `top_k` are still read from config.
     fn from_cfg(cfg: &Config) -> Self {
         SemanticOpts {
-            enabled: cfg.recall.semantic,
+            enabled: true,
             threshold: cfg.recall.semantic_threshold,
             top_k: cfg.recall.semantic_top_k,
         }
@@ -1133,9 +1138,10 @@ mod tests {
     }
 
     #[test]
-    fn recall_default_is_lexical_only_byte_identical() {
-        // Default config (semantic OFF) must not inject any semantic hit, even
-        // when an embedding exists — recall stays byte-identical to before.
+    fn recall_default_surfaces_semantic_paraphrase() {
+        // Semantic recall is ALWAYS on: a paraphrase sharing no literal keyword
+        // with any memory is surfaced by embedding similarity, even with a
+        // default config and no --semantic flag.
         let conn = db::open_in_memory_for_test();
         let m = seed_memory(
             &conn,
@@ -1148,18 +1154,25 @@ mod tests {
 
         let query = "automated dependency update wrecked the pipeline";
         let v = recall_value(&conn, &cfg(), query, &[], &[], &[], 20, false).unwrap();
+        let hits = v["keyword"].as_array().unwrap();
         assert!(
-            v["keyword"].as_array().unwrap().is_empty(),
-            "semantic-off recall must not surface the paraphrase"
+            !hits.is_empty(),
+            "always-on semantic recall must surface the paraphrase by default"
         );
-        // And no hit carries the semantic flag.
         assert!(
-            !v["keyword"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|h| h["semantic"] == serde_json::json!(true))
+            hits.iter()
+                .any(|h| h["semantic"] == serde_json::json!(true)),
+            "the paraphrase must be flagged as a semantic hit"
         );
+    }
+
+    #[test]
+    fn semantic_opts_from_cfg_is_always_enabled() {
+        // Even when the legacy config toggle is off, from_cfg reports enabled —
+        // semantic recall can no longer be turned off via config.
+        let mut c = Config::default();
+        c.recall.semantic = false;
+        assert!(super::SemanticOpts::from_cfg(&c).enabled);
     }
 
     #[test]

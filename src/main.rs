@@ -418,12 +418,10 @@ fn run() -> Result<()> {
             json,
         } => {
             let effective_limit = top.unwrap_or(limit);
-            // `--semantic` flips on embedding recall for this one call, on top of
-            // whatever the config default is.
-            let mut cfg = cfg.clone();
-            if semantic {
-                cfg.recall.semantic = true;
-            }
+            // Semantic recall is always on (see SemanticOpts::from_cfg); the
+            // `--semantic` flag is a no-op kept for backward compatibility.
+            let _ = semantic;
+            let cfg = cfg.clone();
             commands::recall::run(
                 &conn,
                 &cfg,
