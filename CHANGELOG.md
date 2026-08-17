@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-17
+
+### Changes
+
+- **Semantic recall is now always on** — embedding-based ranking previously required the opt-in `--semantic` flag or `[recall] semantic = true`. Recall now always matches by meaning as well as keyword, so a paraphrase surfaces relevant memories even when it shares no literal term. The `--semantic` flag and `[recall] semantic` config field are retained as no-ops for backward compatibility. Cost stays bounded: the semantic merge only runs for non-empty queries, so bare `sara recall` and tag/project/file-only lookups still skip embeddings.
+
 ## [0.9.1] - 2026-08-17
 
 ### Features
