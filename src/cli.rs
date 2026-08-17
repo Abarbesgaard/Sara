@@ -471,9 +471,10 @@ pub enum Command {
         /// direct keyword/tag matches
         #[arg(long)]
         spread: bool,
-        /// Also rank memories by semantic similarity (embedding cosine), so
-        /// paraphrases and conceptually-related wording surface even when they
-        /// share no literal keyword. Uses Sara's bundled local model (no network).
+        /// Deprecated / no-op: semantic recall (embedding cosine) is now ALWAYS
+        /// on, so paraphrases and conceptually-related wording surface even when
+        /// they share no literal keyword. Kept for backward compatibility. Uses
+        /// Sara's bundled local model (no network).
         #[arg(long)]
         semantic: bool,
         /// Emit as JSON

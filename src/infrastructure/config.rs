@@ -37,14 +37,14 @@ impl Default for UrgencyConfig {
     }
 }
 
-/// Semantic (embedding-based) recall tuning. Recall stays lexical-only unless
-/// `enabled` is set (or `sara recall --semantic` flips it for one call), so the
-/// default behaviour — and every existing test — is byte-identical.
+/// Semantic (embedding-based) recall tuning. Semantic recall is now ALWAYS on;
+/// `semantic_threshold` and `semantic_top_k` tune it, while the legacy `semantic`
+/// toggle is retained only for backward compatibility and no longer gates recall.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecallConfig {
-    /// When true, recall also ranks memories by embedding cosine so paraphrases
-    /// and conceptually-similar wording surface. Default OFF.
+    /// Deprecated / ignored: semantic recall is always enabled. Kept so existing
+    /// config files that set it still parse.
     pub semantic: bool,
     /// Minimum cosine similarity for a semantic hit to be surfaced. Guards
     /// against flooding recall with weakly-related noise.
