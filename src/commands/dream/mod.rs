@@ -86,6 +86,20 @@ fn item_label(item: &Item) -> String {
     )
 }
 
+/// Pop the breadcrumb back toward the previous memory, skipping any crumbs that
+/// no longer load (the memory was forgotten/renamed since it was visited).
+/// Returns the loaded view, or `None` when the trail is exhausted. Only a crumb
+/// that actually loads is consumed on success; dead crumbs are discarded so a
+/// stale entry can never wedge back-navigation.
+fn navigate_back(conn: &Connection, breadcrumb: &mut Vec<String>) -> Option<DreamData> {
+    while let Some(prev) = breadcrumb.pop() {
+        if let Ok(d) = load(conn, &prev) {
+            return Some(d);
+        }
+    }
+    None
+}
+
 fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
     let item = db::get_item_by_handle(conn, handle)?;
     if item.kind != "memory" {
@@ -177,23 +191,22 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
                     KeyCode::Esc => {
                         if show_help {
                             show_help = false;
-                        } else if let Some(prev) = breadcrumb.pop() {
-                            if let Ok(d) = load(conn, &prev) {
-                                data = d;
-                                frame = 0;
-                                selected = 0;
-                            }
+                        } else if breadcrumb.is_empty() {
+                            break Ok(());
+                        } else if let Some(d) = navigate_back(conn, &mut breadcrumb) {
+                            data = d;
+                            frame = 0;
+                            selected = 0;
                         } else {
+                            // Every crumb behind us is gone — nothing to return to.
                             break Ok(());
                         }
                     }
                     KeyCode::Backspace => {
-                        if let Some(prev) = breadcrumb.pop() {
-                            if let Ok(d) = load(conn, &prev) {
-                                data = d;
-                                frame = 0;
-                                selected = 0;
-                            }
+                        if let Some(d) = navigate_back(conn, &mut breadcrumb) {
+                            data = d;
+                            frame = 0;
+                            selected = 0;
                         }
                     }
                     KeyCode::Tab | KeyCode::Right | KeyCode::Down => {
@@ -1316,6 +1329,40 @@ fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn navigate_back_skips_dead_crumbs_and_lands_on_a_live_one() {
+        use crate::infrastructure::model::Item;
+        let conn = db::open_in_memory_for_test();
+        let seed = |body: &str| -> Item {
+            let mut item = Item::new_memory("t".into(), body.into(), None);
+            item.path = Some(String::new());
+            db::insert_item(&conn, &mut item).unwrap();
+            item
+        };
+
+        let live = seed("still here");
+        let dead = seed("about to be forgotten");
+        let live_label = item_label(&live);
+        let dead_label = item_label(&dead);
+
+        // Forget the middle crumb, so its handle no longer loads.
+        db::archive_item(&conn, &dead.uuid).unwrap();
+
+        // Trail: [live, dead]. Back-nav must skip the dead crumb (consuming it)
+        // and return the live memory, leaving an empty trail behind.
+        let mut breadcrumb = vec![live_label.clone(), dead_label];
+        let landed = navigate_back(&conn, &mut breadcrumb)
+            .expect("should skip the dead crumb and reach the live one");
+        assert_eq!(landed.item.uuid, live.uuid);
+        assert!(
+            breadcrumb.is_empty(),
+            "both crumbs consumed: the dead one skipped, the live one landed on"
+        );
+
+        // Exhausted trail returns None (caller quits) rather than wedging.
+        assert!(navigate_back(&conn, &mut breadcrumb).is_none());
+    }
 
     #[test]
     fn materialization_starts_noisy_and_fully_resolves() {

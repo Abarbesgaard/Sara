@@ -557,6 +557,7 @@ fn merge_semantic_hits(
     conn: &Connection,
     query: &str,
     opts: &SemanticOpts,
+    allowlist: Option<&HashSet<uuid::Uuid>>,
     hits: &mut Vec<Hit>,
 ) -> Result<()> {
     use crate::infrastructure::embedding::{self, Embedder};
@@ -582,6 +583,14 @@ fn merge_semantic_hits(
     for (uuid, cos) in scored {
         if already.contains(&uuid) {
             continue; // lexical hit already carries this memory
+        }
+        // Respect any exact tag/project/file filter: a semantic match outside
+        // the filtered set would violate the AND semantics recall promises.
+        if let Some(allow) = allowlist {
+            match uuid::Uuid::parse_str(&uuid) {
+                Ok(u) if allow.contains(&u) => {}
+                _ => continue,
+            }
         }
         if let Ok(item) = db::get_item_by_uuid(conn, &uuid) {
             let mut hit = item_hit(conn, item, false);
@@ -668,7 +677,11 @@ fn collect_hits(
         (None, None) => None,
     };
 
-    // Build exact_items from the combined UUID set.
+    // Build exact_items from the combined UUID set. Keep the UUID set itself as
+    // the semantic allowlist: when exact filters are present, semantic recall
+    // must stay inside them (AND semantics) rather than surfacing corpus-wide
+    // paraphrases that carry none of the requested tag/project/file.
+    let semantic_allowlist = exact_uuids.clone();
     let exact_items: Option<Vec<Item>> = if let Some(uuids) = exact_uuids {
         let mut items = vec![];
         for u in uuids {
@@ -777,7 +790,7 @@ fn collect_hits(
     // the whole point being to surface paraphrases sharing no literal token.
     // Off by default (config/flag), so lexical behaviour stays byte-identical.
     if semantic.enabled && !query.is_empty() {
-        merge_semantic_hits(conn, query, semantic, &mut hits)?;
+        merge_semantic_hits(conn, query, semantic, semantic_allowlist.as_ref(), &mut hits)?;
     }
 
     hits.sort_by(|a, b| {
@@ -1038,6 +1051,51 @@ mod tests {
             semantic[0].cosine.unwrap() > 0.30,
             "cosine {:?} should clear the threshold",
             semantic[0].cosine
+        );
+    }
+
+    #[test]
+    fn recall_semantic_respects_exact_tag_filter() {
+        // A --tag filter is an AND constraint. Semantic recall must stay inside
+        // it: a paraphrase-matching memory that lacks the tag must NOT surface,
+        // or the filter silently leaks unrelated-tag memories.
+        let conn = db::open_in_memory_for_test();
+
+        // The memory the query paraphrases — but it is NOT tagged "ci".
+        let untagged = seed_memory(
+            &conn,
+            "CI restore step failed",
+            "a dependabot bump broke the build; pin the lockfile version to fix it",
+            &[],
+            &[],
+        );
+        crate::infrastructure::embedding::index_memory(&conn, &untagged);
+
+        // An unrelated memory that DOES carry the "ci" tag.
+        let tagged = seed_memory(
+            &conn,
+            "unrelated note",
+            "remember to water the office plants on fridays",
+            &["ci"],
+            &[],
+        );
+        crate::infrastructure::embedding::index_memory(&conn, &tagged);
+
+        let query = "automated dependency update wrecked the pipeline";
+        let hits = collect_hits(
+            &conn,
+            query,
+            &["ci".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::from_cfg(&cfg_semantic()),
+        )
+        .unwrap();
+
+        assert!(
+            hits.iter().all(|h| h.item_uuid != Some(untagged.uuid)),
+            "semantic recall must not leak a memory outside the --tag filter"
         );
     }
 

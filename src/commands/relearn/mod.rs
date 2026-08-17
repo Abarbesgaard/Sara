@@ -50,6 +50,21 @@ pub fn relearn_value(
     item.modified = chrono::Utc::now();
     db::update_item(conn, &item)?;
 
+    // The body/title drives the semantic embedding. `update_item` re-indexes FTS
+    // via its trigger, but embeddings are only written explicitly — so an edited
+    // body would otherwise leave a stale vector and `recall --semantic` would
+    // keep matching the OLD text. Refresh it here whenever the body changed, but
+    // only for memories that were already indexed (preserving the learn-time
+    // decision to embed or not, without needing the Config).
+    if text.is_some()
+        && matches!(
+            db::get_embedding(conn, &item.uuid.to_string()),
+            Ok(Some(_))
+        )
+    {
+        crate::infrastructure::embedding::index_memory(conn, &item);
+    }
+
     if !files.is_empty() {
         db::set_item_files(conn, &item.uuid, files)?;
         updated.push("files");
@@ -157,6 +172,66 @@ mod tests {
         let label = format!("m{}", item.display_id.unwrap());
 
         assert!(relearn_value(&conn, &label, None, &[], &[], false).is_err());
+    }
+
+    #[test]
+    fn relearn_refreshes_a_stale_semantic_embedding() {
+        use crate::infrastructure::embedding;
+
+        let conn = db::open_in_memory_for_test();
+        let item = seed(&conn);
+        let label = format!("m{}", item.display_id.unwrap());
+
+        // Index the memory as `learn` would, then capture the stored vector.
+        embedding::index_memory(&conn, &item);
+        let before = db::get_embedding(&conn, &item.uuid.to_string())
+            .unwrap()
+            .expect("memory should be indexed");
+
+        // Edit the body to something semantically unrelated.
+        relearn_value(
+            &conn,
+            &label,
+            Some("kubernetes pod eviction under memory pressure"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+
+        let after = db::get_embedding(&conn, &item.uuid.to_string())
+            .unwrap()
+            .expect("embedding must still exist after relearn");
+        assert_ne!(
+            before, after,
+            "relearn must refresh the embedding so semantic recall matches the new body"
+        );
+        // And it must equal a fresh embedding of the new text.
+        let loaded = db::get_item_by_uuid(&conn, &item.uuid.to_string()).unwrap();
+        let recomputed = {
+            embedding::index_memory(&conn, &loaded);
+            db::get_embedding(&conn, &item.uuid.to_string())
+                .unwrap()
+                .unwrap()
+        };
+        assert_eq!(after, recomputed, "embedding must reflect the new body text");
+    }
+
+    #[test]
+    fn relearn_does_not_index_an_unembedded_memory() {
+        let conn = db::open_in_memory_for_test();
+        let item = seed(&conn);
+        let label = format!("m{}", item.display_id.unwrap());
+
+        // Never indexed (semantic recall was off at learn time) → relearn must
+        // not fabricate an embedding.
+        relearn_value(&conn, &label, Some("a brand new body"), &[], &[], false).unwrap();
+        assert!(
+            db::get_embedding(&conn, &item.uuid.to_string())
+                .unwrap()
+                .is_none(),
+            "relearn must not create an embedding for a memory that had none"
+        );
     }
 
     #[test]
