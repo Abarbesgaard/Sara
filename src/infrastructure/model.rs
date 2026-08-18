@@ -130,19 +130,27 @@ pub fn advance_by_interval(base: DateTime<Utc>, interval: &str) -> DateTime<Utc>
     if s == "yearly" {
         return add_months(base, 12);
     }
-    // Numeric prefix: "Nd", "Nw", "Nm"
+    // Numeric prefix: "Nd", "Nw", "Nm". A recurrence only ever advances a due
+    // date forward, so the count must be a positive whole number — a zero,
+    // negative, or out-of-range value is malformed and falls through to the
+    // safe +1-week fallback rather than producing a past or garbage date. (The
+    // month branch in particular must reject values that don't fit `u32`, or
+    // the cast would wrap a negative into a huge month count.)
     if let Some(stripped) = s.strip_suffix('d')
         && let Ok(n) = stripped.parse::<i64>()
+        && n >= 1
     {
         return base + chrono::Duration::days(n);
     }
     if let Some(stripped) = s.strip_suffix('w')
         && let Ok(n) = stripped.parse::<i64>()
+        && n >= 1
     {
         return base + chrono::Duration::weeks(n);
     }
     if let Some(stripped) = s.strip_suffix('m')
         && let Ok(n) = stripped.parse::<i64>()
+        && (1..=i64::from(u32::MAX)).contains(&n)
     {
         return add_months(base, n as u32);
     }
@@ -152,10 +160,15 @@ pub fn advance_by_interval(base: DateTime<Utc>, interval: &str) -> DateTime<Utc>
 
 fn add_months(dt: DateTime<Utc>, months: u32) -> DateTime<Utc> {
     use chrono::Datelike;
-    let total_month = dt.month0() + months;
+    // Widen to i64 so a large `months` can never overflow the intermediate
+    // arithmetic; an absurd resulting year simply fails `with_year` below and
+    // leaves the date unchanged.
+    let total_month = i64::from(dt.month0()) + i64::from(months);
     let extra_years = total_month / 12;
-    let new_month = (total_month % 12) + 1;
-    let new_year = dt.year() + extra_years as i32;
+    let new_month = (total_month % 12) as u32 + 1;
+    let Ok(new_year) = i32::try_from(i64::from(dt.year()) + extra_years) else {
+        return dt;
+    };
     // Clamp day to last day of target month
     let max_day = days_in_month(new_year, new_month);
     let new_day = dt.day().min(max_day);
@@ -457,5 +470,33 @@ mod tests {
         // +12 months (yearly), Feb 29 -> Feb 28 on a non-leap target.
         let r = add_months(ymd(2024, 2, 29), 12);
         assert_eq!((r.year(), r.month(), r.day()), (2025, 2, 28));
+    }
+
+    #[test]
+    fn advance_by_interval_handles_valid_and_malformed_counts() {
+        use chrono::Datelike;
+        let base = ymd(2025, 6, 10);
+
+        // Valid positive counts advance forward as expected.
+        assert_eq!(advance_by_interval(base, "3d"), base + chrono::Duration::days(3));
+        assert_eq!(advance_by_interval(base, "2w"), base + chrono::Duration::weeks(2));
+        let m = advance_by_interval(base, "2m");
+        assert_eq!((m.year(), m.month(), m.day()), (2025, 8, 10));
+
+        // Named aliases still work.
+        assert_eq!(advance_by_interval(base, "daily"), base + chrono::Duration::days(1));
+        assert_eq!(advance_by_interval(base, "monthly"), add_months(base, 1));
+
+        // Malformed counts (zero, negative, out-of-range) must never produce a
+        // past or garbage date — they fall through to the safe +1-week
+        // fallback, always advancing the due date forward.
+        let fallback = base + chrono::Duration::weeks(1);
+        for bad in ["-1m", "0m", "-5d", "0d", "-3w", "0w", "99999999999m"] {
+            assert_eq!(
+                advance_by_interval(base, bad),
+                fallback,
+                "malformed recur '{bad}' must fall back to +1 week, not move backward"
+            );
+        }
     }
 }
