@@ -572,31 +572,35 @@ fn merge_semantic_hits(
         return Ok(()); // query had no in-vocabulary content
     }
 
+    let already: HashSet<String> = hits
+        .iter()
+        .filter_map(|h| h.item_uuid.map(|u| u.to_string()))
+        .collect();
+
+    // Drop lexical duplicates and any memory outside the exact-filter allowlist
+    // *before* sorting/truncating, so `top_k` counts only memories that can
+    // actually be surfaced. Filtering after `truncate` would let high-scoring
+    // out-of-filter candidates consume slots and evict valid in-filter hits.
     let mut scored: Vec<(String, f32)> = db::active_embeddings(conn)?
         .into_iter()
+        .filter(|(uuid, _)| {
+            if already.contains(uuid) {
+                return false; // lexical hit already carries this memory
+            }
+            // Respect any exact tag/project/file filter: a semantic match
+            // outside the filtered set would violate recall's AND semantics.
+            match allowlist {
+                Some(allow) => matches!(uuid::Uuid::parse_str(uuid), Ok(u) if allow.contains(&u)),
+                None => true,
+            }
+        })
         .map(|(uuid, v)| (uuid, embedding::cosine(&qv, &v)))
         .filter(|(_, c)| *c >= opts.threshold)
         .collect();
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(opts.top_k);
 
-    let already: HashSet<String> = hits
-        .iter()
-        .filter_map(|h| h.item_uuid.map(|u| u.to_string()))
-        .collect();
-
     for (uuid, cos) in scored {
-        if already.contains(&uuid) {
-            continue; // lexical hit already carries this memory
-        }
-        // Respect any exact tag/project/file filter: a semantic match outside
-        // the filtered set would violate the AND semantics recall promises.
-        if let Some(allow) = allowlist {
-            match uuid::Uuid::parse_str(&uuid) {
-                Ok(u) if allow.contains(&u) => {}
-                _ => continue,
-            }
-        }
         if let Ok(item) = db::get_item_by_uuid(conn, &uuid) {
             let mut hit = item_hit(conn, item, false);
             hit.semantic = true;
@@ -1101,6 +1105,50 @@ mod tests {
         assert!(
             hits.iter().all(|h| h.item_uuid != Some(untagged.uuid)),
             "semantic recall must not leak a memory outside the --tag filter"
+        );
+    }
+
+    #[test]
+    fn recall_semantic_filter_applied_before_top_k_truncation() {
+        // Regression: the exact-filter allowlist must be applied BEFORE the
+        // `top_k` truncation. Here a higher-scoring memory sits OUTSIDE the
+        // filter and a weaker one sits INSIDE it, with top_k = 1. If the filter
+        // ran after truncation, the single slot would be consumed by the
+        // out-of-filter memory and then discarded, leaving the valid in-filter
+        // hit invisible.
+        let conn = db::open_in_memory_for_test();
+
+        let query = "lockfile pin fixes the broken dependabot build";
+
+        // Strongest match, but NOT tagged "keep" — must never occupy the slot.
+        let outside = seed_memory(
+            &conn,
+            "outside filter",
+            "lockfile pin fixes the broken dependabot build",
+            &[],
+            &[],
+        );
+        crate::infrastructure::embedding::index_memory(&conn, &outside);
+
+        // Weaker match, but carries the "keep" tag — this is the one we want.
+        let inside = seed_memory(&conn, "inside filter", "lockfile pin broke", &["keep"], &[]);
+        crate::infrastructure::embedding::index_memory(&conn, &inside);
+
+        let opts = SemanticOpts {
+            enabled: true,
+            threshold: 0.10,
+            top_k: 1,
+        };
+        let hits =
+            collect_hits(&conn, query, &["keep".to_string()], &[], &[], 20, &opts).unwrap();
+
+        assert!(
+            hits.iter().any(|h| h.item_uuid == Some(inside.uuid)),
+            "the in-filter memory must survive top_k truncation"
+        );
+        assert!(
+            hits.iter().all(|h| h.item_uuid != Some(outside.uuid)),
+            "the out-of-filter memory must never surface"
         );
     }
 

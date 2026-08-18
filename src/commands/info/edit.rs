@@ -600,6 +600,11 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
         task.urgency = t.urgency;
     }
     detail.history = db::get_history(conn, &detail.task.uuid)?;
+    // The project may have changed — re-resolve its root so file/anchor opens
+    // don't keep joining paths against the old project's directory.
+    detail.project_root = db::get_project(conn, &detail.task.project)?
+        .and_then(|p| p.path)
+        .map(std::path::PathBuf::from);
     // Reload branch / overlaps in case project changed.
     detail.branch = db::get_task_branch(conn, &detail.task.uuid);
     detail.overlaps = compute_overlaps(conn, &detail.task, &detail.branch);
