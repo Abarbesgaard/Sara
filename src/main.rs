@@ -533,8 +533,8 @@ fn run() -> Result<()> {
             commands::guide::rationale(&conn, &id, &text.join(" "))?;
         }
 
-        Command::Validate { id } => {
-            commands::guide::validate(&conn, &id)?;
+        Command::Validate { id, no_run } => {
+            commands::guide::validate(&conn, &id, no_run)?;
         }
 
         Command::Feedback { id, json } => {

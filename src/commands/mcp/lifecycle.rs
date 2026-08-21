@@ -68,12 +68,12 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Stamp a task's guide as validated against the project's current git HEAD. Errors if the project is not a git repo."
+        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs every acceptance criterion's verify command and refuses (errors) unless all are present and pass. Errors if the project is not a git repo."
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
-                commands::guide::validate_value(conn, &p.id)
+                commands::guide::validate_value(conn, &p.id, false)
             })
             .map_err(mcp_err)?;
         ok_json(v)

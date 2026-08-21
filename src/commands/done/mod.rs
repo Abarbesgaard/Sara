@@ -12,6 +12,7 @@ use crate::infrastructure::model::Status;
 /// MCP `done` tool. Errors if the task is blocked and `force` is false.
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
+    crate::commands::guide::guard_branch_mutation(conn, id_or_uuid, &task, force)?;
 
     // Check blockers
     let blockers = db::get_blockers(conn, &task.uuid)?;

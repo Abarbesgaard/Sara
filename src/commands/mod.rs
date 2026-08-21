@@ -15,6 +15,7 @@ pub mod guide;
 pub mod import;
 pub mod info;
 pub mod init;
+pub mod insight;
 pub mod learn;
 pub mod list;
 pub mod memories;

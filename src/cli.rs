@@ -647,10 +647,15 @@ pub enum Command {
         text: Vec<String>,
     },
 
-    /// Stamp the guide as validated against the current git HEAD
+    /// Prove every acceptance criterion green (runs their verify commands), then
+    /// stamp the guide as validated against the current git HEAD
     Validate {
         /// Task id or uuid prefix
         id: String,
+        /// Skip the acceptance gate and stamp without running verify commands
+        /// (escape hatch for environments where the checks cannot run locally)
+        #[arg(long)]
+        no_run: bool,
     },
 
     /// List open feedback (human comments) for a task
