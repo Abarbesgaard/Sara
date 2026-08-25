@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use clap_complete::engine::ArgValueCandidates;
 
-use crate::completion::{projects, task_ids};
+use crate::completion::{memory_labels, projects, task_ids};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -397,17 +397,237 @@ pub enum Command {
         /// Actually run the verification command(s)
         #[arg(long)]
         run: bool,
+        /// Run each step/criterion's own verify command and tick it done only
+        /// when it exits 0, recording the result (implies running)
+        #[arg(long)]
+        tick_on_pass: bool,
     },
 
-    /// Cross-task memory: keyword search across tasks/findings/anchors
+    /// Save a distilled, freeform memory for future recall (global, not
+    /// task/project-scoped: it references projects rather than belonging to one)
+    Learn {
+        /// The memory text (a short distilled paragraph)
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+        /// Tag (repeatable)
+        #[arg(long, short)]
+        tag: Vec<String>,
+        /// Project this memory references (repeatable; defaults to the current project)
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Vec<String>,
+        /// Task uuid prefix this memory was learned from/about (repeatable; source='explicit')
+        #[arg(long, add = ArgValueCandidates::new(task_ids))]
+        task: Vec<String>,
+        /// File path to associate with this memory (repeatable; stored as absolute path)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Auto-attach files touched since HEAD via `git diff --name-only HEAD`
+        /// (requires a git root; error if none is found and --file is also absent)
+        #[arg(long)]
+        auto_files: bool,
+        /// Skip the size and secret-pattern warnings and save anyway
+        #[arg(long)]
+        force: bool,
+        /// Mark an existing memory as superseded by the new one (repeatable).
+        /// Atomically creates a supersedes link — no separate `sara link-memory` needed.
+        /// Accepts memory labels like "m7".
+        #[arg(long, add = ArgValueCandidates::new(memory_labels))]
+        supersedes: Vec<String>,
+        /// Mark the new memory as derived from an existing canonical one (repeatable).
+        /// Atomically creates a derived_from link. Accepts memory labels like "m7".
+        #[arg(long = "derived-from", add = ArgValueCandidates::new(memory_labels))]
+        derived_from: Vec<String>,
+        /// Link the new memory as similar to an existing one (repeatable).
+        /// Atomically creates a similar_to link. Accepts memory labels like "m7".
+        #[arg(long = "similar-to", add = ArgValueCandidates::new(memory_labels))]
+        similar_to: Vec<String>,
+    },
+
+    /// Cross-task memory: keyword search across tasks/findings/anchors, or an
+    /// exact `--tag`/`--project` lookup over learned memories
     Recall {
-        /// Search query
-        #[arg(required = true)]
+        /// Search query (optional when --tag/--project narrows the lookup;
+        /// combines with them using AND — both the filter and the text must match)
         query: Vec<String>,
+        /// Exact tag match against indexed memory tags (repeatable — a memory
+        /// must carry every tag given to match)
+        #[arg(long)]
+        tag: Vec<String>,
+        /// Exact project match against indexed memory project references
+        /// (repeatable — a memory matches if it references any of the given projects)
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Vec<String>,
+        /// Filter by associated file path (repeatable; trailing '/' = prefix/directory match)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Max results (alias for --limit)
+        #[arg(long)]
+        top: Option<i64>,
         /// Max results
         #[arg(long, default_value_t = 20)]
         limit: i64,
+        /// Also surface associatively-related memories by spreading activation
+        /// across the memory graph (synapses = links + shared anchors), not just
+        /// direct keyword/tag matches
+        #[arg(long)]
+        spread: bool,
+        /// Deprecated / no-op: semantic recall (embedding cosine) is now ALWAYS
+        /// on, so paraphrases and conceptually-related wording surface even when
+        /// they share no literal keyword. Kept for backward compatibility. Uses
+        /// Sara's bundled local model (no network).
+        #[arg(long)]
+        semantic: bool,
         /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// (Re)build the semantic index: embed every memory with Sara's bundled
+    /// model so `sara recall --semantic` can match by meaning. Run once after
+    /// enabling semantic recall, or after a bulk import.
+    ReindexEmbeddings,
+    /// surfaced together — into reinforced `co_activated` synapses, so the
+    /// memory graph learns its own wiring from use.
+    Consolidate {
+        /// Look back this many days of recall events
+        #[arg(long, default_value_t = 30)]
+        window_days: i64,
+        /// Co-firing time window in seconds (recalls within it fired together)
+        #[arg(long, default_value_t = 5)]
+        bucket_secs: i64,
+        /// Weight added to a synapse per co-firing
+        #[arg(long, default_value_t = 0.1)]
+        delta: f64,
+        /// Ignore bulk recalls: a co-firing window with more than this many
+        /// distinct memories is a listing, not genuine co-activation, and is
+        /// skipped (prevents `recall --tag` dumps from over-wiring the graph)
+        #[arg(long, default_value_t = 5)]
+        max_bucket: usize,
+    },
+
+    /// Archive (forget) a memory by its label — e.g. `sara forget m3`
+    Forget {
+        /// Memory label, e.g. m3 (from `sara learn` output or `sara recall`)
+        handle: String,
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        yes: bool,
+        /// Also archive any memories `derived_from` this one (one level).
+        #[arg(long)]
+        cascade: bool,
+    },
+
+    /// Promote a provisional auto-memory to active after review — e.g. `sara promote m14`
+    Promote {
+        /// Memory label, e.g. m14 (provisional memories are flagged in `sara memories`/`recall`)
+        handle: String,
+    },
+
+    /// Peek into a memory as if inside a dream — neuron graph, recall pulse (TUI).
+    /// With no label: the whole-brain web of memories, bonds and strengths.
+    Dream {
+        /// Memory label, e.g. m3 (omit for the constellation view)
+        handle: Option<String>,
+    },
+
+    /// Edit a memory in place (body/tags/files) — e.g. `sara relearn m3 --tag db "corrected text"`
+    Relearn {
+        /// Memory label, e.g. m3
+        handle: String,
+        /// New body text (optional; omit to only change tags/files)
+        #[arg(trailing_var_arg = true)]
+        text: Vec<String>,
+        /// Replace the tag set (repeatable)
+        #[arg(long, short)]
+        tag: Vec<String>,
+        /// Replace the file associations (repeatable; stored as absolute path)
+        #[arg(long)]
+        file: Vec<String>,
+        /// Skip the size and secret-pattern warnings and save anyway
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// List all memory tags with usage counts (most-used first)
+    Tags {
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Browse all saved memories, newest first, with strength label
+    Memories {
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
+    /// Relations: supersedes, similar_to, derived_from, used_in
+    #[command(name = "link-memory")]
+    LinkMemory {
+        /// Source memory label (e.g. m12)
+        from: String,
+        /// Relation type: supersedes | similar_to | derived_from | used_in
+        relation: String,
+        /// Target memory label (e.g. m7)
+        to: String,
+        /// Edge weight (default 1.0)
+        #[arg(long, default_value = "1.0")]
+        weight: f64,
+    },
+
+    /// Remove a typed directed link between two memories
+    #[command(name = "unlink-memory")]
+    UnlinkMemory {
+        /// Source memory label (e.g. m12)
+        from: String,
+        /// Relation type
+        relation: String,
+        /// Target memory label (e.g. m7)
+        to: String,
+    },
+
+    /// Evaluate and optionally archive low-value memories (superseded, weak+old, provisional+old).
+    /// Runs in dry-run mode by default — pass --apply to actually archive.
+    #[command(name = "prune-memories")]
+    PruneMemories {
+        /// Show what would be archived without making changes (default)
+        #[arg(long, default_value = "true")]
+        dry_run: bool,
+        /// Actually archive the candidates (opposite of --dry-run)
+        #[arg(long, conflicts_with = "dry_run")]
+        apply: bool,
+        /// Days before a Weak (no task link) memory is eligible (default 90)
+        #[arg(long, default_value = "90")]
+        weak_days: i64,
+        /// Days before a Provisional auto-memory is eligible if unreviewed (default 30)
+        #[arg(long, default_value = "30")]
+        provisional_days: i64,
+    },
+
+    /// Scan all active memories and report pairs sharing files or full tag sets
+    /// with no memory_links edge — unlinked conflict candidates for review.
+    /// Alias: `sara conflicts`
+    #[command(name = "diagnose-memories", alias = "conflicts")]
+    DiagnoseMemories {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Reflect over the memory graph: cluster related, not-yet-consolidated
+    /// memories and propose a canonical + `derived_from` links to tidy each
+    /// cluster. Read-only — prints the `sara link-memory` lines to apply.
+    Reflect {
+        /// Minimum synapse weight for two memories to be treated as related.
+        #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MIN_WEIGHT)]
+        min_weight: f64,
+        /// Materialise the proposed consolidations (create the derived_from
+        /// links) instead of only printing them. Idempotent and cycle-guarded.
+        #[arg(long)]
+        apply: bool,
+        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -430,10 +650,15 @@ pub enum Command {
         text: Vec<String>,
     },
 
-    /// Stamp the guide as validated against the current git HEAD
+    /// Prove every acceptance criterion green (runs their verify commands), then
+    /// stamp the guide as validated against the current git HEAD
     Validate {
         /// Task id or uuid prefix
         id: String,
+        /// Skip the acceptance gate and stamp without running verify commands
+        /// (escape hatch for environments where the checks cannot run locally)
+        #[arg(long)]
+        no_run: bool,
     },
 
     /// List open feedback (human comments) for a task
@@ -540,6 +765,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Reopen step N
     Undone {
@@ -550,6 +778,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove step N (a checklist item / acceptance criterion)
     #[command(visible_alias = "rm")]
@@ -561,6 +792,9 @@ pub enum StepAction {
         /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
+        /// Emit as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 

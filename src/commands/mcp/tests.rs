@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 27, "expected 27 tools, got {names:?}");
+    assert_eq!(names.len(), 40, "expected 40 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -40,6 +40,8 @@ fn exposes_the_agent_loop_tools() {
         "recall",
         "feedback",
         "plan_show",
+        "tags",
+        "projects",
         // mutate (create / guide)
         "add",
         "step_done",
@@ -51,9 +53,15 @@ fn exposes_the_agent_loop_tools() {
         "assignment",
         "rationale",
         "attach",
+        "learn",
+        "forget",
+        "promote",
+        "relearn",
         // completion / edit / lifecycle
         "done",
         "link",
+        "unlink",
+        "denotate",
         "dep",
         "validate",
         "modify",
@@ -61,6 +69,7 @@ fn exposes_the_agent_loop_tools() {
         "record_run",
         "start",
         "stop",
+        "move_task",
     ] {
         assert!(
             names.iter().any(|n| n == expected),
@@ -454,6 +463,9 @@ fn record_run_then_resolve_links_the_run_id() {
                 "enrich",
                 Some("claude-sonnet-5-thinking-high"),
                 Some("cursor"),
+                None,
+                None,
+                None,
                 None,
                 None,
             )

@@ -5,13 +5,13 @@ name: Security audit
 # advisories against the versions we already depend on.
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, nightly ]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
       - '.github/workflows/audit.yml'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, nightly ]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'

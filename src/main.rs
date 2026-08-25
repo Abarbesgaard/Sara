@@ -349,6 +349,7 @@ fn run() -> Result<()> {
                 n,
                 result,
                 kind,
+                json,
             } => {
                 commands::guide::step_done(
                     &conn,
@@ -357,22 +358,189 @@ fn run() -> Result<()> {
                     n,
                     result.as_deref(),
                     kind.as_deref(),
+                    json,
                 )?;
             }
-            cli::StepAction::Undone { id, n, kind } => {
-                commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref())?;
+            cli::StepAction::Undone { id, n, kind, json } => {
+                commands::guide::step_undone(&conn, &cfg, &id, n, kind.as_deref(), json)?;
             }
-            cli::StepAction::Remove { id, n, kind } => {
-                commands::guide::step_remove(&conn, &cfg, &id, n, kind.as_deref())?;
+            cli::StepAction::Remove { id, n, kind, json } => {
+                commands::guide::step_remove(&conn, &cfg, &id, n, kind.as_deref(), json)?;
             }
         },
 
-        Command::Verify { id, step, run } => {
-            commands::guide::verify(&conn, &cfg, &id, step, run)?;
+        Command::Verify {
+            id,
+            step,
+            run,
+            tick_on_pass,
+        } => {
+            commands::guide::verify(&conn, &cfg, &id, step, run, tick_on_pass)?;
         }
 
-        Command::Recall { query, limit, json } => {
-            commands::recall::run(&conn, &cfg, &query.join(" "), limit, json)?;
+        Command::Learn {
+            text,
+            tag,
+            project,
+            task,
+            file,
+            auto_files,
+            force,
+            supersedes,
+            derived_from,
+            similar_to,
+        } => {
+            commands::learn::run(
+                &conn,
+                &cfg,
+                &text.join(" "),
+                &tag,
+                &project,
+                &task,
+                &file,
+                auto_files,
+                force,
+                &supersedes,
+                &derived_from,
+                &similar_to,
+            )?;
+        }
+
+        Command::Recall {
+            query,
+            tag,
+            project,
+            file,
+            top,
+            limit,
+            spread,
+            semantic,
+            json,
+        } => {
+            let effective_limit = top.unwrap_or(limit);
+            // Semantic recall is always on (see SemanticOpts::from_cfg); the
+            // `--semantic` flag is a no-op kept for backward compatibility.
+            let _ = semantic;
+            let cfg = cfg.clone();
+            commands::recall::run(
+                &conn,
+                &cfg,
+                &query.join(" "),
+                &tag,
+                &project,
+                &file,
+                effective_limit,
+                spread,
+                json,
+            )?;
+        }
+
+        Command::ReindexEmbeddings => {
+            let n = infrastructure::embedding::reindex_all(&conn)?;
+            println!("Embedded {n} memories into the semantic index.");
+        }
+
+        Command::Consolidate {
+            window_days,
+            bucket_secs,
+            delta,
+            max_bucket,
+        } => {
+            let n = infrastructure::memory_graph::consolidate(
+                &conn,
+                window_days,
+                chrono::Duration::seconds(bucket_secs),
+                delta,
+                max_bucket,
+            )?;
+            if n == 0 {
+                println!("Nothing to consolidate — no co-firing recalls in the window.");
+            } else {
+                println!("Consolidated {n} co-activation synapse(s) from recent recalls.");
+            }
+        }
+
+        Command::Forget {
+            handle, cascade, ..
+        } => {
+            commands::forget::run(&conn, &handle, cascade)?;
+        }
+
+        Command::Promote { handle } => {
+            commands::promote::run(&conn, &handle)?;
+        }
+
+        Command::Dream { handle } => match handle {
+            Some(h) => commands::dream::run(&conn, &h)?,
+            None => commands::dream::run_web(&conn)?,
+        },
+
+        Command::Relearn {
+            handle,
+            text,
+            tag,
+            file,
+            force,
+        } => {
+            let joined = text.join(" ");
+            let body = if joined.trim().is_empty() {
+                None
+            } else {
+                Some(joined.as_str())
+            };
+            commands::relearn::run(&conn, &handle, body, &tag, &file, force)?;
+        }
+
+        Command::Tags { json } => {
+            commands::tags::run(&conn, json)?;
+        }
+
+        Command::Memories { json } => {
+            commands::memories::run(&conn, json)?;
+        }
+
+        Command::LinkMemory {
+            from,
+            relation,
+            to,
+            weight,
+        } => {
+            commands::link_memory::run(&conn, &from, &relation, &to, weight)?;
+        }
+
+        Command::UnlinkMemory { from, relation, to } => {
+            commands::link_memory::unlink(&conn, &from, &relation, &to)?;
+        }
+
+        Command::PruneMemories {
+            dry_run,
+            apply,
+            weak_days,
+            provisional_days,
+        } => {
+            let actual_dry_run = !apply && dry_run;
+            commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
+            // Informational: surface unlinked conflict candidates alongside prune output.
+            if let Ok(diag) = commands::diagnose_memories::diagnose_value(&conn) {
+                let n = diag["count"].as_u64().unwrap_or(0);
+                if n > 0 {
+                    println!(
+                        "\n{n} unlinked conflict candidate(s) also found — run `sara diagnose-memories` to review."
+                    );
+                }
+            }
+        }
+
+        Command::DiagnoseMemories { json } => {
+            commands::diagnose_memories::run(&conn, json)?;
+        }
+
+        Command::Reflect {
+            min_weight,
+            apply,
+            json,
+        } => {
+            commands::reflect::run(&conn, min_weight, json, apply)?;
         }
 
         Command::Assignment { id, text } => {
@@ -383,8 +551,8 @@ fn run() -> Result<()> {
             commands::guide::rationale(&conn, &id, &text.join(" "))?;
         }
 
-        Command::Validate { id } => {
-            commands::guide::validate(&conn, &id)?;
+        Command::Validate { id, no_run } => {
+            commands::guide::validate(&conn, &id, no_run)?;
         }
 
         Command::Feedback { id, json } => {

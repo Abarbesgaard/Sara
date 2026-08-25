@@ -68,12 +68,12 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Stamp a task's guide as validated against the project's current git HEAD. Errors if the project is not a git repo."
+        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs every acceptance criterion's verify command and refuses (errors) unless all are present and pass. Errors if the project is not a git repo."
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
-                commands::guide::validate_value(conn, &p.id)
+                commands::guide::validate_value(conn, &p.id, false)
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -122,6 +122,9 @@ impl SaraServer {
         description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
     )]
     fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, ErrorData> {
+        let total = p
+            .total_tokens
+            .or_else(|| p.prompt_tokens.zip(p.completion_tokens).map(|(a, b)| a + b));
         let v = self
             .with_project(p.project_path.as_deref(), "mcp record_run", |conn, _cfg| {
                 commands::guide::record_run_value(
@@ -132,6 +135,9 @@ impl SaraServer {
                     p.provider.as_deref(),
                     p.prompt.as_deref(),
                     p.response.as_deref(),
+                    p.prompt_tokens,
+                    p.completion_tokens,
+                    total,
                 )
             })
             .map_err(mcp_err)?;
@@ -155,6 +161,40 @@ impl SaraServer {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp stop", |conn, cfg| {
                 commands::timer::stop_value(conn, cfg, &p.id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Remove a link from a task by its sequential link id (shown in `sara info`)."
+    )]
+    fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp unlink", |conn, _cfg| {
+                commands::annotate::unlink_value(conn, p.link_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`)."
+    )]
+    fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp denotate", |conn, _cfg| {
+                commands::annotate::denotate_value(conn, p.annotation_id)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(description = "Move a task to a different project.")]
+    fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {
+                commands::move_task::move_value(conn, cfg, &p.id, &p.project)
             })
             .map_err(mcp_err)?;
         ok_json(v)

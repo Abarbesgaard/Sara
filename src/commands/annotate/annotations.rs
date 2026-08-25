@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::Connection;
+use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
@@ -67,7 +68,7 @@ pub fn annotate_value(
     };
 
     let note_kind = kind.unwrap_or(db::NOTE_KIND_COMMENT);
-    db::add_annotation_full(
+    let ann_id = db::add_annotation_full(
         conn,
         &task.uuid,
         text.trim(),
@@ -77,11 +78,22 @@ pub fn annotate_value(
         target_id.as_deref(),
         reconsider,
     )?;
+
+    // When recording a finding, resurface the task's own prior findings that are
+    // semantically close — the reconsider guard against silently contradicting
+    // an earlier conclusion.
+    let related = if note_kind == "finding" {
+        crate::commands::insight::related_findings(conn, &task.uuid, text.trim(), Some(ann_id))
+    } else {
+        Vec::new()
+    };
+
     Ok(serde_json::json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "kind": note_kind,
         "text": text.trim(),
+        "related_findings": crate::commands::insight::related_findings_json(&related),
     }))
 }
 
@@ -101,14 +113,35 @@ pub fn annotate(
         v.get("task").and_then(|t| t.as_i64()).unwrap_or(0),
         v.get("text").and_then(|t| t.as_str()).unwrap_or("")
     );
+    if let Some(related) = v.get("related_findings").and_then(|r| r.as_array())
+        && !related.is_empty()
+    {
+        eprintln!("⟳ reconsider — related prior finding(s) on this task:");
+        for r in related {
+            eprintln!(
+                "    (~{:.2}) #{}: {}",
+                r.get("cosine").and_then(|c| c.as_f64()).unwrap_or(0.0),
+                r.get("annotation_id").and_then(|i| i.as_i64()).unwrap_or(0),
+                r.get("text").and_then(|t| t.as_str()).unwrap_or("")
+            );
+        }
+        eprintln!(
+            "  If your new note revises or contradicts one, correct it (denotate / re-annotate)."
+        );
+    }
     Ok(())
 }
 
-pub fn denotate(conn: &Connection, annotation_id: i64) -> Result<()> {
+pub fn denotate_value(conn: &Connection, annotation_id: i64) -> Result<Value> {
     if db::delete_annotation(conn, annotation_id)? {
-        println!("Removed annotation {annotation_id}.");
+        Ok(json!({ "annotation_id": annotation_id, "removed": true }))
     } else {
-        anyhow::bail!("No annotation with id {annotation_id}");
+        anyhow::bail!("No annotation with id {annotation_id}")
     }
+}
+
+pub fn denotate(conn: &Connection, annotation_id: i64) -> Result<()> {
+    denotate_value(conn, annotation_id)?;
+    println!("Removed annotation {annotation_id}.");
     Ok(())
 }

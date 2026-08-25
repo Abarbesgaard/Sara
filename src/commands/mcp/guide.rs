@@ -183,4 +183,76 @@ impl SaraServer {
             .map_err(mcp_err)?;
         ok_json(v)
     }
+
+    #[tool(
+        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary."
+    )]
+    fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, ErrorData> {
+        let tags = p.tags.unwrap_or_default();
+        let projects = p.projects.unwrap_or_default();
+        let tasks = p.tasks.unwrap_or_default();
+        let files = p.files.unwrap_or_default();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
+                commands::learn::learn_value(
+                    conn,
+                    cfg,
+                    &p.text,
+                    &tags,
+                    &projects,
+                    &tasks,
+                    &files,
+                    false, // auto_files not available via MCP — paths must be explicit
+                    p.force.unwrap_or(false),
+                    &[], // supersedes not yet exposed via MCP
+                    &[], // derived_from not yet exposed via MCP
+                    &[], // similar_to not yet exposed via MCP
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong. If it's canonical (has derived_from children), they're listed for review, and archived too when cascade=true."
+    )]
+    fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp forget", |conn, _cfg| {
+                commands::forget::forget_value(conn, &p.handle, p.cascade.unwrap_or(false))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place."
+    )]
+    fn promote(&self, Parameters(p): Parameters<PromoteParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp promote", |conn, _cfg| {
+                commands::promote::promote_value(conn, &p.handle)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn."
+    )]
+    fn relearn(&self, Parameters(p): Parameters<RelearnParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp relearn", |conn, _cfg| {
+                commands::relearn::relearn_value(
+                    conn,
+                    &p.handle,
+                    p.text.as_deref(),
+                    p.tags.as_deref().unwrap_or(&[]),
+                    p.files.as_deref().unwrap_or(&[]),
+                    p.force.unwrap_or(false),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
 }

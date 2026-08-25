@@ -37,6 +37,32 @@ impl Default for UrgencyConfig {
     }
 }
 
+/// Semantic (embedding-based) recall tuning. Semantic recall is now ALWAYS on;
+/// `semantic_threshold` and `semantic_top_k` tune it, while the legacy `semantic`
+/// toggle is retained only for backward compatibility and no longer gates recall.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecallConfig {
+    /// Deprecated / ignored: semantic recall is always enabled. Kept so existing
+    /// config files that set it still parse.
+    pub semantic: bool,
+    /// Minimum cosine similarity for a semantic hit to be surfaced. Guards
+    /// against flooding recall with weakly-related noise.
+    pub semantic_threshold: f32,
+    /// Upper bound on semantic hits merged into a single recall.
+    pub semantic_top_k: usize,
+}
+
+impl Default for RecallConfig {
+    fn default() -> Self {
+        RecallConfig {
+            semantic: false,
+            semantic_threshold: 0.30,
+            semantic_top_k: 5,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -45,26 +71,8 @@ pub struct Config {
     pub urgency: UrgencyConfig,
     /// Absolute path to Sara's private knowledge store (markdown notes/links).
     pub vault_path: Option<PathBuf>,
-    /// Embeddings provider settings (optional, for semantic search).
-    pub embeddings: EmbeddingsConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct EmbeddingsConfig {
-    pub provider: String,
-    pub model: String,
-    pub base_url: Option<String>,
-}
-
-impl Default for EmbeddingsConfig {
-    fn default() -> Self {
-        EmbeddingsConfig {
-            provider: "ollama".to_string(),
-            model: "nomic-embed-text".to_string(),
-            base_url: None,
-        }
-    }
+    /// Semantic-recall settings (default OFF — recall stays lexical).
+    pub recall: RecallConfig,
 }
 
 impl Default for Config {
@@ -74,25 +82,8 @@ impl Default for Config {
             date_dialect: "uk".to_string(),
             urgency: UrgencyConfig::default(),
             vault_path: None,
-            embeddings: EmbeddingsConfig::default(),
+            recall: RecallConfig::default(),
         }
-    }
-}
-
-impl Config {
-    /// True when [embeddings] was never customized (still Ollama defaults).
-    pub fn embeddings_at_default(&self) -> bool {
-        self.embeddings.provider == "ollama" && self.embeddings.model == "nomic-embed-text"
-    }
-
-    /// Embeddings provider.
-    pub fn effective_embeddings_provider(&self) -> String {
-        self.embeddings.provider.clone()
-    }
-
-    /// Deployment/model name for embeddings API calls.
-    pub fn effective_embeddings_model(&self) -> String {
-        self.embeddings.model.clone()
     }
 }
 
