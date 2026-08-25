@@ -32,7 +32,9 @@ struct UnionFind {
 
 impl UnionFind {
     fn new(n: usize) -> Self {
-        UnionFind { parent: (0..n).collect() }
+        UnionFind {
+            parent: (0..n).collect(),
+        }
     }
     fn find(&mut self, x: usize) -> usize {
         let mut r = x;
@@ -123,8 +125,10 @@ pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
         if member_idx.len() < 2 {
             continue;
         }
-        let uuids: Vec<String> =
-            member_idx.iter().map(|&i| graph.nodes[i].uuid.to_string()).collect();
+        let uuids: Vec<String> = member_idx
+            .iter()
+            .map(|&i| graph.nodes[i].uuid.to_string())
+            .collect();
 
         if is_already_consolidated(&uuids, &derived_parents) {
             continue;
@@ -140,7 +144,10 @@ pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
                 .then(graph.nodes[a].label.cmp(&graph.nodes[b].label))
         });
         let suggested_canonical = graph.nodes[sorted[0]].label.clone();
-        let members: Vec<String> = sorted.iter().map(|&i| graph.nodes[i].label.clone()).collect();
+        let members: Vec<String> = sorted
+            .iter()
+            .map(|&i| graph.nodes[i].label.clone())
+            .collect();
 
         let shared_tags = shared_tags(&uuids, &tags_by_uuid);
 
@@ -226,8 +233,10 @@ fn shared_tags(uuids: &[String], tags_by_uuid: &HashMap<String, Vec<String>>) ->
     };
     let mut shared: Vec<String> = first;
     for u in iter {
-        let set: HashSet<&String> =
-            tags_by_uuid.get(u).map(|t| t.iter().collect()).unwrap_or_default();
+        let set: HashSet<&String> = tags_by_uuid
+            .get(u)
+            .map(|t| t.iter().collect())
+            .unwrap_or_default();
         shared.retain(|t| set.contains(t));
     }
     shared.sort();
@@ -305,7 +314,9 @@ pub fn run(conn: &Connection, min_weight: f64, json_output: bool, apply: bool) -
         let applied = v["applied"].as_u64().unwrap_or(0);
         let skipped = v["skipped"].as_array().map(|a| a.len()).unwrap_or(0);
         if applied == 0 && skipped == 0 {
-            println!("Nothing to consolidate — no un-linked related clusters above the weight threshold.");
+            println!(
+                "Nothing to consolidate — no un-linked related clusters above the weight threshold."
+            );
             return Ok(());
         }
         println!(
@@ -367,7 +378,10 @@ pub fn run(conn: &Connection, min_weight: f64, json_output: bool, apply: bool) -
             } else {
                 format!("  [shared tags: {}]", tags.join(", "))
             };
-            println!("  {} members, canonical -> {canonical}{tag_str}", members.len());
+            println!(
+                "  {} members, canonical -> {canonical}{tag_str}",
+                members.len()
+            );
             println!("    cluster: {}", members.join(", "));
             for link in c["proposed_links"].as_array().into_iter().flatten() {
                 let from = link["from"].as_str().unwrap_or("?");
@@ -403,9 +417,21 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         // Three memories flagged related (similar_to, 0.7 each) but with no
         // canonical yet — the exact shape a consolidation should propose.
-        let a = insert_memory(&conn, "dependabot bump broke restore in repo a", "dependabot");
-        let b = insert_memory(&conn, "dependabot bump broke restore in repo b", "dependabot");
-        let c = insert_memory(&conn, "dependabot bump broke restore in repo c", "dependabot");
+        let a = insert_memory(
+            &conn,
+            "dependabot bump broke restore in repo a",
+            "dependabot",
+        );
+        let b = insert_memory(
+            &conn,
+            "dependabot bump broke restore in repo b",
+            "dependabot",
+        );
+        let c = insert_memory(
+            &conn,
+            "dependabot bump broke restore in repo c",
+            "dependabot",
+        );
         link(&conn, &a, &b, "similar_to");
         link(&conn, &b, &c, "similar_to");
 
@@ -417,11 +443,13 @@ mod tests {
         // Two derived_from links proposed (canonical + 2 children).
         assert_eq!(cluster["proposed_links"].as_array().unwrap().len(), 2);
         // The shared tag is surfaced.
-        assert!(cluster["shared_tags"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|t| t == "dependabot"));
+        assert!(
+            cluster["shared_tags"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t == "dependabot")
+        );
     }
 
     #[test]
@@ -451,7 +479,11 @@ mod tests {
         insert_memory(&conn, "memory about billing", "billing");
 
         let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
-        assert_eq!(v["count"].as_u64().unwrap(), 0, "no shared anchors -> no cluster");
+        assert_eq!(
+            v["count"].as_u64().unwrap(),
+            0,
+            "no shared anchors -> no cluster"
+        );
     }
 
     /// Count `derived_from` edges emanating from the given memories.
@@ -478,8 +510,15 @@ mod tests {
         link(&conn, &b, &c, "similar_to");
 
         let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
-        assert_eq!(v["applied"].as_u64().unwrap(), 2, "two children linked to the canonical");
-        assert!(v["skipped"].as_array().unwrap().is_empty(), "nothing skipped");
+        assert_eq!(
+            v["applied"].as_u64().unwrap(),
+            2,
+            "two children linked to the canonical"
+        );
+        assert!(
+            v["skipped"].as_array().unwrap().is_empty(),
+            "nothing skipped"
+        );
 
         // Exactly two derived_from edges now exist across the cluster.
         assert_eq!(derived_from_count(&conn, &[&a, &b, &c]), 2);
@@ -503,9 +542,17 @@ mod tests {
         assert!(second["skipped"].as_array().unwrap().is_empty());
 
         // No duplicate edges, and the proposer no longer sees the cluster.
-        assert_eq!(derived_from_count(&conn, &[&a, &b, &c]), 2, "no duplicate links");
+        assert_eq!(
+            derived_from_count(&conn, &[&a, &b, &c]),
+            2,
+            "no duplicate links"
+        );
         let proposal = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
-        assert_eq!(proposal["count"].as_u64().unwrap(), 0, "consolidated cluster excluded");
+        assert_eq!(
+            proposal["count"].as_u64().unwrap(),
+            0,
+            "consolidated cluster excluded"
+        );
     }
 
     #[test]
@@ -519,22 +566,54 @@ mod tests {
         link(&conn, &b, &c, "similar_to");
         // Pre-existing a -> b derived_from: proposing b -> a would form a cycle.
         link(&conn, &a, &b, "derived_from");
+        // `b` now carries an incoming derived_from edge, which gives it a small
+        // canonical-derived strength bonus (task e7ff611e) that would otherwise
+        // flip the tie-break and make `b` the suggested canonical instead of
+        // `a`. Pin `a`'s strength above that bonus via a completed source task
+        // so the tie-break (and the scenario this test targets) is unaffected.
+        let mut task = crate::infrastructure::model::Task::new(
+            "completed task".to_string(),
+            "Sara".to_string(),
+        );
+        task.status = crate::infrastructure::model::Status::Completed;
+        db::insert_task(&conn, &mut task).unwrap();
+        db::set_item_task_links(&conn, &a, &[(task.uuid, "explicit")]).unwrap();
 
         let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
         // c -> a applies; b -> a is skipped for the cycle it would create.
-        assert_eq!(v["applied"].as_u64().unwrap(), 1, "only the safe link applies");
+        assert_eq!(
+            v["applied"].as_u64().unwrap(),
+            1,
+            "only the safe link applies"
+        );
         let skipped = v["skipped"].as_array().unwrap();
-        assert_eq!(skipped.len(), 1, "the cycle-forming link is skipped, not fatal");
+        assert_eq!(
+            skipped.len(),
+            1,
+            "the cycle-forming link is skipped, not fatal"
+        );
         assert!(
-            skipped[0]["reason"].as_str().unwrap().to_lowercase().contains("cycle"),
+            skipped[0]["reason"]
+                .as_str()
+                .unwrap()
+                .to_lowercase()
+                .contains("cycle"),
             "skip reason names the cycle: {:?}",
             skipped[0]["reason"]
         );
 
         // c -> a exists; b -> a does not.
         let c_links = db::get_memory_links_from(&conn, &c.to_string()).unwrap();
-        assert!(c_links.iter().any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string()));
+        assert!(
+            c_links
+                .iter()
+                .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+        );
         let b_links = db::get_memory_links_from(&conn, &b.to_string()).unwrap();
-        assert!(!b_links.iter().any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string()));
+        assert!(
+            !b_links
+                .iter()
+                .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+        );
     }
 }

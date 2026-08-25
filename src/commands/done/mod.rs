@@ -12,6 +12,7 @@ use crate::infrastructure::model::Status;
 /// MCP `done` tool. Errors if the task is blocked and `force` is false.
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
+    crate::commands::guide::guard_branch_mutation(conn, id_or_uuid, &task, force)?;
 
     // Check blockers
     let blockers = db::get_blockers(conn, &task.uuid)?;
@@ -118,13 +119,23 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
             println!(
                 "🧹 Auto-archived {} superseded {}: {}",
                 archived.len(),
-                if archived.len() == 1 { "memory" } else { "memories" },
+                if archived.len() == 1 {
+                    "memory"
+                } else {
+                    "memories"
+                },
                 archived.join(", ")
             );
         }
-        let pending = hyg.get("review_pending").and_then(|n| n.as_u64()).unwrap_or(0);
+        let pending = hyg
+            .get("review_pending")
+            .and_then(|n| n.as_u64())
+            .unwrap_or(0);
         if pending > 0 {
-            let oldest = hyg.get("oldest_age_days").and_then(|d| d.as_i64()).unwrap_or(0);
+            let oldest = hyg
+                .get("oldest_age_days")
+                .and_then(|d| d.as_i64())
+                .unwrap_or(0);
             println!(
                 "🧹 {} {} await review (oldest {}d) — run `sara prune-memories` to triage",
                 pending,
@@ -135,7 +146,6 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod hygiene_tests {
@@ -160,8 +170,14 @@ mod hygiene_tests {
         let old = mem(&conn, "old finding");
         let new = mem(&conn, "new finding replaces old");
         // new supersedes old (new is active).
-        db::insert_memory_link(&conn, &new.uuid.to_string(), &old.uuid.to_string(), "supersedes", 1.0)
-            .unwrap();
+        db::insert_memory_link(
+            &conn,
+            &new.uuid.to_string(),
+            &old.uuid.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
 
         let mut task = Task::new("hygiene demo".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
@@ -173,7 +189,10 @@ mod hygiene_tests {
             .iter()
             .filter_map(|x| x.as_str())
             .collect();
-        assert!(archived.contains(&label(&old).as_str()), "superseded old memory is auto-archived");
+        assert!(
+            archived.contains(&label(&old).as_str()),
+            "superseded old memory is auto-archived"
+        );
 
         // Archived memories drop out of the active read path; the superseder stays.
         assert!(

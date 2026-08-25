@@ -14,7 +14,7 @@ pub fn link_memory_value(
     weight: f64,
 ) -> Result<Value> {
     let from_item = db::get_item_by_handle(conn, from_handle)?;
-    let to_item   = db::get_item_by_handle(conn, to_handle)?;
+    let to_item = db::get_item_by_handle(conn, to_handle)?;
 
     db::insert_memory_link(
         conn,
@@ -58,12 +58,7 @@ pub fn run(
 }
 
 /// `sara unlink-memory <from> <relation> <to>` — remove a specific typed edge.
-pub fn unlink(
-    conn: &Connection,
-    from_handle: &str,
-    relation: &str,
-    to_handle: &str,
-) -> Result<()> {
+pub fn unlink(conn: &Connection, from_handle: &str, relation: &str, to_handle: &str) -> Result<()> {
     let v = unlink_value(conn, from_handle, relation, to_handle)?;
     let removed = v["removed"].as_bool().unwrap_or(false);
     if removed {
@@ -82,7 +77,7 @@ pub fn unlink_value(
     to_handle: &str,
 ) -> Result<Value> {
     let from_item = db::get_item_by_handle(conn, from_handle)?;
-    let to_item   = db::get_item_by_handle(conn, to_handle)?;
+    let to_item = db::get_item_by_handle(conn, to_handle)?;
     let removed = db::delete_memory_link(
         conn,
         &from_item.uuid.to_string(),

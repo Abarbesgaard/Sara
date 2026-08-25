@@ -12,6 +12,51 @@ fn project_head(conn: &Connection, project: &str) -> Option<String> {
     crate::infrastructure::git::head_commit(std::path::Path::new(&path))
 }
 
+/// Refuse a finalizing mutation targeted by a **recyclable numeric display id**
+/// when the resolved task is tied to a git branch other than the one currently
+/// checked out in its project — the signature of "display-id recompaction moved
+/// id N onto a different task than you meant" (the concurrent-agent hazard).
+///
+/// Positive-evidence only: stays silent when the input was a uuid (stable), the
+/// task has no branch tie, the branch can't be determined (detached HEAD / no
+/// repo), or `force` is set — so legitimate single-branch flows never trip.
+pub fn guard_branch_mutation(
+    conn: &Connection,
+    id_input: &str,
+    task: &crate::infrastructure::model::Task,
+    force: bool,
+) -> Result<()> {
+    if force || id_input.parse::<i64>().is_err() {
+        return Ok(()); // uuid inputs are stable; --force opts out.
+    }
+    let Some(rec) = db::get_task_branch(conn, &task.uuid) else {
+        return Ok(());
+    };
+    let Some(path) = db::get_project(conn, &task.project)
+        .ok()
+        .flatten()
+        .and_then(|p| p.path)
+    else {
+        return Ok(());
+    };
+    let Some(current) = crate::infrastructure::git::current_branch(std::path::Path::new(&path))
+    else {
+        return Ok(());
+    };
+    if current != rec.branch {
+        anyhow::bail!(
+            "refusing to act on task {} by display id — it is tied to branch '{}' but the \
+             project is currently on '{}'. Recycled display ids can point at a different task \
+             after recompaction. Re-run with the stable uuid `{}` (or pass --force).",
+            task.id.unwrap_or(0),
+            rec.branch,
+            current,
+            &task.uuid.to_string()[..8]
+        );
+    }
+    Ok(())
+}
+
 fn kind_arg(kind: Option<&str>) -> &str {
     match kind {
         Some("acceptance") => db::STEP_KIND_ACCEPTANCE,
@@ -28,7 +73,10 @@ const NEXT_MEMORY_LIMIT: usize = 3;
 /// pairs — the same signal `sara info`/`guide` surfaces at task-start, brought
 /// into the per-step execution cursor so the agent never works memory-blind.
 /// Empty when nothing Strong matches (the caller then omits the block entirely).
-fn relevant_memories(conn: &Connection, task: &crate::infrastructure::model::Task) -> Vec<(String, String)> {
+fn relevant_memories(
+    conn: &Connection,
+    task: &crate::infrastructure::model::Task,
+) -> Vec<(String, String)> {
     db::find_similar_strong_memories(conn, &task.description, &task.tags)
         .unwrap_or_default()
         .into_iter()
@@ -69,10 +117,13 @@ pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
         }),
         None => json!({ "task": task.id, "done": true, "total": steps.len() }),
     };
-    if !relevant.is_empty() {
-        if let Some(obj) = value.as_object_mut() {
-            obj.insert("relevant_memories".to_string(), serde_json::Value::Array(relevant));
-        }
+    if !relevant.is_empty()
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert(
+            "relevant_memories".to_string(),
+            serde_json::Value::Array(relevant),
+        );
     }
     Ok(value)
 }
@@ -104,7 +155,10 @@ pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result
 
     let relevant = relevant_memories(conn, &task);
     if !relevant.is_empty() {
-        println!("\nRelevant memory ({}) — recall before you act:", relevant.len());
+        println!(
+            "\nRelevant memory ({}) — recall before you act:",
+            relevant.len()
+        );
         for (label, snippet) in &relevant {
             println!("  {label}: {snippet}");
         }
@@ -192,6 +246,14 @@ pub fn step_done_value(
     // First recorded work auto-transitions the task to active (Feature: status
     // should reflect reality without a separate `sara start`).
     let activated = db::ensure_started(conn, &task.uuid)?;
+    // Resurface prior findings semantically close to this result — reconnect the
+    // agent to what it already concluded before it moves on.
+    let related = match result {
+        Some(r) if !r.trim().is_empty() => {
+            crate::commands::insight::related_findings(conn, &task.uuid, r, None)
+        }
+        _ => Vec::new(),
+    };
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
@@ -200,6 +262,7 @@ pub fn step_done_value(
         "done": true,
         "commit": commit,
         "activated": activated,
+        "related_findings": crate::commands::insight::related_findings_json(&related),
     }))
 }
 
@@ -230,6 +293,19 @@ pub fn step_done(
         v.get("task").and_then(|t| t.as_i64()).unwrap_or(0),
         commit_suffix
     );
+    if let Some(related) = v.get("related_findings").and_then(|r| r.as_array())
+        && !related.is_empty()
+    {
+        eprintln!("⟳ reconsider — related prior finding(s) on this task:");
+        for r in related {
+            eprintln!(
+                "    (~{:.2}) #{}: {}",
+                r.get("cosine").and_then(|c| c.as_f64()).unwrap_or(0.0),
+                r.get("annotation_id").and_then(|i| i.as_i64()).unwrap_or(0),
+                r.get("text").and_then(|t| t.as_str()).unwrap_or("")
+            );
+        }
+    }
     Ok(())
 }
 
@@ -617,23 +693,152 @@ pub fn rationale(conn: &Connection, id: &str, text: &str) -> Result<()> {
 }
 
 /// Stamp the guide as validated against the project's current HEAD, returning a
+/// Outcome of running a task's acceptance criteria as a pass/fail gate.
+pub struct AcceptanceGate {
+    /// Total acceptance criteria on the task.
+    pub total: usize,
+    /// Criteria whose stored `verify_cmd` was executed.
+    pub ran: usize,
+    /// Criteria that ran and exited 0 (ticked as a side effect).
+    pub passed: usize,
+    /// Text of criteria that ran but exited non-zero.
+    pub failures: Vec<String>,
+    /// Text of criteria that carry NO `verify_cmd` — unprovable, so they block.
+    pub missing_verify: Vec<String>,
+}
+
+impl AcceptanceGate {
+    /// The gate is green only when there is at least one acceptance criterion,
+    /// every one carries a verify command, and every command passed. "No
+    /// acceptance criteria" is a red gate: a task with no definition of done
+    /// cannot be proven complete.
+    pub fn is_green(&self) -> bool {
+        self.total > 0 && self.failures.is_empty() && self.missing_verify.is_empty()
+    }
+
+    /// A human/agent-readable reason the gate is red.
+    pub fn reason(&self) -> String {
+        if self.total == 0 {
+            return "no acceptance criteria to prove — add one with `sara check <id> \"…\" --kind acceptance --verify \"<cmd>\"`".to_string();
+        }
+        let mut parts = Vec::new();
+        if !self.missing_verify.is_empty() {
+            parts.push(format!(
+                "{} acceptance criterion/criteria have no verify command: {}",
+                self.missing_verify.len(),
+                self.missing_verify.join("; ")
+            ));
+        }
+        if !self.failures.is_empty() {
+            parts.push(format!(
+                "{} acceptance verify command(s) failed: {}",
+                self.failures.len(),
+                self.failures.join("; ")
+            ));
+        }
+        parts.join(" | ")
+    }
+}
+
+/// Run every acceptance criterion's `verify_cmd`, ticking those that exit 0, and
+/// report the aggregate outcome. This is the engine behind the fail-closed
+/// `validate`: "green" can only be recorded when a real command proved it, never
+/// asserted in prose. Criteria with no verify command are reported as blocking
+/// (`missing_verify`) rather than silently passed.
+pub fn run_acceptance_gate(conn: &Connection, task_id_or_uuid: &str) -> Result<AcceptanceGate> {
+    let task = db::resolve_task(conn, task_id_or_uuid)?;
+    let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
+    let working_dir = db::get_project(conn, &task.project)
+        .ok()
+        .flatten()
+        .and_then(|p| p.path);
+    let commit = project_head(conn, &task.project);
+
+    let mut gate = AcceptanceGate {
+        total: acceptance.len(),
+        ran: 0,
+        passed: 0,
+        failures: Vec::new(),
+        missing_verify: Vec::new(),
+    };
+
+    for s in &acceptance {
+        let Some(cmd) = &s.verify_cmd else {
+            gate.missing_verify.push(s.text.clone());
+            continue;
+        };
+        gate.ran += 1;
+        println!("$ {cmd}");
+        let mut command = std::process::Command::new("sh");
+        command.arg("-c").arg(cmd);
+        if let Some(dir) = &working_dir {
+            command.current_dir(dir);
+        }
+        match command.status() {
+            Ok(st) if st.success() => {
+                let note = format!("verify passed: {cmd}");
+                db::set_step_done(conn, s.id, true, Some(&note), commit.as_deref())?;
+                gate.passed += 1;
+                println!("  ✓ passed — ticked \"{}\"", s.text);
+            }
+            Ok(st) => {
+                let code = st.code().unwrap_or(-1);
+                println!("  ✗ exit {code} — \"{}\"", s.text);
+                gate.failures.push(s.text.clone());
+            }
+            Err(e) => {
+                println!("  ✗ failed to run ({e}) — \"{}\"", s.text);
+                gate.failures.push(s.text.clone());
+            }
+        }
+    }
+    Ok(gate)
+}
+
 /// structured record. Print-free core shared by the CLI `validate` command and
 /// the MCP `validate` tool.
-pub fn validate_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
+///
+/// Fail-closed: unless `skip_gate` is set, every acceptance criterion's
+/// `verify_cmd` is executed and must exit 0 (and every criterion must carry a
+/// command) before the guide is stamped. This makes "validated" mean *proven
+/// green by a command*, never merely asserted.
+pub fn validate_value(conn: &Connection, id: &str, skip_gate: bool) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
+    guard_branch_mutation(conn, id, &task, false)?;
     let head = project_head(conn, &task.project)
         .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
+
+    if !skip_gate {
+        let gate = run_acceptance_gate(conn, id)?;
+        if !gate.is_green() {
+            anyhow::bail!(
+                "validate refused — acceptance gate is red: {}. \
+                 Fix and re-run, or `validate --no-run` to stamp without proof (discouraged).",
+                gate.reason()
+            );
+        }
+    }
+
     db::set_validated(conn, &task.uuid, &head)?;
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "validated_commit": head,
+        "gate_skipped": skip_gate,
     }))
 }
 
-/// `sara validate <id>` — stamp the guide as fresh against current HEAD.
-pub fn validate(conn: &Connection, id: &str) -> Result<()> {
-    let v = validate_value(conn, id)?;
+/// `sara validate <id>` — prove every acceptance criterion green, then stamp the
+/// guide as fresh against current HEAD. With `no_run`, stamps without running
+/// the gate (escape hatch for environments where the checks cannot run locally).
+pub fn validate(conn: &Connection, id: &str, no_run: bool) -> Result<()> {
+    if no_run {
+        eprintln!(
+            "⚠ validate --no-run: stamping WITHOUT running the acceptance gate — \
+             'validated' will not be backed by a passing command."
+        );
+    }
+    let v = validate_value(conn, id, no_run)?;
     println!(
         "Stamped task {} validated @ {}.",
         v["task"].as_i64().unwrap_or(0),
@@ -813,8 +1018,16 @@ mod tests {
         let mut task = Task::new("do the dependabot bump".into(), "proj".into());
         task.tags = vec!["dependabot".into()];
         db::insert_task(&conn, &mut task).unwrap();
-        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
-            .unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "step one",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
 
         let v = next_value(&conn, &task.uuid.to_string()).unwrap();
         let mems = v["relevant_memories"]
@@ -831,8 +1044,16 @@ mod tests {
         let mut task = Task::new("unrelated task".into(), "proj".into());
         task.tags = vec!["nothing-matches-this".into()];
         db::insert_task(&conn, &mut task).unwrap();
-        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
-            .unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "step one",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
 
         let v = next_value(&conn, &task.uuid.to_string()).unwrap();
         assert!(
@@ -874,11 +1095,67 @@ mod tests {
         let acc = db::get_steps(&conn, &task.uuid, db::STEP_KIND_ACCEPTANCE).unwrap();
         assert!(acc[0].done, "criterion with a passing verify_cmd is ticked");
         assert!(acc[0].result.as_deref().unwrap_or("").contains("passed"));
-        assert!(!acc[1].done, "criterion whose verify_cmd fails stays unticked");
+        assert!(
+            !acc[1].done,
+            "criterion whose verify_cmd fails stays unticked"
+        );
 
         // Running a check auto-transitions the task to active.
         let reloaded = db::get_task_by_uuid_prefix(&conn, &id).unwrap().unwrap();
         assert!(reloaded.started_at.is_some());
+    }
+
+    fn task_with_acceptance(conn: &Connection, verify: Option<&str>) -> Task {
+        let mut task = Task::new("gate demo".into(), "proj".into());
+        db::insert_task(conn, &mut task).unwrap();
+        db::add_step(
+            conn,
+            &task.uuid,
+            "criterion",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            verify,
+        )
+        .unwrap();
+        task
+    }
+
+    #[test]
+    fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_acceptance(&conn, Some("true"));
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        assert!(gate.is_green(), "one criterion, verify passes → green");
+        assert_eq!(gate.passed, 1);
+    }
+
+    #[test]
+    fn gate_red_when_verify_command_fails() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_acceptance(&conn, Some("false"));
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        assert!(!gate.is_green(), "failing verify → red");
+        assert_eq!(gate.failures.len(), 1);
+    }
+
+    #[test]
+    fn gate_red_when_a_criterion_has_no_verify_command() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_acceptance(&conn, None);
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        assert!(!gate.is_green(), "unprovable criterion → red");
+        assert_eq!(gate.missing_verify.len(), 1);
+    }
+
+    #[test]
+    fn gate_red_when_no_acceptance_criteria_exist() {
+        let conn = db::open_in_memory_for_test();
+        let mut task = Task::new("no criteria".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        assert!(!gate.is_green(), "no definition of done → red");
+        assert_eq!(gate.total, 0);
     }
 
     #[test]
@@ -899,7 +1176,10 @@ mod tests {
 
         let id = task.uuid.to_string();
         let v = step_done_value(&conn, &id, 1, None, None).unwrap();
-        assert_eq!(v["activated"], true, "first recorded work activates the task");
+        assert_eq!(
+            v["activated"], true,
+            "first recorded work activates the task"
+        );
 
         // A second step-done on an already-active task does not re-activate.
         db::add_step(

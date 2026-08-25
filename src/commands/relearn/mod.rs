@@ -56,12 +56,7 @@ pub fn relearn_value(
     // keep matching the OLD text. Refresh it here whenever the body changed, but
     // only for memories that were already indexed (preserving the learn-time
     // decision to embed or not, without needing the Config).
-    if text.is_some()
-        && matches!(
-            db::get_embedding(conn, &item.uuid.to_string()),
-            Ok(Some(_))
-        )
-    {
+    if text.is_some() && matches!(db::get_embedding(conn, &item.uuid.to_string()), Ok(Some(_))) {
         crate::infrastructure::embedding::index_memory(conn, &item);
     }
 
@@ -139,14 +134,26 @@ mod tests {
         let item = seed(&conn);
         let label = format!("m{}", item.display_id.unwrap());
 
-        relearn_value(&conn, &label, Some("new body about widgets"), &[], &[], false).unwrap();
+        relearn_value(
+            &conn,
+            &label,
+            Some("new body about widgets"),
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
 
         let loaded = db::get_item_by_uuid(&conn, &item.uuid.to_string()).unwrap();
         assert_eq!(loaded.body, "new body about widgets");
         assert_eq!(loaded.title, "new body about widgets");
         // FTS reflects the new body, not the old one.
         assert_eq!(db::search_fts(&conn, "widgets", 10).unwrap().len(), 1);
-        assert!(db::search_fts(&conn, "frobnicators", 10).unwrap().is_empty());
+        assert!(
+            db::search_fts(&conn, "frobnicators", 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -214,7 +221,10 @@ mod tests {
                 .unwrap()
                 .unwrap()
         };
-        assert_eq!(after, recomputed, "embedding must reflect the new body text");
+        assert_eq!(
+            after, recomputed,
+            "embedding must reflect the new body text"
+        );
     }
 
     #[test]

@@ -70,9 +70,21 @@ Remove the sensitive value before saving, or add --force to skip this check."
 /// [`check_secrets`] instead.
 pub fn detect_secret(text: &str) -> Option<&'static str> {
     let kv_patterns = [
-        "api_key", "apikey", "api-key", "secret", "password", "passwd", "token",
-        "private_key", "privatekey", "client_secret", "access_key", "accesskey",
-        "auth_token", "bearer", "authorization",
+        "api_key",
+        "apikey",
+        "api-key",
+        "secret",
+        "password",
+        "passwd",
+        "token",
+        "private_key",
+        "privatekey",
+        "client_secret",
+        "access_key",
+        "accesskey",
+        "auth_token",
+        "bearer",
+        "authorization",
     ];
     let lower = text.to_lowercase();
     for kw in &kv_patterns {
@@ -96,7 +108,11 @@ fn contains_aws_key(text: &str) -> bool {
     for i in 0..bytes.len().saturating_sub(19) {
         if bytes[i..i + 4] == *b"AKIA" {
             let rest = &bytes[i + 4..i + 20];
-            if rest.len() == 16 && rest.iter().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+            if rest.len() == 16
+                && rest
+                    .iter()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+            {
                 return true;
             }
         }
@@ -120,11 +136,15 @@ fn contains_high_entropy_token(text: &str) -> bool {
 
 fn is_uuid(s: &str) -> bool {
     let b = s.as_bytes();
-    if b.len() != 36 { return false; }
+    if b.len() != 36 {
+        return false;
+    }
     let dashes = [8usize, 13, 18, 23];
     for (i, &byte) in b.iter().enumerate() {
         if dashes.contains(&i) {
-            if byte != b'-' { return false; }
+            if byte != b'-' {
+                return false;
+            }
         } else if !byte.is_ascii_hexdigit() {
             return false;
         }
@@ -173,7 +193,12 @@ mod tests {
 
     #[test]
     fn clean_paragraph_passes() {
-        assert!(detect_secret("Sara uses rusqlite for all DB access. The connection is created once in main.").is_none());
+        assert!(
+            detect_secret(
+                "Sara uses rusqlite for all DB access. The connection is created once in main."
+            )
+            .is_none()
+        );
     }
 
     #[test]

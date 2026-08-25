@@ -512,6 +512,9 @@ pub enum Command {
         /// Skip confirmation prompt
         #[arg(long, short)]
         yes: bool,
+        /// Also archive any memories `derived_from` this one (one level).
+        #[arg(long)]
+        cascade: bool,
     },
 
     /// Promote a provisional auto-memory to active after review — e.g. `sara promote m14`
@@ -647,10 +650,15 @@ pub enum Command {
         text: Vec<String>,
     },
 
-    /// Stamp the guide as validated against the current git HEAD
+    /// Prove every acceptance criterion green (runs their verify commands), then
+    /// stamp the guide as validated against the current git HEAD
     Validate {
         /// Task id or uuid prefix
         id: String,
+        /// Skip the acceptance gate and stamp without running verify commands
+        /// (escape hatch for environments where the checks cannot run locally)
+        #[arg(long)]
+        no_run: bool,
     },
 
     /// List open feedback (human comments) for a task

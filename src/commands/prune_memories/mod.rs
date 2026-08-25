@@ -39,12 +39,7 @@ pub fn prune_value(
 }
 
 /// `sara prune-memories [--dry-run] [--weak-days N] [--provisional-days N]`
-pub fn run(
-    conn: &Connection,
-    weak_days: i64,
-    provisional_days: i64,
-    dry_run: bool,
-) -> Result<()> {
+pub fn run(conn: &Connection, weak_days: i64, provisional_days: i64, dry_run: bool) -> Result<()> {
     let v = prune_value(conn, weak_days, provisional_days, dry_run)?;
     let count = v["archived"].as_u64().unwrap_or(0);
     let mode = if dry_run { "Would archive" } else { "Archived" };

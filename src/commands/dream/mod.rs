@@ -34,7 +34,11 @@ enum NodeKind {
     /// Another memory (enterable): label + relation.
     Memory { label: String, relation: String },
     /// A linked task: display id + description + link source (auto/explicit).
-    Task { id: String, desc: String, source: String },
+    Task {
+        id: String,
+        desc: String,
+        source: String,
+    },
     /// An associated file path.
     File { name: String },
 }
@@ -74,9 +78,7 @@ fn noise(seed: u64) -> u64 {
     x
 }
 
-const NOISE_GLYPHS: &[char] = &[
-    '░', '▒', '·', '∙', '˙', '¸', '˚', '⁚', '⋅', '∘', '°', '~',
-];
+const NOISE_GLYPHS: &[char] = &['░', '▒', '·', '∙', '˙', '¸', '˚', '⁚', '⋅', '∘', '°', '~'];
 
 fn item_label(item: &Item) -> String {
     format!(
@@ -103,7 +105,10 @@ fn navigate_back(conn: &Connection, breadcrumb: &mut Vec<String>) -> Option<Drea
 fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
     let item = db::get_item_by_handle(conn, handle)?;
     if item.kind != "memory" {
-        anyhow::bail!("`sara dream` peeks into memories — {handle} is a {}", item.kind);
+        anyhow::bail!(
+            "`sara dream` peeks into memories — {handle} is a {}",
+            item.kind
+        );
     }
     let label = item_label(&item);
     let strength = db::item_strength(conn, &item);
@@ -114,7 +119,10 @@ fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
     for link in db::get_memory_links_from(conn, &uuid_str).unwrap_or_default() {
         if let Ok(other) = db::get_item_by_uuid(conn, &link.to_uuid) {
             neighbors.push(Neighbor {
-                kind: NodeKind::Memory { label: item_label(&other), relation: link.relation },
+                kind: NodeKind::Memory {
+                    label: item_label(&other),
+                    relation: link.relation,
+                },
             });
         }
     }
@@ -139,7 +147,9 @@ fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
     }
     for f in &files {
         let name = f.rsplit('/').next().unwrap_or(f).to_string();
-        neighbors.push(Neighbor { kind: NodeKind::File { name } });
+        neighbors.push(Neighbor {
+            kind: NodeKind::File { name },
+        });
     }
 
     let sparkline = db::memory_recall_daily_counts(conn, &item.uuid, 30);
@@ -221,8 +231,9 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
                     }
                     KeyCode::Enter => {
                         // Drift along the selected dendrite — only memories are enterable.
-                        if let Some(Neighbor { kind: NodeKind::Memory { label, .. } }) =
-                            data.neighbors.get(selected)
+                        if let Some(Neighbor {
+                            kind: NodeKind::Memory { label, .. },
+                        }) = data.neighbors.get(selected)
                         {
                             let target = label.clone();
                             if let Ok(d) = load(conn, &target) {
@@ -248,7 +259,9 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
 
 fn body_style(strength: f64, provisional: bool) -> Style {
     let mut style = if strength >= 2.0 {
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
     } else if strength >= 1.5 {
         Style::default().fg(Color::Gray)
     } else {
@@ -261,7 +274,11 @@ fn body_style(strength: f64, provisional: bool) -> Style {
 }
 
 fn accent(provisional: bool) -> Color {
-    if provisional { Color::Magenta } else { Color::Cyan }
+    if provisional {
+        Color::Magenta
+    } else {
+        Color::Cyan
+    }
 }
 
 /// Materialisation: how much of the body has resolved at this frame.
@@ -314,7 +331,10 @@ fn ui(
     // Breadcrumb / dream-path header.
     let mut path: Vec<Span> = vec![Span::styled(" ✦ ", Style::default().fg(ac))];
     for b in breadcrumb {
-        path.push(Span::styled(b.clone(), Style::default().fg(Color::DarkGray)));
+        path.push(Span::styled(
+            b.clone(),
+            Style::default().fg(Color::DarkGray),
+        ));
         path.push(Span::styled(" ⟶ ", Style::default().fg(Color::DarkGray)));
     }
     path.push(Span::styled(
@@ -324,7 +344,9 @@ fn ui(
     if data.provisional {
         path.push(Span::styled(
             "  (provisional — an unreviewed dream)",
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::ITALIC),
         ));
     }
     path.push(Span::styled(
@@ -355,7 +377,13 @@ fn ui(
     }
 }
 
-fn render_neuron(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u64, selected: usize) {
+fn render_neuron(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    data: &DreamData,
+    frame: u64,
+    selected: usize,
+) {
     let ac = accent(data.provisional);
     let n = data.neighbors.len();
 
@@ -398,7 +426,9 @@ fn render_neuron(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
                     float_y,
                     Line::from(Span::styled(
                         "+0.1",
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
                     )),
                 );
             }
@@ -457,7 +487,12 @@ fn render_neuron(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
             } else {
                 Color::Rgb(60, lum, lum)
             };
-            ctx.draw(&Circle { x: 0.0, y: 0.0, radius: 4.0 + breath * 2.0, color: core_color });
+            ctx.draw(&Circle {
+                x: 0.0,
+                y: 0.0,
+                radius: 4.0 + breath * 2.0,
+                color: core_color,
+            });
             ctx.print(
                 -3.0,
                 0.0,
@@ -470,7 +505,13 @@ fn render_neuron(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
     f.render_widget(canvas, area);
 }
 
-fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u64, selected: usize) {
+fn render_detail(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    data: &DreamData,
+    frame: u64,
+    selected: usize,
+) {
     let ac = accent(data.provisional);
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -501,7 +542,11 @@ fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
             )
             .gauge_style(Style::default().fg(gauge_color).bg(Color::Rgb(25, 25, 32)))
             .ratio(ratio)
-            .label(format!("{} ({:.1})", strength_label(data.strength), data.strength)),
+            .label(format!(
+                "{} ({:.1})",
+                strength_label(data.strength),
+                data.strength
+            )),
         rows[0],
     );
 
@@ -540,7 +585,9 @@ fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
     if !spans.is_empty() {
         lines.push(Line::from(spans));
     }
-    let age = chrono::Utc::now().signed_duration_since(data.item.created).num_days();
+    let age = chrono::Utc::now()
+        .signed_duration_since(data.item.created)
+        .num_days();
     f.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }).block(
             Block::default()
@@ -557,7 +604,10 @@ fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
     // Footer: tags + what the selected dendrite is.
     let mut foot: Vec<Line> = vec![Line::from(vec![
         Span::styled("tags ", Style::default().fg(Color::DarkGray)),
-        Span::styled(data.item.tags.join(", "), Style::default().fg(Color::Yellow)),
+        Span::styled(
+            data.item.tags.join(", "),
+            Style::default().fg(Color::Yellow),
+        ),
         Span::styled(
             format!("   files {}", data.files.len()),
             Style::default().fg(Color::DarkGray),
@@ -571,7 +621,10 @@ fn render_detail(f: &mut ratatui::Frame, area: Rect, data: &DreamData, frame: u6
             NodeKind::Task { id, desc, source } => format!("◆ task #{id} ({source}) — {desc}"),
             NodeKind::File { name } => format!("▪ {name}"),
         };
-        foot.push(Line::from(Span::styled(desc, Style::default().fg(Color::Gray))));
+        foot.push(Line::from(Span::styled(
+            desc,
+            Style::default().fg(Color::Gray),
+        )));
     }
     f.render_widget(
         Paragraph::new(foot).wrap(Wrap { trim: true }).block(
@@ -630,7 +683,9 @@ struct WebData {
 /// True if an explicit authored bond already connects stars `a` and `b` (either
 /// direction) — used to avoid drawing a faint association thread under a bond.
 fn bond_exists(bonds: &[Bond], a: usize, b: usize) -> bool {
-    bonds.iter().any(|bd| (bd.a == a && bd.b == b) || (bd.a == b && bd.b == a))
+    bonds
+        .iter()
+        .any(|bd| (bd.a == a && bd.b == b) || (bd.a == b && bd.b == a))
 }
 
 /// A screen direction for spatial navigation across the constellation.
@@ -791,7 +846,9 @@ fn load_web(conn: &Connection) -> Result<WebData> {
         .enumerate()
         .map(|(i, m)| {
             index.insert(m.uuid.to_string(), i);
-            let recent: u64 = db::memory_recall_daily_counts(conn, &m.uuid, 7).iter().sum();
+            let recent: u64 = db::memory_recall_daily_counts(conn, &m.uuid, 7)
+                .iter()
+                .sum();
             let label = item_label(m);
             let haystack = format!(
                 "{} {} {} {}",
@@ -832,11 +889,20 @@ fn load_web(conn: &Connection) -> Result<WebData> {
     let edges = MemoryGraph::build(conn)
         .map(|g| graph_edges(&g, &index))
         .unwrap_or_default();
-    let affinity: Vec<(usize, usize, f64)> =
-        edges.iter().map(|&(a, b, w)| (a, b, spring_stiffness(w))).collect();
+    let affinity: Vec<(usize, usize, f64)> = edges
+        .iter()
+        .map(|&(a, b, w)| (a, b, spring_stiffness(w)))
+        .collect();
     force_layout(&mut stars, &affinity, 250);
-    let links: Vec<Assoc> = edges.into_iter().map(|(a, b, weight)| Assoc { a, b, weight }).collect();
-    Ok(WebData { stars, bonds, links })
+    let links: Vec<Assoc> = edges
+        .into_iter()
+        .map(|(a, b, weight)| Assoc { a, b, weight })
+        .collect();
+    Ok(WebData {
+        stars,
+        bonds,
+        links,
+    })
 }
 
 /// `sara dream` with no label: the whole brain at once. Enter dives into the
@@ -872,7 +938,11 @@ pub fn run_web(conn: &Connection) -> Result<()> {
         }
         let n = stars.len();
         for step in 1..=n {
-            let i = if back { (sel + n - step) % n } else { (sel + step) % n };
+            let i = if back {
+                (sel + n - step) % n
+            } else {
+                (sel + step) % n
+            };
             if stars[i].matches(q) {
                 return i;
             }
@@ -883,7 +953,14 @@ pub fn run_web(conn: &Connection) -> Result<()> {
     let res = loop {
         let draw = terminal.draw(|f| {
             if let Some(d) = &dream {
-                ui(f, d, dream_frame, dream_selected, &[web.stars[selected].label.clone()], show_help);
+                ui(
+                    f,
+                    d,
+                    dream_frame,
+                    dream_selected,
+                    &[web.stars[selected].label.clone()],
+                    show_help,
+                );
             } else {
                 ui_web(
                     f,
@@ -910,28 +987,28 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                     continue;
                 }
                 // Search-typing mode swallows most keys.
-                if dream.is_none() {
-                    if let Some(buf) = &mut search_input {
-                        match key.code {
-                            KeyCode::Esc => {
-                                search_input = None;
-                                query.clear();
-                            }
-                            KeyCode::Enter => {
-                                query = buf.trim().to_lowercase();
-                                search_input = None;
-                                selected = jump_to_match(selected, &query, &web.stars, false);
-                            }
-                            KeyCode::Backspace => {
-                                if buf.pop().is_none() {
-                                    search_input = None;
-                                }
-                            }
-                            KeyCode::Char(c) => buf.push(c),
-                            _ => {}
+                if dream.is_none()
+                    && let Some(buf) = &mut search_input
+                {
+                    match key.code {
+                        KeyCode::Esc => {
+                            search_input = None;
+                            query.clear();
                         }
-                        continue;
+                        KeyCode::Enter => {
+                            query = buf.trim().to_lowercase();
+                            search_input = None;
+                            selected = jump_to_match(selected, &query, &web.stars, false);
+                        }
+                        KeyCode::Backspace => {
+                            if buf.pop().is_none() {
+                                search_input = None;
+                            }
+                        }
+                        KeyCode::Char(c) => buf.push(c),
+                        _ => {}
                     }
+                    continue;
                 }
                 match key.code {
                     KeyCode::Char('q') => break Ok(()),
@@ -1029,21 +1106,21 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                         let target = if let Some(d) = &dream {
                             // Drift within the neuron view along a memory dendrite.
                             match d.neighbors.get(dream_selected) {
-                                Some(Neighbor { kind: NodeKind::Memory { label, .. } }) => {
-                                    Some(label.clone())
-                                }
+                                Some(Neighbor {
+                                    kind: NodeKind::Memory { label, .. },
+                                }) => Some(label.clone()),
                                 _ => None,
                             }
                         } else {
                             Some(web.stars[selected].label.clone())
                         };
-                        if let Some(t) = target {
-                            if let Ok(d) = load(conn, &t) {
-                                let _ = db::record_memory_recall(conn, &d.item.uuid);
-                                dream = Some(d);
-                                dream_frame = 0;
-                                dream_selected = 0;
-                            }
+                        if let Some(t) = target
+                            && let Ok(d) = load(conn, &t)
+                        {
+                            let _ = db::record_memory_recall(conn, &d.item.uuid);
+                            dream = Some(d);
+                            dream_frame = 0;
+                            dream_selected = 0;
                         }
                     }
                     _ => {}
@@ -1070,15 +1147,28 @@ fn ui_web(
     let area = f.area();
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(3),
+        ])
         .split(area);
 
     let strong = web.stars.iter().filter(|s| s.strength >= 2.0).count();
-    let linked = web.stars.iter().filter(|s| s.strength >= 1.5 && s.strength < 2.0).count();
+    let linked = web
+        .stars
+        .iter()
+        .filter(|s| s.strength >= 1.5 && s.strength < 2.0)
+        .count();
     let weak = web.stars.len() - strong - linked;
     let matches = web.stars.iter().filter(|s| s.matches(query)).count();
     let mut header = vec![
-        Span::styled(" ✦ the web ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " ✦ the web ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             format!(
                 "— {} memories · {} bonds · ",
@@ -1087,14 +1177,22 @@ fn ui_web(
             ),
             Style::default().fg(Color::DarkGray),
         ),
-        Span::styled(format!("{strong} strong "), Style::default().fg(Color::White)),
-        Span::styled(format!("{linked} linked "), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("{strong} strong "),
+            Style::default().fg(Color::White),
+        ),
+        Span::styled(
+            format!("{linked} linked "),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::styled(format!("{weak} weak"), Style::default().fg(Color::DarkGray)),
     ];
     if let Some(buf) = search_input {
         header.push(Span::styled(
             format!("   /{buf}▌"),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ));
     } else if !query.is_empty() {
         header.push(Span::styled(
@@ -1126,7 +1224,11 @@ fn ui_web(
 
     let searching = !query.is_empty();
     let canvas = Canvas::default()
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        )
         .x_bounds([-100.0, 100.0])
         .y_bounds([-75.0, 75.0])
         .paint(move |ctx| {
@@ -1186,7 +1288,8 @@ fn ui_web(
                 let is_match = s.matches(query);
                 // Strength → glyph + luminosity; recent recalls pulse.
                 let pulse = if s.recently_recalled { breath } else { 0.35 };
-                let lum = (70.0 + 150.0 * (s.strength / 2.5).min(1.0) * (0.55 + 0.45 * pulse)) as u8;
+                let lum =
+                    (70.0 + 150.0 * (s.strength / 2.5).min(1.0) * (0.55 + 0.45 * pulse)) as u8;
                 let (glyph, color) = if s.provisional {
                     ("◌", Color::Rgb(lum, 50, lum))
                 } else if s.strength >= 2.0 {
@@ -1194,12 +1297,19 @@ fn ui_web(
                 } else if s.strength >= 1.5 {
                     ("✧", Color::Rgb(50, lum, lum))
                 } else {
-                    ("·", Color::Rgb(lum / 2, lum / 2, (lum as u16 + 30).min(255) as u8))
+                    (
+                        "·",
+                        Color::Rgb(lum / 2, lum / 2, (lum as u16 + 30).min(255) as u8),
+                    )
                 };
                 let style = if is_sel {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else if searching && is_match {
-                    Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::LightYellow)
+                        .add_modifier(Modifier::BOLD)
                 } else if searching {
                     // Non-matching stars sink into the fog.
                     Style::default().fg(Color::Rgb(45, 45, 52))
@@ -1234,14 +1344,23 @@ fn ui_web(
     let mut foot = vec![Line::from(vec![
         Span::styled(
             format!("{} ", s.label),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!("{} ({:.1}){} ", strength_label(s.strength), s.strength,
-                if s.provisional { " [provisional]" } else { "" }),
+            format!(
+                "{} ({:.1}){} ",
+                strength_label(s.strength),
+                s.strength,
+                if s.provisional { " [provisional]" } else { "" }
+            ),
             Style::default().fg(Color::Cyan),
         ),
-        Span::styled(format!("[{}]  ", s.tags.join(", ")), Style::default().fg(Color::Yellow)),
+        Span::styled(
+            format!("[{}]  ", s.tags.join(", ")),
+            Style::default().fg(Color::Yellow),
+        ),
         Span::styled(s.title.clone(), Style::default().fg(Color::Gray)),
     ])];
     foot.push(Line::from(Span::styled(
@@ -1254,7 +1373,9 @@ fn ui_web(
     )));
     f.render_widget(
         Paragraph::new(foot).wrap(Wrap { trim: true }).block(
-            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)),
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray)),
         ),
         outer[2],
     );
@@ -1297,12 +1418,34 @@ fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
     // piped reads must strengthen a memory too, or automation silently starves
     // the usage signal that lifts a Weak memory to Linked. Fire-and-forget.
     let _ = db::record_memory_recall(conn, &data.item.uuid);
+    let (derived_labels, derived_from_labels) =
+        crate::commands::memories::canonical_labels(conn, &data.item);
+    let canonical_str = if derived_labels.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " [canonical, {} derived: {}]",
+            derived_labels.len(),
+            derived_labels.join(", ")
+        )
+    };
+    let derived_from_str = if derived_from_labels.is_empty() {
+        String::new()
+    } else {
+        format!(" [derived from: {}]", derived_from_labels.join(", "))
+    };
     println!(
-        "{} — {} ({:.1}){}",
+        "{} — {} ({:.1}){}{}{}",
         data.label,
         strength_label(data.strength),
         data.strength,
-        if data.provisional { " [provisional]" } else { "" }
+        if data.provisional {
+            " [provisional]"
+        } else {
+            ""
+        },
+        canonical_str,
+        derived_from_str,
     );
     println!(
         "created: {}   recalls (30d): {}",
@@ -1418,7 +1561,10 @@ mod tests {
             let (dx, dy) = (stars[i].x - stars[j].x, stars[i].y - stars[j].y);
             (dx * dx + dy * dy).sqrt()
         };
-        assert!(d(0, 1) < d(2, 3), "sprung pair should sit closer than strangers");
+        assert!(
+            d(0, 1) < d(2, 3),
+            "sprung pair should sit closer than strangers"
+        );
         // Everything stays inside the canvas.
         assert!(stars.iter().all(|s| s.x.abs() <= 95.0 && s.y.abs() <= 68.0));
     }
@@ -1503,7 +1649,11 @@ mod tests {
 
     #[test]
     fn bond_exists_matches_either_direction() {
-        let bonds = vec![Bond { a: 1, b: 4, relation: "similar_to".into() }];
+        let bonds = vec![Bond {
+            a: 1,
+            b: 4,
+            relation: "similar_to".into(),
+        }];
         assert!(bond_exists(&bonds, 1, 4));
         assert!(bond_exists(&bonds, 4, 1));
         assert!(!bond_exists(&bonds, 1, 2));
@@ -1523,7 +1673,13 @@ mod tests {
             recently_recalled: false,
         };
         // 0 at origin; 1 right, 2 left, 3 up, 4 down.
-        let stars = vec![mk(0.0, 0.0), mk(10.0, 0.0), mk(-10.0, 0.0), mk(0.0, 10.0), mk(0.0, -10.0)];
+        let stars = vec![
+            mk(0.0, 0.0),
+            mk(10.0, 0.0),
+            mk(-10.0, 0.0),
+            mk(0.0, 10.0),
+            mk(0.0, -10.0),
+        ];
         assert_eq!(nearest_in_direction(&stars, 0, Dir::Right), 1);
         assert_eq!(nearest_in_direction(&stars, 0, Dir::Left), 2);
         assert_eq!(nearest_in_direction(&stars, 0, Dir::Up), 3);
@@ -1551,6 +1707,9 @@ mod tests {
         assert!(star.matches("recall"));
         assert!(star.matches("m49"));
         assert!(!star.matches("payment"));
-        assert!(!star.matches(""), "empty query must not light everything up");
+        assert!(
+            !star.matches(""),
+            "empty query must not light everything up"
+        );
     }
 }

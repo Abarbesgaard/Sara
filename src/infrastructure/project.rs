@@ -54,13 +54,20 @@ pub fn resolve_file_link(path: &str, git_root: Option<&Path>, cwd: &Path) -> Str
     } else {
         path
     };
-    let p = Path::new(core);
-    let resolved = if p.is_absolute() {
-        p.to_path_buf()
+    // Sara always stores/compares file links as forward-slash paths, so
+    // "absolute" must be judged platform-independently — std::path::Path::is_absolute()
+    // returns false for a POSIX-style "/repo/x" on Windows (no drive letter), which
+    // would otherwise send an already-absolute path through the join-with-cwd branch.
+    let is_absolute = core.starts_with('/') || Path::new(core).is_absolute();
+    let resolved = if is_absolute {
+        PathBuf::from(core)
     } else {
-        git_root.unwrap_or(cwd).join(p)
+        git_root.unwrap_or(cwd).join(core)
     };
-    let mut out = resolved.to_string_lossy().into_owned();
+    // Always store forward-slash paths regardless of platform, so links saved
+    // on one OS resolve identically when recalled on another (and so joining
+    // native path separators on Windows doesn't leave a mixed "\"/"/" string).
+    let mut out = resolved.to_string_lossy().replace('\\', "/");
     if is_dir_prefix {
         out.push('/');
     }

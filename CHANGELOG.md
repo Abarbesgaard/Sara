@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Features
+
+- **`add` surfaces the actual knowledge, not a pointer** — the pre-create similarity check now returns **full memory bodies** for matching learned memories (previously it silently dropped every memory hit, because it ran `resolve_task` on the item's own uuid, and only ever showed 160-char task snippets). It adds a **tag-exact pass** (`confidence: "canonical"`) and a **semantic embedding pass** (`confidence: "semantic"`) alongside the existing phrase/token passes, so the canonical fix for a recurring fault lands in context the instant the charge is created — no second `recall` round-trip.
+- **Fail-closed `validate`** — `sara validate` now **runs every acceptance criterion's `verify` command and refuses to stamp** unless every criterion has a command and all exit 0. "Validated" now means *proven green by a command*, never asserted in prose. CLI `--no-run` stamps without running (with a loud warning) for environments where the checks genuinely can't run locally. The MCP `validate` tool is fail-closed with no escape hatch.
+- **Branch guard against recycled display ids** — `add` auto-ties the new task to the current git branch, and `done`/`validate` **refuse a bare numeric display-id mutation when the project is on a different branch than the task's tie** (the concurrent-agent recompaction hazard), printing the stable UUID to use instead. Positive-evidence only: silent for uuid inputs, untied tasks, detached HEAD, or `--force`.
+- **Finding-resurface (reconsider prompt)** — `step_done` (with a result) and `annotate --kind finding` now embed the new text and surface the task's **own prior findings that are semantically close** (cosine ≥ 0.55, top 2), so an agent is reconnected to what it already concluded exactly when it records something that contradicts it. Emitted as `related_findings` in the JSON/MCP path and a `⟳ reconsider` prompt on the CLI.
+
+
 ## [0.9.2] - 2026-08-17
 
 ### Changes

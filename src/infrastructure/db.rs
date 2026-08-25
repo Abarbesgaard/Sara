@@ -3022,6 +3022,16 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Raw status lookup that (unlike [`get_item_by_uuid`]) doesn't filter out
+/// archived rows — used by tests to assert an item was actually archived.
+#[cfg(test)]
+pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
+    conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| {
+        r.get(0)
+    })
+    .unwrap()
+}
+
 /// Promote a provisional (auto-synthesised) memory to active after review.
 /// Returns false when the item wasn't provisional (already active/archived).
 pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
@@ -3256,14 +3266,15 @@ pub fn insert_memory_link(
         anyhow::bail!("A memory cannot link to itself.");
     }
     // Cycle guard for hierarchical relations.
-    if matches!(relation, "supersedes" | "derived_from") {
-        if memory_link_path_exists(conn, to_uuid, from_uuid)? {
-            anyhow::bail!(
-                "Inserting this link would create a cycle \
+    if matches!(relation, "supersedes" | "derived_from")
+        && memory_link_path_exists(conn, to_uuid, from_uuid)?
+    {
+        anyhow::bail!(
+            "Inserting this link would create a cycle \
                  (a path from '{}' to '{}' already exists).",
-                to_uuid, from_uuid
-            );
-        }
+            to_uuid,
+            from_uuid
+        );
     }
     conn.execute(
         "INSERT OR IGNORE INTO memory_links (from_uuid, to_uuid, relation, weight, created)
@@ -3487,14 +3498,55 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
     Ok(items)
 }
 
+/// Canonical memories that should surface under `project` even though the
+/// canonical itself isn't tagged with that project: any memory with an
+/// incoming `derived_from` edge from an item that *is* scoped to `project`.
+/// A pattern learned once in its own repo but applied (derived) in `project`
+/// is relevant there regardless of project scoping — see task tracking
+/// "cross-project canonical memories via global tag recall".
+pub fn find_cross_project_canonicals_for_project(
+    conn: &Connection,
+    project: &str,
+) -> Result<std::collections::HashSet<Uuid>> {
+    let mut out = std::collections::HashSet::new();
+    for child in find_items_by_project(conn, project)? {
+        for link in get_memory_links_from(conn, &child.uuid.to_string())? {
+            if link.relation == "derived_from"
+                && let Ok(canonical_uuid) = Uuid::parse_str(&link.to_uuid)
+            {
+                out.insert(canonical_uuid);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Task-linkage-derived confidence signal for ranking a memory in recall: a
 /// manually authored note with no source task stays at the baseline. A memory
 /// tied to a task is boosted, more so if that task actually completed
 /// (evidence the underlying approach worked) than if it's still pending or the
 /// source task can no longer be found (loose reference, may have been
 /// deleted/reset -- the memory still stands on its own, just without the boost).
+///
+/// A canonical memory (one with incoming `derived_from` edges) also gets a
+/// passive strength boost: +0.1 per derived child, capped at +0.5. A pattern
+/// applied across 5+ contexts is evidence of value even if the canonical
+/// itself is rarely recalled directly — without this it can still be pruned
+/// as "weak" while its derived children keep getting used.
 pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
-    item_base_strength(conn, item) + recall_usage_boost(conn, &item.uuid)
+    item_base_strength(conn, item)
+        + recall_usage_boost(conn, &item.uuid)
+        + canonical_derived_bonus(conn, &item.uuid)
+}
+
+/// +0.1 per incoming `derived_from` edge, capped at +0.5 (see [`item_strength`]).
+fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
+    let count = get_memory_links_to(conn, &item_uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .count();
+    (count as f64 * 0.1).min(0.5)
 }
 
 /// Task-linkage-derived base strength (see module docs on `item_strength`).
@@ -3537,19 +3589,21 @@ fn base_strength_from_links(linked: &[Status]) -> f64 {
 /// (the graph build). Two bulk queries — every task's status, and every
 /// item→task link's status — replace the 1–2 queries `item_base_strength` runs
 /// per memory. The value for each item is identical to `item_base_strength`.
-pub fn item_base_strengths(conn: &Connection, items: &[Item]) -> std::collections::HashMap<Uuid, f64> {
+pub fn item_base_strengths(
+    conn: &Connection,
+    items: &[Item],
+) -> std::collections::HashMap<Uuid, f64> {
     // Every task's status (source_task_uuid resolution). A full uuid resolves
     // to exactly one row, matching `get_task_by_uuid_prefix`; deleted tasks are
     // included, matching that helper's status-agnostic lookup.
     let mut task_status: std::collections::HashMap<String, Status> =
         std::collections::HashMap::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT uuid, status FROM tasks") {
-        if let Ok(rows) =
+    if let Ok(mut stmt) = conn.prepare("SELECT uuid, status FROM tasks")
+        && let Ok(rows) =
             stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        {
-            for (u, s) in rows.flatten() {
-                task_status.insert(u, status_from_str(&s));
-            }
+    {
+        for (u, s) in rows.flatten() {
+            task_status.insert(u, status_from_str(&s));
         }
     }
     // Every item's linked-task statuses (the fallback path), keyed by item uuid.
@@ -3557,14 +3611,15 @@ pub fn item_base_strengths(conn: &Connection, items: &[Item]) -> std::collection
         std::collections::HashMap::new();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT l.item_uuid, t.status FROM item_task_links l JOIN tasks t ON t.uuid = l.task_uuid",
-    ) {
-        if let Ok(rows) =
-            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        {
-            for (item_uuid, status) in rows.flatten() {
-                if let Ok(u) = Uuid::parse_str(&item_uuid) {
-                    link_status.entry(u).or_default().push(status_from_str(&status));
-                }
+    ) && let Ok(rows) =
+        stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    {
+        for (item_uuid, status) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                link_status
+                    .entry(u)
+                    .or_default()
+                    .push(status_from_str(&status));
             }
         }
     }
@@ -3584,6 +3639,28 @@ pub fn item_base_strengths(conn: &Connection, items: &[Item]) -> std::collection
     out
 }
 
+/// Batched form of [`canonical_derived_bonus`]: one bulk query over
+/// `memory_links` instead of a per-item query, for scoring many memories at
+/// once (the graph build). Callers combining this with [`item_base_strengths`]
+/// get the same total as [`item_strength`] would compute per item.
+pub fn canonical_derived_bonuses(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
+    let mut counts: std::collections::HashMap<Uuid, u32> = std::collections::HashMap::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT to_uuid FROM memory_links WHERE relation = 'derived_from'")
+        && let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0))
+    {
+        for uuid_str in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&uuid_str) {
+                *counts.entry(u).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(u, c)| (u, (c as f64 * 0.1).min(0.5)))
+        .collect()
+}
+
 /// Map a stored task-status string to [`Status`] (mirrors `row_to_task`).
 fn status_from_str(s: &str) -> Status {
     match s {
@@ -3599,14 +3676,12 @@ pub fn all_item_files(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<
     let mut map: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT item_uuid, file_path FROM item_files ORDER BY item_uuid, file_path")
-    {
-        if let Ok(rows) =
+        && let Ok(rows) =
             stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        {
-            for (item_uuid, path) in rows.flatten() {
-                if let Ok(u) = Uuid::parse_str(&item_uuid) {
-                    map.entry(u).or_default().push(path);
-                }
+    {
+        for (item_uuid, path) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                map.entry(u).or_default().push(path);
             }
         }
     }
@@ -3618,15 +3693,13 @@ pub fn all_item_files(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<
 /// graph build).
 pub fn all_item_task_uuids(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<Uuid>> {
     let mut map: std::collections::HashMap<Uuid, Vec<Uuid>> = std::collections::HashMap::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT item_uuid, task_uuid FROM item_task_links") {
-        if let Ok(rows) =
+    if let Ok(mut stmt) = conn.prepare("SELECT item_uuid, task_uuid FROM item_task_links")
+        && let Ok(rows) =
             stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        {
-            for (item_uuid, task_uuid) in rows.flatten() {
-                if let (Ok(iu), Ok(tu)) = (Uuid::parse_str(&item_uuid), Uuid::parse_str(&task_uuid))
-                {
-                    map.entry(iu).or_default().push(tu);
-                }
+    {
+        for (item_uuid, task_uuid) in rows.flatten() {
+            if let (Ok(iu), Ok(tu)) = (Uuid::parse_str(&item_uuid), Uuid::parse_str(&task_uuid)) {
+                map.entry(iu).or_default().push(tu);
             }
         }
     }
@@ -3693,7 +3766,10 @@ pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid,
     if let Ok(rows) = rows {
         for (uuid_str, count) in rows.flatten() {
             if let Ok(u) = Uuid::parse_str(&uuid_str) {
-                map.insert(u, (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP));
+                map.insert(
+                    u,
+                    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP),
+                );
             }
         }
     }
@@ -3722,10 +3798,9 @@ pub fn memory_recall_daily_counts(conn: &Connection, item_uuid: &Uuid, days: i64
         return counts;
     };
     let rows = stmt
-        .query_map(
-            rusqlite::params![item_uuid.to_string(), cutoff],
-            |r| r.get::<_, String>(0),
-        )
+        .query_map(rusqlite::params![item_uuid.to_string(), cutoff], |r| {
+            r.get::<_, String>(0)
+        })
         .map(|rows| rows.flatten().collect::<Vec<_>>())
         .unwrap_or_default();
     for at in rows {
@@ -3799,8 +3874,7 @@ pub fn prune_memories(
 
         // Signal 1: superseded by another memory
         let superseded = {
-            let count: i64 =
-                superseded_stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
+            let count: i64 = superseded_stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
             count > 0
         };
         if superseded {
@@ -4045,7 +4119,10 @@ pub fn synthesize_done_memory(
     }
 
     if !acceptance.is_empty() {
-        let ac_parts: Vec<String> = acceptance.iter().map(|s| s.text.trim().to_string()).collect();
+        let ac_parts: Vec<String> = acceptance
+            .iter()
+            .map(|s| s.text.trim().to_string())
+            .collect();
         parts.push(format!("Acceptance: {}", ac_parts.join("; ")));
     }
 
@@ -4103,13 +4180,9 @@ pub fn synthesize_done_memory(
     // Wire explicit task link
     set_item_task_links(conn, &item.uuid, &[(*task_uuid, "explicit")])?;
 
-    let label = format!(
-        "m{}",
-        item.display_id.unwrap_or(0)
-    );
+    let label = format!("m{}", item.display_id.unwrap_or(0));
     Ok(Some(label))
 }
-
 
 /// FTS over the task description and exact tag intersection. Used by
 /// `guide_value` to inject prior-work context automatically — callers should
@@ -4125,16 +4198,13 @@ pub fn find_similar_strong_memories(
     // FTS path: description keywords.
     if !description.is_empty() {
         for hit in search_fts(conn, description, 20).unwrap_or_default() {
-            if hit.ref_kind.starts_with("item_") {
-                if let Ok(uuid) = hit.task_uuid.parse::<uuid::Uuid>() {
-                    if !candidates.contains_key(&uuid) {
-                        if let Ok(item) = get_item_by_uuid(conn, &uuid.to_string()) {
-                            if item.kind == "memory" {
-                                candidates.insert(uuid, item);
-                            }
-                        }
-                    }
-                }
+            if hit.ref_kind.starts_with("item_")
+                && let Ok(uuid) = hit.task_uuid.parse::<uuid::Uuid>()
+                && !candidates.contains_key(&uuid)
+                && let Ok(item) = get_item_by_uuid(conn, &uuid.to_string())
+                && item.kind == "memory"
+            {
+                candidates.insert(uuid, item);
             }
         }
     }
@@ -4159,9 +4229,9 @@ pub fn find_similar_strong_memories(
             });
         }
         for uuid in tag_set.unwrap_or_default() {
-            candidates.entry(uuid).or_insert_with(|| {
-                get_item_by_uuid(conn, &uuid.to_string()).unwrap()
-            });
+            candidates
+                .entry(uuid)
+                .or_insert_with(|| get_item_by_uuid(conn, &uuid.to_string()).unwrap());
         }
     }
 
@@ -5452,7 +5522,11 @@ mod tests {
         assert_eq!(only.uuid, a.uuid);
 
         // A non-matching prefix is still a clean None.
-        assert!(get_task_by_uuid_prefix(&conn, "ffffffff").unwrap().is_none());
+        assert!(
+            get_task_by_uuid_prefix(&conn, "ffffffff")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -5490,7 +5564,10 @@ mod tests {
 
         // The real prefix still resolves.
         assert_eq!(
-            get_task_by_uuid_prefix(&conn, "ab1c").unwrap().unwrap().uuid,
+            get_task_by_uuid_prefix(&conn, "ab1c")
+                .unwrap()
+                .unwrap()
+                .uuid,
             a.uuid
         );
     }
@@ -5532,7 +5609,8 @@ mod tests {
         insert_task(&conn, &mut miss).unwrap();
         set_task_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
         // find_tasks_by_file only considers completed tasks.
-        conn.execute("UPDATE tasks SET status='completed'", []).unwrap();
+        conn.execute("UPDATE tasks SET status='completed'", [])
+            .unwrap();
 
         let tasks = find_tasks_by_file(&conn, "/repo/foo_bar/", true).unwrap();
         let descs: Vec<&str> = tasks.iter().map(|t| t.description.as_str()).collect();
@@ -6650,7 +6728,9 @@ mod tests {
 
         assert_eq!(find_items_by_tag(&conn, "autotag").unwrap().len(), 1);
         assert_eq!(
-            find_items_by_file(&conn, "/repo/src/x.rs", false).unwrap().len(),
+            find_items_by_file(&conn, "/repo/src/x.rs", false)
+                .unwrap()
+                .len(),
             1
         );
     }
@@ -6683,8 +6763,7 @@ mod tests {
         insert_item(&conn, &mut item).unwrap();
 
         // Insert an old event well outside the 30-day window.
-        let old = (Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS + 10))
-            .to_rfc3339();
+        let old = (Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS + 10)).to_rfc3339();
         conn.execute(
             "INSERT INTO events (action, ref_uuid, kind, tags_json, project, at)
              VALUES ('memory_recalled', ?1, 'memory', '[]', NULL, ?2)",
@@ -6713,7 +6792,7 @@ mod tests {
         let boosts = recall_usage_boosts(&conn);
         assert!((boosts.get(&a.uuid).copied().unwrap_or(0.0) - 0.3).abs() < 1e-9);
         assert!((boosts.get(&b.uuid).copied().unwrap_or(0.0) - 0.1).abs() < 1e-9);
-        assert!(boosts.get(&c.uuid).is_none(), "no events → absent from map");
+        assert!(!boosts.contains_key(&c.uuid), "no events → absent from map");
 
         // The batched path must reproduce item_strength exactly for every item.
         for item in [&a, &b, &c] {
@@ -6847,14 +6926,36 @@ mod tests {
 
         // A symmetric association a~b must NOT count as a hierarchical path,
         // so consolidating into derived_from b->a is allowed.
-        insert_memory_link(&conn, &a.uuid.to_string(), &b.uuid.to_string(), "similar_to", 0.7).unwrap();
-        insert_memory_link(&conn, &b.uuid.to_string(), &a.uuid.to_string(), "derived_from", 0.8)
-            .expect("similar_to must not trip the hierarchical cycle guard");
+        insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &b.uuid.to_string(),
+            "similar_to",
+            0.7,
+        )
+        .unwrap();
+        insert_memory_link(
+            &conn,
+            &b.uuid.to_string(),
+            &a.uuid.to_string(),
+            "derived_from",
+            0.8,
+        )
+        .expect("similar_to must not trip the hierarchical cycle guard");
 
         // But a genuine hierarchical cycle (a->b derived_from already exists) is refused.
-        let err = insert_memory_link(&conn, &a.uuid.to_string(), &b.uuid.to_string(), "derived_from", 0.8)
-            .unwrap_err();
-        assert!(err.to_string().to_lowercase().contains("cycle"), "got: {err}");
+        let err = insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &b.uuid.to_string(),
+            "derived_from",
+            0.8,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("cycle"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -7066,8 +7167,16 @@ mod tests {
         set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
         archive_item(&conn, &item.uuid).unwrap();
 
-        assert!(find_items_by_file(&conn, "/repo/src/auth.rs", false).unwrap().is_empty());
-        assert!(find_items_by_file(&conn, "/repo/src/", true).unwrap().is_empty());
+        assert!(
+            find_items_by_file(&conn, "/repo/src/auth.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            find_items_by_file(&conn, "/repo/src/", true)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -7077,8 +7186,16 @@ mod tests {
         insert_item(&conn, &mut item).unwrap();
         set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
 
-        assert!(find_items_by_file(&conn, "/repo/src/other.rs", false).unwrap().is_empty());
-        assert!(find_items_by_file(&conn, "/repo/tests/", true).unwrap().is_empty());
+        assert!(
+            find_items_by_file(&conn, "/repo/src/other.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            find_items_by_file(&conn, "/repo/tests/", true)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -7089,8 +7206,17 @@ mod tests {
         set_item_files(&conn, &item.uuid, &["/repo/src/old.rs".to_string()]).unwrap();
         set_item_files(&conn, &item.uuid, &["/repo/src/new.rs".to_string()]).unwrap();
 
-        assert!(find_items_by_file(&conn, "/repo/src/old.rs", false).unwrap().is_empty());
-        assert_eq!(find_items_by_file(&conn, "/repo/src/new.rs", false).unwrap().len(), 1);
+        assert!(
+            find_items_by_file(&conn, "/repo/src/old.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            find_items_by_file(&conn, "/repo/src/new.rs", false)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     // ── item_task_links ───────────────────────────────────────────────────────
@@ -7151,9 +7277,15 @@ mod tests {
 
         let links = get_item_task_links(&conn, &item.uuid).unwrap();
         assert_eq!(links.len(), 2);
-        let auto_link = links.iter().find(|(t, _)| t.uuid == auto_task.uuid).unwrap();
+        let auto_link = links
+            .iter()
+            .find(|(t, _)| t.uuid == auto_task.uuid)
+            .unwrap();
         assert_eq!(auto_link.1, "auto");
-        let exp_link = links.iter().find(|(t, _)| t.uuid == explicit_task.uuid).unwrap();
+        let exp_link = links
+            .iter()
+            .find(|(t, _)| t.uuid == explicit_task.uuid)
+            .unwrap();
         assert_eq!(exp_link.1, "explicit");
     }
 
@@ -7202,7 +7334,16 @@ mod tests {
         insert_task(&conn, &mut task).unwrap();
 
         // Add a done step with result
-        let step_id = add_step(&conn, &task.uuid, "Add login endpoint", None, STEP_KIND_STEP, "human", None).unwrap();
+        let step_id = add_step(
+            &conn,
+            &task.uuid,
+            "Add login endpoint",
+            None,
+            STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
         conn.execute(
             "UPDATE task_checklist SET done=1, result='Implemented POST /login in routes.rs' WHERE id=?1",
             [step_id],
@@ -7223,8 +7364,14 @@ mod tests {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         ).unwrap();
         assert_eq!(m.0, "provisional");
-        assert!(m.1.contains("impl auth"), "body should mention task description");
-        assert!(m.1.contains("login endpoint"), "body should mention the step");
+        assert!(
+            m.1.contains("impl auth"),
+            "body should mention task description"
+        );
+        assert!(
+            m.1.contains("login endpoint"),
+            "body should mention the step"
+        );
         let tags: Vec<String> = serde_json::from_str(&m.2).unwrap();
         assert!(tags.contains(&"auth".to_string()));
     }
@@ -7237,21 +7384,46 @@ mod tests {
         insert_task(&conn, &mut task).unwrap();
 
         // Add a done step so we pass the "nothing useful" guard
-        let step_id = add_step(&conn, &task.uuid, "Move queries to db.rs", None, STEP_KIND_STEP, "human", None).unwrap();
-        conn.execute("UPDATE task_checklist SET done=1 WHERE id=?1", [step_id]).unwrap();
+        let step_id = add_step(
+            &conn,
+            &task.uuid,
+            "Move queries to db.rs",
+            None,
+            STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+        conn.execute("UPDATE task_checklist SET done=1 WHERE id=?1", [step_id])
+            .unwrap();
 
         // Add a decision annotation
-        add_annotation_full(&conn, &task.uuid, "Keep all SQL in db.rs — no ORM", "decision", "human", None, None, false).unwrap();
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "Keep all SQL in db.rs — no ORM",
+            "decision",
+            "human",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
 
         let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
         assert!(label.is_some());
 
-        let body: String = conn.query_row(
-            "SELECT body FROM items WHERE source_task_uuid=?1 AND kind='memory'",
-            [task.uuid.to_string()],
-            |r| r.get(0),
-        ).unwrap();
-        assert!(body.contains("Keep all SQL in db.rs"), "body should include the decision annotation");
+        let body: String = conn
+            .query_row(
+                "SELECT body FROM items WHERE source_task_uuid=?1 AND kind='memory'",
+                [task.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            body.contains("Keep all SQL in db.rs"),
+            "body should include the decision annotation"
+        );
     }
 
     #[test]
@@ -7270,7 +7442,10 @@ mod tests {
         .unwrap();
 
         let report = hygiene_pass(&conn).unwrap();
-        assert!(report.review_pending >= 1, "stale provisional is counted for review");
+        assert!(
+            report.review_pending >= 1,
+            "stale provisional is counted for review"
+        );
         assert!(report.oldest_age_days >= 40, "oldest age is surfaced");
         assert!(report.archived.is_empty(), "nothing lossless to archive");
 
@@ -7295,8 +7470,14 @@ mod tests {
         let mut b1 = Item::new_memory("pair1 new".into(), "b".into(), None);
         b1.path = Some(String::new());
         insert_item(&conn, &mut b1).unwrap();
-        insert_memory_link(&conn, &b1.uuid.to_string(), &a1.uuid.to_string(), "supersedes", 1.0)
-            .unwrap();
+        insert_memory_link(
+            &conn,
+            &b1.uuid.to_string(),
+            &a1.uuid.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
 
         // Pair 2: superseder archived -> old preserved.
         let mut a2 = Item::new_memory("pair2 old".into(), "b".into(), None);
@@ -7305,8 +7486,14 @@ mod tests {
         let mut b2 = Item::new_memory("pair2 new".into(), "b".into(), None);
         b2.path = Some(String::new());
         insert_item(&conn, &mut b2).unwrap();
-        insert_memory_link(&conn, &b2.uuid.to_string(), &a2.uuid.to_string(), "supersedes", 1.0)
-            .unwrap();
+        insert_memory_link(
+            &conn,
+            &b2.uuid.to_string(),
+            &a2.uuid.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
         conn.execute(
             "UPDATE items SET status='archived' WHERE uuid=?1",
             rusqlite::params![b2.uuid.to_string()],
@@ -7318,8 +7505,14 @@ mod tests {
 
         let a1_label = format!("m{}", a1.display_id.unwrap_or(0));
         let a2_label = format!("m{}", a2.display_id.unwrap_or(0));
-        assert!(labels.contains(&a1_label), "old with an ACTIVE superseder is archived");
-        assert!(!labels.contains(&a2_label), "old with an ARCHIVED superseder is preserved");
+        assert!(
+            labels.contains(&a1_label),
+            "old with an ACTIVE superseder is archived"
+        );
+        assert!(
+            !labels.contains(&a2_label),
+            "old with an ARCHIVED superseder is preserved"
+        );
 
         let a2_status: String = conn
             .query_row(

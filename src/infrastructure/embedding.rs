@@ -144,11 +144,7 @@ impl StaticEmbedder {
             let mut found: Option<u32> = None;
             while end > start {
                 let sub: String = chars[start..end].iter().collect();
-                let cand = if start == 0 {
-                    sub
-                } else {
-                    format!("##{sub}")
-                };
+                let cand = if start == 0 { sub } else { format!("##{sub}") };
                 if let Some(&id) = self.vocab.get(&cand) {
                     found = Some(id);
                     break;

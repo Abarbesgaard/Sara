@@ -214,12 +214,12 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong."
+        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong. If it's canonical (has derived_from children), they're listed for review, and archived too when cascade=true."
     )]
     fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp forget", |conn, _cfg| {
-                commands::forget::forget_value(conn, &p.handle)
+                commands::forget::forget_value(conn, &p.handle, p.cascade.unwrap_or(false))
             })
             .map_err(mcp_err)?;
         ok_json(v)
