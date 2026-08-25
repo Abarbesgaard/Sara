@@ -4248,7 +4248,7 @@ pub fn find_similar_strong_memories(
             }
         })
         .collect();
-    strong.sort_by(|a, b| b.modified.cmp(&a.modified));
+    strong.sort_by_key(|a| std::cmp::Reverse(a.modified));
     strong.truncate(5);
     Ok(strong)
 }
