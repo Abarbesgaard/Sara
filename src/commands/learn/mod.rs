@@ -137,6 +137,32 @@ pub fn learn_value(
                             .display_id
                             .map(|id| format!("m{id}"))
                             .unwrap_or_else(|| handle.clone());
+                        // Superseding a canonical (one with derived children) can
+                        // orphan those children on a now-corrected pattern — warn,
+                        // never auto-archive (mirrors `sara forget`'s behaviour).
+                        if relation == "supersedes" {
+                            let derived: Vec<String> = db::get_memory_links_to(
+                                conn,
+                                &target.uuid.to_string(),
+                            )
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|l| l.relation == "derived_from")
+                            .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
+                            .map(|i| format!("m{}", i.display_id.unwrap_or(0)))
+                            .collect();
+                            if !derived.is_empty() {
+                                eprintln!(
+                                    "Warning: {target_label} is a canonical pattern memory with \
+                                     {} derived {} ({}) — review with `sara dream <label>` or \
+                                     archive with `sara forget <label>`; they are not \
+                                     auto-archived by this supersede.",
+                                    derived.len(),
+                                    if derived.len() == 1 { "memory" } else { "memories" },
+                                    derived.join(", ")
+                                );
+                            }
+                        }
                         labels.push(target_label);
                     }
                     Err(e) => {
@@ -190,6 +216,30 @@ pub(crate) fn near_dupe_suggestion(label: &str) -> String {
 pub(crate) fn partial_overlap_suggestion(label: &str) -> String {
     format!(
         "→ Link it typed: re-run with `--similar-to {label}` to connect them in the memory graph."
+    )
+}
+
+/// Number of `derived_from` children pointing at `uuid` — non-zero means
+/// `uuid` is a canonical pattern memory, not just "another similar memory".
+pub(crate) fn canonical_derived_count(conn: &Connection, uuid: &uuid::Uuid) -> usize {
+    db::get_memory_links_to(conn, &uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .count()
+}
+
+/// Build the copy-pasteable hint for a candidate that is itself a canonical
+/// pattern memory. Upgrades the generic near-dupe/partial suggestion into one
+/// that specifically proposes `--derived-from` (register as another
+/// application of the pattern) or `sara relearn` (enrich the canonical in
+/// place) instead of silently accumulating another near-duplicate.
+pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
+    format!(
+        "→ {label} is a canonical pattern memory with {derived_count} derived application{} — \
+         consider `sara learn --derived-from {label}` to register this as another application, \
+         or `sara relearn {label}` to enrich the canonical instead of creating a new memory.",
+        if derived_count == 1 { "" } else { "s" }
     )
 }
 
@@ -247,36 +297,61 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
         vec![]
     };
 
-    if !near_dupes.is_empty() {
+    // Canonical detection: a candidate that already has derived children is an
+    // established pattern, not just "another similar memory". A partial-tag
+    // match against a canonical is upgraded to the near-dupe band, and any
+    // canonical hit (near-dupe or promoted-partial) gets a specific
+    // `--derived-from`/`relearn` hint instead of the generic suggestion.
+    let (canonical_partial, plain_partial): (Vec<uuid::Uuid>, Vec<uuid::Uuid>) =
+        significant_partial
+            .into_iter()
+            .partition(|u| canonical_derived_count(conn, u) > 0);
+
+    if !near_dupes.is_empty() || !canonical_partial.is_empty() {
+        let all_dupes: Vec<uuid::Uuid> =
+            near_dupes.iter().copied().chain(canonical_partial.iter().copied()).collect();
         eprintln!(
-            "Warning: {} existing {} with identical tags [{}]:",
-            near_dupes.len(),
-            if near_dupes.len() == 1 { "memory" } else { "memories" },
+            "Warning: {} existing {} with identical or canonical-matching tags [{}]:",
+            all_dupes.len(),
+            if all_dupes.len() == 1 { "memory" } else { "memories" },
             normalized.join(", ")
         );
         let mut labels: Vec<String> = Vec::new();
-        for u in &near_dupes {
+        let mut canonical_hit: Option<(String, usize)> = None;
+        for u in &all_dupes {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
-                eprintln!("  {} — {}", label, snippet.trim());
+                let derived_count = canonical_derived_count(conn, u);
+                let suffix = if derived_count > 0 {
+                    format!(" [canonical, {derived_count} derived]")
+                } else {
+                    String::new()
+                };
+                eprintln!("  {label}{suffix} — {}", snippet.trim());
+                if derived_count > 0 && canonical_hit.is_none() {
+                    canonical_hit = Some((label.clone(), derived_count));
+                }
                 labels.push(label);
             }
         }
-        // Offer a concrete, copy-pasteable typed link rather than a vague note.
-        if let Some(first) = labels.first() {
-            eprintln!("{}", near_dupe_suggestion(first));
+        // A canonical hit gets the specific --derived-from/relearn hint;
+        // otherwise fall back to the generic copy-pasteable typed link.
+        match (&canonical_hit, labels.first()) {
+            (Some((label, count)), _) => eprintln!("{}", canonical_hint(label, *count)),
+            (None, Some(first)) => eprintln!("{}", near_dupe_suggestion(first)),
+            (None, None) => {}
         }
     }
 
-    if !significant_partial.is_empty() {
+    if !plain_partial.is_empty() {
         eprintln!(
             "Note: {} potentially related {} (partial tag overlap):",
-            significant_partial.len(),
-            if significant_partial.len() == 1 { "memory" } else { "memories" }
+            plain_partial.len(),
+            if plain_partial.len() == 1 { "memory" } else { "memories" }
         );
         let mut labels: Vec<String> = Vec::new();
-        for u in &significant_partial {
+        for u in &plain_partial {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
                 let label = format!("m{}", item.display_id.unwrap_or(0));
                 let snippet: String = item.body.chars().take(80).collect();
@@ -676,6 +751,58 @@ mod tests {
     }
 
     #[test]
+    fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Canonical memory.
+        let canonical = super::learn_value(
+            &conn, &cfg, "canonical pattern", &["pat".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+        )
+        .unwrap();
+        let canonical_label = canonical["label"].as_str().unwrap().to_string();
+
+        // A derived child, linked via --derived-from.
+        super::learn_value(
+            &conn, &cfg, "an application of the pattern", &[], &[], &[], &[], false, true,
+            &[], &[canonical_label.clone()], &[],
+        )
+        .unwrap();
+        assert_eq!(
+            super::canonical_derived_count(
+                &conn,
+                &db::get_item_by_handle(&conn, &canonical_label).unwrap().uuid
+            ),
+            1,
+            "canonical must have exactly one derived child before superseding"
+        );
+
+        // Superseding the canonical must succeed and must not touch the
+        // derived child's status — it stays active (never auto-archived).
+        let new_v = super::learn_value(
+            &conn, &cfg, "corrected canonical pattern", &["pat".to_string()], &[], &[], &[],
+            false, true, &[canonical_label.clone()], &[], &[],
+        )
+        .unwrap();
+        assert_eq!(new_v["superseded"].as_array().unwrap()[0].as_str().unwrap(), canonical_label);
+    }
+
+    #[test]
+    fn canonical_derived_count_zero_for_a_plain_memory() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+        let v = super::learn_value(
+            &conn, &cfg, "plain note", &[], &[], &[], &[], false, true, &[], &[], &[],
+        )
+        .unwrap();
+        let label = v["label"].as_str().unwrap();
+        let uuid = db::get_item_by_handle(&conn, label).unwrap().uuid;
+        assert_eq!(super::canonical_derived_count(&conn, &uuid), 0);
+    }
+
+    #[test]
     fn check_overlap_warns_on_file_overlap() {
         use crate::infrastructure::{config::Config, db};
         let conn = db::open_in_memory_for_test();
@@ -799,5 +926,49 @@ mod tests {
         assert!(partial.contains("--similar-to m30"), "partial offers --similar-to: {partial}");
         // No longer the vague untyped "possible contradiction" wording.
         assert!(!partial.to_lowercase().contains("possible contradiction"));
+    }
+
+    #[test]
+    fn canonical_hint_names_derived_from_and_relearn() {
+        let hint = super::canonical_hint("m7", 3);
+        assert!(hint.contains("m7"));
+        assert!(hint.contains("3 derived applications"));
+        assert!(hint.contains("--derived-from m7"));
+        assert!(hint.contains("sara relearn m7"));
+    }
+
+    #[test]
+    fn check_overlap_detects_canonical_via_derived_from_link() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Canonical memory with two tags.
+        let canonical = super::learn_value(
+            &conn, &cfg, "CodeQL config pattern", &["codeql".into(), "config".into()],
+            &[], &[], &[], false, true, &[], &[], &[],
+        )
+        .unwrap();
+        let canonical_label = canonical["label"].as_str().unwrap().to_string();
+        let canonical_uuid = db::get_item_by_handle(&conn, &canonical_label).unwrap().uuid;
+
+        // Before any derived child exists, it isn't canonical yet.
+        assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 0);
+
+        // A derived application, linked via --derived-from.
+        super::learn_value(
+            &conn, &cfg, "applied CodeQL config to repo X", &["codeql".into()],
+            &[], &[], &[], false, true, &[], &[canonical_label.clone()], &[],
+        )
+        .unwrap();
+
+        // Now the canonical has one derived child — the detection
+        // `check_overlap` relies on to upgrade a partial-tag match into the
+        // near-dupe band with a `--derived-from`/`relearn` hint.
+        assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 1);
+
+        // A new memory sharing only one of the canonical's two tags (partial
+        // overlap) must not error when check_overlap runs against it.
+        super::check_overlap(&conn, &["codeql".into()], &[]).unwrap();
     }
 }

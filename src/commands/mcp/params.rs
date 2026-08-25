@@ -277,6 +277,10 @@ pub(crate) struct ForgetParams {
     pub(crate) project_path: Option<String>,
     /// Memory label to archive, e.g. "m3". Get labels from `recall` output.
     pub(crate) handle: String,
+    /// Also archive any memories `derived_from` this one (one level). If
+    /// omitted/false, derived children are only listed in the response for
+    /// review, never auto-archived.
+    pub(crate) cascade: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

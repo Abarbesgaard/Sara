@@ -1297,12 +1297,26 @@ fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
     // piped reads must strengthen a memory too, or automation silently starves
     // the usage signal that lifts a Weak memory to Linked. Fire-and-forget.
     let _ = db::record_memory_recall(conn, &data.item.uuid);
+    let (derived_labels, derived_from_labels) =
+        crate::commands::memories::canonical_labels(conn, &data.item);
+    let canonical_str = if derived_labels.is_empty() {
+        String::new()
+    } else {
+        format!(" [canonical, {} derived: {}]", derived_labels.len(), derived_labels.join(", "))
+    };
+    let derived_from_str = if derived_from_labels.is_empty() {
+        String::new()
+    } else {
+        format!(" [derived from: {}]", derived_from_labels.join(", "))
+    };
     println!(
-        "{} — {} ({:.1}){}",
+        "{} — {} ({:.1}){}{}{}",
         data.label,
         strength_label(data.strength),
         data.strength,
-        if data.provisional { " [provisional]" } else { "" }
+        if data.provisional { " [provisional]" } else { "" },
+        canonical_str,
+        derived_from_str,
     );
     println!(
         "created: {}   recalls (30d): {}",

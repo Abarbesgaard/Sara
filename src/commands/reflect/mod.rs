@@ -519,6 +519,18 @@ mod tests {
         link(&conn, &b, &c, "similar_to");
         // Pre-existing a -> b derived_from: proposing b -> a would form a cycle.
         link(&conn, &a, &b, "derived_from");
+        // `b` now carries an incoming derived_from edge, which gives it a small
+        // canonical-derived strength bonus (task e7ff611e) that would otherwise
+        // flip the tie-break and make `b` the suggested canonical instead of
+        // `a`. Pin `a`'s strength above that bonus via a completed source task
+        // so the tie-break (and the scenario this test targets) is unaffected.
+        let mut task = crate::infrastructure::model::Task::new(
+            "completed task".to_string(),
+            "Sara".to_string(),
+        );
+        task.status = crate::infrastructure::model::Status::Completed;
+        db::insert_task(&conn, &mut task).unwrap();
+        db::set_item_task_links(&conn, &a, &[(task.uuid, "explicit")]).unwrap();
 
         let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
         // c -> a applies; b -> a is skipped for the cycle it would create.

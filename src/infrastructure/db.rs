@@ -3022,6 +3022,14 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Raw status lookup that (unlike [`get_item_by_uuid`]) doesn't filter out
+/// archived rows — used by tests to assert an item was actually archived.
+#[cfg(test)]
+pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
+    conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| r.get(0))
+        .unwrap()
+}
+
 /// Promote a provisional (auto-synthesised) memory to active after review.
 /// Returns false when the item wasn't provisional (already active/archived).
 pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
@@ -3487,14 +3495,55 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
     Ok(items)
 }
 
+/// Canonical memories that should surface under `project` even though the
+/// canonical itself isn't tagged with that project: any memory with an
+/// incoming `derived_from` edge from an item that *is* scoped to `project`.
+/// A pattern learned once in its own repo but applied (derived) in `project`
+/// is relevant there regardless of project scoping — see task tracking
+/// "cross-project canonical memories via global tag recall".
+pub fn find_cross_project_canonicals_for_project(
+    conn: &Connection,
+    project: &str,
+) -> Result<std::collections::HashSet<Uuid>> {
+    let mut out = std::collections::HashSet::new();
+    for child in find_items_by_project(conn, project)? {
+        for link in get_memory_links_from(conn, &child.uuid.to_string())? {
+            if link.relation == "derived_from"
+                && let Ok(canonical_uuid) = Uuid::parse_str(&link.to_uuid)
+            {
+                out.insert(canonical_uuid);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Task-linkage-derived confidence signal for ranking a memory in recall: a
 /// manually authored note with no source task stays at the baseline. A memory
 /// tied to a task is boosted, more so if that task actually completed
 /// (evidence the underlying approach worked) than if it's still pending or the
 /// source task can no longer be found (loose reference, may have been
 /// deleted/reset -- the memory still stands on its own, just without the boost).
+///
+/// A canonical memory (one with incoming `derived_from` edges) also gets a
+/// passive strength boost: +0.1 per derived child, capped at +0.5. A pattern
+/// applied across 5+ contexts is evidence of value even if the canonical
+/// itself is rarely recalled directly — without this it can still be pruned
+/// as "weak" while its derived children keep getting used.
 pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
-    item_base_strength(conn, item) + recall_usage_boost(conn, &item.uuid)
+    item_base_strength(conn, item)
+        + recall_usage_boost(conn, &item.uuid)
+        + canonical_derived_bonus(conn, &item.uuid)
+}
+
+/// +0.1 per incoming `derived_from` edge, capped at +0.5 (see [`item_strength`]).
+fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
+    let count = get_memory_links_to(conn, &item_uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .count();
+    (count as f64 * 0.1).min(0.5)
 }
 
 /// Task-linkage-derived base strength (see module docs on `item_strength`).
@@ -3582,6 +3631,29 @@ pub fn item_base_strengths(conn: &Connection, items: &[Item]) -> std::collection
         out.insert(item.uuid, strength);
     }
     out
+}
+
+/// Batched form of [`canonical_derived_bonus`]: one bulk query over
+/// `memory_links` instead of a per-item query, for scoring many memories at
+/// once (the graph build). Callers combining this with [`item_base_strengths`]
+/// get the same total as [`item_strength`] would compute per item.
+pub fn canonical_derived_bonuses(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
+    let mut counts: std::collections::HashMap<Uuid, u32> = std::collections::HashMap::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT to_uuid FROM memory_links WHERE relation = 'derived_from'")
+    {
+        if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+            for uuid_str in rows.flatten() {
+                if let Ok(u) = Uuid::parse_str(&uuid_str) {
+                    *counts.entry(u).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(u, c)| (u, (c as f64 * 0.1).min(0.5)))
+        .collect()
 }
 
 /// Map a stored task-status string to [`Status`] (mirrors `row_to_task`).

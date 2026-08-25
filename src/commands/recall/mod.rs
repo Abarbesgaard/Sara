@@ -651,10 +651,15 @@ fn collect_hits(
 
             let mut by_project: Option<HashSet<uuid::Uuid>> = None;
             for project in projects {
-                let hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
+                let mut hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
                     .into_iter()
                     .map(|i| i.uuid)
                     .collect();
+                // Cross-project canonicals: a pattern memory with a derived
+                // application scoped to `project` is relevant here too, even
+                // though the canonical itself may live under a different
+                // project (or none).
+                hit.extend(db::find_cross_project_canonicals_for_project(conn, project)?);
                 by_project = Some(match by_project {
                     Some(mut existing) => {
                         existing.extend(hit);
@@ -1786,6 +1791,59 @@ mod tests {
 
         // Both derived memories point to the same canonical label.
         assert_eq!(derived_a_hit.derived_from_labels[0], derived_b_hit.derived_from_labels[0]);
+    }
+
+    #[test]
+    fn recall_by_project_surfaces_cross_project_canonical_via_derived_child() {
+        let conn = db::open_in_memory_for_test();
+
+        // Canonical lives only under "sara-repo".
+        let canonical = seed_memory(
+            &conn,
+            "CodeQL config pattern",
+            "extract to codeql-config.yml",
+            &[],
+            &["sara-repo"],
+        );
+        // Derived application lives under a completely different project.
+        let derived = seed_memory(
+            &conn,
+            "applied CodeQL config to other-repo",
+            "applied the pattern here",
+            &[],
+            &["other-repo"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &derived.uuid.to_string(),
+            &canonical.uuid.to_string(),
+            "derived_from",
+            1.0,
+        )
+        .unwrap();
+
+        // A --project other-repo recall (no tags) must surface BOTH the
+        // derived memory (directly scoped) AND the canonical (via its
+        // derived_from child), even though the canonical itself is only
+        // scoped to "sara-repo".
+        let hits =
+            collect_hits(&conn, "", &[], &["other-repo".to_string()], &[], 20, &SemanticOpts::off())
+                .unwrap();
+        assert_eq!(
+            hits.len(),
+            2,
+            "expected derived + cross-project canonical, got descriptions: {:?}",
+            hits.iter().map(|h| &h.description).collect::<Vec<_>>()
+        );
+        assert!(hits.iter().any(|h| h.description == "CodeQL config pattern"));
+        assert!(hits.iter().any(|h| h.description == "applied CodeQL config to other-repo"));
+
+        // A project with no derived children anywhere must not pull the
+        // canonical in.
+        let unrelated_hits =
+            collect_hits(&conn, "", &[], &["unrelated-repo".to_string()], &[], 20, &SemanticOpts::off())
+                .unwrap();
+        assert!(unrelated_hits.is_empty());
     }
 }
 

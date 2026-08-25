@@ -98,6 +98,7 @@ impl MemoryGraph {
         // task anchors are each fetched once for the whole store.
         let boosts = db::recall_usage_boosts(conn);
         let base_strengths = db::item_base_strengths(conn, &memories);
+        let canonical_bonuses = db::canonical_derived_bonuses(conn);
         let mut all_files = db::all_item_files(conn);
         let mut all_tasks = db::all_item_task_uuids(conn);
 
@@ -107,7 +108,8 @@ impl MemoryGraph {
                 uuid: m.uuid,
                 label: format!("m{}", m.display_id.unwrap_or(0)),
                 strength: base_strengths.get(&m.uuid).copied().unwrap_or(1.0)
-                    + boosts.get(&m.uuid).copied().unwrap_or(0.0),
+                    + boosts.get(&m.uuid).copied().unwrap_or(0.0)
+                    + canonical_bonuses.get(&m.uuid).copied().unwrap_or(0.0),
             });
             // Dedup each anchor set: a memory carrying the same tag/file/task
             // twice must count once, so a duplicated anchor can't inflate a

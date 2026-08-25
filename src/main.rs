@@ -460,8 +460,8 @@ fn run() -> Result<()> {
             }
         }
 
-        Command::Forget { handle, .. } => {
-            commands::forget::run(&conn, &handle)?;
+        Command::Forget { handle, cascade, .. } => {
+            commands::forget::run(&conn, &handle, cascade)?;
         }
 
         Command::Promote { handle } => {

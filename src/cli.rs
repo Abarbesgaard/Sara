@@ -512,6 +512,9 @@ pub enum Command {
         /// Skip confirmation prompt
         #[arg(long, short)]
         yes: bool,
+        /// Also archive any memories `derived_from` this one (one level).
+        #[arg(long)]
+        cascade: bool,
     },
 
     /// Promote a provisional auto-memory to active after review — e.g. `sara promote m14`
