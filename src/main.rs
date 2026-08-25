@@ -460,7 +460,9 @@ fn run() -> Result<()> {
             }
         }
 
-        Command::Forget { handle, cascade, .. } => {
+        Command::Forget {
+            handle, cascade, ..
+        } => {
             commands::forget::run(&conn, &handle, cascade)?;
         }
 
@@ -497,7 +499,12 @@ fn run() -> Result<()> {
             commands::memories::run(&conn, json)?;
         }
 
-        Command::LinkMemory { from, relation, to, weight } => {
+        Command::LinkMemory {
+            from,
+            relation,
+            to,
+            weight,
+        } => {
             commands::link_memory::run(&conn, &from, &relation, &to, weight)?;
         }
 
@@ -505,14 +512,21 @@ fn run() -> Result<()> {
             commands::link_memory::unlink(&conn, &from, &relation, &to)?;
         }
 
-        Command::PruneMemories { dry_run, apply, weak_days, provisional_days } => {
+        Command::PruneMemories {
+            dry_run,
+            apply,
+            weak_days,
+            provisional_days,
+        } => {
             let actual_dry_run = !apply && dry_run;
             commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
             // Informational: surface unlinked conflict candidates alongside prune output.
             if let Ok(diag) = commands::diagnose_memories::diagnose_value(&conn) {
                 let n = diag["count"].as_u64().unwrap_or(0);
                 if n > 0 {
-                    println!("\n{n} unlinked conflict candidate(s) also found — run `sara diagnose-memories` to review.");
+                    println!(
+                        "\n{n} unlinked conflict candidate(s) also found — run `sara diagnose-memories` to review."
+                    );
                 }
             }
         }
@@ -521,7 +535,11 @@ fn run() -> Result<()> {
             commands::diagnose_memories::run(&conn, json)?;
         }
 
-        Command::Reflect { min_weight, apply, json } => {
+        Command::Reflect {
+            min_weight,
+            apply,
+            json,
+        } => {
             commands::reflect::run(&conn, min_weight, json, apply)?;
         }
 

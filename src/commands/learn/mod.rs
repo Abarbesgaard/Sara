@@ -27,10 +27,23 @@ pub fn run(
     derived_from: &[String],
     similar_to: &[String],
 ) -> Result<()> {
-    let v = learn_value(conn, cfg, text, tags, projects, tasks, files, auto_files, force, supersedes, derived_from, similar_to)?;
+    let v = learn_value(
+        conn,
+        cfg,
+        text,
+        tags,
+        projects,
+        tasks,
+        files,
+        auto_files,
+        force,
+        supersedes,
+        derived_from,
+        similar_to,
+    )?;
     let label = v["label"].as_str().unwrap_or("m?");
-    let uuid  = v["uuid"].as_str().unwrap_or("");
-    let body  = v["text"].as_str().unwrap_or("");
+    let uuid = v["uuid"].as_str().unwrap_or("");
+    let body = v["text"].as_str().unwrap_or("");
 
     let file_suffix = {
         let fs: Vec<&str> = v["files"]
@@ -49,9 +62,9 @@ pub fn run(
             .map(|a| {
                 a.iter()
                     .filter_map(|t| {
-                        let id   = t["id"].as_i64()?;
+                        let id = t["id"].as_i64()?;
                         let desc = t["description"].as_str()?;
-                        let src  = t["source"].as_str().unwrap_or("auto");
+                        let src = t["source"].as_str().unwrap_or("auto");
                         Some(format!("#{id} {desc} [{src}]"))
                     })
                     .collect()
@@ -141,16 +154,14 @@ pub fn learn_value(
                         // orphan those children on a now-corrected pattern — warn,
                         // never auto-archive (mirrors `sara forget`'s behaviour).
                         if relation == "supersedes" {
-                            let derived: Vec<String> = db::get_memory_links_to(
-                                conn,
-                                &target.uuid.to_string(),
-                            )
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|l| l.relation == "derived_from")
-                            .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
-                            .map(|i| format!("m{}", i.display_id.unwrap_or(0)))
-                            .collect();
+                            let derived: Vec<String> =
+                                db::get_memory_links_to(conn, &target.uuid.to_string())
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .filter(|l| l.relation == "derived_from")
+                                    .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
+                                    .map(|i| format!("m{}", i.display_id.unwrap_or(0)))
+                                    .collect();
                             if !derived.is_empty() {
                                 eprintln!(
                                     "Warning: {target_label} is a canonical pattern memory with \
@@ -158,7 +169,11 @@ pub fn learn_value(
                                      archive with `sara forget <label>`; they are not \
                                      auto-archived by this supersede.",
                                     derived.len(),
-                                    if derived.len() == 1 { "memory" } else { "memories" },
+                                    if derived.len() == 1 {
+                                        "memory"
+                                    } else {
+                                        "memories"
+                                    },
                                     derived.join(", ")
                                 );
                             }
@@ -181,11 +196,17 @@ pub fn learn_value(
     let similar_to_labels = resolve_and_link(similar_to, "similar_to", "--similar-to")?;
 
     let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
-    let tasks_json: Vec<Value> = item.linked_tasks.iter().map(|(id, desc, src)| json!({
-        "id": id.parse::<i64>().unwrap_or(0),
-        "description": desc,
-        "source": src,
-    })).collect();
+    let tasks_json: Vec<Value> = item
+        .linked_tasks
+        .iter()
+        .map(|(id, desc, src)| {
+            json!({
+                "id": id.parse::<i64>().unwrap_or(0),
+                "description": desc,
+                "source": src,
+            })
+        })
+        .collect();
 
     Ok(json!({
         "label": format!("m{}", item.display_id.unwrap_or(0)),
@@ -248,6 +269,7 @@ pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
 /// Two tag-overlap bands:
 ///   - Near-duplicate: existing memory shares ALL given tags → warn prominently.
 ///   - Partial overlap: shares ≥50% (but not all) tags → softer note.
+///
 /// File-overlap: any memory already linked to one of the new memory's files → warn.
 /// Prints warnings to stderr; never blocks the write (use --force to silence).
 pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]) -> Result<()> {
@@ -276,12 +298,9 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
         per_tag_sets.push(uuids);
     }
 
-    let near_dupes: std::collections::HashSet<uuid::Uuid> =
-        all_intersection.unwrap_or_default();
-    let partial: std::collections::HashSet<uuid::Uuid> = any_union
-        .difference(&near_dupes)
-        .copied()
-        .collect();
+    let near_dupes: std::collections::HashSet<uuid::Uuid> = all_intersection.unwrap_or_default();
+    let partial: std::collections::HashSet<uuid::Uuid> =
+        any_union.difference(&near_dupes).copied().collect();
 
     // Only surface partial overlaps if they share ≥50% of the given tags.
     let threshold = ((normalized.len() as f64) * 0.5).ceil() as usize;
@@ -308,12 +327,19 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
             .partition(|u| canonical_derived_count(conn, u) > 0);
 
     if !near_dupes.is_empty() || !canonical_partial.is_empty() {
-        let all_dupes: Vec<uuid::Uuid> =
-            near_dupes.iter().copied().chain(canonical_partial.iter().copied()).collect();
+        let all_dupes: Vec<uuid::Uuid> = near_dupes
+            .iter()
+            .copied()
+            .chain(canonical_partial.iter().copied())
+            .collect();
         eprintln!(
             "Warning: {} existing {} with identical or canonical-matching tags [{}]:",
             all_dupes.len(),
-            if all_dupes.len() == 1 { "memory" } else { "memories" },
+            if all_dupes.len() == 1 {
+                "memory"
+            } else {
+                "memories"
+            },
             normalized.join(", ")
         );
         let mut labels: Vec<String> = Vec::new();
@@ -348,7 +374,11 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
         eprintln!(
             "Note: {} potentially related {} (partial tag overlap):",
             plain_partial.len(),
-            if plain_partial.len() == 1 { "memory" } else { "memories" }
+            if plain_partial.len() == 1 {
+                "memory"
+            } else {
+                "memories"
+            }
         );
         let mut labels: Vec<String> = Vec::new();
         for u in &plain_partial {
@@ -373,7 +403,11 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
             eprintln!(
                 "Note: {} existing {} linked to the same file(s) — consider --supersedes or sara relearn:",
                 file_overlap.len(),
-                if file_overlap.len() == 1 { "memory" } else { "memories" }
+                if file_overlap.len() == 1 {
+                    "memory"
+                } else {
+                    "memories"
+                }
             );
             for (path, u) in &file_overlap {
                 if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
@@ -419,10 +453,7 @@ pub(crate) fn file_overlaps(
 /// All paths are resolved to absolute. Returns an error if --auto-files is
 /// requested but no git root can be found and no --file was given.
 fn collect_files(explicit: &[String], auto_files: bool) -> Result<Vec<String>> {
-    let mut paths: Vec<String> = explicit
-        .iter()
-        .map(|p| resolve_file_link_here(p))
-        .collect();
+    let mut paths: Vec<String> = explicit.iter().map(|p| resolve_file_link_here(p)).collect();
 
     if auto_files {
         match find_git_root(&std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) {
@@ -684,8 +715,7 @@ mod tests {
         let linked = db::get_item_task_links(&conn, &item.uuid).unwrap();
         assert_eq!(linked.len(), 1, "expected exactly one task link");
         assert_eq!(
-            linked[0].0.uuid,
-            task_a.uuid,
+            linked[0].0.uuid, task_a.uuid,
             "memory linked to the wrong task (uuid-prefix collision instead of display id)"
         );
     }
@@ -701,11 +731,23 @@ mod tests {
         // A memory saved with a file but NO tags — the exact case the overlap
         // check used to skip via an early return, hiding the file collision.
         super::learn_value(
-            &conn, &cfg, "auth finding", &[], &[], &[], &[path.clone()], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "auth finding",
+            &[],
+            &[],
+            &[],
+            std::slice::from_ref(&path),
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
 
-        let overlaps = super::file_overlaps(&conn, &[path.clone()], &HashSet::new()).unwrap();
+        let overlaps =
+            super::file_overlaps(&conn, std::slice::from_ref(&path), &HashSet::new()).unwrap();
         assert_eq!(
             overlaps.len(),
             1,
@@ -722,7 +764,18 @@ mod tests {
 
         // Learn a first memory to supersede.
         let old = super::learn_value(
-            &conn, &cfg, "old finding", &["tag-a".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "old finding",
+            &["tag-a".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let old_label = old["label"].as_str().unwrap().to_string();
@@ -738,7 +791,7 @@ mod tests {
             &[],
             false,
             true,
-            &[old_label.clone()],
+            std::slice::from_ref(&old_label),
             &[],
             &[],
         )
@@ -758,21 +811,44 @@ mod tests {
 
         // Canonical memory.
         let canonical = super::learn_value(
-            &conn, &cfg, "canonical pattern", &["pat".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "canonical pattern",
+            &["pat".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let canonical_label = canonical["label"].as_str().unwrap().to_string();
 
         // A derived child, linked via --derived-from.
         super::learn_value(
-            &conn, &cfg, "an application of the pattern", &[], &[], &[], &[], false, true,
-            &[], &[canonical_label.clone()], &[],
+            &conn,
+            &cfg,
+            "an application of the pattern",
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            std::slice::from_ref(&canonical_label),
+            &[],
         )
         .unwrap();
         assert_eq!(
             super::canonical_derived_count(
                 &conn,
-                &db::get_item_by_handle(&conn, &canonical_label).unwrap().uuid
+                &db::get_item_by_handle(&conn, &canonical_label)
+                    .unwrap()
+                    .uuid
             ),
             1,
             "canonical must have exactly one derived child before superseding"
@@ -781,11 +857,24 @@ mod tests {
         // Superseding the canonical must succeed and must not touch the
         // derived child's status — it stays active (never auto-archived).
         let new_v = super::learn_value(
-            &conn, &cfg, "corrected canonical pattern", &["pat".to_string()], &[], &[], &[],
-            false, true, &[canonical_label.clone()], &[], &[],
+            &conn,
+            &cfg,
+            "corrected canonical pattern",
+            &["pat".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            std::slice::from_ref(&canonical_label),
+            &[],
+            &[],
         )
         .unwrap();
-        assert_eq!(new_v["superseded"].as_array().unwrap()[0].as_str().unwrap(), canonical_label);
+        assert_eq!(
+            new_v["superseded"].as_array().unwrap()[0].as_str().unwrap(),
+            canonical_label
+        );
     }
 
     #[test]
@@ -794,7 +883,18 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         let cfg = Config::default();
         let v = super::learn_value(
-            &conn, &cfg, "plain note", &[], &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "plain note",
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let label = v["label"].as_str().unwrap();
@@ -818,7 +918,7 @@ mod tests {
             &["tag-x".to_string()],
             &[],
             &[],
-            &[file_path.clone()],
+            std::slice::from_ref(&file_path),
             false,
             true, // force — skip safety guardrails
             &[],
@@ -830,8 +930,15 @@ mod tests {
         // Learning a second memory on the same file with DIFFERENT tags should
         // still succeed (file-overlap is advisory, not blocking). The test just
         // verifies check_overlap() itself doesn't error out.
-        let result = super::check_overlap(&conn, &["tag-y".to_string()], &[file_path.clone()]);
-        assert!(result.is_ok(), "check_overlap should not error on file overlap");
+        let result = super::check_overlap(
+            &conn,
+            &["tag-y".to_string()],
+            std::slice::from_ref(&file_path),
+        );
+        assert!(
+            result.is_ok(),
+            "check_overlap should not error on file overlap"
+        );
     }
 
     #[test]
@@ -842,13 +949,35 @@ mod tests {
 
         // A canonical memory and a lateral one to link against.
         let canon = super::learn_value(
-            &conn, &cfg, "canonical pattern", &["pat".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "canonical pattern",
+            &["pat".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let canon_label = canon["label"].as_str().unwrap().to_string();
 
         let sibling = super::learn_value(
-            &conn, &cfg, "sibling note", &["side".to_string()], &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "sibling note",
+            &["side".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let sibling_label = sibling["label"].as_str().unwrap().to_string();
@@ -865,8 +994,8 @@ mod tests {
             false,
             true,
             &[],
-            &[canon_label.clone()],
-            &[sibling_label.clone()],
+            std::slice::from_ref(&canon_label),
+            std::slice::from_ref(&sibling_label),
         )
         .unwrap();
 
@@ -884,8 +1013,14 @@ mod tests {
             .uuid
             .to_string();
         let out = db::get_memory_links_from(&conn, &new_uuid).unwrap();
-        assert!(out.iter().any(|l| l.relation == "derived_from"), "derived_from edge exists");
-        assert!(out.iter().any(|l| l.relation == "similar_to"), "similar_to edge exists");
+        assert!(
+            out.iter().any(|l| l.relation == "derived_from"),
+            "derived_from edge exists"
+        );
+        assert!(
+            out.iter().any(|l| l.relation == "similar_to"),
+            "similar_to edge exists"
+        );
     }
 
     #[test]
@@ -909,7 +1044,10 @@ mod tests {
             &["m9999".to_string()],
             &[],
         );
-        assert!(v.is_ok(), "unresolvable --derived-from must not abort the learn");
+        assert!(
+            v.is_ok(),
+            "unresolvable --derived-from must not abort the learn"
+        );
         let v = v.unwrap();
         // The link was skipped, so the reported array is empty.
         assert_eq!(v["derived_from"].as_array().unwrap().len(), 0);
@@ -919,11 +1057,20 @@ mod tests {
     fn overlap_suggests_typed_link() {
         // Near-duplicate → derived-from / supersedes; partial → similar-to.
         let near = super::near_dupe_suggestion("m26");
-        assert!(near.contains("--derived-from m26"), "near-dupe offers --derived-from: {near}");
-        assert!(near.contains("--supersedes m26"), "near-dupe offers --supersedes: {near}");
+        assert!(
+            near.contains("--derived-from m26"),
+            "near-dupe offers --derived-from: {near}"
+        );
+        assert!(
+            near.contains("--supersedes m26"),
+            "near-dupe offers --supersedes: {near}"
+        );
 
         let partial = super::partial_overlap_suggestion("m30");
-        assert!(partial.contains("--similar-to m30"), "partial offers --similar-to: {partial}");
+        assert!(
+            partial.contains("--similar-to m30"),
+            "partial offers --similar-to: {partial}"
+        );
         // No longer the vague untyped "possible contradiction" wording.
         assert!(!partial.to_lowercase().contains("possible contradiction"));
     }
@@ -945,20 +1092,42 @@ mod tests {
 
         // Canonical memory with two tags.
         let canonical = super::learn_value(
-            &conn, &cfg, "CodeQL config pattern", &["codeql".into(), "config".into()],
-            &[], &[], &[], false, true, &[], &[], &[],
+            &conn,
+            &cfg,
+            "CodeQL config pattern",
+            &["codeql".into(), "config".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
         )
         .unwrap();
         let canonical_label = canonical["label"].as_str().unwrap().to_string();
-        let canonical_uuid = db::get_item_by_handle(&conn, &canonical_label).unwrap().uuid;
+        let canonical_uuid = db::get_item_by_handle(&conn, &canonical_label)
+            .unwrap()
+            .uuid;
 
         // Before any derived child exists, it isn't canonical yet.
         assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 0);
 
         // A derived application, linked via --derived-from.
         super::learn_value(
-            &conn, &cfg, "applied CodeQL config to repo X", &["codeql".into()],
-            &[], &[], &[], false, true, &[], &[canonical_label.clone()], &[],
+            &conn,
+            &cfg,
+            "applied CodeQL config to repo X",
+            &["codeql".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            std::slice::from_ref(&canonical_label),
+            &[],
         )
         .unwrap();
 

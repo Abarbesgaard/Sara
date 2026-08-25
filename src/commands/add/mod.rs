@@ -42,7 +42,13 @@ pub fn run(
         return Ok(());
     };
 
-    match similar::find_similar(conn, cfg, &form.description, &split_tags(&form.tags), SIMILAR_LIMIT) {
+    match similar::find_similar(
+        conn,
+        cfg,
+        &form.description,
+        &split_tags(&form.tags),
+        SIMILAR_LIMIT,
+    ) {
         Ok(hits) if !hits.is_empty() => {
             println!("Similar past work found — consider reusing instead of starting fresh:");
             for hit in &hits {
@@ -75,7 +81,9 @@ pub fn run(
         task.description
     );
     if let Some(branch) = tied_branch {
-        println!("Tied to branch '{branch}' — resolve by uuid across branches to stay unambiguous.");
+        println!(
+            "Tied to branch '{branch}' — resolve by uuid across branches to stay unambiguous."
+        );
     }
     Ok(())
 }
@@ -110,9 +118,14 @@ pub fn run_value(
         anyhow::bail!("task creation was cancelled");
     };
 
-    let similar =
-        similar::find_similar(conn, cfg, &form.description, &split_tags(&form.tags), SIMILAR_LIMIT)
-            .unwrap_or_default();
+    let similar = similar::find_similar(
+        conn,
+        cfg,
+        &form.description,
+        &split_tags(&form.tags),
+        SIMILAR_LIMIT,
+    )
+    .unwrap_or_default();
 
     let task: Task = persist::save(
         conn,

@@ -11,10 +11,9 @@ use crate::infrastructure::model::Item;
 /// Common English function words + conventional task prefixes that carry no
 /// discriminating signal for similarity matching.
 const STOP_WORDS: &[&str] = &[
-    "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at",
-    "by", "up", "as", "or", "do", "if", "be", "we", "he", "she", "they",
-    "but", "and", "not", "with", "from", "this", "that", "are", "was",
-    "has", "have", "feat", "fix", "via", "add", "new",
+    "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at", "by", "up", "as", "or",
+    "do", "if", "be", "we", "he", "she", "they", "but", "and", "not", "with", "from", "this",
+    "that", "are", "was", "has", "have", "feat", "fix", "via", "add", "new",
 ];
 
 /// Maximum number of tokens to AND together in a token-based search.
@@ -111,7 +110,7 @@ pub(super) fn find_similar(
         for h in &token_hits {
             // Require at least half the query tokens to appear; otherwise the AND
             // match is too coincidental to be useful.
-            if token_overlap(&capped, &h.text) < (capped.len() + 1) / 2 {
+            if token_overlap(&capped, &h.text) < capped.len().div_ceil(2) {
                 continue;
             }
             push_fts_hit(conn, h, "medium", &mut seen_tasks, &mut seen_mem, &mut out);

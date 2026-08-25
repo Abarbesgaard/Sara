@@ -134,13 +134,19 @@ impl MemoryGraph {
 
         // Explicit edges.
         for link in db::all_memory_links(conn).unwrap_or_default() {
-            let (Ok(fu), Ok(tu)) =
-                (Uuid::parse_str(&link.from_uuid), Uuid::parse_str(&link.to_uuid))
-            else {
+            let (Ok(fu), Ok(tu)) = (
+                Uuid::parse_str(&link.from_uuid),
+                Uuid::parse_str(&link.to_uuid),
+            ) else {
                 continue;
             };
             if let (Some(&a), Some(&b)) = (index.get(&fu), index.get(&tu)) {
-                add(a, b, relation_weight(&link.relation, link.weight), &mut edges);
+                add(
+                    a,
+                    b,
+                    relation_weight(&link.relation, link.weight),
+                    &mut edges,
+                );
             }
         }
 
@@ -366,7 +372,10 @@ impl MemoryGraph {
             cur = p;
         }
         chain.reverse(); // seed first
-        chain.into_iter().map(|i| self.nodes[i].label.clone()).collect()
+        chain
+            .into_iter()
+            .map(|i| self.nodes[i].label.clone())
+            .collect()
     }
 }
 
@@ -395,9 +404,7 @@ fn dedup<T: Clone + Eq + std::hash::Hash>(v: Vec<T>) -> Vec<T> {
 
 /// Document frequency of each anchor: how many memories carry it. Duplicates
 /// within a single memory count once, so `df` is a true per-memory count.
-fn document_frequencies<T: Clone + Eq + std::hash::Hash>(
-    sets: &[Vec<T>],
-) -> HashMap<T, usize> {
+fn document_frequencies<T: Clone + Eq + std::hash::Hash>(sets: &[Vec<T>]) -> HashMap<T, usize> {
     let mut df: HashMap<T, usize> = HashMap::new();
     for set in sets {
         let mut seen = std::collections::HashSet::new();
@@ -458,8 +465,10 @@ pub fn coactivation_pairs(
         }
     }
 
-    let mut out: Vec<(Uuid, Uuid, u32)> =
-        pair_counts.into_iter().map(|((a, b), c)| (a, b, c)).collect();
+    let mut out: Vec<(Uuid, Uuid, u32)> = pair_counts
+        .into_iter()
+        .map(|((a, b), c)| (a, b, c))
+        .collect();
     out.sort_unstable_by(|x, y| y.2.cmp(&x.2).then(x.0.cmp(&y.0)).then(x.1.cmp(&y.1)));
     out
 }
@@ -648,7 +657,7 @@ mod tests {
         let events = vec![
             (a, t0),
             (b, t0 + Duration::milliseconds(100)), // same bucket as a
-            (c, t0 + Duration::seconds(60)),        // far away — own bucket
+            (c, t0 + Duration::seconds(60)),       // far away — own bucket
         ];
         let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
         assert_eq!(pairs.len(), 1);

@@ -75,10 +75,14 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
         let tags: Vec<String> = obj
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let similar = db::find_similar_strong_memories(conn, &description, &tags)
-            .unwrap_or_default();
+        let similar =
+            db::find_similar_strong_memories(conn, &description, &tags).unwrap_or_default();
         if !similar.is_empty() {
             let similar_json: Vec<serde_json::Value> = similar
                 .iter()

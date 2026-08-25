@@ -63,7 +63,11 @@ pub fn related_findings(
             })
         })
         .collect();
-    scored.sort_by(|a, b| b.cosine.partial_cmp(&a.cosine).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.cosine
+            .partial_cmp(&a.cosine)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(MAX_RELATED);
     scored
 }
@@ -85,7 +89,9 @@ pub fn print_related_findings(related: &[Related]) {
     for r in related {
         eprintln!("    (~{:.2}) #{}: {}", r.cosine, r.id, r.text);
     }
-    eprintln!("  If your new note revises or contradicts one, correct it (denotate / re-annotate).");
+    eprintln!(
+        "  If your new note revises or contradicts one, correct it (denotate / re-annotate)."
+    );
 }
 
 #[cfg(test)]
@@ -146,7 +152,11 @@ mod tests {
     fn excludes_the_just_inserted_finding() {
         let conn = db::open_in_memory_for_test();
         let task = seed_task(&conn);
-        let id = add_finding(&conn, &task, "restore broke after the dependabot version bump");
+        let id = add_finding(
+            &conn,
+            &task,
+            "restore broke after the dependabot version bump",
+        );
         // Querying with the same text but excluding that id yields nothing —
         // a finding must never match itself.
         let related = related_findings(

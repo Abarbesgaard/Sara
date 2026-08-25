@@ -67,7 +67,11 @@ pub fn run(conn: &Connection, handle: &str, cascade: bool) -> Result<()> {
             println!(
                 "  ↳ cascaded: also archived {} derived {} ({})",
                 cascaded.len(),
-                if cascaded.len() == 1 { "memory" } else { "memories" },
+                if cascaded.len() == 1 {
+                    "memory"
+                } else {
+                    "memories"
+                },
                 cascaded.join(", ")
             );
         } else {
@@ -75,7 +79,11 @@ pub fn run(conn: &Connection, handle: &str, cascade: bool) -> Result<()> {
                 "Warning: {} derived {} exist ({}) — review with `sara dream <label>` \
                  or archive with `sara forget <label>`, or re-run with --cascade.",
                 derived.len(),
-                if derived.len() == 1 { "memory" } else { "memories" },
+                if derived.len() == 1 {
+                    "memory"
+                } else {
+                    "memories"
+                },
                 derived.join(", ")
             );
         }
@@ -131,7 +139,12 @@ mod tests {
         let child_label = format!("m{}", child.display_id.unwrap());
 
         let v = forget_value(&conn, &canonical_label, false).unwrap();
-        let derived: Vec<&str> = v["derived"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+        let derived: Vec<&str> = v["derived"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap())
+            .collect();
         assert_eq!(derived, vec![child_label.clone()]);
         assert!(v["cascaded"].as_array().unwrap().is_empty());
 
@@ -157,7 +170,12 @@ mod tests {
         let child_label = format!("m{}", child.display_id.unwrap());
 
         let v = forget_value(&conn, &canonical_label, true).unwrap();
-        let cascaded: Vec<&str> = v["cascaded"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+        let cascaded: Vec<&str> = v["cascaded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap())
+            .collect();
         assert_eq!(cascaded, vec![child_label]);
 
         assert_eq!(item_status(&conn, &canonical.uuid.to_string()), "archived");

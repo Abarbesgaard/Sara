@@ -86,7 +86,10 @@ pub fn recall_value(
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
-    let files: Vec<String> = normalize(files).iter().map(|p| project::resolve_file_link_here(p)).collect();
+    let files: Vec<String> = normalize(files)
+        .iter()
+        .map(|p| project::resolve_file_link_here(p))
+        .collect();
 
     if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
         // Bare recall: surface the most recent memories instead of erroring, so
@@ -111,7 +114,15 @@ pub fn recall_value(
         }));
     }
 
-    let hits = collect_hits(conn, query, &tags, &projects, &files, limit, &SemanticOpts::from_cfg(cfg))?;
+    let hits = collect_hits(
+        conn,
+        query,
+        &tags,
+        &projects,
+        &files,
+        limit,
+        &SemanticOpts::from_cfg(cfg),
+    )?;
     let keyword = keyword_json(&hits);
 
     // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
@@ -165,9 +176,9 @@ pub fn recall_value(
 ///
 /// - `high`:   exact tag/project/file filters drove all hits (reliable index lookup).
 /// - `medium`: some or all hits came from FTS keyword ranking (literal match only —
-///             paraphrased or conceptually related content may not surface).
+///   paraphrased or conceptually related content may not surface).
 /// - `none`:   no hits at all AND a free-text query was involved — this does NOT
-///             mean no similar work exists; it means no keywords overlapped.
+///   mean no similar work exists; it means no keywords overlapped.
 ///
 /// Tag/file-only searches with zero results emit `"none"` without a caveat (the
 /// absence of a tagged memory is meaningful — the tag simply doesn't exist).
@@ -248,14 +259,25 @@ pub fn run(
     let query = query.trim();
     let tags = normalize(tags);
     let projects = normalize(projects);
-    let files: Vec<String> = normalize(files).iter().map(|p| project::resolve_file_link_here(p)).collect();
+    let files: Vec<String> = normalize(files)
+        .iter()
+        .map(|p| project::resolve_file_link_here(p))
+        .collect();
 
     let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
 
     let hits = if recent {
         recent_hits(conn, limit)?
     } else {
-        collect_hits(conn, query, &tags, &projects, &files, limit, &SemanticOpts::from_cfg(cfg))?
+        collect_hits(
+            conn,
+            query,
+            &tags,
+            &projects,
+            &files,
+            limit,
+            &SemanticOpts::from_cfg(cfg),
+        )?
     };
 
     if hits.is_empty() {
@@ -298,77 +320,75 @@ pub fn run(
     }
 
     for h in &hits {
-            let age = h.modified.map(age_str).unwrap_or_default();
-            let marker = if h.exact_match {
-                "="
-            } else if h.semantic {
-                "*"
-            } else if h.loose {
-                "≈"
-            } else {
-                "~"
-            };
-            let files_str = if h.files.is_empty() {
+        let age = h.modified.map(age_str).unwrap_or_default();
+        let marker = if h.exact_match {
+            "="
+        } else if h.semantic {
+            "*"
+        } else if h.loose {
+            "≈"
+        } else {
+            "~"
+        };
+        let files_str = if h.files.is_empty() {
+            String::new()
+        } else {
+            format!(" [files: {}]", h.files.join(", "))
+        };
+        let tasks_str = if h.linked_tasks.is_empty() {
+            String::new()
+        } else {
+            let parts: Vec<String> = h
+                .linked_tasks
+                .iter()
+                .map(|(t, src)| format!("#{} {} ({})", t.id.unwrap_or(0), t.description, src))
+                .collect();
+            format!(" [via tasks: {}]", parts.join(", "))
+        };
+        let superseded_str = if h.superseded_by.is_empty() {
+            String::new()
+        } else {
+            format!(" ⚠ superseded by: {}", h.superseded_by.join(", "))
+        };
+        let provisional_str = if h.provisional {
+            " [provisional — unreviewed auto-memory]".to_string()
+        } else {
+            String::new()
+        };
+        let canonical_str = if h.derived_children.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " [canonical, {} derived: {}]",
+                h.derived_children.len(),
+                h.derived_children.join(", ")
+            )
+        };
+        let derived_from_str = if h.derived_from_labels.is_empty() {
+            String::new()
+        } else {
+            format!(" [derived from: {}]", h.derived_from_labels.join(", "))
+        };
+        println!(
+            "  [{}] {} {} {}: {}{}{}{}{}{}{}{}",
+            h.ref_kind,
+            marker,
+            h.label,
+            h.description,
+            h.snippet.trim(),
+            files_str,
+            tasks_str,
+            superseded_str,
+            provisional_str,
+            canonical_str,
+            derived_from_str,
+            if age.is_empty() {
                 String::new()
             } else {
-                format!(" [files: {}]", h.files.join(", "))
-            };
-            let tasks_str = if h.linked_tasks.is_empty() {
-                String::new()
-            } else {
-                let parts: Vec<String> = h
-                    .linked_tasks
-                    .iter()
-                    .map(|(t, src)| {
-                        format!("#{} {} ({})", t.id.unwrap_or(0), t.description, src)
-                    })
-                    .collect();
-                format!(" [via tasks: {}]", parts.join(", "))
-            };
-            let superseded_str = if h.superseded_by.is_empty() {
-                String::new()
-            } else {
-                format!(" ⚠ superseded by: {}", h.superseded_by.join(", "))
-            };
-            let provisional_str = if h.provisional {
-                " [provisional — unreviewed auto-memory]".to_string()
-            } else {
-                String::new()
-            };
-            let canonical_str = if h.derived_children.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " [canonical, {} derived: {}]",
-                    h.derived_children.len(),
-                    h.derived_children.join(", ")
-                )
-            };
-            let derived_from_str = if h.derived_from_labels.is_empty() {
-                String::new()
-            } else {
-                format!(" [derived from: {}]", h.derived_from_labels.join(", "))
-            };
-            println!(
-                "  [{}] {} {} {}: {}{}{}{}{}{}{}{}",
-                h.ref_kind,
-                marker,
-                h.label,
-                h.description,
-                h.snippet.trim(),
-                files_str,
-                tasks_str,
-                superseded_str,
-                provisional_str,
-                canonical_str,
-                derived_from_str,
-                if age.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({age})")
-                }
-            );
-        }
+                format!(" ({age})")
+            }
+        );
+    }
 
     // Spreading activation: from the memories that matched directly, radiate
     // outward across the graph and surface the associatively-related memories a
@@ -500,10 +520,9 @@ fn normalize(values: &[String]) -> Vec<String> {
 /// (rather than reused from `add::similar`) to keep the vertical-slice
 /// boundary the architecture tests enforce.
 const STOP_WORDS: &[&str] = &[
-    "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at",
-    "by", "up", "as", "or", "do", "if", "be", "we", "he", "she", "they",
-    "but", "and", "not", "with", "from", "this", "that", "are", "was",
-    "has", "have", "how", "what", "does", "did",
+    "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at", "by", "up", "as", "or",
+    "do", "if", "be", "we", "he", "she", "they", "but", "and", "not", "with", "from", "this",
+    "that", "are", "was", "has", "have", "how", "what", "does", "did",
 ];
 const MAX_AND_TOKENS: usize = 6;
 
@@ -635,49 +654,51 @@ fn collect_hits(
 
     // Exact filters narrow first: a memory must carry every given --tag, and
     // reference at least one of the given --project values.
-    let tag_project_uuids: Option<HashSet<uuid::Uuid>> =
-        if !tags.is_empty() || !projects.is_empty() {
-            let mut by_tag: Option<HashSet<uuid::Uuid>> = None;
-            for tag in tags {
-                let hit: HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
-                    .into_iter()
-                    .map(|i| i.uuid)
-                    .collect();
-                by_tag = Some(match by_tag {
-                    Some(existing) => existing.intersection(&hit).copied().collect(),
-                    None => hit,
-                });
-            }
+    let tag_project_uuids: Option<HashSet<uuid::Uuid>> = if !tags.is_empty() || !projects.is_empty()
+    {
+        let mut by_tag: Option<HashSet<uuid::Uuid>> = None;
+        for tag in tags {
+            let hit: HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
+                .into_iter()
+                .map(|i| i.uuid)
+                .collect();
+            by_tag = Some(match by_tag {
+                Some(existing) => existing.intersection(&hit).copied().collect(),
+                None => hit,
+            });
+        }
 
-            let mut by_project: Option<HashSet<uuid::Uuid>> = None;
-            for project in projects {
-                let mut hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
-                    .into_iter()
-                    .map(|i| i.uuid)
-                    .collect();
-                // Cross-project canonicals: a pattern memory with a derived
-                // application scoped to `project` is relevant here too, even
-                // though the canonical itself may live under a different
-                // project (or none).
-                hit.extend(db::find_cross_project_canonicals_for_project(conn, project)?);
-                by_project = Some(match by_project {
-                    Some(mut existing) => {
-                        existing.extend(hit);
-                        existing
-                    }
-                    None => hit,
-                });
-            }
+        let mut by_project: Option<HashSet<uuid::Uuid>> = None;
+        for project in projects {
+            let mut hit: HashSet<uuid::Uuid> = db::find_items_by_project(conn, project)?
+                .into_iter()
+                .map(|i| i.uuid)
+                .collect();
+            // Cross-project canonicals: a pattern memory with a derived
+            // application scoped to `project` is relevant here too, even
+            // though the canonical itself may live under a different
+            // project (or none).
+            hit.extend(db::find_cross_project_canonicals_for_project(
+                conn, project,
+            )?);
+            by_project = Some(match by_project {
+                Some(mut existing) => {
+                    existing.extend(hit);
+                    existing
+                }
+                None => hit,
+            });
+        }
 
-            Some(match (by_tag, by_project) {
-                (Some(t), Some(p)) => t.intersection(&p).copied().collect(),
-                (Some(t), None) => t,
-                (None, Some(p)) => p,
-                (None, None) => HashSet::new(),
-            })
-        } else {
-            None
-        };
+        Some(match (by_tag, by_project) {
+            (Some(t), Some(p)) => t.intersection(&p).copied().collect(),
+            (Some(t), None) => t,
+            (None, Some(p)) => p,
+            (None, None) => HashSet::new(),
+        })
+    } else {
+        None
+    };
 
     // Combined exact filter: AND of file + tag/project sets when both provided.
     let exact_uuids: Option<HashSet<uuid::Uuid>> = match (file_uuids, tag_project_uuids) {
@@ -726,7 +747,10 @@ fn collect_hits(
                     // Tier 3: loose token-OR fallback — match ANY meaningful
                     // token so a partial-vocabulary query returns candidates
                     // instead of nothing. Flagged loose (lower confidence).
-                    (db::search_fts_tokens_or(conn, &tokens, limit.max(50))?, true)
+                    (
+                        db::search_fts_tokens_or(conn, &tokens, limit.max(50))?,
+                        true,
+                    )
                 }
             }
         }
@@ -800,7 +824,13 @@ fn collect_hits(
     // the whole point being to surface paraphrases sharing no literal token.
     // Off by default (config/flag), so lexical behaviour stays byte-identical.
     if semantic.enabled && !query.is_empty() {
-        merge_semantic_hits(conn, query, semantic, semantic_allowlist.as_ref(), &mut hits)?;
+        merge_semantic_hits(
+            conn,
+            query,
+            semantic,
+            semantic_allowlist.as_ref(),
+            &mut hits,
+        )?;
     }
 
     hits.sort_by(|a, b| {
@@ -911,7 +941,13 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
             // Resolve the from_uuid to a label like "m12".
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
-                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .map(|i| {
+                    format!(
+                        "{}{}",
+                        i.kind.chars().next().unwrap_or('m'),
+                        i.display_id.unwrap_or(0)
+                    )
+                })
                 .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -923,7 +959,13 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .map(|l| {
             db::get_item_by_uuid(conn, &l.to_uuid)
                 .ok()
-                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .map(|i| {
+                    format!(
+                        "{}{}",
+                        i.kind.chars().next().unwrap_or('m'),
+                        i.display_id.unwrap_or(0)
+                    )
+                })
                 .unwrap_or_else(|| l.to_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -935,7 +977,13 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .map(|l| {
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
-                .map(|i| format!("{}{}", i.kind.chars().next().unwrap_or('m'), i.display_id.unwrap_or(0)))
+                .map(|i| {
+                    format!(
+                        "{}{}",
+                        i.kind.chars().next().unwrap_or('m'),
+                        i.display_id.unwrap_or(0)
+                    )
+                })
                 .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -1055,7 +1103,11 @@ mod tests {
             &SemanticOpts::from_cfg(&cfg_semantic()),
         )
         .unwrap();
-        assert_eq!(semantic.len(), 1, "semantic recall should surface the memory");
+        assert_eq!(
+            semantic.len(),
+            1,
+            "semantic recall should surface the memory"
+        );
         assert!(semantic[0].semantic, "hit must be flagged semantic");
         assert!(
             semantic[0].cosine.unwrap() > 0.30,
@@ -1193,7 +1245,16 @@ mod tests {
 
         // Word order differs from the stored text → phrase literal misses,
         // token-AND fallback should still surface the memory.
-        let hits = collect_hits(&conn, "pagination MudTable", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "pagination MudTable",
+            &[],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "MudTable pagination gotcha");
         assert!(!hits[0].exact_match);
@@ -1211,7 +1272,16 @@ mod tests {
         item.path = Some(String::new());
         db::insert_item(&conn, &mut item).unwrap();
 
-        let hits = collect_hits(&conn, "frobnicator", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "frobnicator",
+            &[],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert!(hits[0].provisional, "provisional flag must be set");
     }
@@ -1282,16 +1352,57 @@ mod tests {
     fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
         let conn = db::open_in_memory_for_test();
         // Three memories all match "cache" directly → not thin → no auto-spread.
-        let a = seed_memory(&conn, "cache one", "cache eviction note one", &[], &["web-app"]);
-        let b = seed_memory(&conn, "cache two", "cache warming note two", &[], &["web-app"]);
-        seed_memory(&conn, "cache three", "cache stampede note three", &[], &["web-app"]);
+        let a = seed_memory(
+            &conn,
+            "cache one",
+            "cache eviction note one",
+            &[],
+            &["web-app"],
+        );
+        let b = seed_memory(
+            &conn,
+            "cache two",
+            "cache warming note two",
+            &[],
+            &["web-app"],
+        );
+        seed_memory(
+            &conn,
+            "cache three",
+            "cache stampede note three",
+            &[],
+            &["web-app"],
+        );
         // A linked outsider that auto-spread WOULD surface if it fired.
-        let outsider = seed_memory(&conn, "outsider", "unrelated mutex trick", &[], &["web-app"]);
-        db::insert_memory_link(&conn, &a.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
-        db::insert_memory_link(&conn, &b.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+        let outsider = seed_memory(
+            &conn,
+            "outsider",
+            "unrelated mutex trick",
+            &[],
+            &["web-app"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &outsider.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
+        db::insert_memory_link(
+            &conn,
+            &b.uuid.to_string(),
+            &outsider.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
 
         let v = recall_value(&conn, &cfg(), "cache", &[], &[], &[], 20, false).unwrap();
-        assert!(v["keyword"].as_array().unwrap().len() >= 3, "plentiful direct hits");
+        assert!(
+            v["keyword"].as_array().unwrap().len() >= 3,
+            "plentiful direct hits"
+        );
         assert_eq!(v["spread"], "off", "plentiful literal hits stay lexical");
         assert!(v["associative"].as_array().unwrap().is_empty());
     }
@@ -1299,10 +1410,19 @@ mod tests {
     #[test]
     fn recall_zero_hits_does_not_spread() {
         let conn = db::open_in_memory_for_test();
-        seed_memory(&conn, "unrelated", "nothing to do with the query", &[], &["web-app"]);
+        seed_memory(
+            &conn,
+            "unrelated",
+            "nothing to do with the query",
+            &[],
+            &["web-app"],
+        );
 
         let v = recall_value(&conn, &cfg(), "zzzznomatchqqq", &[], &[], &[], 20, false).unwrap();
-        assert!(v["keyword"].as_array().unwrap().is_empty(), "no direct hits");
+        assert!(
+            v["keyword"].as_array().unwrap().is_empty(),
+            "no direct hits"
+        );
         assert_eq!(v["spread"], "off", "zero hits cannot seed spreading");
         assert!(v["associative"].as_array().unwrap().is_empty());
     }
@@ -1313,13 +1433,46 @@ mod tests {
         // A single tag-matched memory (thin) linked to an outsider. A bare
         // tag lookup is already precise, so it must NOT auto-radiate even
         // though the hit count (1) is in the thin band.
-        let a = seed_memory(&conn, "billing note", "billing invoice edge case", &["billing"], &["web-app"]);
-        let outsider = seed_memory(&conn, "outsider", "unrelated mutex trick", &[], &["web-app"]);
-        db::insert_memory_link(&conn, &a.uuid.to_string(), &outsider.uuid.to_string(), "similar_to", 1.0).unwrap();
+        let a = seed_memory(
+            &conn,
+            "billing note",
+            "billing invoice edge case",
+            &["billing"],
+            &["web-app"],
+        );
+        let outsider = seed_memory(
+            &conn,
+            "outsider",
+            "unrelated mutex trick",
+            &[],
+            &["web-app"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &outsider.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
 
         // Empty query + tag filter → bare lookup.
-        let v = recall_value(&conn, &cfg(), "", &["billing".to_string()], &[], &[], 20, false).unwrap();
-        assert_eq!(v["keyword"].as_array().unwrap().len(), 1, "one thin tag hit");
+        let v = recall_value(
+            &conn,
+            &cfg(),
+            "",
+            &["billing".to_string()],
+            &[],
+            &[],
+            20,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            v["keyword"].as_array().unwrap().len(),
+            1,
+            "one thin tag hit"
+        );
         assert_eq!(v["spread"], "off", "a bare tag lookup never auto-spreads");
         assert!(v["associative"].as_array().unwrap().is_empty());
     }
@@ -1351,7 +1504,8 @@ mod tests {
         )
         .unwrap();
 
-        let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits =
+            collect_hits(&conn, "pgbouncer", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1, "only the seed matches the query directly");
 
         let related = spreading_related(&conn, &hits).unwrap();
@@ -1435,7 +1589,16 @@ mod tests {
             &["web-app"],
         );
 
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["service-a".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "about service-a");
         assert!(hits[0].exact_match);
@@ -1444,8 +1607,17 @@ mod tests {
     #[test]
     fn recall_with_no_memories_and_no_tasks_reports_none_recorded() {
         let conn = db::open_in_memory_for_test();
-        let v =
-            recall_value(&conn, &cfg(), "", &["service-a".to_string()], &[], &[], 20, false).unwrap();
+        let v = recall_value(
+            &conn,
+            &cfg(),
+            "",
+            &["service-a".to_string()],
+            &[],
+            &[],
+            20,
+            false,
+        )
+        .unwrap();
         assert!(v["keyword"].as_array().unwrap().is_empty());
         assert!(!db::has_any_memories(&conn).unwrap());
     }
@@ -1474,7 +1646,8 @@ mod tests {
         unlinked.path = Some(String::new());
         db::insert_item(&conn, &mut unlinked).unwrap();
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits =
+            collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert!(!hits.is_empty());
         assert_eq!(hits[0].description, "service-a auth fix");
     }
@@ -1493,10 +1666,20 @@ mod tests {
         // Regression: FTS5 treats bare hyphens as NOT; --tag must never go
         // through MATCH at all (find_items_by_tag uses a plain WHERE clause),
         // and a free-text query containing a hyphen must still be quoted.
-        let hits = collect_hits(&conn, "", &["service-a".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["service-a".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
 
-        let hits = collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits =
+            collect_hits(&conn, "service-a", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
         assert_eq!(hits.len(), 1);
     }
 
@@ -1520,7 +1703,16 @@ mod tests {
         );
         assert!(newer.modified >= older.modified);
 
-        let hits = collect_hits(&conn, "", &["shared-topic".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["shared-topic".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].description, "newer note");
     }
@@ -1544,15 +1736,32 @@ mod tests {
         // "archive"/"garbage"), so recall would previously be empty.
         let and_only = db::search_fts_tokens(
             &conn,
-            &["pruning".into(), "decay".into(), "archive".into(), "garbage".into()],
+            &[
+                "pruning".into(),
+                "decay".into(),
+                "archive".into(),
+                "garbage".into(),
+            ],
             50,
         )
         .unwrap();
         assert!(and_only.is_empty(), "precondition: token-AND misses");
 
-        let hits =
-            collect_hits(&conn, "pruning decay archive garbage", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
-        assert_eq!(hits.len(), 1, "OR fallback surfaces the partial-overlap memory");
+        let hits = collect_hits(
+            &conn,
+            "pruning decay archive garbage",
+            &[],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "OR fallback surfaces the partial-overlap memory"
+        );
         assert_eq!(hits[0].description, "prune stale entries");
         assert!(hits[0].loose, "OR-fallback hit must be flagged loose");
 
@@ -1575,7 +1784,16 @@ mod tests {
             &["platform"],
         );
         // Both tokens present → token-AND matches → not loose.
-        let hits = collect_hits(&conn, "consumer lag", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "consumer lag",
+            &[],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert!(!hits[0].loose, "token-AND hit must not be flagged loose");
         let (confidence, _) = match_confidence("consumer lag", &[], &hits);
@@ -1612,9 +1830,16 @@ mod tests {
         );
         let v = recall_value(&conn, &cfg(), "burrow", &[], &[], &[], 20, false).unwrap();
         let keyword = v["keyword"].as_array().unwrap();
-        assert_eq!(keyword.len(), 1, "the matching memory surfaces as a keyword hit");
+        assert_eq!(
+            keyword.len(),
+            1,
+            "the matching memory surfaces as a keyword hit"
+        );
         assert_eq!(keyword[0]["description"], "kafka consumer lag");
-        assert_eq!(v["confidence"], "medium", "free-text FTS hit => medium confidence");
+        assert_eq!(
+            v["confidence"], "medium",
+            "free-text FTS hit => medium confidence"
+        );
     }
 
     #[test]
@@ -1653,8 +1878,16 @@ mod tests {
 
         seed_memory(&conn, "unrelated notes", "something else", &[], &[]);
 
-        let hits =
-            collect_hits(&conn, "", &[], &[], &["src/auth.rs".to_string()], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &[],
+            &[],
+            &["src/auth.rs".to_string()],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].description, "auth notes");
         assert_eq!(hits[0].files, vec!["src/auth.rs"]);
@@ -1672,7 +1905,16 @@ mod tests {
 
         seed_memory(&conn, "unrelated", "outside src", &[], &[]);
 
-        let hits = collect_hits(&conn, "", &[], &[], &["src/".to_string()], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &[],
+            &[],
+            &["src/".to_string()],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 2);
     }
 
@@ -1711,7 +1953,16 @@ mod tests {
         let item = seed_memory(&conn, "auth memory", "auth body", &["auth"], &[]);
         db::set_item_task_links(&conn, &item.uuid, &[(task.uuid, "explicit")]).unwrap();
 
-        let hits = collect_hits(&conn, "", &["auth".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["auth".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].linked_tasks.len(), 1);
         assert_eq!(hits[0].linked_tasks[0].0.description, "fix auth");
@@ -1764,21 +2015,50 @@ mod tests {
         )
         .unwrap();
 
-        let hits = collect_hits(&conn, "", &["codeql".to_string()], &[], &[], 20, &SemanticOpts::off()).unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["codeql".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(hits.len(), 3);
 
         // Find each hit by description.
-        let canonical_hit = hits.iter().find(|h| h.description == "CodeQL config pattern").unwrap();
-        let derived_a_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-a").unwrap();
-        let derived_b_hit = hits.iter().find(|h| h.description == "CodeQL config applied to repo-b").unwrap();
+        let canonical_hit = hits
+            .iter()
+            .find(|h| h.description == "CodeQL config pattern")
+            .unwrap();
+        let derived_a_hit = hits
+            .iter()
+            .find(|h| h.description == "CodeQL config applied to repo-a")
+            .unwrap();
+        let derived_b_hit = hits
+            .iter()
+            .find(|h| h.description == "CodeQL config applied to repo-b")
+            .unwrap();
 
         // Canonical: has 2 derived children (by label), no derived_from_labels.
-        assert_eq!(canonical_hit.derived_children.len(), 2, "canonical must report 2 derived memories");
-        assert!(canonical_hit.derived_from_labels.is_empty(), "canonical must not be derived from anything");
+        assert_eq!(
+            canonical_hit.derived_children.len(),
+            2,
+            "canonical must report 2 derived memories"
+        );
+        assert!(
+            canonical_hit.derived_from_labels.is_empty(),
+            "canonical must not be derived from anything"
+        );
         // The canonical's child labels must be exactly its two derived memories.
         assert!(
-            canonical_hit.derived_children.contains(&derived_a_hit.label)
-                && canonical_hit.derived_children.contains(&derived_b_hit.label),
+            canonical_hit
+                .derived_children
+                .contains(&derived_a_hit.label)
+                && canonical_hit
+                    .derived_children
+                    .contains(&derived_b_hit.label),
             "canonical must list both derived child labels, got {:?}",
             canonical_hit.derived_children
         );
@@ -1790,7 +2070,10 @@ mod tests {
         assert_eq!(derived_b_hit.derived_from_labels.len(), 1);
 
         // Both derived memories point to the same canonical label.
-        assert_eq!(derived_a_hit.derived_from_labels[0], derived_b_hit.derived_from_labels[0]);
+        assert_eq!(
+            derived_a_hit.derived_from_labels[0],
+            derived_b_hit.derived_from_labels[0]
+        );
     }
 
     #[test]
@@ -1826,24 +2109,43 @@ mod tests {
         // derived memory (directly scoped) AND the canonical (via its
         // derived_from child), even though the canonical itself is only
         // scoped to "sara-repo".
-        let hits =
-            collect_hits(&conn, "", &[], &["other-repo".to_string()], &[], 20, &SemanticOpts::off())
-                .unwrap();
+        let hits = collect_hits(
+            &conn,
+            "",
+            &[],
+            &["other-repo".to_string()],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert_eq!(
             hits.len(),
             2,
             "expected derived + cross-project canonical, got descriptions: {:?}",
             hits.iter().map(|h| &h.description).collect::<Vec<_>>()
         );
-        assert!(hits.iter().any(|h| h.description == "CodeQL config pattern"));
-        assert!(hits.iter().any(|h| h.description == "applied CodeQL config to other-repo"));
+        assert!(
+            hits.iter()
+                .any(|h| h.description == "CodeQL config pattern")
+        );
+        assert!(
+            hits.iter()
+                .any(|h| h.description == "applied CodeQL config to other-repo")
+        );
 
         // A project with no derived children anywhere must not pull the
         // canonical in.
-        let unrelated_hits =
-            collect_hits(&conn, "", &[], &["unrelated-repo".to_string()], &[], 20, &SemanticOpts::off())
-                .unwrap();
+        let unrelated_hits = collect_hits(
+            &conn,
+            "",
+            &[],
+            &["unrelated-repo".to_string()],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
         assert!(unrelated_hits.is_empty());
     }
 }
-

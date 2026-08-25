@@ -38,7 +38,10 @@ pub fn run(conn: &Connection, as_json: bool) -> Result<()> {
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json!({ "memories": v }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({ "memories": v }))?
+        );
         return Ok(());
     }
 

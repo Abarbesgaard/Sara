@@ -73,7 +73,10 @@ const NEXT_MEMORY_LIMIT: usize = 3;
 /// pairs — the same signal `sara info`/`guide` surfaces at task-start, brought
 /// into the per-step execution cursor so the agent never works memory-blind.
 /// Empty when nothing Strong matches (the caller then omits the block entirely).
-fn relevant_memories(conn: &Connection, task: &crate::infrastructure::model::Task) -> Vec<(String, String)> {
+fn relevant_memories(
+    conn: &Connection,
+    task: &crate::infrastructure::model::Task,
+) -> Vec<(String, String)> {
     db::find_similar_strong_memories(conn, &task.description, &task.tags)
         .unwrap_or_default()
         .into_iter()
@@ -114,10 +117,13 @@ pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
         }),
         None => json!({ "task": task.id, "done": true, "total": steps.len() }),
     };
-    if !relevant.is_empty() {
-        if let Some(obj) = value.as_object_mut() {
-            obj.insert("relevant_memories".to_string(), serde_json::Value::Array(relevant));
-        }
+    if !relevant.is_empty()
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert(
+            "relevant_memories".to_string(),
+            serde_json::Value::Array(relevant),
+        );
     }
     Ok(value)
 }
@@ -149,7 +155,10 @@ pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result
 
     let relevant = relevant_memories(conn, &task);
     if !relevant.is_empty() {
-        println!("\nRelevant memory ({}) — recall before you act:", relevant.len());
+        println!(
+            "\nRelevant memory ({}) — recall before you act:",
+            relevant.len()
+        );
         for (label, snippet) in &relevant {
             println!("  {label}: {snippet}");
         }
@@ -1009,8 +1018,16 @@ mod tests {
         let mut task = Task::new("do the dependabot bump".into(), "proj".into());
         task.tags = vec!["dependabot".into()];
         db::insert_task(&conn, &mut task).unwrap();
-        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
-            .unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "step one",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
 
         let v = next_value(&conn, &task.uuid.to_string()).unwrap();
         let mems = v["relevant_memories"]
@@ -1027,8 +1044,16 @@ mod tests {
         let mut task = Task::new("unrelated task".into(), "proj".into());
         task.tags = vec!["nothing-matches-this".into()];
         db::insert_task(&conn, &mut task).unwrap();
-        db::add_step(&conn, &task.uuid, "step one", None, db::STEP_KIND_STEP, "human", None)
-            .unwrap();
+        db::add_step(
+            &conn,
+            &task.uuid,
+            "step one",
+            None,
+            db::STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
 
         let v = next_value(&conn, &task.uuid.to_string()).unwrap();
         assert!(
@@ -1070,7 +1095,10 @@ mod tests {
         let acc = db::get_steps(&conn, &task.uuid, db::STEP_KIND_ACCEPTANCE).unwrap();
         assert!(acc[0].done, "criterion with a passing verify_cmd is ticked");
         assert!(acc[0].result.as_deref().unwrap_or("").contains("passed"));
-        assert!(!acc[1].done, "criterion whose verify_cmd fails stays unticked");
+        assert!(
+            !acc[1].done,
+            "criterion whose verify_cmd fails stays unticked"
+        );
 
         // Running a check auto-transitions the task to active.
         let reloaded = db::get_task_by_uuid_prefix(&conn, &id).unwrap().unwrap();
@@ -1148,7 +1176,10 @@ mod tests {
 
         let id = task.uuid.to_string();
         let v = step_done_value(&conn, &id, 1, None, None).unwrap();
-        assert_eq!(v["activated"], true, "first recorded work activates the task");
+        assert_eq!(
+            v["activated"], true,
+            "first recorded work activates the task"
+        );
 
         // A second step-done on an already-active task does not re-activate.
         db::add_step(

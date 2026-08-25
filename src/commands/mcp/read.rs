@@ -195,28 +195,30 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(
-        description = "Create a typed directed link between two memories. \
+    #[tool(description = "Create a typed directed link between two memories. \
         Relations: `supersedes` (new replaces old; old shows ⚠ superseded-by in recall), \
         `similar_to` (bidirectional affinity), `derived_from` (this was built on top of that), \
         `used_in` (memory references a context/file). \
         The superseding memory surfaces alongside the stale one in recall output. \
-        Use this to invalidate outdated memories rather than deleting them."
-    )]
+        Use this to invalidate outdated memories rather than deleting them.")]
     fn link_memory(
         &self,
         Parameters(p): Parameters<LinkMemoryParams>,
     ) -> Result<String, ErrorData> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp link_memory", |conn, _cfg| {
-                commands::link_memory::link_memory_value(
-                    conn,
-                    &p.from,
-                    &p.relation,
-                    &p.to,
-                    p.weight.unwrap_or(1.0),
-                )
-            })
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp link_memory",
+                |conn, _cfg| {
+                    commands::link_memory::link_memory_value(
+                        conn,
+                        &p.from,
+                        &p.relation,
+                        &p.to,
+                        p.weight.unwrap_or(1.0),
+                    )
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -227,35 +229,39 @@ impl SaraServer {
         Parameters(p): Parameters<UnlinkMemoryParams>,
     ) -> Result<String, ErrorData> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp unlink_memory", |conn, _cfg| {
-                commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to)
-            })
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp unlink_memory",
+                |conn, _cfg| commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to),
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
 
-    #[tool(
-        description = "Evaluate and optionally archive low-value memories. \
+    #[tool(description = "Evaluate and optionally archive low-value memories. \
         Three signals: (1) superseded — has incoming `supersedes` edge, \
         (2) provisional + old — auto-generated on `done` but not reviewed within `provisional_days`, \
         (3) weak + old — no task link and older than `weak_days`. \
         Set dry_run=true (default) to preview without archiving. Set dry_run=false to apply. \
-        Archived memories are NOT deleted — they can be inspected via direct DB query."
-    )]
+        Archived memories are NOT deleted — they can be inspected via direct DB query.")]
     fn prune_memories(
         &self,
         Parameters(p): Parameters<PruneMemoriesParams>,
     ) -> Result<String, ErrorData> {
         use crate::commands::prune_memories::{DEFAULT_PROVISIONAL_DAYS, DEFAULT_WEAK_DAYS};
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp prune_memories", |conn, _cfg| {
-                crate::commands::prune_memories::prune_value(
-                    conn,
-                    p.weak_days.unwrap_or(DEFAULT_WEAK_DAYS),
-                    p.provisional_days.unwrap_or(DEFAULT_PROVISIONAL_DAYS),
-                    p.dry_run.unwrap_or(true),
-                )
-            })
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp prune_memories",
+                |conn, _cfg| {
+                    crate::commands::prune_memories::prune_value(
+                        conn,
+                        p.weak_days.unwrap_or(DEFAULT_WEAK_DAYS),
+                        p.provisional_days.unwrap_or(DEFAULT_PROVISIONAL_DAYS),
+                        p.dry_run.unwrap_or(true),
+                    )
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }

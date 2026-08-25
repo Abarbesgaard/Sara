@@ -8,12 +8,12 @@ use crate::infrastructure::db;
 /// A pair of memories that may be in conflict (no memory_links edge between them).
 #[derive(Debug)]
 pub struct ConflictCandidate {
-    pub label_a:     String,
-    pub label_b:     String,
-    pub snippet_a:   String,
-    pub snippet_b:   String,
+    pub label_a: String,
+    pub label_b: String,
+    pub snippet_a: String,
+    pub snippet_b: String,
     pub shared_files: Vec<String>,
-    pub shared_tags:  Vec<String>,
+    pub shared_tags: Vec<String>,
 }
 
 /// Core shared by CLI and MCP. Scans all active memories and returns conflict
@@ -37,11 +37,11 @@ pub fn diagnose_value(conn: &Connection) -> Result<Value> {
 
     // For each memory, collect its files and normalised tags.
     struct MemInfo {
-        uuid:  String,
+        uuid: String,
         label: String,
-        body:  String,
+        body: String,
         files: Vec<String>,
-        tags:  Vec<String>,
+        tags: Vec<String>,
     }
 
     let mut infos: Vec<MemInfo> = Vec::new();
@@ -98,12 +98,12 @@ pub fn diagnose_value(conn: &Connection) -> Result<Value> {
                     .cloned()
                     .collect();
                 candidates.push(ConflictCandidate {
-                    label_a:     a.label.clone(),
-                    label_b:     b.label.clone(),
-                    snippet_a:   a.body.chars().take(80).collect(),
-                    snippet_b:   b.body.chars().take(80).collect(),
+                    label_a: a.label.clone(),
+                    label_b: b.label.clone(),
+                    snippet_a: a.body.chars().take(80).collect(),
+                    snippet_b: b.body.chars().take(80).collect(),
                     shared_files,
-                    shared_tags:  vec![],
+                    shared_tags: vec![],
                 });
                 seen.insert(key);
             }
@@ -132,12 +132,12 @@ pub fn diagnose_value(conn: &Connection) -> Result<Value> {
                 continue;
             }
             candidates.push(ConflictCandidate {
-                label_a:     a.label.clone(),
-                label_b:     b.label.clone(),
-                snippet_a:   a.body.chars().take(80).collect(),
-                snippet_b:   b.body.chars().take(80).collect(),
+                label_a: a.label.clone(),
+                label_b: b.label.clone(),
+                snippet_a: a.body.chars().take(80).collect(),
+                snippet_b: b.body.chars().take(80).collect(),
                 shared_files: vec![],
-                shared_tags:  a.tags.clone(),
+                shared_tags: a.tags.clone(),
             });
             seen.insert(key);
         }
@@ -216,7 +216,9 @@ pub fn run(conn: &Connection, json_output: bool) -> Result<()> {
         }
     }
 
-    println!("Resolve with: sara relearn <label> / sara learn --supersedes <label> / sara link-memory <a> similar_to <b>");
+    println!(
+        "Resolve with: sara relearn <label> / sara learn --supersedes <label> / sara link-memory <a> similar_to <b>"
+    );
     Ok(())
 }
 
@@ -225,7 +227,12 @@ mod tests {
     use crate::infrastructure::{db, model::Item};
     use uuid::Uuid;
 
-    fn insert_memory_with_file(conn: &rusqlite::Connection, body: &str, tag: &str, file: &str) -> Uuid {
+    fn insert_memory_with_file(
+        conn: &rusqlite::Connection,
+        body: &str,
+        tag: &str,
+        file: &str,
+    ) -> Uuid {
         let mut item = Item::new_memory(body.to_string(), body.to_string(), None);
         item.tags = vec![tag.to_string()];
         item.path = Some(String::new());
@@ -254,7 +261,14 @@ mod tests {
         let uuid_b = insert_memory_with_file(&conn, "memory b", "tag-d", &file);
 
         // Link them — they should disappear from diagnose output.
-        db::insert_memory_link(&conn, &uuid_a.to_string(), &uuid_b.to_string(), "supersedes", 1.0).unwrap();
+        db::insert_memory_link(
+            &conn,
+            &uuid_a.to_string(),
+            &uuid_b.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
 
         let v = super::diagnose_value(&conn).unwrap();
         assert_eq!(v["count"].as_u64().unwrap(), 0);
