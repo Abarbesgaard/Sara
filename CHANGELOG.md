@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-28
+
+Hardens the MCP server and completes its memory surface.
+
+### Features
+
+- **Memory maintenance over MCP** — `consolidate`, `reflect`,
+  `diagnose_memories` and `reindex_embeddings` are now MCP tools (40 -> 44).
+  They were the last non-interactive, `--json`-capable commands still CLI-only,
+  so an agent could `learn`/`recall`/`forget`/`promote`/`prune` but could not
+  maintain the memory graph it depends on. Defaults mirror the CLI's, so the two
+  interfaces cannot silently diverge.
+- **Richer validate failures over MCP** — a red acceptance gate now returns the
+  failing command, its exit code and its captured output, instead of only the
+  criterion's text.
+
+### Fixes
+
+- **`validate` no longer corrupts the MCP JSON-RPC stream** — the acceptance
+  gate printed progress and let verify commands inherit stdout, which the MCP
+  stdio transport reserves for JSON-RPC. Calling the tool injected raw text into
+  the stream and crashed conformant clients; any project running `cargo test` or
+  `pytest` flooded it. The CLI keeps its live streaming output unchanged.
+- **Co-activation no longer loses genuine co-firings** — recall events were
+  bucketed on a fixed epoch grid, so two recalls 100ms apart fell in different
+  buckets whenever they straddled a boundary (exactly 5% of the time), silently
+  dropping Hebbian reinforcement and making a test flaky. Bursts are now cut by
+  single linkage, on the gap between consecutive events.
+- **A relative `project_path` is rejected** — the MCP server is long-running and
+  its working directory is whatever the previous call left, so `".."` silently
+  targeted an unrelated repository.
+
+### Documentation
+
+- README: corrected the MCP tool count (twenty-six -> forty-four) and added the
+  eleven tool rows that were missing from the table.
+
 ## [1.0.0] - 2026-08-25
 
 First stable release. Consolidates the memory system's canonical/derived model
