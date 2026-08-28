@@ -386,6 +386,145 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 Ok(())
             },
         ),
+        M::up(
+            // Normalized tag/project index for items (memories, notes, links),
+            // additive to items.tags_json (kept for rendering). Tags are stored
+            // case-folded (lowercase) so "service-a" and "serviceA" collide into
+            // one vocabulary entry instead of fragmenting recall/`sara tags`.
+            // Projects are stored as-is: they must match `projects.name` exactly,
+            // which is itself case-sensitive (derived from repo folder names).
+            "CREATE TABLE IF NOT EXISTS item_tags (
+                item_uuid TEXT NOT NULL,
+                tag       TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, tag),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag);
+
+             CREATE TABLE IF NOT EXISTS item_projects (
+                item_uuid TEXT NOT NULL,
+                project   TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, project),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
+        ),
+        M::up(
+            // Index items (memories/notes/links) into the same FTS5 table used
+            // for tasks/annotations/anchors, namespaced as 'item_<kind>' (e.g.
+            // 'item_memory') so hits don't collide with the existing 'note'
+            // ref_kind (annotations). The update trigger only re-inserts when
+            // status='active', so archiving an item (sara forget) automatically
+            // drops it from search_index via the same UPDATE -- no separate
+            // cleanup step needed. task_uuid is reused to carry the item's own
+            // uuid since items aren't necessarily tied to one task.
+            "CREATE TRIGGER IF NOT EXISTS trg_items_ai AFTER INSERT ON items BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status = 'active';
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_items_au AFTER UPDATE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status = 'active';
+             END;
+             CREATE TRIGGER IF NOT EXISTS trg_items_ad AFTER DELETE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+             END;",
+        ),
+        M::up(
+            // A memory can point back at the task it was learned from/about.
+            // Deliberately no FK/cascade: like items.project, this is a loose
+            // reference so a memory outlives the task it references rather
+            // than being silently orphaned or deleted if the task is removed.
+            "ALTER TABLE items ADD COLUMN source_task_uuid TEXT;
+             CREATE INDEX IF NOT EXISTS idx_items_source_task
+                ON items(source_task_uuid) WHERE source_task_uuid IS NOT NULL;",
+        ),
+        M::up(
+            // Token usage columns for task_ai_runs — all nullable so existing
+            // rows and callers that don't supply token counts stay valid.
+            "ALTER TABLE task_ai_runs ADD COLUMN prompt_tokens     INTEGER;
+             ALTER TABLE task_ai_runs ADD COLUMN completion_tokens INTEGER;
+             ALTER TABLE task_ai_runs ADD COLUMN total_tokens      INTEGER;",
+        ),
+        M::up(
+            // File and task-link association tables for memories.
+            // item_files: ties a memory to one or more absolute file paths so
+            // `sara recall --file <path>` can surface relevant memories.
+            // item_task_links: stores memory→task associations with a source
+            // label ('auto' = detected from file reverse-lookup via task_files,
+            // 'explicit' = user-supplied --task flag).
+            "CREATE TABLE IF NOT EXISTS item_files (
+                item_uuid TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, file_path),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_files_path ON item_files(file_path);
+
+             CREATE TABLE IF NOT EXISTS item_task_links (
+                item_uuid TEXT NOT NULL,
+                task_uuid TEXT NOT NULL,
+                source    TEXT NOT NULL DEFAULT 'auto',
+                PRIMARY KEY (item_uuid, task_uuid),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
+        ),
+        M::up(
+            // memory_links: typed directed edges between memories (items) or
+            // between a memory and a task. Relation types:
+            //   supersedes   — from is the newer/correct version, to is outdated
+            //   similar_to   — informational similarity (bidirectional intent)
+            //   derived_from — from was derived/synthesised from to
+            //   used_in      — from (memory) was used in to (task)
+            // Unique on (from_uuid, to_uuid, relation) — dedup enforced at DB level.
+            // Weight (default 1.0) reserved for future confidence tuning.
+            "CREATE TABLE IF NOT EXISTS memory_links (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_uuid TEXT    NOT NULL,
+                to_uuid   TEXT    NOT NULL,
+                relation  TEXT    NOT NULL,
+                weight    REAL    NOT NULL DEFAULT 1.0,
+                created   TEXT    NOT NULL,
+                UNIQUE (from_uuid, to_uuid, relation)
+             );
+             CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links(from_uuid);
+             CREATE INDEX IF NOT EXISTS idx_memory_links_to   ON memory_links(to_uuid);",
+        ),
+        M::up(
+            // Provisional visibility fix: the original item triggers only
+            // indexed status='active', so auto-memories created on `done`
+            // (status='provisional') never reached FTS and could not surface
+            // in recall. Recreate the triggers to index provisional too, and
+            // backfill the index for existing provisional rows.
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+                ref_kind UNINDEXED, ref_id UNINDEXED, task_uuid UNINDEXED, text
+             );
+             DROP TRIGGER IF EXISTS trg_items_ai;
+             DROP TRIGGER IF EXISTS trg_items_au;
+             CREATE TRIGGER trg_items_ai AFTER INSERT ON items BEGIN
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status IN ('active','provisional');
+             END;
+             CREATE TRIGGER trg_items_au AFTER UPDATE ON items BEGIN
+                DELETE FROM search_index WHERE ref_id = old.uuid AND ref_kind LIKE 'item_%';
+                INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+                SELECT 'item_' || new.kind, new.uuid, new.uuid,
+                    coalesce(new.title,'')||' '||coalesce(new.summary,'')||' '||coalesce(new.body,'')
+                WHERE new.status IN ('active','provisional');
+             END;
+             INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
+             SELECT 'item_' || kind, uuid, uuid,
+                 coalesce(title,'')||' '||coalesce(summary,'')||' '||coalesce(body,'')
+             FROM items WHERE status = 'provisional';",
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -684,14 +823,34 @@ pub fn get_task_by_id(conn: &Connection, id: i64) -> Result<Option<Task>> {
     Ok(rows.next().transpose()?)
 }
 
+/// Build a SQL `LIKE` pattern that matches rows *starting with* `prefix`,
+/// treating any `%`, `_`, or `\` in `prefix` as literal characters rather than
+/// wildcards. Must be paired with an `ESCAPE '\'` clause in the query. Without
+/// this, an underscore in a directory path (very common) would wildcard-match
+/// sibling paths and over-match on prefix lookups.
+fn like_prefix_pattern(prefix: &str) -> String {
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("{escaped}%")
+}
+
 pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option<Task>> {
-    let pattern = format!("{prefix}%");
+    let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
         "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur
-         FROM tasks WHERE uuid LIKE ?1 LIMIT 1",
+         FROM tasks WHERE uuid LIKE ?1 ESCAPE '\\' LIMIT 2",
     )?;
-    let mut rows = stmt.query_map([pattern], row_to_task)?;
-    Ok(rows.next().transpose()?)
+    let mut tasks = stmt
+        .query_map([pattern], row_to_task)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if tasks.len() > 1 {
+        return Err(anyhow::anyhow!(
+            "Ambiguous task uuid prefix '{prefix}' matches multiple tasks — use a longer prefix or the display id"
+        ));
+    }
+    Ok(tasks.pop())
 }
 
 /// Resolve "3" (display id) or a uuid prefix to a Task
@@ -2602,13 +2761,18 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
         created: str_to_dt(&row.get::<_, String>(10)?).unwrap_or_else(|_| Utc::now()),
         modified: str_to_dt(&row.get::<_, String>(11)?).unwrap_or_else(|_| Utc::now()),
         status: row.get(12)?,
+        source_task_uuid: row
+            .get::<_, Option<String>>(13)?
+            .and_then(|s| Uuid::parse_str(&s).ok()),
+        files: vec![],
+        linked_tasks: vec![],
     })
 }
 
 fn next_item_display_id(conn: &Connection, kind: &str) -> Result<i64> {
     let max: i64 = conn
         .query_row(
-            "SELECT COALESCE(MAX(display_id), 0) FROM items WHERE kind = ?1 AND status = 'active'",
+            "SELECT COALESCE(MAX(display_id), 0) FROM items WHERE kind = ?1 AND status IN ('active','provisional')",
             [kind],
             |r| r.get(0),
         )
@@ -2626,8 +2790,8 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
         .context("item path must be set before insert")?;
     let tags_json = serde_json::to_string(&item.tags)?;
     conn.execute(
-        "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+        "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
         rusqlite::params![
             item.uuid.to_string(),
             item.kind,
@@ -2642,8 +2806,10 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
             dt_to_str(&item.created),
             dt_to_str(&item.modified),
             item.status,
+            item.source_task_uuid.map(|u| u.to_string()),
         ],
     )?;
+    set_item_tags(conn, &item.uuid, &item.tags)?;
     Ok(())
 }
 
@@ -2651,8 +2817,8 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     let mut items = vec![];
     if let Some(k) = kind {
         let mut stmt = conn.prepare(
-            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
-             FROM items WHERE status = 'active' AND kind = ?1 ORDER BY display_id",
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE status IN ('active','provisional') AND kind = ?1 ORDER BY display_id",
         )?;
         let rows = stmt.query_map([k], row_to_item)?;
         for r in rows {
@@ -2660,13 +2826,109 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
         }
     } else {
         let mut stmt = conn.prepare(
-            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
-             FROM items WHERE status = 'active' ORDER BY kind, display_id",
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE status IN ('active','provisional') ORDER BY kind, display_id",
         )?;
         let rows = stmt.query_map([], row_to_item)?;
         for r in rows {
             items.push(r?);
         }
+    }
+    Ok(items)
+}
+
+/// Store (or replace) the embedding vector for a memory/item, keyed by its uuid.
+/// Vectors are persisted as a JSON array of f32 in the `embeddings` table.
+/// Best-effort by convention: callers treat a failure as "no semantic index".
+pub fn upsert_embedding(conn: &Connection, ref_uuid: &str, vector: &[f32]) -> Result<()> {
+    let vector_json = serde_json::to_string(vector)?;
+    conn.execute(
+        "INSERT INTO embeddings (ref_uuid, vector_json) VALUES (?1, ?2)
+         ON CONFLICT(ref_uuid) DO UPDATE SET vector_json = excluded.vector_json",
+        rusqlite::params![ref_uuid, vector_json],
+    )?;
+    Ok(())
+}
+
+/// Read back a single stored embedding, if present.
+pub fn get_embedding(conn: &Connection, ref_uuid: &str) -> Result<Option<Vec<f32>>> {
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT vector_json FROM embeddings WHERE ref_uuid = ?1",
+            [ref_uuid],
+            |r| r.get(0),
+        )
+        .optional()?;
+    match row {
+        Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+        None => Ok(None),
+    }
+}
+
+/// All stored embeddings as `(ref_uuid, vector)` pairs — the corpus semantic
+/// recall ranks the query against.
+pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
+    let mut stmt = conn.prepare("SELECT ref_uuid, vector_json FROM embeddings")?;
+    let rows = stmt.query_map([], |r| {
+        let uuid: String = r.get(0)?;
+        let json: String = r.get(1)?;
+        Ok((uuid, json))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (uuid, json) = r?;
+        if let Ok(v) = serde_json::from_str::<Vec<f32>>(&json) {
+            out.push((uuid, v));
+        }
+    }
+    Ok(out)
+}
+
+/// Remove a stored embedding (e.g. when a memory is forgotten). Idempotent.
+pub fn delete_embedding(conn: &Connection, ref_uuid: &str) -> Result<()> {
+    conn.execute("DELETE FROM embeddings WHERE ref_uuid = ?1", [ref_uuid])?;
+    Ok(())
+}
+
+/// Stored embeddings for *active/provisional* memories only, as
+/// `(ref_uuid, vector)` — the set semantic recall can actually surface.
+/// Archived, superseded and pruned memories keep their embeddings (only
+/// `forget` deletes one), so ranking the whole table wastes a JSON parse and a
+/// cosine on every vector [`get_item_by_uuid`] would discard anyway. Joining to
+/// live items drops them before scoring, which is the bulk of a large store.
+pub fn active_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT e.ref_uuid, e.vector_json FROM embeddings e
+         JOIN items i ON i.uuid = e.ref_uuid
+         WHERE i.status IN ('active','provisional')",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let uuid: String = r.get(0)?;
+        let json: String = r.get(1)?;
+        Ok((uuid, json))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (uuid, json) = r?;
+        if let Ok(v) = serde_json::from_str::<Vec<f32>>(&json) {
+            out.push((uuid, v));
+        }
+    }
+    Ok(out)
+}
+
+/// All active memories (`kind = 'memory'`), sorted newest-created first.
+/// Use this for the `sara memories` browse command — display_id order is not
+/// guaranteed to match creation order, so sort explicitly on `created`.
+pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE status IN ('active','provisional') AND kind = 'memory' ORDER BY created DESC",
+    )?;
+    let rows = stmt.query_map([], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
     }
     Ok(items)
 }
@@ -2677,17 +2939,58 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
         ("note", rest)
     } else if let Some(rest) = handle.strip_prefix('l') {
         ("link", rest)
+    } else if let Some(rest) = handle.strip_prefix('m') {
+        ("memory", rest)
     } else {
-        anyhow::bail!("Item handle must start with n or l (e.g. n1, l2)");
+        // Not an nN/lN/mN display handle. Uuids are hex ([0-9a-f]) and so never
+        // start with n/l/m — fall through to a uuid-prefix lookup, honoring the
+        // "8-char uuid prefix" that the link-memory docs advertise. The uuid
+        // prefix is also the *stable* handle (display ids get recompacted).
+        return get_item_by_uuid_prefix(conn, &handle);
     };
     let id: i64 = id_str.parse().context("Invalid item id")?;
     conn.query_row(
-        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status
-         FROM items WHERE kind = ?1 AND display_id = ?2 AND status = 'active'",
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE kind = ?1 AND display_id = ?2 AND status IN ('active','provisional')",
         rusqlite::params![kind, id],
         row_to_item,
     )
     .map_err(|_| anyhow::anyhow!("No active {kind} with id {id}"))
+}
+
+/// Resolve an active item by a uuid prefix, ambiguity-safe. Returns an error if
+/// the prefix matches more than one item (mirrors [`get_task_by_uuid_prefix`]).
+pub fn get_item_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Item> {
+    let pattern = like_prefix_pattern(prefix);
+    let mut stmt = conn.prepare(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE uuid LIKE ?1 ESCAPE '\\' AND status IN ('active','provisional') LIMIT 2",
+    )?;
+    let mut items = stmt
+        .query_map([pattern], row_to_item)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if items.len() > 1 {
+        return Err(anyhow::anyhow!(
+            "Ambiguous item uuid prefix '{prefix}' matches multiple items — use a longer prefix or the mN/nN/lN handle"
+        ));
+    }
+    items
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("No active item with handle or uuid matching '{prefix}'"))
+}
+
+/// Look up an active item by its own uuid (as opposed to `get_item_by_handle`,
+/// which resolves the short `n1`/`l2`/`m3` display handle). Used by `recall`,
+/// where `search_index.task_uuid` carries the item's own uuid for item hits
+/// (see the `trg_items_*` triggers above).
+pub fn get_item_by_uuid(conn: &Connection, uuid: &str) -> Result<Item> {
+    conn.query_row(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items WHERE uuid = ?1 AND status IN ('active','provisional')",
+        [uuid],
+        row_to_item,
+    )
+    .map_err(|_| anyhow::anyhow!("No active item with uuid {uuid}"))
 }
 
 pub fn update_item(conn: &Connection, item: &Item) -> Result<()> {
@@ -2707,6 +3010,7 @@ pub fn update_item(conn: &Connection, item: &Item) -> Result<()> {
             dt_to_str(&item.modified),
         ],
     )?;
+    set_item_tags(conn, &item.uuid, &item.tags)?;
     Ok(())
 }
 
@@ -2716,6 +3020,1237 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
         rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
     )?;
     Ok(())
+}
+
+/// Raw status lookup that (unlike [`get_item_by_uuid`]) doesn't filter out
+/// archived rows — used by tests to assert an item was actually archived.
+#[cfg(test)]
+pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
+    conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| {
+        r.get(0)
+    })
+    .unwrap()
+}
+
+/// Promote a provisional (auto-synthesised) memory to active after review.
+/// Returns false when the item wasn't provisional (already active/archived).
+pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE items SET status='active', modified=?2 WHERE uuid=?1 AND status='provisional'",
+        rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
+    )?;
+    Ok(n > 0)
+}
+
+fn fold_tag(tag: &str) -> String {
+    tag.trim().to_lowercase()
+}
+
+/// Replace an item's normalized tag set. Case-folded so "service-a" and
+/// "serviceA" collide into one vocabulary entry.
+pub fn set_item_tags(conn: &Connection, item_uuid: &Uuid, tags: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_tags WHERE item_uuid = ?1", [&uuid])?;
+    for tag in tags {
+        let folded = fold_tag(tag);
+        if folded.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_tags (item_uuid, tag) VALUES (?1, ?2)",
+            rusqlite::params![uuid, folded],
+        )?;
+    }
+    Ok(())
+}
+
+/// Replace an item's project references (a memory can reference more than one).
+pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_projects WHERE item_uuid = ?1", [&uuid])?;
+    for project in projects {
+        let trimmed = project.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_projects (item_uuid, project) VALUES (?1, ?2)",
+            rusqlite::params![uuid, trimmed],
+        )?;
+    }
+    Ok(())
+}
+
+/// Replace an item's file associations (a memory can be tied to multiple files).
+/// Paths should be absolute before calling; no normalisation is done here.
+pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_files WHERE item_uuid = ?1", [&uuid])?;
+    for path in paths {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO item_files (item_uuid, file_path) VALUES (?1, ?2)",
+            rusqlite::params![uuid, trimmed],
+        )?;
+    }
+    Ok(())
+}
+
+/// File paths stored for a given memory (by its UUID).
+pub fn get_item_files(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {
+    let uuid = item_uuid.to_string();
+    let mut stmt =
+        conn.prepare("SELECT file_path FROM item_files WHERE item_uuid = ?1 ORDER BY file_path")?;
+    let rows = stmt.query_map([&uuid], |r| r.get(0))?;
+    let mut paths = vec![];
+    for r in rows {
+        paths.push(r?);
+    }
+    Ok(paths)
+}
+
+/// Active items associated with `path`.
+/// When `prefix` is false, only items whose file_path exactly equals `path`
+/// are returned. When `prefix` is true, items whose file_path starts with
+/// `path` are returned (directory-level recall — pass a trailing `/`).
+pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Item>> {
+    let mut items = vec![];
+    if prefix {
+        let mut stmt = conn.prepare(
+            "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+             FROM items i JOIN item_files f ON f.item_uuid = i.uuid
+             WHERE i.status IN ('active','provisional') AND f.file_path LIKE ?1 ESCAPE '\\'
+             ORDER BY i.modified DESC",
+        )?;
+        let rows = stmt.query_map([like_prefix_pattern(path)], row_to_item)?;
+        for r in rows {
+            items.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+             FROM items i JOIN item_files f ON f.item_uuid = i.uuid
+             WHERE i.status IN ('active','provisional') AND f.file_path = ?1
+             ORDER BY i.modified DESC",
+        )?;
+        let rows = stmt.query_map([path], row_to_item)?;
+        for r in rows {
+            items.push(r?);
+        }
+    }
+    Ok(items)
+}
+
+/// Replace a memory's task associations. `links` is a slice of (task_uuid, source)
+/// where source is either `"auto"` (detected from file overlap) or `"explicit"`
+/// (user-supplied). Existing rows for the item are deleted first.
+pub fn set_item_task_links(
+    conn: &Connection,
+    item_uuid: &Uuid,
+    links: &[(Uuid, &str)],
+) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    conn.execute("DELETE FROM item_task_links WHERE item_uuid = ?1", [&uuid])?;
+    for (task_uuid, source) in links {
+        conn.execute(
+            "INSERT OR IGNORE INTO item_task_links (item_uuid, task_uuid, source) VALUES (?1, ?2, ?3)",
+            rusqlite::params![uuid, task_uuid.to_string(), source],
+        )?;
+    }
+    Ok(())
+}
+
+/// Completed tasks that have `path` in their `task_files` attachment list.
+/// When `prefix` is false, only tasks with an exact `path` match are returned.
+/// When `prefix` is true, tasks with any attached file starting with `path`
+/// are returned (directory-level lookup — pass a trailing `/`).
+/// Pending / in-progress / deleted tasks are always excluded.
+pub fn find_tasks_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Task>> {
+    let mut tasks = vec![];
+    if prefix {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT DISTINCT t.{TASK_COLUMNS} FROM tasks t
+             JOIN task_files f ON f.task_uuid = t.uuid
+             WHERE t.status = 'completed' AND f.path LIKE ?1 ESCAPE '\\'
+             ORDER BY t.modified DESC"
+        ))?;
+        let rows = stmt.query_map([like_prefix_pattern(path)], row_to_task)?;
+        for r in rows {
+            tasks.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT DISTINCT t.{TASK_COLUMNS} FROM tasks t
+             JOIN task_files f ON f.task_uuid = t.uuid
+             WHERE t.status = 'completed' AND f.path = ?1
+             ORDER BY t.modified DESC"
+        ))?;
+        let rows = stmt.query_map([path], row_to_task)?;
+        for r in rows {
+            tasks.push(r?);
+        }
+    }
+    Ok(tasks)
+}
+
+/// All task links recorded for a memory, each paired with its source label
+/// (`"auto"` or `"explicit"`). Ordered by task.modified DESC so the most
+/// recently completed work surfaces first.
+pub fn get_item_task_links(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<(Task, String)>> {
+    let uuid = item_uuid.to_string();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT t.{TASK_COLUMNS}, l.source
+         FROM item_task_links l
+         JOIN tasks t ON t.uuid = l.task_uuid
+         WHERE l.item_uuid = ?1
+         ORDER BY t.modified DESC"
+    ))?;
+    let rows = stmt.query_map([&uuid], |row| {
+        let task = row_to_task(row)?;
+        let source: String = row.get(16)?;
+        Ok((task, source))
+    })?;
+    let mut result = vec![];
+    for r in rows {
+        result.push(r?);
+    }
+    Ok(result)
+}
+
+// ── memory_links ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct MemoryLink {
+    pub id: i64,
+    pub from_uuid: String,
+    pub to_uuid: String,
+    pub relation: String,
+    pub weight: f64,
+}
+
+/// Valid relation types for `memory_links`.
+pub const MEMORY_LINK_RELATIONS: &[&str] = &[
+    "supersedes",
+    "similar_to",
+    "derived_from",
+    "used_in",
+    // Hebbian, machine-learned: two memories that fired together in the same
+    // recall. Undirected in spirit; stored canonically (smaller uuid first).
+    "co_activated",
+];
+
+/// Insert a typed directed edge between two memories/tasks.
+/// Enforces:
+///   - Relation must be one of the known types.
+///   - Dedup: (from, to, relation) is unique at DB level; duplicate inserts are ignored.
+///   - Cycle guard for directed hierarchies (`supersedes`, `derived_from`):
+///     refuses if a path from `to_uuid` back to `from_uuid` already exists.
+pub fn insert_memory_link(
+    conn: &Connection,
+    from_uuid: &str,
+    to_uuid: &str,
+    relation: &str,
+    weight: f64,
+) -> Result<()> {
+    if !MEMORY_LINK_RELATIONS.contains(&relation) {
+        anyhow::bail!(
+            "Unknown relation '{}'. Valid types: {}",
+            relation,
+            MEMORY_LINK_RELATIONS.join(", ")
+        );
+    }
+    if from_uuid == to_uuid {
+        anyhow::bail!("A memory cannot link to itself.");
+    }
+    // Cycle guard for hierarchical relations.
+    if matches!(relation, "supersedes" | "derived_from")
+        && memory_link_path_exists(conn, to_uuid, from_uuid)?
+    {
+        anyhow::bail!(
+            "Inserting this link would create a cycle \
+                 (a path from '{}' to '{}' already exists).",
+            to_uuid,
+            from_uuid
+        );
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO memory_links (from_uuid, to_uuid, relation, weight, created)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![from_uuid, to_uuid, relation, weight, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+/// BFS to check whether a *hierarchical* path exists from `start` to `target`
+/// through `memory_links`. Only hierarchical relations (`supersedes`,
+/// `derived_from`) are traversed: symmetric associations like `similar_to`
+/// and usage edges like `used_in` cannot form a hierarchical cycle, and
+/// counting them would wrongly block consolidating a `similar_to` cluster
+/// into `derived_from` links.
+fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Result<bool> {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    queue.push_back(start.to_string());
+    while let Some(current) = queue.pop_front() {
+        if current == target {
+            return Ok(true);
+        }
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        let mut stmt = conn.prepare(
+            "SELECT to_uuid FROM memory_links
+             WHERE from_uuid = ?1 AND relation IN ('supersedes', 'derived_from')",
+        )?;
+        let neighbours: Vec<String> = stmt
+            .query_map([&current], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for n in neighbours {
+            if !visited.contains(&n) {
+                queue.push_back(n);
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// All outgoing links from a memory/task UUID.
+/// Every memory link in the store — powers the whole-brain web view.
+pub fn all_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight FROM memory_links ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight
+         FROM memory_links WHERE from_uuid = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([from_uuid], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// All incoming links to a memory/task UUID.
+pub fn get_memory_links_to(conn: &Connection, to_uuid: &str) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, from_uuid, to_uuid, relation, weight
+         FROM memory_links WHERE to_uuid = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map([to_uuid], |r| {
+            Ok(MemoryLink {
+                id: r.get(0)?,
+                from_uuid: r.get(1)?,
+                to_uuid: r.get(2)?,
+                relation: r.get(3)?,
+                weight: r.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Delete a specific directed edge by its three-part key.
+pub fn delete_memory_link(
+    conn: &Connection,
+    from_uuid: &str,
+    to_uuid: &str,
+    relation: &str,
+) -> Result<bool> {
+    let changed = conn.execute(
+        "DELETE FROM memory_links WHERE from_uuid=?1 AND to_uuid=?2 AND relation=?3",
+        rusqlite::params![from_uuid, to_uuid, relation],
+    )?;
+    Ok(changed > 0)
+}
+
+/// Hebbian reinforcement: strengthen (or create) an undirected `co_activated`
+/// edge between two memories that fired together in recall. Stored canonically
+/// with the lexicographically smaller uuid as `from_uuid`, so the pair collapses
+/// to one row regardless of argument order. Weight accumulates across calls;
+/// a brand-new edge starts at `delta`. No-op when `a == b`.
+pub fn reinforce_coactivation(conn: &Connection, a: &str, b: &str, delta: f64) -> Result<()> {
+    if a == b {
+        return Ok(());
+    }
+    let (from, to) = if a < b { (a, b) } else { (b, a) };
+    conn.execute(
+        "INSERT INTO memory_links (from_uuid, to_uuid, relation, weight, created)
+         VALUES (?1, ?2, 'co_activated', ?3, ?4)
+         ON CONFLICT(from_uuid, to_uuid, relation)
+         DO UPDATE SET weight = weight + excluded.weight",
+        rusqlite::params![from, to, delta, dt_to_str(&Utc::now())],
+    )?;
+    Ok(())
+}
+
+/// Read `memory_recalled` events at or after `cutoff`, oldest first, as
+/// `(memory uuid, when)` pairs. Powers Hebbian consolidation: memories whose
+/// recall events cluster in time fired together (see `memory_graph`).
+pub fn memory_recall_events_since(
+    conn: &Connection,
+    cutoff: &DateTime<Utc>,
+) -> Result<Vec<(Uuid, DateTime<Utc>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT ref_uuid, at FROM events
+         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1
+         ORDER BY at ASC",
+    )?;
+    let rows = stmt.query_map([dt_to_str(cutoff)], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = vec![];
+    for r in rows {
+        let (u, at) = r?;
+        if let (Ok(uuid), Ok(dt)) = (Uuid::parse_str(&u), str_to_dt(&at)) {
+            out.push((uuid, dt));
+        }
+    }
+    Ok(out)
+}
+
+/// Whether any memory has ever been learned (active `items` row with
+/// kind='memory'). Used by `recall` to distinguish "no memories recorded yet"
+/// from "no matches for this specific query".
+pub fn has_any_memories(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM items WHERE kind = 'memory' AND status IN ('active','provisional')",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Known tag vocabulary across active items, with usage counts, for `sara tags`
+/// (discoverability) and exact `--tag` recall filters.
+pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT it.tag, COUNT(*) FROM item_tags it
+         JOIN items i ON i.uuid = it.item_uuid
+         WHERE i.status IN ('active','provisional')
+         GROUP BY it.tag ORDER BY COUNT(*) DESC, it.tag ASC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Active items whose normalized tag set contains `tag` (case-folded exact match).
+pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
+    let folded = fold_tag(tag);
+    let mut stmt = conn.prepare(
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+         FROM items i JOIN item_tags it ON it.item_uuid = i.uuid
+         WHERE i.status IN ('active','provisional') AND it.tag = ?1 ORDER BY i.modified DESC",
+    )?;
+    let rows = stmt.query_map([folded], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
+}
+
+/// Active items referencing `project` (exact match, same casing as `projects.name`).
+pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
+         FROM items i JOIN item_projects ip ON ip.item_uuid = i.uuid
+         WHERE i.status IN ('active','provisional') AND ip.project = ?1 ORDER BY i.modified DESC",
+    )?;
+    let rows = stmt.query_map([project], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
+}
+
+/// Canonical memories that should surface under `project` even though the
+/// canonical itself isn't tagged with that project: any memory with an
+/// incoming `derived_from` edge from an item that *is* scoped to `project`.
+/// A pattern learned once in its own repo but applied (derived) in `project`
+/// is relevant there regardless of project scoping — see task tracking
+/// "cross-project canonical memories via global tag recall".
+pub fn find_cross_project_canonicals_for_project(
+    conn: &Connection,
+    project: &str,
+) -> Result<std::collections::HashSet<Uuid>> {
+    let mut out = std::collections::HashSet::new();
+    for child in find_items_by_project(conn, project)? {
+        for link in get_memory_links_from(conn, &child.uuid.to_string())? {
+            if link.relation == "derived_from"
+                && let Ok(canonical_uuid) = Uuid::parse_str(&link.to_uuid)
+            {
+                out.insert(canonical_uuid);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Task-linkage-derived confidence signal for ranking a memory in recall: a
+/// manually authored note with no source task stays at the baseline. A memory
+/// tied to a task is boosted, more so if that task actually completed
+/// (evidence the underlying approach worked) than if it's still pending or the
+/// source task can no longer be found (loose reference, may have been
+/// deleted/reset -- the memory still stands on its own, just without the boost).
+///
+/// A canonical memory (one with incoming `derived_from` edges) also gets a
+/// passive strength boost: +0.1 per derived child, capped at +0.5. A pattern
+/// applied across 5+ contexts is evidence of value even if the canonical
+/// itself is rarely recalled directly — without this it can still be pruned
+/// as "weak" while its derived children keep getting used.
+pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
+    item_base_strength(conn, item)
+        + recall_usage_boost(conn, &item.uuid)
+        + canonical_derived_bonus(conn, &item.uuid)
+}
+
+/// +0.1 per incoming `derived_from` edge, capped at +0.5 (see [`item_strength`]).
+fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
+    let count = get_memory_links_to(conn, &item_uuid.to_string())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .count();
+    (count as f64 * 0.1).min(0.5)
+}
+
+/// Task-linkage-derived base strength (see module docs on `item_strength`).
+fn item_base_strength(conn: &Connection, item: &Item) -> f64 {
+    if let Some(source) = item.source_task_uuid {
+        match get_task_by_uuid_prefix(conn, &source.to_string()) {
+            Ok(Some(task)) if task.status == Status::Completed => return 2.0,
+            Ok(Some(_)) => return 1.5,
+            _ => {}
+        }
+    }
+    // Fall back to item_task_links: memories linked via `sara learn --task` /
+    // file auto-detection carry real task linkage even without a
+    // source_task_uuid, and must not be scored (and pruned) as Weak.
+    let linked: Vec<Status> = get_item_task_links(conn, &item.uuid)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(t, _)| t.status)
+        .collect();
+    base_strength_from_links(&linked)
+}
+
+/// Shared core of the base-strength fallback: given the statuses of a memory's
+/// explicitly-linked tasks, a completed link makes it Strong (2.0), an
+/// otherwise-pending link Linked (1.5), and nothing keeps it Weak (1.0). Used
+/// by both [`item_base_strength`] and its batched form so they can never drift.
+fn base_strength_from_links(linked: &[Status]) -> f64 {
+    let mut best = 1.0_f64;
+    for st in linked {
+        match st {
+            Status::Completed => return 2.0,
+            Status::Pending => best = 1.5,
+            _ => {}
+        }
+    }
+    best
+}
+
+/// Batched form of [`item_base_strength`] for scoring many memories at once
+/// (the graph build). Two bulk queries — every task's status, and every
+/// item→task link's status — replace the 1–2 queries `item_base_strength` runs
+/// per memory. The value for each item is identical to `item_base_strength`.
+pub fn item_base_strengths(
+    conn: &Connection,
+    items: &[Item],
+) -> std::collections::HashMap<Uuid, f64> {
+    // Every task's status (source_task_uuid resolution). A full uuid resolves
+    // to exactly one row, matching `get_task_by_uuid_prefix`; deleted tasks are
+    // included, matching that helper's status-agnostic lookup.
+    let mut task_status: std::collections::HashMap<String, Status> =
+        std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT uuid, status FROM tasks")
+        && let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    {
+        for (u, s) in rows.flatten() {
+            task_status.insert(u, status_from_str(&s));
+        }
+    }
+    // Every item's linked-task statuses (the fallback path), keyed by item uuid.
+    let mut link_status: std::collections::HashMap<Uuid, Vec<Status>> =
+        std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT l.item_uuid, t.status FROM item_task_links l JOIN tasks t ON t.uuid = l.task_uuid",
+    ) && let Ok(rows) =
+        stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    {
+        for (item_uuid, status) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                link_status
+                    .entry(u)
+                    .or_default()
+                    .push(status_from_str(&status));
+            }
+        }
+    }
+
+    let mut out = std::collections::HashMap::with_capacity(items.len());
+    for item in items {
+        let strength = match item
+            .source_task_uuid
+            .and_then(|s| task_status.get(&s.to_string()))
+        {
+            Some(Status::Completed) => 2.0,
+            Some(_) => 1.5,
+            None => base_strength_from_links(link_status.get(&item.uuid).map_or(&[], |v| v)),
+        };
+        out.insert(item.uuid, strength);
+    }
+    out
+}
+
+/// Batched form of [`canonical_derived_bonus`]: one bulk query over
+/// `memory_links` instead of a per-item query, for scoring many memories at
+/// once (the graph build). Callers combining this with [`item_base_strengths`]
+/// get the same total as [`item_strength`] would compute per item.
+pub fn canonical_derived_bonuses(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
+    let mut counts: std::collections::HashMap<Uuid, u32> = std::collections::HashMap::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT to_uuid FROM memory_links WHERE relation = 'derived_from'")
+        && let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0))
+    {
+        for uuid_str in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&uuid_str) {
+                *counts.entry(u).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(u, c)| (u, (c as f64 * 0.1).min(0.5)))
+        .collect()
+}
+
+/// Map a stored task-status string to [`Status`] (mirrors `row_to_task`).
+fn status_from_str(s: &str) -> Status {
+    match s {
+        "completed" => Status::Completed,
+        "deleted" => Status::Deleted,
+        _ => Status::Pending,
+    }
+}
+
+/// All memories' file anchors in one query, keyed by item uuid (the batched
+/// form of [`get_item_files`] for the graph build).
+pub fn all_item_files(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<String>> {
+    let mut map: std::collections::HashMap<Uuid, Vec<String>> = std::collections::HashMap::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT item_uuid, file_path FROM item_files ORDER BY item_uuid, file_path")
+        && let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    {
+        for (item_uuid, path) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&item_uuid) {
+                map.entry(u).or_default().push(path);
+            }
+        }
+    }
+    map
+}
+
+/// All memories' linked task uuids in one query, keyed by item uuid (the
+/// batched form of the task-anchor half of [`get_item_task_links`] for the
+/// graph build).
+pub fn all_item_task_uuids(conn: &Connection) -> std::collections::HashMap<Uuid, Vec<Uuid>> {
+    let mut map: std::collections::HashMap<Uuid, Vec<Uuid>> = std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT item_uuid, task_uuid FROM item_task_links")
+        && let Ok(rows) =
+            stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+    {
+        for (item_uuid, task_uuid) in rows.flatten() {
+            if let (Ok(iu), Ok(tu)) = (Uuid::parse_str(&item_uuid), Uuid::parse_str(&task_uuid)) {
+                map.entry(iu).or_default().push(tu);
+            }
+        }
+    }
+    map
+}
+
+/// Usage-reinforcement window and weights: each time a memory surfaces in
+/// recall within the window it earns a small boost. Five recalls in the
+/// window lift a Weak (1.0) memory to Linked (1.5) — protecting it from
+/// age-based pruning — but usage alone can never fabricate Strong (2.0).
+pub const RECALL_BOOST_WINDOW_DAYS: i64 = 30;
+pub const RECALL_BOOST_PER_HIT: f64 = 0.1;
+pub const RECALL_BOOST_CAP: f64 = 0.5;
+
+/// Log that a memory surfaced in recall output. Fire-and-forget semantics at
+/// call sites — a failed write must never break a read path.
+pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
+    record_event(
+        conn,
+        "memory_recalled",
+        Some(item_uuid),
+        Some("memory"),
+        &[],
+        None,
+    )
+}
+
+/// Recall-derived reinforcement: how often this memory actually surfaced in
+/// the last [`RECALL_BOOST_WINDOW_DAYS`] days, translated into a strength
+/// boost. Events older than the window (or pruned by retention) don't count,
+/// so unused memories decay back toward their base strength.
+fn recall_usage_boost(conn: &Connection, item_uuid: &Uuid) -> f64 {
+    let cutoff = dt_to_str(&(Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS)));
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM events
+             WHERE action='memory_recalled' AND ref_uuid=?1 AND at >= ?2",
+            rusqlite::params![item_uuid.to_string(), cutoff],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP)
+}
+
+/// Batched form of [`recall_usage_boost`]: the recall-usage boost for *every*
+/// memory that surfaced in the window, computed in a single grouped query.
+/// A consumer scoring many memories at once (e.g. building the memory graph)
+/// runs one query here instead of one `COUNT(*)` per memory. Memories absent
+/// from the map earned no recalls in the window (boost 0.0). The per-memory
+/// value is identical to [`recall_usage_boost`].
+pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
+    let cutoff = dt_to_str(&(Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS)));
+    let mut map: std::collections::HashMap<Uuid, f64> = std::collections::HashMap::new();
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT ref_uuid, COUNT(*) FROM events
+         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1
+         GROUP BY ref_uuid",
+    ) else {
+        return map;
+    };
+    let rows = stmt.query_map([cutoff], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    });
+    if let Ok(rows) = rows {
+        for (uuid_str, count) in rows.flatten() {
+            if let Ok(u) = Uuid::parse_str(&uuid_str) {
+                map.insert(
+                    u,
+                    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP),
+                );
+            }
+        }
+    }
+    map
+}
+
+/// [`item_strength`] with a pre-computed recall-usage boost supplied by the
+/// caller (see [`recall_usage_boosts`]). Behaviourally identical to
+/// `item_strength` when `recall_boost` is that memory's boost; it just lets a
+/// batch consumer avoid the per-item boost query.
+pub fn item_strength_with_boost(conn: &Connection, item: &Item, recall_boost: f64) -> f64 {
+    item_base_strength(conn, item) + recall_boost
+}
+
+/// Per-day recall counts for the last `days` days (oldest day first). Powers
+/// the "recall pulse" sparkline in `sara dream` — a 30-day activity trace of
+/// how often the memory actually surfaced.
+pub fn memory_recall_daily_counts(conn: &Connection, item_uuid: &Uuid, days: i64) -> Vec<u64> {
+    let mut counts = vec![0u64; days.max(1) as usize];
+    let now = Utc::now();
+    let cutoff = dt_to_str(&(now - chrono::Duration::days(days)));
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT at FROM events
+         WHERE action='memory_recalled' AND ref_uuid=?1 AND at >= ?2",
+    ) else {
+        return counts;
+    };
+    let rows = stmt
+        .query_map(rusqlite::params![item_uuid.to_string(), cutoff], |r| {
+            r.get::<_, String>(0)
+        })
+        .map(|rows| rows.flatten().collect::<Vec<_>>())
+        .unwrap_or_default();
+    for at in rows {
+        if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&at) {
+            let age_days = (now - ts.with_timezone(&Utc)).num_days();
+            if (0..days).contains(&age_days) {
+                let idx = (days - 1 - age_days) as usize;
+                counts[idx] += 1;
+            }
+        }
+    }
+    counts
+}
+
+// ── auto-memory synthesis on task completion ─────────────────────────────────
+
+/// A candidate memory that pruning identified as low-value.
+#[derive(Debug)]
+pub struct PruneCandidate {
+    /// Short label like "m7".
+    pub label: String,
+    pub uuid: String,
+    pub title: String,
+    /// Why the memory was flagged.
+    pub reason: &'static str,
+}
+
+/// Evaluate all active memories and return those that should be archived.
+///
+/// Three signals:
+/// - **superseded**: has at least one incoming `supersedes` edge → the newer
+///   memory explicitly replaces this one.
+/// - **provisional + old**: status=`provisional` (auto-generated on `done`)
+///   AND older than `provisional_days` days without being reviewed.
+/// - **weak + old**: strength=1.0 (no task link at all) AND older than
+///   `weak_days` days — low-signal memories that were never tied to any work.
+///
+/// If `dry_run` is true the function returns candidates but writes nothing.
+/// If false it archives them by setting `status='archived'`.
+pub fn prune_memories(
+    conn: &Connection,
+    weak_days: i64,
+    provisional_days: i64,
+    dry_run: bool,
+) -> Result<Vec<PruneCandidate>> {
+    let all = {
+        let mut stmt = conn.prepare(
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE kind='memory' AND status IN ('active','provisional') ORDER BY created ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_item)?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    };
+
+    let now = Utc::now();
+    let mut candidates: Vec<PruneCandidate> = vec![];
+    let mut superseded_stmt = conn.prepare(
+        "SELECT COUNT(*) FROM memory_links ml \
+         JOIN items newer ON newer.uuid = ml.from_uuid \
+            AND newer.status = 'active' AND newer.kind = 'memory' \
+         WHERE ml.to_uuid = ?1 AND ml.relation = 'supersedes'",
+    )?;
+
+    for item in &all {
+        let label = format!(
+            "{}{}",
+            item.kind.chars().next().unwrap_or('m'),
+            item.display_id.unwrap_or(0)
+        );
+        let age_days = (now - item.created).num_days();
+
+        // Signal 1: superseded by another memory
+        let superseded = {
+            let count: i64 = superseded_stmt.query_row([item.uuid.to_string()], |r| r.get(0))?;
+            count > 0
+        };
+        if superseded {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "superseded by a newer memory",
+            });
+            continue;
+        }
+
+        // Signal 2: provisional and stale (auto-generated, never reviewed)
+        if item.status == "provisional" && age_days >= provisional_days {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "provisional auto-memory not reviewed within time limit",
+            });
+            continue;
+        }
+
+        // Signal 3: weak (no task link) and old
+        let strength = item_strength(conn, item);
+        if strength < 1.5 && age_days >= weak_days {
+            candidates.push(PruneCandidate {
+                label,
+                uuid: item.uuid.to_string(),
+                title: item.title.clone(),
+                reason: "weak memory (no task link) older than age threshold",
+            });
+        }
+    }
+
+    if !dry_run {
+        for c in &candidates {
+            conn.execute(
+                "UPDATE items SET status='archived', modified=?1 WHERE uuid=?2",
+                rusqlite::params![dt_to_str(&now), c.uuid],
+            )?;
+        }
+    }
+
+    Ok(candidates)
+}
+
+/// Summary of memories that are eligible for pruning but require human judgement
+/// (stale provisionals, weak-and-old) — counted, never archived. Used by the
+/// opportunistic hygiene pass to nudge for review without deleting anything.
+#[derive(Debug, Default, Clone)]
+pub struct ReviewSummary {
+    /// How many memories are review-eligible right now.
+    pub count: usize,
+    /// Age in days of the oldest review-eligible memory (0 when none).
+    pub oldest_age_days: i64,
+}
+
+/// Archive ONLY the lossless "superseded" signal: memories that are the target
+/// (`to_uuid`) of a `supersedes` edge whose source (the newer memory) is still
+/// active. A superseder that has itself been archived does not justify losing
+/// the older memory, so those are skipped. Returns the archived candidates.
+///
+/// Safe to run opportunistically: superseding is by definition "this replaces
+/// that", so no information is lost, and archiving is reversible at the DB level.
+pub fn archive_superseded_memories(conn: &Connection) -> Result<Vec<PruneCandidate>> {
+    let now = Utc::now();
+    let mut stmt = conn.prepare(
+        "SELECT old.uuid, old.kind, old.display_id, old.title, old.url, old.project, \
+                old.tags_json, old.path, old.summary, old.body, old.created, old.modified, \
+                old.status, old.source_task_uuid \
+         FROM items old \
+         JOIN memory_links ml ON ml.to_uuid = old.uuid AND ml.relation = 'supersedes' \
+         JOIN items newer ON newer.uuid = ml.from_uuid AND newer.status = 'active' AND newer.kind = 'memory' \
+         WHERE old.kind = 'memory' AND old.status IN ('active','provisional') \
+         GROUP BY old.uuid",
+    )?;
+    let rows = stmt.query_map([], row_to_item)?;
+    let items: Vec<_> = rows.filter_map(|r| r.ok()).collect();
+
+    let mut archived: Vec<PruneCandidate> = vec![];
+    for item in &items {
+        let label = format!(
+            "{}{}",
+            item.kind.chars().next().unwrap_or('m'),
+            item.display_id.unwrap_or(0)
+        );
+        conn.execute(
+            "UPDATE items SET status='archived', modified=?1 WHERE uuid=?2",
+            rusqlite::params![dt_to_str(&now), item.uuid.to_string()],
+        )?;
+        archived.push(PruneCandidate {
+            label,
+            uuid: item.uuid.to_string(),
+            title: item.title.clone(),
+            reason: "superseded by a newer memory",
+        });
+    }
+    Ok(archived)
+}
+
+/// Count (never archive) the judgement-call prune candidates: provisional
+/// auto-memories that were never reviewed within `provisional_days`, and weak
+/// (no task link, strength < 1.5) memories older than `weak_days`. Superseded
+/// memories are handled losslessly elsewhere and excluded here.
+pub fn count_review_candidates(
+    conn: &Connection,
+    weak_days: i64,
+    provisional_days: i64,
+) -> Result<ReviewSummary> {
+    let all = {
+        let mut stmt = conn.prepare(
+            "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+             FROM items WHERE kind='memory' AND status IN ('active','provisional') ORDER BY created ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_item)?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    };
+
+    let now = Utc::now();
+    let mut count = 0usize;
+    let mut oldest_age_days = 0i64;
+    for item in &all {
+        let age_days = (now - item.created).num_days();
+        let provisional_stale = item.status == "provisional" && age_days >= provisional_days;
+        let weak_old = item_strength(conn, item) < 1.5 && age_days >= weak_days;
+        if provisional_stale || weak_old {
+            count += 1;
+            if age_days > oldest_age_days {
+                oldest_age_days = age_days;
+            }
+        }
+    }
+    Ok(ReviewSummary {
+        count,
+        oldest_age_days,
+    })
+}
+
+/// Age thresholds for the opportunistic hygiene pass (mirrors the manual
+/// `prune-memories` defaults). Weak (no task link) memories become review
+/// candidates after this many days; provisional auto-memories after fewer.
+pub const AUTO_HYGIENE_WEAK_DAYS: i64 = 90;
+pub const AUTO_HYGIENE_PROVISIONAL_DAYS: i64 = 30;
+
+/// Result of an opportunistic hygiene pass: what was auto-archived (lossless)
+/// and how many memories await human review.
+#[derive(Debug, Default, Clone)]
+pub struct HygieneReport {
+    /// Labels of superseded memories archived losslessly.
+    pub archived: Vec<String>,
+    /// Count of judgement-call candidates (stale provisionals, weak-old) left in place.
+    pub review_pending: usize,
+    /// Age in days of the oldest review candidate.
+    pub oldest_age_days: i64,
+}
+
+/// Opportunistic hygiene pass for the natural `sara done` trigger. Archives the
+/// lossless "superseded" signal and *counts* the judgement-call candidates
+/// (stale provisionals, weak-old) so the caller can nudge for review without
+/// deleting anything.
+pub fn hygiene_pass(conn: &Connection) -> Result<HygieneReport> {
+    let archived = archive_superseded_memories(conn)?
+        .into_iter()
+        .map(|c| c.label)
+        .collect();
+    let review =
+        count_review_candidates(conn, AUTO_HYGIENE_WEAK_DAYS, AUTO_HYGIENE_PROVISIONAL_DAYS)?;
+    Ok(HygieneReport {
+        archived,
+        review_pending: review.count,
+        oldest_age_days: review.oldest_age_days,
+    })
+}
+
+///
+/// Called from `done_value()` after a task is marked completed. The memory is
+/// tagged from the task's own tags, linked to the task via `item_task_links`
+/// (explicit), and marked `provisional` — task #29 will surface that in
+/// recall so unverified AI-derived patterns aren't treated as ground truth.
+///
+/// Returns `Ok(Some(label))` (e.g. `"m14"`) when a memory was created,
+/// `Ok(None)` when the task has no useful content to distil, and `Err` only
+/// for hard DB failures (not safety rejections, which are silent skips).
+pub fn synthesize_done_memory(
+    conn: &Connection,
+    task_uuid: &Uuid,
+    project_name: &str,
+) -> Result<Option<String>> {
+    use crate::infrastructure::safety;
+
+    let task = match get_task_by_uuid_prefix(conn, &task_uuid.to_string()[..8])? {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    // Gather ingredients -------------------------------------------------
+    let steps = get_checklist(conn, task_uuid).unwrap_or_default();
+    let done_steps: Vec<&ChecklistItem> = steps
+        .iter()
+        .filter(|s| s.done && s.kind == STEP_KIND_STEP)
+        .collect();
+    let acceptance: Vec<&ChecklistItem> = steps
+        .iter()
+        .filter(|s| s.done && s.kind == STEP_KIND_ACCEPTANCE)
+        .collect();
+
+    let annotations = get_annotations(conn, task_uuid).unwrap_or_default();
+    let key_annotations: Vec<&Annotation> = annotations
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.kind.as_str(),
+                "finding" | "decision" | "constraint" | "risk" | "pattern"
+            )
+        })
+        .collect();
+
+    let files = get_task_files(conn, task_uuid).unwrap_or_default();
+
+    // Skip if there's truly nothing useful to distil
+    if done_steps.is_empty() && acceptance.is_empty() && key_annotations.is_empty() {
+        return Ok(None);
+    }
+
+    // Build body (capped at 1900 chars to stay under safety::SIZE_LIMIT_CHARS) -
+    let mut parts: Vec<String> = vec![];
+    parts.push(format!("Task completed: {}", task.description.trim()));
+
+    if !done_steps.is_empty() {
+        let step_parts: Vec<String> = done_steps
+            .iter()
+            .map(|s| {
+                if let Some(ref r) = s.result {
+                    format!("\"{}\" → {}", s.text.trim(), r.trim())
+                } else {
+                    format!("\"{}\"", s.text.trim())
+                }
+            })
+            .collect();
+        parts.push(format!("Steps: {}", step_parts.join("; ")));
+    }
+
+    if !acceptance.is_empty() {
+        let ac_parts: Vec<String> = acceptance
+            .iter()
+            .map(|s| s.text.trim().to_string())
+            .collect();
+        parts.push(format!("Acceptance: {}", ac_parts.join("; ")));
+    }
+
+    // Group key annotations by kind
+    for kind in &["decision", "finding", "constraint", "risk", "pattern"] {
+        let group: Vec<&str> = key_annotations
+            .iter()
+            .filter(|a| a.kind == *kind)
+            .map(|a| a.text.trim())
+            .collect();
+        if !group.is_empty() {
+            let cap = kind.chars().next().unwrap().to_uppercase().to_string() + &kind[1..];
+            parts.push(format!("{}s: {}", cap, group.join("; ")));
+        }
+    }
+
+    let body_raw = parts.join(". ");
+    // Hard-cap to stay under SIZE_LIMIT_CHARS
+    let body: String = if body_raw.chars().count() > 1900 {
+        body_raw.chars().take(1900).collect::<String>() + "…"
+    } else {
+        body_raw
+    };
+
+    // Safety check — silently skip if secrets detected (never block done)
+    if safety::check_secrets(&body).is_err() {
+        return Ok(None);
+    }
+
+    // Build the title from the task description (truncated)
+    let title: String = {
+        const MAX: usize = 80;
+        let t = task.description.trim();
+        if t.chars().count() <= MAX {
+            t.to_string()
+        } else {
+            t.chars().take(MAX).collect::<String>() + "…"
+        }
+    };
+
+    // Write to items -------------------------------------------------------
+    let mut item = crate::infrastructure::model::Item::new_memory(title, body, Some(*task_uuid));
+    item.tags = task.tags.clone();
+    item.status = "provisional".to_string(); // flagged for task #29 to surface
+    item.path = Some(String::new());
+
+    insert_item(conn, &mut item)?;
+    set_item_projects(conn, &item.uuid, &[project_name.to_string()])?;
+
+    // Attach task's source files as item_files
+    if !files.is_empty() {
+        set_item_files(conn, &item.uuid, &files)?;
+    }
+
+    // Wire explicit task link
+    set_item_task_links(conn, &item.uuid, &[(*task_uuid, "explicit")])?;
+
+    let label = format!("m{}", item.display_id.unwrap_or(0));
+    Ok(Some(label))
+}
+
+/// FTS over the task description and exact tag intersection. Used by
+/// `guide_value` to inject prior-work context automatically — callers should
+/// omit the `similar_work` field when the result is empty.
+pub fn find_similar_strong_memories(
+    conn: &Connection,
+    description: &str,
+    tags: &[String],
+) -> Result<Vec<Item>> {
+    let mut candidates: std::collections::HashMap<uuid::Uuid, Item> =
+        std::collections::HashMap::new();
+
+    // FTS path: description keywords.
+    if !description.is_empty() {
+        for hit in search_fts(conn, description, 20).unwrap_or_default() {
+            if hit.ref_kind.starts_with("item_")
+                && let Ok(uuid) = hit.task_uuid.parse::<uuid::Uuid>()
+                && !candidates.contains_key(&uuid)
+                && let Ok(item) = get_item_by_uuid(conn, &uuid.to_string())
+                && item.kind == "memory"
+            {
+                candidates.insert(uuid, item);
+            }
+        }
+    }
+
+    // Tag path: exact intersection across all given tags.
+    if !tags.is_empty() {
+        let mut tag_set: Option<std::collections::HashSet<uuid::Uuid>> = None;
+        for tag in tags {
+            let tag_norm = tag.trim().to_lowercase();
+            if tag_norm.is_empty() {
+                continue;
+            }
+            let uuids: std::collections::HashSet<uuid::Uuid> = find_items_by_tag(conn, &tag_norm)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| i.kind == "memory")
+                .map(|i| i.uuid)
+                .collect();
+            tag_set = Some(match tag_set {
+                Some(existing) => existing.intersection(&uuids).copied().collect(),
+                None => uuids,
+            });
+        }
+        for uuid in tag_set.unwrap_or_default() {
+            candidates
+                .entry(uuid)
+                .or_insert_with(|| get_item_by_uuid(conn, &uuid.to_string()).unwrap());
+        }
+    }
+
+    // Filter to Strong only, load file associations, sort by strength desc.
+    let mut strong: Vec<Item> = candidates
+        .into_values()
+        .filter_map(|mut item| {
+            let s = item_strength(conn, &item);
+            if s >= 2.0 {
+                item.files = get_item_files(conn, &item.uuid).unwrap_or_default();
+                Some(item)
+            } else {
+                None
+            }
+        })
+        .collect();
+    strong.sort_by_key(|a| std::cmp::Reverse(a.modified));
+    strong.truncate(5);
+    Ok(strong)
 }
 
 pub fn record_event(
@@ -2771,25 +4306,15 @@ pub fn recent_search_queries(conn: &Connection, limit: i64) -> Result<Vec<String
     Ok(queries)
 }
 
-pub fn upsert_embedding(conn: &Connection, ref_uuid: &Uuid, vector: &[f32]) -> Result<()> {
-    let vector_json = serde_json::to_string(vector)?;
-    conn.execute(
-        "INSERT INTO embeddings (ref_uuid, vector_json) VALUES (?1, ?2)
-         ON CONFLICT(ref_uuid) DO UPDATE SET vector_json = excluded.vector_json",
-        rusqlite::params![ref_uuid.to_string(), vector_json],
-    )?;
-    Ok(())
-}
-
-pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
-    let mut stmt = conn.prepare("SELECT ref_uuid, vector_json FROM embeddings")?;
-    let rows = stmt.query_map([], |r| {
-        let uuid: String = r.get(0)?;
-        let json: String = r.get(1)?;
-        let vec: Vec<f32> = serde_json::from_str(&json).unwrap_or_default();
-        Ok((uuid, vec))
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+/// Retention policy: delete events older than `days` days. Called at MCP
+/// server startup to bound the table size without requiring a separate job.
+/// Errors are non-fatal — a failed prune doesn't affect functionality.
+pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
+    let cutoff = (Utc::now() - chrono::Duration::days(days))
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
+    let n = conn.execute("DELETE FROM events WHERE at < ?1", [&cutoff])?;
+    Ok(n)
 }
 
 // ── code anchors (task_files with reason + symbol/lines) ─────────────────────
@@ -2948,6 +4473,21 @@ pub fn set_meta_json(conn: &Connection, task_uuid: &Uuid, json: &str) -> Result<
     Ok(())
 }
 
+/// Mark a task active (start its timer) if it is not already running. Sets
+/// `started_at`/`modified` to now and returns `true` when the task transitioned
+/// from idle to active, `false` if it was already active. Used to auto-transition
+/// a task to "in progress" the first time work is recorded against it (a
+/// step marked done or a verification run), so status reflects reality without
+/// the caller remembering a separate `sara start`.
+pub fn ensure_started(conn: &Connection, task_uuid: &Uuid) -> Result<bool> {
+    let now = dt_to_str(&Utc::now());
+    let changed = conn.execute(
+        "UPDATE tasks SET started_at=?2, modified=?2 WHERE uuid=?1 AND started_at IS NULL",
+        params![task_uuid.to_string(), now],
+    )?;
+    Ok(changed > 0)
+}
+
 // ── AI run audit trail ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -2957,6 +4497,9 @@ pub struct AiRun {
     pub model: Option<String>,
     pub provider: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
 }
 
 /// Record one LLM interaction against a task; returns the run id.
@@ -2968,10 +4511,13 @@ pub fn record_ai_run(
     provider: Option<&str>,
     prompt: Option<&str>,
     response_json: Option<&str>,
+    prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
+    total_tokens: Option<i64>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO task_ai_runs (task_uuid, kind, model, provider, prompt, response_json, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        "INSERT INTO task_ai_runs (task_uuid, kind, model, provider, prompt, response_json, created_at, prompt_tokens, completion_tokens, total_tokens)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             task_uuid.to_string(),
             kind,
@@ -2980,6 +4526,9 @@ pub fn record_ai_run(
             prompt,
             response_json,
             dt_to_str(&Utc::now()),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -2987,7 +4536,7 @@ pub fn record_ai_run(
 
 pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
     let mut stmt = conn.prepare(
-        "SELECT id, kind, model, provider, created_at FROM task_ai_runs
+        "SELECT id, kind, model, provider, created_at, prompt_tokens, completion_tokens, total_tokens FROM task_ai_runs
          WHERE task_uuid=?1 ORDER BY created_at ASC, id ASC",
     )?;
     let rows = stmt
@@ -2999,6 +4548,9 @@ pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
                 model: r.get(2)?,
                 provider: r.get(3)?,
                 created_at: str_to_dt(&at).unwrap_or_else(|_| Utc::now()),
+                prompt_tokens: r.get(5)?,
+                completion_tokens: r.get(6)?,
+                total_tokens: r.get(7)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -3031,6 +4583,79 @@ pub struct SearchHit {
 pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
     // Quote the query as an FTS5 string literal to tolerate arbitrary input.
     let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+    let mut stmt = conn.prepare(
+        "SELECT ref_kind, task_uuid, text FROM search_index
+         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![fts_query, limit], |r| {
+            Ok(SearchHit {
+                ref_kind: r.get(0)?,
+                task_uuid: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Token-based AND search: each token is quoted individually and joined with
+/// spaces (FTS5 AND semantics). Unlike `search_fts`, this tolerates different
+/// word ordering and paraphrases — any row containing ALL the given tokens
+/// (in any order) is returned. Callers should strip stop words and cap the
+/// token list before calling to avoid over-constraining the query.
+pub fn search_fts_tokens(
+    conn: &Connection,
+    tokens: &[String],
+    limit: i64,
+) -> Result<Vec<SearchHit>> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+    // Each token quoted as an FTS5 string literal; space-join = AND.
+    let fts_query = tokens
+        .iter()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut stmt = conn.prepare(
+        "SELECT ref_kind, task_uuid, text FROM search_index
+         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![fts_query, limit], |r| {
+            Ok(SearchHit {
+                ref_kind: r.get(0)?,
+                task_uuid: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Token-based OR search: like [`search_fts_tokens`] but tokens are joined with
+/// the FTS5 `OR` operator, so a row matching ANY meaningful token surfaces.
+/// Used as the loose Tier-3 fallback in recall — only when the phrase and the
+/// token-AND search both miss — so partial-vocabulary / paraphrased queries
+/// still return candidates instead of nothing. `ORDER BY rank` (bm25) floats
+/// the higher-coverage hits (more / rarer matching tokens) to the top.
+pub fn search_fts_tokens_or(
+    conn: &Connection,
+    tokens: &[String],
+    limit: i64,
+) -> Result<Vec<SearchHit>> {
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+    // Each token quoted as an FTS5 string literal; joined with OR.
+    let fts_query = tokens
+        .iter()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" OR ");
     let mut stmt = conn.prepare(
         "SELECT ref_kind, task_uuid, text FROM search_index
          WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
@@ -3351,6 +4976,48 @@ mod tests {
     }
 
     #[test]
+    fn embedding_upsert_roundtrip() {
+        let conn = mem();
+        let uuid = Uuid::new_v4().to_string();
+        let v = vec![0.1_f32, -0.2, 0.3, 0.4];
+        upsert_embedding(&conn, &uuid, &v).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v.clone()));
+
+        // Upsert replaces (does not duplicate).
+        let v2 = vec![1.0_f32, 2.0, 3.0, 4.0];
+        upsert_embedding(&conn, &uuid, &v2).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v2.clone()));
+
+        let all = all_embeddings(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0], (uuid.clone(), v2));
+
+        delete_embedding(&conn, &uuid).unwrap();
+        assert_eq!(get_embedding(&conn, &uuid).unwrap(), None);
+        assert!(all_embeddings(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn active_embeddings_excludes_archived_memories() {
+        let conn = mem();
+        let mut live = make_memory("live", &[]);
+        insert_item(&conn, &mut live).unwrap();
+        let mut dead = make_memory("archived", &[]);
+        insert_item(&conn, &mut dead).unwrap();
+
+        upsert_embedding(&conn, &live.uuid.to_string(), &[0.1_f32, 0.2, 0.3]).unwrap();
+        upsert_embedding(&conn, &dead.uuid.to_string(), &[0.4_f32, 0.5, 0.6]).unwrap();
+        archive_item(&conn, &dead.uuid).unwrap();
+
+        // The whole table still holds both vectors...
+        assert_eq!(all_embeddings(&conn).unwrap().len(), 2);
+        // ...but the active-only scan (what recall ranks) sees only the live one.
+        let active = active_embeddings(&conn).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].0, live.uuid.to_string());
+    }
+
+    #[test]
     fn fresh_database_has_github_sync_columns() {
         let conn = mem();
         let cols = projects_columns(&conn);
@@ -3387,6 +5054,24 @@ mod tests {
                 name TEXT PRIMARY KEY, path TEXT, goal TEXT, stack TEXT,
                 conventions TEXT, notes TEXT, initialized_at TEXT, last_seen TEXT,
                 setup_cmd TEXT, test_cmd TEXT, lint_cmd TEXT, run_cmd TEXT
+            );
+            CREATE TABLE items (
+                uuid TEXT PRIMARY KEY, kind TEXT NOT NULL, display_id INTEGER,
+                title TEXT NOT NULL, url TEXT, project TEXT,
+                tags_json TEXT NOT NULL DEFAULT '[]', path TEXT NOT NULL,
+                summary TEXT, body TEXT NOT NULL DEFAULT '',
+                created TEXT NOT NULL, modified TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active'
+            );
+            CREATE TABLE task_ai_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid     TEXT NOT NULL,
+                kind          TEXT NOT NULL,
+                model         TEXT,
+                provider      TEXT,
+                prompt        TEXT,
+                response_json TEXT,
+                created_at    TEXT NOT NULL
             );",
         )
         .unwrap();
@@ -3815,6 +5500,128 @@ mod tests {
     }
 
     #[test]
+    fn get_task_by_uuid_prefix_errors_on_ambiguous_prefix() {
+        let conn = mem();
+
+        // Two tasks whose UUIDs share the leading prefix "5cb0".
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("5cb00000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+        let mut b = Task::new("task b".into(), "proj".into());
+        b.uuid = uuid::Uuid::parse_str("5cb01111-0000-0000-0000-00000000000b").unwrap();
+        insert_task(&conn, &mut b).unwrap();
+
+        // An ambiguous prefix must error, not silently pick one.
+        assert!(
+            get_task_by_uuid_prefix(&conn, "5cb0").is_err(),
+            "ambiguous prefix should error instead of arbitrarily returning one task"
+        );
+
+        // A prefix long enough to be unique still resolves.
+        let only = get_task_by_uuid_prefix(&conn, "5cb00000").unwrap().unwrap();
+        assert_eq!(only.uuid, a.uuid);
+
+        // A non-matching prefix is still a clean None.
+        assert!(
+            get_task_by_uuid_prefix(&conn, "ffffffff")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn resolve_task_errors_on_ambiguous_uuid_prefix() {
+        let conn = mem();
+
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("ab120000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+        let mut b = Task::new("task b".into(), "proj".into());
+        b.uuid = uuid::Uuid::parse_str("ab121111-0000-0000-0000-00000000000b").unwrap();
+        insert_task(&conn, &mut b).unwrap();
+
+        // "ab12" is not a numeric display id, falls through to uuid prefix,
+        // which is ambiguous → error rather than a silent wrong pick.
+        assert!(resolve_task(&conn, "ab12").is_err());
+    }
+
+    #[test]
+    fn get_task_by_uuid_prefix_treats_underscore_as_literal() {
+        let conn = mem();
+
+        // A single task whose uuid does NOT contain the queried prefix except
+        // where an unescaped `_` would wildcard-match any character.
+        let mut a = Task::new("task a".into(), "proj".into());
+        a.uuid = uuid::Uuid::parse_str("ab1c0000-0000-0000-0000-00000000000a").unwrap();
+        insert_task(&conn, &mut a).unwrap();
+
+        // "ab_c" contains a literal underscore. If `_` is not escaped it acts as
+        // a wildcard and matches "ab1c…"; escaped, it must NOT match.
+        assert!(
+            get_task_by_uuid_prefix(&conn, "ab_c").unwrap().is_none(),
+            "underscore in a uuid prefix must be matched literally, not as a wildcard"
+        );
+
+        // The real prefix still resolves.
+        assert_eq!(
+            get_task_by_uuid_prefix(&conn, "ab1c")
+                .unwrap()
+                .unwrap()
+                .uuid,
+            a.uuid
+        );
+    }
+
+    #[test]
+    fn find_items_by_file_prefix_escapes_underscore_wildcard() {
+        let conn = mem();
+
+        // A memory attached under a directory containing an underscore.
+        let mut hit = make_memory("in the underscore dir", &[]);
+        insert_item(&conn, &mut hit).unwrap();
+        set_item_files(&conn, &hit.uuid, &["/repo/foo_bar/x.rs".into()]).unwrap();
+
+        // A memory under a sibling dir that only matches if `_` is a wildcard.
+        let mut miss = make_memory("in the wildcard-collision dir", &[]);
+        insert_item(&conn, &mut miss).unwrap();
+        set_item_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
+
+        let items = find_items_by_file(&conn, "/repo/foo_bar/", true).unwrap();
+        let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
+        assert!(
+            titles.contains(&"in the underscore dir"),
+            "the genuinely-matching path must still be found"
+        );
+        assert!(
+            !titles.contains(&"in the wildcard-collision dir"),
+            "an underscore in the query path must not wildcard-match a sibling directory"
+        );
+    }
+
+    #[test]
+    fn find_tasks_by_file_prefix_escapes_underscore_wildcard() {
+        let conn = mem();
+
+        let mut hit = Task::new("under underscore dir".into(), "proj".into());
+        insert_task(&conn, &mut hit).unwrap();
+        set_task_files(&conn, &hit.uuid, &["/repo/foo_bar/x.rs".into()]).unwrap();
+        let mut miss = Task::new("under collision dir".into(), "proj".into());
+        insert_task(&conn, &mut miss).unwrap();
+        set_task_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
+        // find_tasks_by_file only considers completed tasks.
+        conn.execute("UPDATE tasks SET status='completed'", [])
+            .unwrap();
+
+        let tasks = find_tasks_by_file(&conn, "/repo/foo_bar/", true).unwrap();
+        let descs: Vec<&str> = tasks.iter().map(|t| t.description.as_str()).collect();
+        assert!(descs.contains(&"under underscore dir"));
+        assert!(
+            !descs.contains(&"under collision dir"),
+            "an underscore in the query path must not wildcard-match a sibling directory"
+        );
+    }
+
+    #[test]
     fn undo_with_empty_log_returns_none() {
         let conn = mem();
         assert!(undo(&conn).unwrap().is_none());
@@ -4014,6 +5821,28 @@ mod tests {
     }
 
     #[test]
+    fn ensure_started_transitions_idle_task_once() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        assert!(task.started_at.is_none());
+
+        // First call flips it from idle → active.
+        assert!(ensure_started(&conn, &task.uuid).unwrap());
+        let reloaded = get_task_by_uuid_prefix(&conn, &task.uuid.to_string())
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.started_at.is_some());
+
+        // Second call is a no-op (already active) and must not reset the clock.
+        let first_started = reloaded.started_at;
+        assert!(!ensure_started(&conn, &task.uuid).unwrap());
+        let again = get_task_by_uuid_prefix(&conn, &task.uuid.to_string())
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.started_at, first_started);
+    }
+
+    #[test]
     fn set_step_done_records_result_and_commit_then_undone_clears_them() {
         let conn = mem();
         let task = seed_task(&conn);
@@ -4140,17 +5969,28 @@ mod tests {
             Some("azure"),
             Some("prompt"),
             Some("{}"),
+            Some(100),
+            Some(200),
+            Some(300),
         )
         .unwrap();
-        let r2 = record_ai_run(&conn, &task.uuid, "refine", None, None, None, None).unwrap();
+        let r2 = record_ai_run(
+            &conn, &task.uuid, "refine", None, None, None, None, None, None, None,
+        )
+        .unwrap();
         assert!(r2 > r1);
 
         let runs = get_ai_runs(&conn, &task.uuid).unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0].kind, "enrich");
         assert_eq!(runs[0].model.as_deref(), Some("opus"));
+        assert_eq!(runs[0].prompt_tokens, Some(100));
+        assert_eq!(runs[0].completion_tokens, Some(200));
+        assert_eq!(runs[0].total_tokens, Some(300));
         assert_eq!(runs[1].kind, "refine");
         assert!(runs[1].model.is_none());
+        assert!(runs[1].prompt_tokens.is_none());
+        assert!(runs[1].total_tokens.is_none());
     }
 
     // ── feedback lifecycle ──────────────────────────────────────────────────
@@ -4247,6 +6087,44 @@ mod tests {
         // A query containing a double-quote must not blow up the FTS parser.
         let hits = search_fts(&conn, "\"weird\" input", 10).unwrap();
         assert!(hits.iter().any(|h| h.task_uuid == task.uuid.to_string()));
+    }
+
+    #[test]
+    fn search_fts_tolerates_hyphenated_service_name_query() {
+        let conn = mem();
+        let mut item = make_memory("service-a note", &[]);
+        item.body = "service-a requires an X-Client-Id header".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        // A bare hyphenated word must not be parsed as column-filter/NOT syntax.
+        let hits = search_fts(&conn, "service-a", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn search_fts_treats_boolean_keywords_as_literal_text() {
+        let conn = mem();
+        let mut item = make_memory("config and setup notes", &[]);
+        item.body = "config-and-setup guide".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        // Must not error out or be parsed as an FTS5 boolean expression.
+        let hits = search_fts(&conn, "config-and-setup", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        let hits = search_fts(&conn, "AND OR NOT", 10).unwrap();
+        assert!(hits.is_empty(), "no crash on bare boolean keywords");
+    }
+
+    #[test]
+    fn search_fts_tolerates_wildcard_and_empty_queries() {
+        let conn = mem();
+        let mut item = make_memory("wildcard note", &[]);
+        item.body = "some content".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(search_fts(&conn, "*", 10).is_ok());
+        assert!(search_fts(&conn, "", 10).is_ok());
+        assert!(search_fts(&conn, "-", 10).is_ok());
     }
 
     // ── dependency closure ──────────────────────────────────────────────────
@@ -4745,5 +6623,904 @@ mod tests {
             "https://github.com/org/repo/issues/3#issuecomment-77"
         );
         assert_eq!(loaded[0].updated_at, c.updated_at);
+    }
+
+    fn make_memory(title: &str, tags: &[&str]) -> Item {
+        let mut item = Item::new_note(title.to_string(), "body".to_string());
+        item.kind = "memory".to_string();
+        item.path = Some(String::new());
+        item.tags = tags.iter().map(|t| t.to_string()).collect();
+        item
+    }
+
+    #[test]
+    fn insert_item_case_folds_tags_into_item_tags() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["Service-A", "API"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let counts = list_tags_with_counts(&conn).unwrap();
+        let tags: Vec<&str> = counts.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(tags.contains(&"service-a"));
+        assert!(tags.contains(&"api"));
+        assert!(!tags.contains(&"Service-A"));
+    }
+
+    #[test]
+    fn differently_cased_tags_collide_into_one_vocabulary_entry() {
+        let conn = mem();
+        let mut a = make_memory("m1", &["service-a"]);
+        let mut b = make_memory("m2", &["Service-A"]);
+        insert_item(&conn, &mut a).unwrap();
+        insert_item(&conn, &mut b).unwrap();
+
+        let counts = list_tags_with_counts(&conn).unwrap();
+        assert_eq!(counts, vec![("service-a".to_string(), 2)]);
+    }
+
+    #[test]
+    fn find_items_by_tag_matches_case_insensitively() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["Service-A"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let found = find_items_by_tag(&conn, "SERVICE-A").unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].uuid, item.uuid);
+    }
+
+    #[test]
+    fn set_item_tags_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["old"]);
+        insert_item(&conn, &mut item).unwrap();
+
+        set_item_tags(&conn, &item.uuid, &["new".to_string()]).unwrap();
+
+        assert!(find_items_by_tag(&conn, "old").unwrap().is_empty());
+        assert_eq!(find_items_by_tag(&conn, "new").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn find_items_by_project_matches_exact_case() {
+        let conn = mem();
+        let mut item = make_memory("m1", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_projects(&conn, &item.uuid, &["web-app".to_string()]).unwrap();
+
+        assert_eq!(find_items_by_project(&conn, "web-app").unwrap().len(), 1);
+        assert!(find_items_by_project(&conn, "Web-App").unwrap().is_empty());
+    }
+
+    #[test]
+    fn items_are_indexed_into_search_fts_under_a_namespaced_ref_kind() {
+        let conn = mem();
+        let mut item = make_memory("service-a auth quirk", &[]);
+        item.body = "service-a requires an X-Client-Id header".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "X-Client-Id", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].ref_kind, "item_memory");
+        assert_eq!(hits[0].task_uuid, item.uuid.to_string());
+    }
+
+    #[test]
+    fn provisional_items_are_indexed_into_search_fts() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &[]);
+        item.body = "frobnicator wiring pattern from done-synthesis".to_string();
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "done-synthesis", 10).unwrap();
+        assert_eq!(hits.len(), 1, "provisional memory must be FTS-searchable");
+        assert_eq!(hits[0].ref_kind, "item_memory");
+    }
+
+    #[test]
+    fn provisional_items_surface_in_tag_and_file_lookups() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &["autotag"]);
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/x.rs".to_string()]).unwrap();
+
+        assert_eq!(find_items_by_tag(&conn, "autotag").unwrap().len(), 1);
+        assert_eq!(
+            find_items_by_file(&conn, "/repo/src/x.rs", false)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn recall_usage_boosts_item_strength_within_window() {
+        let conn = mem();
+        let mut item = make_memory("used often", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        assert_eq!(item_strength(&conn, &item), 1.0);
+
+        for _ in 0..3 {
+            record_memory_recall(&conn, &item.uuid).unwrap();
+        }
+        let s = item_strength(&conn, &item);
+        assert!((s - 1.3).abs() < 1e-9, "expected 1.3, got {s}");
+
+        // Boost is capped: many more recalls can lift Weak to Linked but not Strong.
+        for _ in 0..20 {
+            record_memory_recall(&conn, &item.uuid).unwrap();
+        }
+        let s = item_strength(&conn, &item);
+        assert!((s - 1.5).abs() < 1e-9, "expected cap at 1.5, got {s}");
+    }
+
+    #[test]
+    fn recall_usage_boost_ignores_events_outside_window() {
+        let conn = mem();
+        let mut item = make_memory("stale usage", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        // Insert an old event well outside the 30-day window.
+        let old = (Utc::now() - chrono::Duration::days(RECALL_BOOST_WINDOW_DAYS + 10)).to_rfc3339();
+        conn.execute(
+            "INSERT INTO events (action, ref_uuid, kind, tags_json, project, at)
+             VALUES ('memory_recalled', ?1, 'memory', '[]', NULL, ?2)",
+            rusqlite::params![item.uuid.to_string(), old],
+        )
+        .unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn recall_usage_boosts_batch_matches_per_item_strength() {
+        let conn = mem();
+        let mut a = make_memory("recalled thrice", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = make_memory("recalled once", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        let mut c = make_memory("never recalled", &[]);
+        insert_item(&conn, &mut c).unwrap();
+
+        for _ in 0..3 {
+            record_memory_recall(&conn, &a.uuid).unwrap();
+        }
+        record_memory_recall(&conn, &b.uuid).unwrap();
+
+        let boosts = recall_usage_boosts(&conn);
+        assert!((boosts.get(&a.uuid).copied().unwrap_or(0.0) - 0.3).abs() < 1e-9);
+        assert!((boosts.get(&b.uuid).copied().unwrap_or(0.0) - 0.1).abs() < 1e-9);
+        assert!(!boosts.contains_key(&c.uuid), "no events → absent from map");
+
+        // The batched path must reproduce item_strength exactly for every item.
+        for item in [&a, &b, &c] {
+            let via_batch = item_strength_with_boost(
+                &conn,
+                item,
+                boosts.get(&item.uuid).copied().unwrap_or(0.0),
+            );
+            assert!((via_batch - item_strength(&conn, item)).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn promote_item_activates_only_provisional() {
+        let conn = mem();
+        let mut item = make_memory("auto memory", &[]);
+        item.status = "provisional".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(promote_item(&conn, &item.uuid).unwrap());
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                [item.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "active");
+
+        // Second promote is a no-op
+        assert!(!promote_item(&conn, &item.uuid).unwrap());
+    }
+
+    #[test]
+    fn item_ref_kind_does_not_collide_with_annotation_note_ref_kind() {
+        let conn = mem();
+        let task = seed_named_task(&conn, "unrelated task");
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "shared-term note",
+            "comment",
+            "human",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+        let mut item = make_memory("shared-term memory", &[]);
+        item.body = "shared-term".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        let hits = search_fts(&conn, "shared-term", 10).unwrap();
+        let kinds: std::collections::HashSet<&str> =
+            hits.iter().map(|h| h.ref_kind.as_str()).collect();
+        assert!(kinds.contains("note"));
+        assert!(kinds.contains("item_memory"));
+    }
+
+    #[test]
+    fn archiving_an_item_removes_it_from_search_fts() {
+        let conn = mem();
+        let mut item = make_memory("throwaway", &[]);
+        item.body = "ephemeral-marker-text".to_string();
+        insert_item(&conn, &mut item).unwrap();
+        assert_eq!(
+            search_fts(&conn, "ephemeral-marker-text", 10)
+                .unwrap()
+                .len(),
+            1
+        );
+
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(
+            search_fts(&conn, "ephemeral-marker-text", 10)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn updating_an_active_item_reindexes_its_new_text() {
+        let conn = mem();
+        let mut item = make_memory("original", &[]);
+        item.body = "original-marker-text".to_string();
+        insert_item(&conn, &mut item).unwrap();
+
+        item.body = "updated-marker-text".to_string();
+        update_item(&conn, &item).unwrap();
+
+        assert!(
+            search_fts(&conn, "original-marker-text", 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            search_fts(&conn, "updated-marker-text", 10).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn source_task_uuid_round_trips_through_insert() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+
+        let loaded = list_items(&conn, Some("memory")).unwrap();
+        assert_eq!(loaded[0].source_task_uuid, Some(task.uuid));
+    }
+
+    #[test]
+    fn item_strength_is_baseline_with_no_source_task() {
+        let conn = mem();
+        let item = make_memory("standalone", &[]);
+        assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn similar_to_does_not_block_a_hierarchical_link_but_real_cycles_do() {
+        let conn = mem();
+        let mut a = Item::new_memory("a".into(), "a".into(), None);
+        a.path = Some(String::new());
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = Item::new_memory("b".into(), "b".into(), None);
+        b.path = Some(String::new());
+        insert_item(&conn, &mut b).unwrap();
+
+        // A symmetric association a~b must NOT count as a hierarchical path,
+        // so consolidating into derived_from b->a is allowed.
+        insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &b.uuid.to_string(),
+            "similar_to",
+            0.7,
+        )
+        .unwrap();
+        insert_memory_link(
+            &conn,
+            &b.uuid.to_string(),
+            &a.uuid.to_string(),
+            "derived_from",
+            0.8,
+        )
+        .expect("similar_to must not trip the hierarchical cycle guard");
+
+        // But a genuine hierarchical cycle (a->b derived_from already exists) is refused.
+        let err = insert_memory_link(
+            &conn,
+            &a.uuid.to_string(),
+            &b.uuid.to_string(),
+            "derived_from",
+            0.8,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("cycle"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn item_strength_is_boosted_for_a_completed_source_task() {
+        let conn = mem();
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 2.0);
+    }
+
+    #[test]
+    fn item_strength_is_moderately_boosted_for_a_pending_source_task() {
+        let conn = mem();
+        let task = seed_task(&conn);
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 1.5);
+    }
+
+    #[test]
+    fn item_strength_falls_back_to_baseline_when_source_task_is_gone() {
+        let conn = mem();
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(Uuid::new_v4()));
+        item.path = Some(String::new());
+
+        assert_eq!(item_strength(&conn, &item), 1.0);
+    }
+
+    #[test]
+    fn item_strength_uses_item_task_links_when_no_source_task() {
+        let conn = mem();
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 2.0);
+    }
+
+    #[test]
+    fn item_strength_is_moderately_boosted_for_pending_linked_task() {
+        let conn = mem();
+        let task = seed_task(&conn);
+
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(task.uuid, "auto")]).unwrap();
+
+        assert_eq!(item_strength(&conn, &item), 1.5);
+    }
+
+    #[test]
+    fn item_base_strengths_batch_matches_per_item() {
+        let conn = mem();
+
+        // Completed source task -> Strong.
+        let mut done_task = seed_task(&conn);
+        done_task.status = Status::Completed;
+        update_task(&conn, &done_task).unwrap();
+        let mut m_done = Item::new_memory("done".into(), "b".into(), Some(done_task.uuid));
+        m_done.path = Some(String::new());
+        insert_item(&conn, &mut m_done).unwrap();
+
+        // Pending source task -> Linked.
+        let pending_task = seed_task(&conn);
+        let mut m_pending = Item::new_memory("pending".into(), "b".into(), Some(pending_task.uuid));
+        m_pending.path = Some(String::new());
+        insert_item(&conn, &mut m_pending).unwrap();
+
+        // Source task gone -> falls back to Weak.
+        let mut m_gone = Item::new_memory("gone".into(), "b".into(), Some(Uuid::new_v4()));
+        m_gone.path = Some(String::new());
+        insert_item(&conn, &mut m_gone).unwrap();
+
+        // No source, but a completed *linked* task -> Strong via fallback.
+        let mut linked_done = seed_task(&conn);
+        linked_done.status = Status::Completed;
+        update_task(&conn, &linked_done).unwrap();
+        let mut m_linked = Item::new_memory("linked".into(), "b".into(), None);
+        m_linked.path = Some(String::new());
+        insert_item(&conn, &mut m_linked).unwrap();
+        set_item_task_links(&conn, &m_linked.uuid, &[(linked_done.uuid, "auto")]).unwrap();
+
+        // Standalone -> Weak.
+        let mut m_weak = make_memory("weak", &[]);
+        insert_item(&conn, &mut m_weak).unwrap();
+
+        let items = vec![m_done, m_pending, m_gone, m_linked, m_weak];
+        let batch = item_base_strengths(&conn, &items);
+        for item in &items {
+            let expected = item_strength(&conn, item); // no recalls => base only
+            let got = batch.get(&item.uuid).copied().unwrap();
+            assert!(
+                (got - expected).abs() < 1e-9,
+                "batch base strength diverged for {}: got {got}, want {expected}",
+                item.uuid
+            );
+        }
+    }
+
+    #[test]
+    fn archived_items_are_excluded_from_tag_and_project_lookups() {
+        let conn = mem();
+        let mut item = make_memory("m1", &["gone"]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_projects(&conn, &item.uuid, &["repo".to_string()]).unwrap();
+
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(find_items_by_tag(&conn, "gone").unwrap().is_empty());
+        assert!(find_items_by_project(&conn, "repo").unwrap().is_empty());
+        assert!(list_tags_with_counts(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn find_items_by_file_exact_returns_only_matching_item() {
+        let conn = mem();
+        let mut a = make_memory("auth memory", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        set_item_files(&conn, &a.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let mut b = make_memory("other memory", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        set_item_files(&conn, &b.uuid, &["/repo/src/lib.rs".to_string()]).unwrap();
+
+        let hits = find_items_by_file(&conn, "/repo/src/auth.rs", false).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].uuid, a.uuid);
+    }
+
+    #[test]
+    fn get_item_by_handle_resolves_display_handle_and_uuid_prefix() {
+        let conn = mem();
+        let mut item = make_memory("stable-handle memory", &[]);
+        item.uuid = uuid::Uuid::parse_str("abcd1234-0000-0000-0000-00000000000a").unwrap();
+        insert_item(&conn, &mut item).unwrap();
+
+        // Display handle still works.
+        let by_handle =
+            get_item_by_handle(&conn, &format!("m{}", item.display_id.unwrap())).unwrap();
+        assert_eq!(by_handle.uuid, item.uuid);
+
+        // Full uuid works.
+        let by_uuid = get_item_by_handle(&conn, &item.uuid.to_string()).unwrap();
+        assert_eq!(by_uuid.uuid, item.uuid);
+
+        // 8-char uuid prefix (as the MCP link-memory docs advertise) works.
+        let by_prefix = get_item_by_handle(&conn, "abcd1234").unwrap();
+        assert_eq!(by_prefix.uuid, item.uuid);
+
+        // A non-matching prefix is a clean error.
+        assert!(get_item_by_handle(&conn, "ffffffff").is_err());
+    }
+
+    #[test]
+    fn get_item_by_handle_errors_on_ambiguous_uuid_prefix() {
+        let conn = mem();
+        let mut a = make_memory("mem a", &[]);
+        a.uuid = uuid::Uuid::parse_str("dead0000-0000-0000-0000-00000000000a").unwrap();
+        insert_item(&conn, &mut a).unwrap();
+        let mut b = make_memory("mem b", &[]);
+        b.uuid = uuid::Uuid::parse_str("dead1111-0000-0000-0000-00000000000b").unwrap();
+        insert_item(&conn, &mut b).unwrap();
+
+        // "dead" matches both — must error, not silently pick one.
+        assert!(
+            get_item_by_handle(&conn, "dead").is_err(),
+            "ambiguous uuid prefix must error instead of arbitrarily returning one item"
+        );
+    }
+
+    #[test]
+    fn find_items_by_file_prefix_returns_all_under_directory() {
+        let conn = mem();
+        let mut a = make_memory("auth memory", &[]);
+        insert_item(&conn, &mut a).unwrap();
+        set_item_files(&conn, &a.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let mut b = make_memory("model memory", &[]);
+        insert_item(&conn, &mut b).unwrap();
+        set_item_files(&conn, &b.uuid, &["/repo/src/model.rs".to_string()]).unwrap();
+
+        let mut c = make_memory("outside memory", &[]);
+        insert_item(&conn, &mut c).unwrap();
+        set_item_files(&conn, &c.uuid, &["/repo/tests/integration.rs".to_string()]).unwrap();
+
+        let hits = find_items_by_file(&conn, "/repo/src/", true).unwrap();
+        assert_eq!(hits.len(), 2);
+        let uuids: Vec<_> = hits.iter().map(|h| h.uuid).collect();
+        assert!(uuids.contains(&a.uuid));
+        assert!(uuids.contains(&b.uuid));
+    }
+
+    #[test]
+    fn find_items_by_file_excludes_archived_items() {
+        let conn = mem();
+        let mut item = make_memory("archived memory", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+        archive_item(&conn, &item.uuid).unwrap();
+
+        assert!(
+            find_items_by_file(&conn, "/repo/src/auth.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            find_items_by_file(&conn, "/repo/src/", true)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn find_items_by_file_returns_empty_when_no_match() {
+        let conn = mem();
+        let mut item = make_memory("some memory", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        assert!(
+            find_items_by_file(&conn, "/repo/src/other.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            find_items_by_file(&conn, "/repo/tests/", true)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn set_item_files_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/old.rs".to_string()]).unwrap();
+        set_item_files(&conn, &item.uuid, &["/repo/src/new.rs".to_string()]).unwrap();
+
+        assert!(
+            find_items_by_file(&conn, "/repo/src/old.rs", false)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            find_items_by_file(&conn, "/repo/src/new.rs", false)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    // ── item_task_links ───────────────────────────────────────────────────────
+
+    fn make_completed_task(conn: &Connection, description: &str, file: &str) -> Task {
+        let mut task = Task::new(description.to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(conn, &mut task).unwrap();
+        set_task_files(conn, &task.uuid, &[file.to_string()]).unwrap();
+        task
+    }
+
+    #[test]
+    fn find_tasks_by_file_exact_returns_only_completed_tasks() {
+        let conn = mem();
+        let completed = make_completed_task(&conn, "fix auth", "/repo/src/auth.rs");
+
+        let mut pending = Task::new("wip auth".to_string(), "Sara".to_string());
+        insert_task(&conn, &mut pending).unwrap();
+        set_task_files(&conn, &pending.uuid, &["/repo/src/auth.rs".to_string()]).unwrap();
+
+        let hits = find_tasks_by_file(&conn, "/repo/src/auth.rs", false).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].uuid, completed.uuid);
+    }
+
+    #[test]
+    fn find_tasks_by_file_prefix_returns_all_completed_under_dir() {
+        let conn = mem();
+        let a = make_completed_task(&conn, "task a", "/repo/src/auth.rs");
+        let b = make_completed_task(&conn, "task b", "/repo/src/model.rs");
+        make_completed_task(&conn, "task c", "/repo/tests/foo.rs");
+
+        let hits = find_tasks_by_file(&conn, "/repo/src/", true).unwrap();
+        assert_eq!(hits.len(), 2);
+        let uuids: Vec<_> = hits.iter().map(|t| t.uuid).collect();
+        assert!(uuids.contains(&a.uuid));
+        assert!(uuids.contains(&b.uuid));
+    }
+
+    #[test]
+    fn set_item_task_links_stores_source_labels_correctly() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        let auto_task = make_completed_task(&conn, "auto task", "/repo/src/auth.rs");
+        let mut explicit_task = Task::new("explicit task".to_string(), "Sara".to_string());
+        explicit_task.status = Status::Completed;
+        insert_task(&conn, &mut explicit_task).unwrap();
+
+        set_item_task_links(
+            &conn,
+            &item.uuid,
+            &[(auto_task.uuid, "auto"), (explicit_task.uuid, "explicit")],
+        )
+        .unwrap();
+
+        let links = get_item_task_links(&conn, &item.uuid).unwrap();
+        assert_eq!(links.len(), 2);
+        let auto_link = links
+            .iter()
+            .find(|(t, _)| t.uuid == auto_task.uuid)
+            .unwrap();
+        assert_eq!(auto_link.1, "auto");
+        let exp_link = links
+            .iter()
+            .find(|(t, _)| t.uuid == explicit_task.uuid)
+            .unwrap();
+        assert_eq!(exp_link.1, "explicit");
+    }
+
+    #[test]
+    fn get_item_task_links_returns_empty_when_no_links() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+
+        assert!(get_item_task_links(&conn, &item.uuid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_item_task_links_replaces_previous_set() {
+        let conn = mem();
+        let mut item = make_memory("m", &[]);
+        insert_item(&conn, &mut item).unwrap();
+        let t1 = make_completed_task(&conn, "t1", "/repo/a.rs");
+        let t2 = make_completed_task(&conn, "t2", "/repo/b.rs");
+
+        set_item_task_links(&conn, &item.uuid, &[(t1.uuid, "auto")]).unwrap();
+        set_item_task_links(&conn, &item.uuid, &[(t2.uuid, "explicit")]).unwrap();
+
+        let links = get_item_task_links(&conn, &item.uuid).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].0.uuid, t2.uuid);
+    }
+
+    #[test]
+    fn synthesize_done_memory_skips_when_no_steps_or_annotations() {
+        let conn = mem();
+        let mut task = Task::new("bare task".to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+        // No checklist steps, no annotations — nothing to distil
+        let result = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn synthesize_done_memory_creates_provisional_item_with_done_steps() {
+        let conn = mem();
+        let mut task = Task::new("impl auth".to_string(), "Sara".to_string());
+        task.tags = vec!["auth".to_string()];
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+
+        // Add a done step with result
+        let step_id = add_step(
+            &conn,
+            &task.uuid,
+            "Add login endpoint",
+            None,
+            STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE task_checklist SET done=1, result='Implemented POST /login in routes.rs' WHERE id=?1",
+            [step_id],
+        ).unwrap();
+
+        let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(label.is_some(), "should create a memory");
+
+        // Provisional memories are visible in list_memories (flagged by status)
+        let listed = list_memories(&conn).unwrap();
+        assert!(
+            listed.iter().any(|i| i.status == "provisional"),
+            "provisional memory should be listed"
+        );
+        let m: (String, String, String) = conn.query_row(
+            "SELECT status, body, tags_json FROM items WHERE source_task_uuid=?1 AND kind='memory'",
+            [task.uuid.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!(m.0, "provisional");
+        assert!(
+            m.1.contains("impl auth"),
+            "body should mention task description"
+        );
+        assert!(
+            m.1.contains("login endpoint"),
+            "body should mention the step"
+        );
+        let tags: Vec<String> = serde_json::from_str(&m.2).unwrap();
+        assert!(tags.contains(&"auth".to_string()));
+    }
+
+    #[test]
+    fn synthesize_done_memory_includes_key_annotations() {
+        let conn = mem();
+        let mut task = Task::new("refactor db".to_string(), "Sara".to_string());
+        task.status = Status::Completed;
+        insert_task(&conn, &mut task).unwrap();
+
+        // Add a done step so we pass the "nothing useful" guard
+        let step_id = add_step(
+            &conn,
+            &task.uuid,
+            "Move queries to db.rs",
+            None,
+            STEP_KIND_STEP,
+            "human",
+            None,
+        )
+        .unwrap();
+        conn.execute("UPDATE task_checklist SET done=1 WHERE id=?1", [step_id])
+            .unwrap();
+
+        // Add a decision annotation
+        add_annotation_full(
+            &conn,
+            &task.uuid,
+            "Keep all SQL in db.rs — no ORM",
+            "decision",
+            "human",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
+        assert!(label.is_some());
+
+        let body: String = conn
+            .query_row(
+                "SELECT body FROM items WHERE source_task_uuid=?1 AND kind='memory'",
+                [task.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            body.contains("Keep all SQL in db.rs"),
+            "body should include the decision annotation"
+        );
+    }
+
+    #[test]
+    fn done_surfaces_review_nudge_without_archiving() {
+        let conn = mem();
+        // A provisional memory backdated past the 30-day floor.
+        let mut item = Item::new_memory("stale provisional".into(), "body".into(), None);
+        item.path = Some(String::new());
+        item.status = "provisional".into();
+        insert_item(&conn, &mut item).unwrap();
+        let old_ts = dt_to_str(&(Utc::now() - chrono::Duration::days(40)));
+        conn.execute(
+            "UPDATE items SET created=?1 WHERE uuid=?2",
+            rusqlite::params![old_ts, item.uuid.to_string()],
+        )
+        .unwrap();
+
+        let report = hygiene_pass(&conn).unwrap();
+        assert!(
+            report.review_pending >= 1,
+            "stale provisional is counted for review"
+        );
+        assert!(report.oldest_age_days >= 40, "oldest age is surfaced");
+        assert!(report.archived.is_empty(), "nothing lossless to archive");
+
+        // It was surfaced, NOT deleted.
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                rusqlite::params![item.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "provisional", "review candidate is not archived");
+    }
+
+    #[test]
+    fn archive_superseded_respects_active_superseder() {
+        let conn = mem();
+        // Pair 1: superseder active -> old archived.
+        let mut a1 = Item::new_memory("pair1 old".into(), "b".into(), None);
+        a1.path = Some(String::new());
+        insert_item(&conn, &mut a1).unwrap();
+        let mut b1 = Item::new_memory("pair1 new".into(), "b".into(), None);
+        b1.path = Some(String::new());
+        insert_item(&conn, &mut b1).unwrap();
+        insert_memory_link(
+            &conn,
+            &b1.uuid.to_string(),
+            &a1.uuid.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
+
+        // Pair 2: superseder archived -> old preserved.
+        let mut a2 = Item::new_memory("pair2 old".into(), "b".into(), None);
+        a2.path = Some(String::new());
+        insert_item(&conn, &mut a2).unwrap();
+        let mut b2 = Item::new_memory("pair2 new".into(), "b".into(), None);
+        b2.path = Some(String::new());
+        insert_item(&conn, &mut b2).unwrap();
+        insert_memory_link(
+            &conn,
+            &b2.uuid.to_string(),
+            &a2.uuid.to_string(),
+            "supersedes",
+            1.0,
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE items SET status='archived' WHERE uuid=?1",
+            rusqlite::params![b2.uuid.to_string()],
+        )
+        .unwrap();
+
+        let archived = archive_superseded_memories(&conn).unwrap();
+        let labels: Vec<String> = archived.iter().map(|c| c.label.clone()).collect();
+
+        let a1_label = format!("m{}", a1.display_id.unwrap_or(0));
+        let a2_label = format!("m{}", a2.display_id.unwrap_or(0));
+        assert!(
+            labels.contains(&a1_label),
+            "old with an ACTIVE superseder is archived"
+        );
+        assert!(
+            !labels.contains(&a2_label),
+            "old with an ARCHIVED superseder is preserved"
+        );
+
+        let a2_status: String = conn
+            .query_row(
+                "SELECT status FROM items WHERE uuid=?1",
+                rusqlite::params![a2.uuid.to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(a2_status, "active", "a2 remains active");
     }
 }

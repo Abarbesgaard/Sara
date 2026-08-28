@@ -2,6 +2,116 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-28
+
+Hardens the MCP server and completes its memory surface.
+
+### Features
+
+- **Memory maintenance over MCP** — `consolidate`, `reflect`,
+  `diagnose_memories` and `reindex_embeddings` are now MCP tools (40 -> 44).
+  They were the last non-interactive, `--json`-capable commands still CLI-only,
+  so an agent could `learn`/`recall`/`forget`/`promote`/`prune` but could not
+  maintain the memory graph it depends on. Defaults mirror the CLI's, so the two
+  interfaces cannot silently diverge.
+- **Richer validate failures over MCP** — a red acceptance gate now returns the
+  failing command, its exit code and its captured output, instead of only the
+  criterion's text.
+
+### Fixes
+
+- **`validate` no longer corrupts the MCP JSON-RPC stream** — the acceptance
+  gate printed progress and let verify commands inherit stdout, which the MCP
+  stdio transport reserves for JSON-RPC. Calling the tool injected raw text into
+  the stream and crashed conformant clients; any project running `cargo test` or
+  `pytest` flooded it. The CLI keeps its live streaming output unchanged.
+- **Co-activation no longer loses genuine co-firings** — recall events were
+  bucketed on a fixed epoch grid, so two recalls 100ms apart fell in different
+  buckets whenever they straddled a boundary (exactly 5% of the time), silently
+  dropping Hebbian reinforcement and making a test flaky. Bursts are now cut by
+  single linkage, on the gap between consecutive events.
+- **A relative `project_path` is rejected** — the MCP server is long-running and
+  its working directory is whatever the previous call left, so `".."` silently
+  targeted an unrelated repository.
+
+### Documentation
+
+- README: corrected the MCP tool count (twenty-six -> forty-four) and added the
+  eleven tool rows that were missing from the table.
+
+## [1.0.0] - 2026-08-25
+
+First stable release. Consolidates the memory system's canonical/derived model
+and brings CI to the `nightly` trunk.
+
+### Features
+
+- **Canonical memories now act on the graph** — the `derived_from` relationship
+  went from a passive label to a first-class signal across the whole memory
+  lifecycle:
+  - **Strength boost** — a canonical memory's strength rises with its
+    derived-child count (capped), so the memory more work relies on outranks its
+    offshoots in `recall`/`dream`.
+  - **Smarter overlap warnings** — `sara learn` detects when a near-duplicate or
+    partial-tag match is itself canonical and suggests `--derived-from`/`relearn`
+    instead of a generic warning.
+  - **Cascade on forget** — `sara forget` warns and lists a canonical's derived
+    children; `--cascade` archives them too. The same warning fires on
+    `sara learn --supersedes`.
+  - **Visible labels** — `sara memories` and `sara dream` now show
+    `[canonical, N derived]` / `[derived from: mN]` in plain and JSON output.
+  - **Cross-project reach** — a canonical memory surfaces under any project one
+    of its derived children belongs to, even if it lives in a different project.
+
+### Fixes
+
+- **Windows file-link resolution** — `resolve_file_link` treated a POSIX-style
+  absolute path (`/repo/x`) as relative on Windows (no drive letter) and leaked
+  native `\` separators into stored links. Paths are now judged absolute
+  platform-independently and always stored forward-slash, so links resolve
+  identically across operating systems.
+- **Security** — bumped `crossbeam-epoch` to 0.9.20 (RUSTSEC-2026-0204) and
+  `anyhow` to 1.0.104 (RUSTSEC-2026-0190 unsoundness).
+
+### CI
+
+- Rust CI (test matrix, fmt, clippy, build) and the security audit now run on
+  the `nightly` trunk, not just `main`/`master`, so PRs targeting `nightly` get
+  full feedback.
+
+### Features (memory & execution, carried from Unreleased)
+
+- **`add` surfaces the actual knowledge, not a pointer** — the pre-create similarity check now returns **full memory bodies** for matching learned memories (previously it silently dropped every memory hit, because it ran `resolve_task` on the item's own uuid, and only ever showed 160-char task snippets). It adds a **tag-exact pass** (`confidence: "canonical"`) and a **semantic embedding pass** (`confidence: "semantic"`) alongside the existing phrase/token passes, so the canonical fix for a recurring fault lands in context the instant the charge is created — no second `recall` round-trip.
+- **Fail-closed `validate`** — `sara validate` now **runs every acceptance criterion's `verify` command and refuses to stamp** unless every criterion has a command and all exit 0. "Validated" now means *proven green by a command*, never asserted in prose. CLI `--no-run` stamps without running (with a loud warning) for environments where the checks genuinely can't run locally. The MCP `validate` tool is fail-closed with no escape hatch.
+- **Branch guard against recycled display ids** — `add` auto-ties the new task to the current git branch, and `done`/`validate` **refuse a bare numeric display-id mutation when the project is on a different branch than the task's tie** (the concurrent-agent recompaction hazard), printing the stable UUID to use instead. Positive-evidence only: silent for uuid inputs, untied tasks, detached HEAD, or `--force`.
+- **Finding-resurface (reconsider prompt)** — `step_done` (with a result) and `annotate --kind finding` now embed the new text and surface the task's **own prior findings that are semantically close** (cosine ≥ 0.55, top 2), so an agent is reconnected to what it already concluded exactly when it records something that contradicts it. Emitted as `related_findings` in the JSON/MCP path and a `⟳ reconsider` prompt on the CLI.
+
+
+## [0.9.2] - 2026-08-17
+
+### Changes
+
+- **Semantic recall is now always on** — embedding-based ranking previously required the opt-in `--semantic` flag or `[recall] semantic = true`. Recall now always matches by meaning as well as keyword, so a paraphrase surfaces relevant memories even when it shares no literal term. The `--semantic` flag and `[recall] semantic` config field are retained as no-ops for backward compatibility. Cost stays bounded: the semantic merge only runs for non-empty queries, so bare `sara recall` and tag/project/file-only lookups still skip embeddings.
+
+## [0.9.1] - 2026-08-17
+
+### Features
+
+- **`sara verify --tick-on-pass`** — runs each step/acceptance criterion's own stored verify command and marks it done **only** when it exits 0, recording the pass/fail as the item's execution result. Collapses "run the check", "read the output", and "tick the box" into a single call (`sara verify <id> --tick-on-pass`), instead of running the test by hand and then ticking manually.
+- **`--json` on `sara step done` / `step undone` / `step remove`** — these write commands now emit the same structured record the MCP tools return (task, uuid, kind, index, commit, `activated`) when passed `--json`, so agents can act on fields instead of parsing human text.
+- **Auto-transition to active on first work** — the first `sara step done` or `sara verify --run`/`--tick-on-pass` against an idle task now starts its timer automatically (`ensure_started`), so a task's active state reflects reality without remembering a separate `sara start`. `step done --json` reports whether it `activated` the task.
+- **`sara recall` with no arguments returns recent memories** — a bare `sara recall` (no query, `--tag`, `--project`, or `--file`) now surfaces the most recent memories with `confidence: "recent"` instead of erroring, so the cheap exploratory "what do I know?" call just works.
+
+### Changes
+
+- **Learn memory size limit raised to 4000 chars and made configurable** — the guard against pasting a raw conversation into `sara learn` now defaults to 4000 characters (was 2000) and honours the `SARA_MEMORY_CHAR_LIMIT` environment variable to raise (or lower) it without editing the binary. `--force` still bypasses the check entirely.
+
+### Bug Fixes
+
+- **`sara relearn` now refreshes the semantic embedding** — editing a memory's body re-indexed FTS (via the `items` update trigger) but left the semantic embedding stale, so `recall --semantic` kept matching the old text. `relearn` now re-embeds when the body changes, but only for memories that were already indexed (never fabricating an embedding for one that had none).
+- **Semantic recall respects exact `--tag`/`--project`/`--file` filters** — `merge_semantic_hits` scored the whole embedding corpus and appended matches regardless of the active exact filter, leaking memories outside the requested set. Semantic candidates are now restricted to the exact-filter allowlist, preserving AND semantics.
+- **`sara dream` back-navigation no longer loses breadcrumbs** — `Esc`/`Backspace` popped the breadcrumb before confirming the target still loaded, so a since-forgotten crumb silently failed and was consumed. Back-nav now skips dead crumbs and only lands on a memory that still exists.
+
 ## [0.9.0] - 2026-07-06
 
 ### Features

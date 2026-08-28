@@ -4,7 +4,7 @@
 //! live in the `read` / `guide` / `lifecycle` slices; `new` composes their named
 //! routers into one.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
@@ -43,8 +43,19 @@ impl CwdGuard {
     pub(crate) fn enter(project_path: Option<&str>) -> anyhow::Result<Self> {
         match project_path {
             Some(p) if !p.trim().is_empty() => {
+                let p = p.trim();
+                // The server is long-running and its cwd is whatever the last
+                // call left it as, so a relative path has no stable meaning —
+                // it would silently resolve against an unrelated project.
+                // Every tool documents `project_path` as absolute; enforce it.
+                let path = Path::new(p);
+                if !path.is_absolute() {
+                    anyhow::bail!(
+                        "project_path must be an absolute path to the target repo, got {p:?}"
+                    );
+                }
                 let prev = std::env::current_dir().ok();
-                std::env::set_current_dir(p)
+                std::env::set_current_dir(path)
                     .with_context(|| format!("project_path is not an accessible directory: {p}"))?;
                 Ok(Self { prev })
             }
@@ -87,6 +98,11 @@ impl SaraServer {
     /// connection (serializing all tool calls), sets the process cwd to the
     /// project, and opens an undo batch — all on one thread, so both the cwd and
     /// the thread-local undo context are coherent for the enclosed call.
+    ///
+    /// After the closure returns, a minimal event is written to the `events` table
+    /// (action = tool label, project = derived from cwd) so every MCP tool call
+    /// is automatically captured as an activity record. Recording errors are
+    /// suppressed — a failed INSERT never aborts the tool result.
     pub(crate) fn with_project<T>(
         &self,
         project_path: Option<&str>,
@@ -99,7 +115,23 @@ impl SaraServer {
             .map_err(|_| anyhow::anyhow!("sara database mutex was poisoned"))?;
         let _cwd = CwdGuard::enter(project_path)?;
         db::begin_undo_batch(label);
-        f(&conn, &self.cfg)
+        let result = f(&conn, &self.cfg);
+        // Fire-and-forget event recording: derive project name from the registered
+        // path that matches the current cwd (best-effort, None if not found).
+        let project_name = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(str::to_owned))
+            .and_then(|cwd| db::get_project_by_path(&conn, &cwd).ok().flatten())
+            .map(|p| p.name);
+        let _ = db::record_event(
+            &conn,
+            label,
+            None,
+            Some("mcp_tool"),
+            &[],
+            project_name.as_deref(),
+        );
+        result
     }
 }
 
@@ -131,7 +163,10 @@ impl ServerHandler for SaraServer {
 
 /// `sara mcp` entry point: serve the MCP tool set over stdio until the client
 /// disconnects. Builds the tokio runtime here so the rest of the CLI stays sync.
+/// On startup, prunes events older than 90 days (retention policy) so the
+/// table doesn't grow unboundedly across long-running server sessions.
 pub fn run(conn: Connection, cfg: &Config) -> anyhow::Result<()> {
+    let _ = db::prune_old_events(&conn, 90);
     let server = SaraServer::new(conn, cfg.clone());
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

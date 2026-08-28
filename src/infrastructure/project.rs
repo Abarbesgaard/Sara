@@ -38,6 +38,52 @@ pub fn project_name_from_root(root: &Path) -> String {
         .to_string()
 }
 
+/// Pure resolver for file-link paths stored on memories.
+///
+/// Absolute paths pass through unchanged. A *relative* path is anchored to the
+/// `git_root` when the caller is inside a repository, so the same file resolves
+/// to the same absolute path from any subdirectory of the repo — this is what
+/// lets `sara recall --file lib/foo.rs` match whether it is run from the repo
+/// root or a nested folder. Outside a repository (`git_root == None`) it falls
+/// back to `cwd`. A trailing `/` (directory-prefix, used for prefix matching in
+/// recall) is preserved.
+pub fn resolve_file_link(path: &str, git_root: Option<&Path>, cwd: &Path) -> String {
+    let is_dir_prefix = path.ends_with('/') && path != "/";
+    let core = if is_dir_prefix {
+        path.trim_end_matches('/')
+    } else {
+        path
+    };
+    // Sara always stores/compares file links as forward-slash paths, so
+    // "absolute" must be judged platform-independently — std::path::Path::is_absolute()
+    // returns false for a POSIX-style "/repo/x" on Windows (no drive letter), which
+    // would otherwise send an already-absolute path through the join-with-cwd branch.
+    let is_absolute = core.starts_with('/') || Path::new(core).is_absolute();
+    let resolved = if is_absolute {
+        PathBuf::from(core)
+    } else {
+        git_root.unwrap_or(cwd).join(core)
+    };
+    // Always store forward-slash paths regardless of platform, so links saved
+    // on one OS resolve identically when recalled on another (and so joining
+    // native path separators on Windows doesn't leave a mixed "\"/"/" string).
+    let mut out = resolved.to_string_lossy().replace('\\', "/");
+    if is_dir_prefix {
+        out.push('/');
+    }
+    out
+}
+
+/// Resolve a file-link path against the real environment: anchors relative
+/// paths to the git root of the current directory (falling back to CWD outside
+/// a repo). Thin wrapper over [`resolve_file_link`] used by `learn` and
+/// `recall` so stored links and recall lookups resolve identically.
+pub fn resolve_file_link_here(path: &str) -> String {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let git_root = find_git_root(&cwd);
+    resolve_file_link(path, git_root.as_deref(), &cwd)
+}
+
 /// Resolve the project identity (name, path) for a directory.
 ///
 /// A git repo is its own project, named after the repo root. Otherwise the
@@ -245,6 +291,44 @@ mod tests {
         assert_eq!(
             project_root_for(dir, Some(dir), Some(home)),
             PathBuf::from("/home/u/projects/myrepo")
+        );
+    }
+
+    #[test]
+    fn file_link_relative_anchors_to_git_root_not_cwd() {
+        // From a nested subdirectory, a repo-relative path must resolve against
+        // the REPO ROOT, so learn-time storage and recall-time lookup agree no
+        // matter which folder either was run from. (CWD-anchoring — the old
+        // behaviour — would have produced "/repo/components/lib/server/game.ts".)
+        let root = Path::new("/repo");
+        let cwd = Path::new("/repo/components");
+        assert_eq!(
+            resolve_file_link("lib/server/game.ts", Some(root), cwd),
+            "/repo/lib/server/game.ts"
+        );
+    }
+
+    #[test]
+    fn file_link_absolute_passes_through() {
+        assert_eq!(
+            resolve_file_link("/x/y.ts", Some(Path::new("/repo")), Path::new("/repo/a")),
+            "/x/y.ts"
+        );
+    }
+
+    #[test]
+    fn file_link_outside_repo_falls_back_to_cwd() {
+        assert_eq!(
+            resolve_file_link("a/b.ts", None, Path::new("/tmp/work")),
+            "/tmp/work/a/b.ts"
+        );
+    }
+
+    #[test]
+    fn file_link_directory_prefix_slash_preserved() {
+        assert_eq!(
+            resolve_file_link("lib/", Some(Path::new("/repo")), Path::new("/repo/x")),
+            "/repo/lib/"
         );
     }
 }
