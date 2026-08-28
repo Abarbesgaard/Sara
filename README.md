@@ -495,12 +495,14 @@ drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, 
 TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
 single source of truth.
 
-The server exposes twenty-six tools — the non-interactive agent loop end to end,
+The server exposes forty-four tools — the non-interactive agent loop end to end,
 from reading and planning a task through to completing it:
 
 | Tool | Purpose |
 |------|---------|
 | `list` | Pending tasks for a project (or all) |
+| `projects` | List every registered project |
+| `move_task` | Move a task to another project |
 | `info` | Full task guide: steps, acceptance, notes, links, freshness, feedback |
 | `add` | Create a task (never opens the review form) |
 | `next` | The execution cursor — first not-done step |
@@ -510,11 +512,15 @@ from reading and planning a task through to completing it:
 | `recall` | Cross-task keyword search + memory lookup |
 | `memories` | Browse all saved memories (with strength labels) |
 | `forget` | Archive a memory by label |
+| `learn` | Save a knowledge memory (tags, file bindings, task links) |
+| `relearn` | Edit a memory in place, keeping its label, links and dates |
+| `tags` | List the whole tag vocabulary with usage counts |
 | `promote` | Accept a provisional auto-memory as permanent |
 | `link_memory` | Create a typed edge between two memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
 | `unlink_memory` | Remove a typed edge between two memories |
 | `prune_memories` | Dry-run or apply archival of low-value memories |
 | `annotate` | Add a comment / finding / decision |
+| `denotate` | Remove an annotation by its id |
 | `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
 | `plan_show` | Dependency-ordered briefing (the task plus everything it is blocked by) |
 | `check` | Add a checklist step or acceptance criterion (with optional intent / verify command) |
@@ -522,6 +528,7 @@ from reading and planning a task through to completing it:
 | `step_remove` | Delete step N (remaining items renumber) |
 | `dep` | Manage dependencies — `action` = `on` / `off` / `list` |
 | `link` | Attach a URL (e.g. a PR) to a task |
+| `unlink` | Remove a link by its id |
 | `attach` | Attach a file or code anchor (`reason`, `symbol`, `lines`, `source`); a URL becomes a link |
 | `assignment` | Set the task's assignment (the originating prompt / what to build) |
 | `rationale` | Set the task's rationale (why it exists) |
@@ -531,6 +538,10 @@ from reading and planning a task through to completing it:
 | `resolve` | Resolve a feedback item by its id |
 | `start` / `stop` | Time tracking (`stop` snapshots a tied branch's changed files) |
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
+| `consolidate` | Reinforce `co_activated` synapses between memories recalled together |
+| `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
+| `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
+| `reindex_embeddings` | Rebuild the semantic index over all memories |
 
 Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
 `activity`, `projects`) stay CLI-only by design — the server never opens a TUI or

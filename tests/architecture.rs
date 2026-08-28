@@ -195,3 +195,48 @@ fn test_sql_query_ownership() {
         violations.join("\n")
     );
 }
+
+/// The MCP stdio transport carries JSON-RPC and nothing else, so the acceptance
+/// gate must be completely silent when run in `GateOutput::Capture` mode. A
+/// single stray `println!` in `run_acceptance_gate` re-corrupts the stream and
+/// crashes conformant clients — invisibly, since the unit tests inspect the
+/// returned gate rather than the process's stdout.
+///
+/// All gate output therefore goes through `GateOutput::say`, which is a no-op in
+/// `Capture` mode. Pin that structurally: the function must contain no bare
+/// stdout print at all. This is deliberately a dumb substring scan rather than a
+/// brace-matching walker — a walker has to model multi-line `if` conditions,
+/// `} else {`, and single-line blocks, and every one it gets wrong fails *open*.
+#[test]
+fn test_acceptance_gate_never_prints_directly() {
+    let src = std::fs::read_to_string("src/commands/guide/mod.rs")
+        .expect("src/commands/guide/mod.rs must exist");
+
+    let start = src
+        .find("fn run_acceptance_gate")
+        .expect("run_acceptance_gate must exist");
+
+    // A top-level fn body ends at the first `}` in column 0 (rustfmt guarantees
+    // this, and `cargo fmt --check` runs in CI).
+    let body = &src[start..];
+    let end = body.find("\n}\n").map(|e| e + 2).unwrap_or(body.len());
+    let body = &body[..end];
+
+    let violations: Vec<String> = body
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| {
+            let t = l.trim();
+            !t.starts_with("//") && (t.contains("println!") || t.contains("print!"))
+        })
+        .map(|(n, l)| format!("  run_acceptance_gate + {n} lines: {}", l.trim()))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "run_acceptance_gate prints to stdout directly. In MCP (`Capture`) mode \
+         stdout is a JSON-RPC transport and this corrupts it. Route the message \
+         through `mode.say(...)` instead:\n{}",
+        violations.join("\n")
+    );
+}

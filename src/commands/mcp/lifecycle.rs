@@ -73,7 +73,12 @@ impl SaraServer {
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
-                commands::guide::validate_value(conn, &p.id, false)
+                commands::guide::validate_value(
+                    conn,
+                    &p.id,
+                    false,
+                    commands::guide::GateOutput::Capture,
+                )
             })
             .map_err(mcp_err)?;
         ok_json(v)

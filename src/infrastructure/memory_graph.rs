@@ -420,9 +420,27 @@ fn document_frequencies<T: Clone + Eq + std::hash::Hash>(sets: &[Vec<T>]) -> Has
 // ── Hebbian consolidation ────────────────────────────────────────────────────
 
 /// Group timestamped recall events into co-firing pairs: any two *distinct*
-/// memories whose `memory_recalled` events fall in the same `bucket` window
-/// fired together. Returns each unordered pair with the number of buckets in
-/// which they co-fired. Pure (no DB) so it is directly unit-testable.
+/// memories whose `memory_recalled` events fall within the same `bucket`-wide
+/// window fired together. Returns each unordered pair with the number of windows
+/// in which they co-fired. Pure (no DB) so it is directly unit-testable.
+///
+/// Co-firing is a property of the *gap between two recalls*, so windows are
+/// grown by single linkage: sort by time and keep extending the current burst
+/// while each event sits within `bucket` of the one **before it**, cutting a
+/// new burst only on a gap wider than `bucket`.
+///
+/// Two weaker schemes are wrong here, both in the same way — they impose a grid
+/// and lose a genuine co-firing whenever a pair straddles a cell edge:
+/// - bucketing on absolute epoch time (`timestamp_millis() / bucket_ms`) splits
+///   recalls milliseconds apart that happen to fall either side of a slot;
+/// - anchoring each window on its first event merely swaps the epoch grid for
+///   an event-derived one: an unrelated *preceding* recall can still push the
+///   real pair across the boundary.
+///
+/// Single linkage can in principle chain a long train of closely-spaced events
+/// into one burst; that is the intended reading (sustained activity is one
+/// burst), and the `max_bucket` guard below discards any burst too wide to be
+/// genuine co-activation.
 pub fn coactivation_pairs(
     events: &[(Uuid, DateTime<Utc>)],
     bucket: Duration,
@@ -432,16 +450,36 @@ pub fn coactivation_pairs(
         return vec![];
     }
     let bucket_ms = bucket.num_milliseconds().max(1);
-    // Assign each event to a fixed-width time bucket, then pair within buckets.
-    let mut by_bucket: HashMap<i64, Vec<Uuid>> = HashMap::new();
-    for (u, at) in events {
-        let b = at.timestamp_millis() / bucket_ms;
-        by_bucket.entry(b).or_default().push(*u);
+
+    let mut sorted: Vec<&(Uuid, DateTime<Utc>)> = events.iter().collect();
+    sorted.sort_by_key(|(_, at)| *at);
+
+    // Sweep the sorted events, cutting a new burst whenever this event sits
+    // more than `bucket` after its immediate predecessor.
+    let mut windows: Vec<Vec<Uuid>> = Vec::new();
+    let mut current: Vec<Uuid> = Vec::new();
+    let mut prev: Option<DateTime<Utc>> = None;
+    for (u, at) in sorted {
+        match prev {
+            Some(p) if (*at - p).num_milliseconds() <= bucket_ms => {
+                current.push(*u);
+            }
+            _ => {
+                if !current.is_empty() {
+                    windows.push(std::mem::take(&mut current));
+                }
+                current.push(*u);
+            }
+        }
+        prev = Some(*at);
+    }
+    if !current.is_empty() {
+        windows.push(current);
     }
 
     let mut pair_counts: HashMap<(Uuid, Uuid), u32> = HashMap::new();
-    for members in by_bucket.values() {
-        // Distinct memories in this bucket.
+    for members in &windows {
+        // Distinct memories in this window.
         let mut uniq: Vec<Uuid> = members.clone();
         uniq.sort_unstable();
         uniq.dedup();
@@ -650,14 +688,20 @@ mod tests {
 
     #[test]
     fn coactivation_pairs_group_within_bucket() {
-        let t0 = Utc::now();
+        // A FIXED instant chosen to straddle a 2s epoch-aligned boundary:
+        // 1_700_000_001_900 ms has remainder 1900 mod 2000, so `a` at t0 and
+        // `b` at t0+100ms fall in *different* fixed slots. The old
+        // `timestamp_millis() / bucket_ms` bucketing therefore missed this
+        // co-firing (~5% of runs under `Utc::now()`, hence a flaky test).
+        // Windows are now cut relative to the events, so this is deterministic.
+        let t0 = DateTime::from_timestamp_millis(1_700_000_001_900).unwrap();
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
         let c = Uuid::new_v4();
         let events = vec![
             (a, t0),
-            (b, t0 + Duration::milliseconds(100)), // same bucket as a
-            (c, t0 + Duration::seconds(60)),       // far away — own bucket
+            (b, t0 + Duration::milliseconds(100)), // same window as a
+            (c, t0 + Duration::seconds(60)),       // far away — own window
         ];
         let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
         assert_eq!(pairs.len(), 1);
@@ -666,6 +710,91 @@ mod tests {
         let got = if x < y { (x, y) } else { (y, x) };
         let want = if a < b { (a, b) } else { (b, a) };
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn coactivation_is_translation_invariant() {
+        // Whether two recalls co-fire must depend only on the gap between them,
+        // never on where they happen to land on the epoch grid. Sweep a full
+        // bucket's worth of start offsets: every one must find the pair.
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        for offset_ms in 0..2000 {
+            let t0 = DateTime::from_timestamp_millis(1_700_000_000_000 + offset_ms).unwrap();
+            let events = vec![(a, t0), (b, t0 + Duration::milliseconds(100))];
+            let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
+            assert_eq!(
+                pairs.len(),
+                1,
+                "lost the co-firing at start offset {offset_ms}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn coactivation_survives_an_unrelated_preceding_recall() {
+        // Two recalls 100ms apart co-fire. An *earlier, unrelated* recall must
+        // not be able to break that: partitioning into windows anchored on the
+        // first event merely swaps the epoch grid for an event-derived one, and
+        // still loses the pair whenever the preceding event lands in the last
+        // `gap`-wide sliver of the bucket. Co-firing is a property of the gap
+        // between two events, so sweep every placement of the preceding recall.
+        let x = Uuid::new_v4();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let t = DateTime::from_timestamp_millis(1_700_000_000_000).unwrap();
+        for lead_ms in 0..2000 {
+            let events = vec![
+                (x, t - Duration::milliseconds(lead_ms)),
+                (a, t),
+                (b, t + Duration::milliseconds(100)),
+            ];
+            let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(p, q, _)| (*p == a && *q == b) || (*p == b && *q == a)),
+                "lost the a/b co-firing when an unrelated recall preceded it by {lead_ms}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn coactivation_guard_discards_a_long_chained_burst() {
+        // Single linkage can chain a train of closely-spaced events into one
+        // wide burst. That must not become O(k²) spurious synapses: the
+        // max_bucket guard has to discard it.
+        let t = DateTime::from_timestamp_millis(1_700_000_000_000).unwrap();
+        let events: Vec<(Uuid, DateTime<Utc>)> = (0..40)
+            .map(|i| (Uuid::new_v4(), t + Duration::milliseconds(i * 10)))
+            .collect();
+        let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
+        assert!(
+            pairs.is_empty(),
+            "a 40-memory chained burst is a bulk listing, not co-firing; got {} pairs",
+            pairs.len()
+        );
+        // With the guard disabled the same burst does pair up, proving the
+        // events really did chain into one window rather than being dropped.
+        let unguarded = coactivation_pairs(&events, Duration::seconds(2), 0);
+        assert_eq!(unguarded.len(), 40 * 39 / 2);
+    }
+
+    #[test]
+    fn coactivation_splits_events_beyond_the_window() {
+        // The converse: a gap wider than the bucket must never co-fire, no
+        // matter how the pair sits relative to the epoch grid.
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        for offset_ms in 0..500 {
+            let t0 = DateTime::from_timestamp_millis(1_700_000_000_000 + offset_ms).unwrap();
+            let events = vec![(a, t0), (b, t0 + Duration::milliseconds(2001))];
+            let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
+            assert!(
+                pairs.is_empty(),
+                "spurious co-firing at start offset {offset_ms}ms"
+            );
+        }
     }
 
     #[test]

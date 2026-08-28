@@ -377,3 +377,37 @@ pub(crate) struct PruneMemoriesParams {
     /// Days before a Provisional auto-memory is eligible if unreviewed. Default 30.
     pub(crate) provisional_days: Option<i64>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ConsolidateParams {
+    pub(crate) project_path: Option<String>,
+    /// How many days of recall history to sweep. Default 30.
+    pub(crate) window_days: Option<i64>,
+    /// Co-firing window in seconds: recalls closer than this fired together. Default 5.
+    pub(crate) bucket_secs: Option<i64>,
+    /// Weight added to a synapse per co-firing. Default 0.1.
+    pub(crate) delta: Option<f64>,
+    /// Bursts with more distinct memories than this are bulk listings, not genuine
+    /// co-activation, and are skipped. 0 disables the guard. Default 5.
+    pub(crate) max_bucket: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ReflectParams {
+    pub(crate) project_path: Option<String>,
+    /// Minimum co-activation weight for two memories to count as clustered.
+    pub(crate) min_weight: Option<f64>,
+    /// If true, create the proposed `derived_from` edges. Default false
+    /// (read-only: return the proposal so you can review it first).
+    pub(crate) apply: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct DiagnoseMemoriesParams {
+    pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ReindexEmbeddingsParams {
+    pub(crate) project_path: Option<String>,
+}

@@ -705,6 +705,9 @@ pub struct AcceptanceGate {
     pub failures: Vec<String>,
     /// Text of criteria that carry NO `verify_cmd` — unprovable, so they block.
     pub missing_verify: Vec<String>,
+    /// Per-command record of the run. Populated in both modes; `output` is only
+    /// filled under [`GateOutput::Capture`].
+    pub transcript: Vec<GateRun>,
 }
 
 impl AcceptanceGate {
@@ -738,6 +741,87 @@ impl AcceptanceGate {
         }
         parts.join(" | ")
     }
+
+    /// The captured output of every command that failed, for callers that cannot
+    /// print a live transcript. Empty when nothing was captured.
+    pub fn failure_detail(&self) -> String {
+        let mut out = String::new();
+        for r in self.transcript.iter().filter(|r| !r.passed) {
+            if r.output.trim().is_empty() {
+                continue;
+            }
+            let code = r
+                .exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "n/a".into());
+            out.push_str(&format!("\n$ {} (exit {})\n{}", r.cmd, code, r.output));
+        }
+        out
+    }
+}
+
+/// How the acceptance gate emits the output of the commands it runs.
+///
+/// This distinction is load-bearing for the MCP server: its stdio transport
+/// carries JSON-RPC only, so neither our progress lines nor a verify command's
+/// own output may reach stdout. `Capture` keeps the whole run off stdout and
+/// records it in [`AcceptanceGate::transcript`] instead.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GateOutput {
+    /// CLI: announce each command and let it stream to the terminal live.
+    Stream,
+    /// MCP (and any other structured caller): capture output, print nothing.
+    Capture,
+}
+
+impl GateOutput {
+    /// Emit a progress line — but only when streaming to a human on the CLI.
+    ///
+    /// Every gate print must go through here. In `Capture` mode the caller owns
+    /// stdout as a JSON-RPC transport, where a single stray line desynchronises
+    /// the stream and crashes conformant clients. Funnelling all output through
+    /// one mode-aware method makes that corruption impossible to reintroduce by
+    /// accident; `tests/architecture.rs` pins the rule by asserting the gate
+    /// contains no bare `println!` at all.
+    fn say(self, line: impl std::fmt::Display) {
+        if self == GateOutput::Stream {
+            println!("{line}");
+        }
+    }
+}
+
+/// One executed acceptance criterion, recorded so a caller that cannot print
+/// (the MCP tool) can still report *why* the gate went red.
+#[derive(Debug, Clone)]
+pub struct GateRun {
+    /// The criterion's text.
+    pub text: String,
+    /// The command that was run.
+    pub cmd: String,
+    /// Whether it exited 0.
+    pub passed: bool,
+    /// Exit code, or `None` if the command could not be spawned at all.
+    pub exit_code: Option<i32>,
+    /// Combined stdout+stderr. Empty under [`GateOutput::Stream`], where the
+    /// child wrote straight to the terminal.
+    pub output: String,
+}
+
+/// Keep captured command output bounded so a chatty test suite can't blow up a
+/// JSON-RPC response. Truncates on a char boundary, keeping the tail — where
+/// assertion failures and stack traces live.
+fn tail_limited(s: &str, max_chars: usize) -> String {
+    let total = s.chars().count();
+    if total <= max_chars {
+        return s.to_string();
+    }
+    let skip = total - max_chars;
+    let start = s
+        .char_indices()
+        .nth(skip)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    format!("…[{skip} chars truncated]\n{}", &s[start..])
 }
 
 /// Run every acceptance criterion's `verify_cmd`, ticking those that exit 0, and
@@ -745,7 +829,14 @@ impl AcceptanceGate {
 /// `validate`: "green" can only be recorded when a real command proved it, never
 /// asserted in prose. Criteria with no verify command are reported as blocking
 /// (`missing_verify`) rather than silently passed.
-pub fn run_acceptance_gate(conn: &Connection, task_id_or_uuid: &str) -> Result<AcceptanceGate> {
+///
+/// Under [`GateOutput::Capture`] this function writes nothing to stdout or
+/// stderr, which is what makes it safe to call from the MCP server.
+pub fn run_acceptance_gate(
+    conn: &Connection,
+    task_id_or_uuid: &str,
+    mode: GateOutput,
+) -> Result<AcceptanceGate> {
     let task = db::resolve_task(conn, task_id_or_uuid)?;
     let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
     let working_dir = db::get_project(conn, &task.project)
@@ -760,6 +851,7 @@ pub fn run_acceptance_gate(conn: &Connection, task_id_or_uuid: &str) -> Result<A
         passed: 0,
         failures: Vec::new(),
         missing_verify: Vec::new(),
+        transcript: Vec::new(),
     };
 
     for s in &acceptance {
@@ -768,27 +860,66 @@ pub fn run_acceptance_gate(conn: &Connection, task_id_or_uuid: &str) -> Result<A
             continue;
         };
         gate.ran += 1;
-        println!("$ {cmd}");
+        mode.say(format!("$ {cmd}"));
         let mut command = std::process::Command::new("sh");
         command.arg("-c").arg(cmd);
         if let Some(dir) = &working_dir {
             command.current_dir(dir);
         }
-        match command.status() {
-            Ok(st) if st.success() => {
+
+        // `status()` lets the child inherit our stdio (live output, CLI only);
+        // `output()` captures it so nothing reaches the JSON-RPC stream.
+        let outcome = match mode {
+            GateOutput::Stream => command.status().map(|st| (st, String::new())),
+            GateOutput::Capture => command.output().map(|o| {
+                let mut buf = String::from_utf8_lossy(&o.stdout).into_owned();
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.is_empty() {
+                    if !buf.is_empty() && !buf.ends_with('\n') {
+                        buf.push('\n');
+                    }
+                    buf.push_str(&err);
+                }
+                (o.status, tail_limited(&buf, 4000))
+            }),
+        };
+
+        match outcome {
+            Ok((st, out)) if st.success() => {
                 let note = format!("verify passed: {cmd}");
                 db::set_step_done(conn, s.id, true, Some(&note), commit.as_deref())?;
                 gate.passed += 1;
-                println!("  ✓ passed — ticked \"{}\"", s.text);
+                mode.say(format!("  ✓ passed — ticked \"{}\"", s.text));
+                gate.transcript.push(GateRun {
+                    text: s.text.clone(),
+                    cmd: cmd.clone(),
+                    passed: true,
+                    exit_code: st.code(),
+                    output: out,
+                });
             }
-            Ok(st) => {
+            Ok((st, out)) => {
                 let code = st.code().unwrap_or(-1);
-                println!("  ✗ exit {code} — \"{}\"", s.text);
+                mode.say(format!("  ✗ exit {code} — \"{}\"", s.text));
                 gate.failures.push(s.text.clone());
+                gate.transcript.push(GateRun {
+                    text: s.text.clone(),
+                    cmd: cmd.clone(),
+                    passed: false,
+                    exit_code: st.code(),
+                    output: out,
+                });
             }
             Err(e) => {
-                println!("  ✗ failed to run ({e}) — \"{}\"", s.text);
+                mode.say(format!("  ✗ failed to run ({e}) — \"{}\"", s.text));
                 gate.failures.push(s.text.clone());
+                gate.transcript.push(GateRun {
+                    text: s.text.clone(),
+                    cmd: cmd.clone(),
+                    passed: false,
+                    exit_code: None,
+                    output: format!("failed to run: {e}"),
+                });
             }
         }
     }
@@ -802,19 +933,25 @@ pub fn run_acceptance_gate(conn: &Connection, task_id_or_uuid: &str) -> Result<A
 /// `verify_cmd` is executed and must exit 0 (and every criterion must carry a
 /// command) before the guide is stamped. This makes "validated" mean *proven
 /// green by a command*, never merely asserted.
-pub fn validate_value(conn: &Connection, id: &str, skip_gate: bool) -> Result<serde_json::Value> {
+pub fn validate_value(
+    conn: &Connection,
+    id: &str,
+    skip_gate: bool,
+    mode: GateOutput,
+) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     guard_branch_mutation(conn, id, &task, false)?;
     let head = project_head(conn, &task.project)
         .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
 
     if !skip_gate {
-        let gate = run_acceptance_gate(conn, id)?;
+        let gate = run_acceptance_gate(conn, id, mode)?;
         if !gate.is_green() {
             anyhow::bail!(
-                "validate refused — acceptance gate is red: {}. \
+                "validate refused — acceptance gate is red: {}.{} \
                  Fix and re-run, or `validate --no-run` to stamp without proof (discouraged).",
-                gate.reason()
+                gate.reason(),
+                gate.failure_detail()
             );
         }
     }
@@ -838,7 +975,7 @@ pub fn validate(conn: &Connection, id: &str, no_run: bool) -> Result<()> {
              'validated' will not be backed by a passing command."
         );
     }
-    let v = validate_value(conn, id, no_run)?;
+    let v = validate_value(conn, id, no_run, GateOutput::Stream)?;
     println!(
         "Stamped task {} validated @ {}.",
         v["task"].as_i64().unwrap_or(0),
@@ -1125,7 +1262,7 @@ mod tests {
     fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("true"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
         assert!(gate.is_green(), "one criterion, verify passes → green");
         assert_eq!(gate.passed, 1);
     }
@@ -1134,7 +1271,7 @@ mod tests {
     fn gate_red_when_verify_command_fails() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("false"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
         assert!(!gate.is_green(), "failing verify → red");
         assert_eq!(gate.failures.len(), 1);
     }
@@ -1143,7 +1280,7 @@ mod tests {
     fn gate_red_when_a_criterion_has_no_verify_command() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, None);
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
         assert!(!gate.is_green(), "unprovable criterion → red");
         assert_eq!(gate.missing_verify.len(), 1);
     }
@@ -1153,9 +1290,52 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         let mut task = Task::new("no criteria".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string()).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
         assert!(!gate.is_green(), "no definition of done → red");
         assert_eq!(gate.total, 0);
+    }
+
+    #[test]
+    fn capture_mode_collects_command_output_instead_of_printing_it() {
+        // The MCP stdio transport carries JSON-RPC only, so a verify command's
+        // own output must never reach stdout. Under Capture it lands in the
+        // transcript instead — this is the regression guard for the bug where
+        // `cargo test` output corrupted the JSON-RPC stream.
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_acceptance(&conn, Some("echo MARKER_ON_STDOUT; exit 1"));
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+
+        assert!(!gate.is_green(), "exit 1 → red");
+        assert_eq!(gate.transcript.len(), 1);
+        assert!(
+            gate.transcript[0].output.contains("MARKER_ON_STDOUT"),
+            "child stdout must be captured, got {:?}",
+            gate.transcript[0].output
+        );
+        assert_eq!(gate.transcript[0].exit_code, Some(1));
+        assert!(
+            gate.failure_detail().contains("MARKER_ON_STDOUT"),
+            "failure detail must surface the captured output to the agent"
+        );
+    }
+
+    #[test]
+    fn capture_mode_records_stderr_too() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_acceptance(&conn, Some("echo OOPS 1>&2; exit 3"));
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        assert_eq!(gate.transcript[0].exit_code, Some(3));
+        assert!(gate.transcript[0].output.contains("OOPS"));
+    }
+
+    #[test]
+    fn captured_output_is_truncated_on_a_char_boundary() {
+        // Multibyte output must not panic the truncation, and must stay bounded.
+        let long = "é".repeat(5000);
+        let out = tail_limited(&long, 4000);
+        assert!(out.contains("truncated"));
+        assert!(out.chars().count() < 4100);
+        assert_eq!(tail_limited("short", 4000), "short");
     }
 
     #[test]

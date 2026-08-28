@@ -1,4 +1,6 @@
-//! Read-only MCP tools: load and inspect tasks. Contributes `read_router`.
+//! Task-reading MCP tools plus the memory-maintenance surface (`forget`,
+//! `promote`, `link_memory`, `prune_memories`, `consolidate`, `reflect`,
+//! `diagnose_memories`, `reindex_embeddings`). Contributes `read_router`.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ErrorData;
@@ -260,6 +262,101 @@ impl SaraServer {
                         p.provisional_days.unwrap_or(DEFAULT_PROVISIONAL_DAYS),
                         p.dry_run.unwrap_or(true),
                     )
+                },
+            )
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Hebbian consolidation: sweep recent recall history and \
+        reinforce a `co_activated` synapse between every pair of memories that fired \
+        together (recalled within `bucket_secs` of each other). This is what makes \
+        related memories surface together in future recalls, so run it periodically — \
+        recall quality degrades without it. Returns the number of synapses reinforced."
+    )]
+    fn consolidate(
+        &self,
+        Parameters(p): Parameters<ConsolidateParams>,
+    ) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp consolidate",
+                |conn, _cfg| {
+                    let reinforced = crate::infrastructure::memory_graph::consolidate(
+                        conn,
+                        p.window_days.unwrap_or(30),
+                        chrono::Duration::seconds(p.bucket_secs.unwrap_or(5)),
+                        p.delta.unwrap_or(0.1),
+                        p.max_bucket.unwrap_or(5),
+                    )?;
+                    Ok(serde_json::json!({ "reinforced": reinforced }))
+                },
+            )
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Reflect over the memory graph: cluster memories that keep \
+        firing together but are not yet tidied, and nominate a canonical memory per \
+        cluster. Read-only by default — returns the proposal so you can review it. \
+        Pass apply=true to create the proposed `derived_from` edges (each \
+        non-canonical member -> the canonical one); links that would trip the \
+        cycle guard are skipped and reported."
+    )]
+    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, ErrorData> {
+        let min_weight = p
+            .min_weight
+            .unwrap_or(crate::commands::reflect::DEFAULT_MIN_WEIGHT);
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp reflect", |conn, _cfg| {
+                if p.apply.unwrap_or(false) {
+                    commands::reflect::apply_value(conn, min_weight)
+                } else {
+                    commands::reflect::reflect_value(conn, min_weight)
+                }
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Health report for the memory graph: surfaces orphaned, \
+        contradictory, duplicated and never-recalled memories. Read-only — archives \
+        nothing. Use it to decide what to `relearn`, `forget` or `prune_memories`."
+    )]
+    fn diagnose_memories(
+        &self,
+        Parameters(p): Parameters<DiagnoseMemoriesParams>,
+    ) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp diagnose_memories",
+                |conn, _cfg| commands::diagnose_memories::diagnose_value(conn),
+            )
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Rebuild the semantic embedding index over all memories. \
+        Needed after bulk imports, or when `recall`'s semantic pass is missing \
+        memories that are obviously relevant. Returns the number embedded."
+    )]
+    fn reindex_embeddings(
+        &self,
+        Parameters(p): Parameters<ReindexEmbeddingsParams>,
+    ) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(
+                p.project_path.as_deref(),
+                "mcp reindex_embeddings",
+                |conn, _cfg| {
+                    let embedded = crate::infrastructure::embedding::reindex_all(conn)?;
+                    Ok(serde_json::json!({ "embedded": embedded }))
                 },
             )
             .map_err(mcp_err)?;

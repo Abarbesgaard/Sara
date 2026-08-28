@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 40, "expected 40 tools, got {names:?}");
+    assert_eq!(names.len(), 44, "expected 44 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -70,12 +70,45 @@ fn exposes_the_agent_loop_tools() {
         "start",
         "stop",
         "move_task",
+        // memory maintenance
+        "consolidate",
+        "reflect",
+        "diagnose_memories",
+        "reindex_embeddings",
     ] {
         assert!(
             names.iter().any(|n| n == expected),
             "missing tool `{expected}` in {names:?}"
         );
     }
+}
+
+/// Folder awareness is the server's core contract: it is long-running and has no
+/// per-call working directory, so EVERY tool must accept `project_path` to name
+/// the target repo. A hand-written params struct that omits it compiles fine and
+/// registers fine — it just silently operates on the launch dir forever.
+#[test]
+fn every_tool_accepts_project_path() {
+    let missing: Vec<String> = SaraServer::all_router()
+        .list_all()
+        .iter()
+        .filter(|t| {
+            let props = t
+                .input_schema
+                .get("properties")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+            !props.contains_key("project_path")
+        })
+        .map(|t| t.name.to_string())
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "these tools cannot be pointed at a project — add `project_path` to their \
+         params struct: {missing:?}"
+    );
 }
 
 #[test]
@@ -115,6 +148,29 @@ fn cwd_guard_sets_and_restores_working_dir() {
         let _g = CwdGuard::enter(None).unwrap();
         assert_eq!(std::env::current_dir().unwrap(), start);
     }
+}
+
+#[test]
+fn cwd_guard_rejects_a_relative_project_path() {
+    // The server has no per-call cwd, so a relative path would resolve against
+    // whatever the previous call left behind — a silent cross-project write.
+    let _lock = CWD_LOCK.lock().unwrap();
+    let start = std::env::current_dir().unwrap();
+    for rel in ["..", ".", "some/sub/dir"] {
+        let err = match CwdGuard::enter(Some(rel)) {
+            Ok(_) => panic!("relative path {rel:?} must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("absolute"),
+            "error should name the requirement, got: {err}"
+        );
+    }
+    assert_eq!(
+        std::env::current_dir().unwrap(),
+        start,
+        "cwd changed despite rejection"
+    );
 }
 
 #[test]

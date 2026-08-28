@@ -4,7 +4,7 @@
 //! live in the `read` / `guide` / `lifecycle` slices; `new` composes their named
 //! routers into one.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
@@ -43,8 +43,19 @@ impl CwdGuard {
     pub(crate) fn enter(project_path: Option<&str>) -> anyhow::Result<Self> {
         match project_path {
             Some(p) if !p.trim().is_empty() => {
+                let p = p.trim();
+                // The server is long-running and its cwd is whatever the last
+                // call left it as, so a relative path has no stable meaning —
+                // it would silently resolve against an unrelated project.
+                // Every tool documents `project_path` as absolute; enforce it.
+                let path = Path::new(p);
+                if !path.is_absolute() {
+                    anyhow::bail!(
+                        "project_path must be an absolute path to the target repo, got {p:?}"
+                    );
+                }
                 let prev = std::env::current_dir().ok();
-                std::env::set_current_dir(p)
+                std::env::set_current_dir(path)
                     .with_context(|| format!("project_path is not an accessible directory: {p}"))?;
                 Ok(Self { prev })
             }
