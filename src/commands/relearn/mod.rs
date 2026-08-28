@@ -61,7 +61,14 @@ pub fn relearn_value(
     }
 
     if !files.is_empty() {
-        db::set_item_files(conn, &item.uuid, files)?;
+        // Resolve to absolute exactly as `learn` and `recall` do. Storing the
+        // raw relative path here would make the memory invisible to
+        // `recall --file`, which resolves its argument before matching.
+        let resolved: Vec<String> = files
+            .iter()
+            .map(|p| crate::infrastructure::project::resolve_file_link_here(p))
+            .collect();
+        db::set_item_files(conn, &item.uuid, &resolved)?;
         updated.push("files");
     }
 
@@ -253,5 +260,38 @@ mod tests {
         assert!(relearn_value(&conn, &label, Some("api_key=verysecret"), &[], &[], false).is_err());
         // --force bypasses
         assert!(relearn_value(&conn, &label, Some("api_key=verysecret"), &[], &[], true).is_ok());
+    }
+
+    /// `recall --file` resolves its argument to an absolute path before
+    /// matching, so `relearn` must store absolute paths too — otherwise a
+    /// corrected memory silently drops off file-scoped recall.
+    #[test]
+    fn relearn_stores_file_paths_as_absolute() {
+        let conn = db::open_in_memory_for_test();
+        let item = seed(&conn);
+        let label = format!("m{}", item.display_id.unwrap());
+
+        relearn_value(
+            &conn,
+            &label,
+            None,
+            &[],
+            &["src/widget.rs".to_string()],
+            true,
+        )
+        .unwrap();
+
+        let stored = db::get_item_files(&conn, &item.uuid).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert!(
+            std::path::Path::new(&stored[0]).is_absolute(),
+            "relearn stored a non-absolute path: {}",
+            stored[0]
+        );
+        assert!(
+            stored[0].ends_with("src/widget.rs"),
+            "unexpected path: {}",
+            stored[0]
+        );
     }
 }

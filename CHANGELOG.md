@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-28
+
+Fixes data-integrity bugs that surface under concurrent agents — the workload
+Sara is explicitly built for.
+
+### Fixed
+
+- **Concurrent adds handed out duplicate display IDs.** `insert_task` read the
+  next free ID and then inserted as two separate steps, and in WAL mode readers
+  never block — so every agent racing to add a task read the *same* "next" value
+  and all of them used it. Measured on 1.1.0: 40 parallel `sara add` calls
+  produced only 9 distinct IDs, with 31 tasks all sharing ID 8, making
+  `sara done <id>` silently ambiguous. `tasks.id` has no UNIQUE constraint, so
+  nothing caught it. Allocation now holds SQLite's write lock (`BEGIN
+  IMMEDIATE`) across the read and the insert; 40 parallel adds now yield 40
+  distinct IDs.
+- **The same race applied to memory labels** (`m1`, `m2`, …) via `insert_item`,
+  to checklist positions via `add_step`, and to `repack_ids`, which re-numbers
+  every pending task on each `done`. All now allocate under the write lock.
+- **A failed tag/file/project update destroyed the existing set.** The
+  `set_item_*` and `set_task_files_sourced` helpers `DELETE` the old rows and
+  then `INSERT` the new ones in a loop, with no transaction — so a failure
+  part-way through (SQLITE_BUSY under contention, disk-full, I/O error)
+  committed the delete but not the inserts, silently wiping a memory's tags or
+  files. Each helper is now atomic. A SAVEPOINT is used rather than a nested
+  transaction because `import` already holds one open.
+- **`sara relearn --file` stored the path raw instead of absolute**, unlike
+  `learn` and `recall`, which both resolve it. A corrected memory therefore
+  dropped out of `recall --file` entirely — the memory was still there, but
+  file-scoped recall could never surface it again.
+- **`add_step` swallowed database errors**, falling back to position 1 and
+  inserting the step at the front of the guide with a duplicate position rather
+  than reporting the failure.
+
 ## [1.1.0] - 2026-08-28
 
 Hardens the MCP server and completes its memory surface.

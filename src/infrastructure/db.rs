@@ -775,43 +775,45 @@ pub fn next_display_id(conn: &Connection) -> Result<i64> {
 }
 
 pub fn insert_task(conn: &Connection, task: &mut Task) -> Result<()> {
-    let id = next_display_id(conn)?;
-    task.id = Some(id);
-    conn.execute(
-        "INSERT INTO tasks (uuid, id, description, project, status, priority, due,
-                            entry, modified, end, tags_json, urgency, started_at, time_spent,
-                            estimate_mins, recur)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-        params![
-            task.uuid.to_string(),
-            task.id,
-            task.description,
-            task.project,
-            task.status.to_string(),
-            task.priority.as_ref().map(|p| p.label()),
-            task.due.as_ref().map(dt_to_str),
-            dt_to_str(&task.entry),
-            dt_to_str(&task.modified),
-            task.end.as_ref().map(dt_to_str),
-            serde_json::to_string(&task.tags).unwrap_or_else(|_| "[]".into()),
-            task.urgency,
-            task.started_at.as_ref().map(dt_to_str),
-            task.time_spent,
-            task.estimate_mins,
-            task.recur,
-        ],
-    )?;
-    conn.execute(
-        "INSERT INTO task_history (task_uuid, field, old_value, new_value, changed_at)
-         VALUES (?1, 'created', NULL, ?2, ?3)",
-        params![
-            task.uuid.to_string(),
-            task.description,
-            dt_to_str(&task.entry),
-        ],
-    )?;
-    log_undo(conn, &task.uuid, None, Some(task))?;
-    Ok(())
+    with_write_lock(conn, || {
+        let id = next_display_id(conn)?;
+        task.id = Some(id);
+        conn.execute(
+            "INSERT INTO tasks (uuid, id, description, project, status, priority, due,
+                                entry, modified, end, tags_json, urgency, started_at, time_spent,
+                                estimate_mins, recur)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+            params![
+                task.uuid.to_string(),
+                task.id,
+                task.description,
+                task.project,
+                task.status.to_string(),
+                task.priority.as_ref().map(|p| p.label()),
+                task.due.as_ref().map(dt_to_str),
+                dt_to_str(&task.entry),
+                dt_to_str(&task.modified),
+                task.end.as_ref().map(dt_to_str),
+                serde_json::to_string(&task.tags).unwrap_or_else(|_| "[]".into()),
+                task.urgency,
+                task.started_at.as_ref().map(dt_to_str),
+                task.time_spent,
+                task.estimate_mins,
+                task.recur,
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO task_history (task_uuid, field, old_value, new_value, changed_at)
+             VALUES (?1, 'created', NULL, ?2, ?3)",
+            params![
+                task.uuid.to_string(),
+                task.description,
+                dt_to_str(&task.entry),
+            ],
+        )?;
+        log_undo(conn, &task.uuid, None, Some(task))?;
+        Ok(())
+    })
 }
 
 pub fn get_task_by_id(conn: &Connection, id: i64) -> Result<Option<Task>> {
@@ -1035,19 +1037,21 @@ fn record_changes(conn: &Connection, old: &Task, new: &Task) -> Result<()> {
 
 /// After completing a task, compact pending IDs to stay small
 pub fn repack_ids(conn: &Connection) -> Result<()> {
-    let mut stmt =
-        conn.prepare("SELECT uuid FROM tasks WHERE status='pending' ORDER BY entry ASC")?;
-    let uuids: Vec<String> = stmt
-        .query_map([], |r| r.get(0))?
-        .filter_map(|r| r.ok())
-        .collect();
-    for (i, uuid) in uuids.iter().enumerate() {
-        conn.execute(
-            "UPDATE tasks SET id=?1 WHERE uuid=?2",
-            params![i as i64 + 1, uuid],
-        )?;
-    }
-    Ok(())
+    with_write_lock(conn, || {
+        let mut stmt =
+            conn.prepare("SELECT uuid FROM tasks WHERE status='pending' ORDER BY entry ASC")?;
+        let uuids: Vec<String> = stmt
+            .query_map([], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (i, uuid) in uuids.iter().enumerate() {
+            conn.execute(
+                "UPDATE tasks SET id=?1 WHERE uuid=?2",
+                params![i as i64 + 1, uuid],
+            )?;
+        }
+        Ok(())
+    })
 }
 
 // ── dependencies ─────────────────────────────────────────────────────────────
@@ -1236,28 +1240,30 @@ pub fn set_task_files_sourced(
         .into_iter()
         .collect();
 
-    conn.execute(
-        "DELETE FROM task_files WHERE task_uuid=?1",
-        [task_uuid.to_string()],
-    )?;
-    for (path, source) in files {
+    atomically(conn, "set_task_files", || {
         conn.execute(
-            "INSERT OR IGNORE INTO task_files (task_uuid, path, source) VALUES (?1,?2,?3)",
-            params![task_uuid.to_string(), path, source],
+            "DELETE FROM task_files WHERE task_uuid=?1",
+            [task_uuid.to_string()],
         )?;
-    }
+        for (path, source) in files {
+            conn.execute(
+                "INSERT OR IGNORE INTO task_files (task_uuid, path, source) VALUES (?1,?2,?3)",
+                params![task_uuid.to_string(), path, source],
+            )?;
+        }
 
-    // Log each added / removed path so the change shows up in task history.
-    let after: std::collections::HashSet<String> = files.iter().map(|(p, _)| p.clone()).collect();
-    for path in after.difference(&before) {
-        record_history(conn, task_uuid, "file", None, Some(path))?;
-    }
-    for path in before.difference(&after) {
-        record_history(conn, task_uuid, "file", Some(path), None)?;
-    }
-    Ok(())
+        // Log each added / removed path so the change shows up in task history.
+        let after: std::collections::HashSet<String> =
+            files.iter().map(|(p, _)| p.clone()).collect();
+        for path in after.difference(&before) {
+            record_history(conn, task_uuid, "file", None, Some(path))?;
+        }
+        for path in before.difference(&after) {
+            record_history(conn, task_uuid, "file", Some(path), None)?;
+        }
+        Ok(())
+    })
 }
-
 pub fn get_task_files(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT path FROM task_files WHERE task_uuid=?1 ORDER BY path")?;
     let paths = stmt
@@ -2278,26 +2284,33 @@ pub fn add_step(
     source: &str,
     verify_cmd: Option<&str>,
 ) -> Result<i64> {
-    let pos: i64 = conn
-        .query_row(
+    // Position allocation is read-then-write, so it needs the write lock for
+    // the same reason `next_display_id` does — two concurrent `check` calls
+    // would otherwise both claim the same position.
+    with_write_lock(conn, || {
+        // A DB error here must propagate: COALESCE guarantees a row, so the only
+        // way this fails is a real error (SQLITE_BUSY, I/O). Falling back to
+        // position 1 would silently insert the step at the *front*, duplicating an
+        // existing position and scrambling the guide's step order.
+        let pos: i64 = conn.query_row(
             "SELECT COALESCE(MAX(position),0)+1 FROM task_checklist WHERE task_uuid=?1",
             [task_uuid.to_string()],
             |r| r.get(0),
-        )
-        .unwrap_or(1);
-    conn.execute(
-        "INSERT INTO task_checklist (task_uuid, text, done, position, intent, kind, source, verify_cmd)
-         VALUES (?1,?2,0,?3,?4,?5,?6,?7)",
-        rusqlite::params![task_uuid.to_string(), text, pos, intent, kind, source, verify_cmd],
-    )?;
-    let id = conn.last_insert_rowid();
-    let label = if kind == STEP_KIND_ACCEPTANCE {
-        "acceptance"
-    } else {
-        "checklist"
-    };
-    record_history(conn, task_uuid, label, None, Some(text))?;
-    Ok(id)
+        )?;
+        conn.execute(
+            "INSERT INTO task_checklist (task_uuid, text, done, position, intent, kind, source, verify_cmd)
+             VALUES (?1,?2,0,?3,?4,?5,?6,?7)",
+            rusqlite::params![task_uuid.to_string(), text, pos, intent, kind, source, verify_cmd],
+        )?;
+        let id = conn.last_insert_rowid();
+        let label = if kind == STEP_KIND_ACCEPTANCE {
+            "acceptance"
+        } else {
+            "checklist"
+        };
+        record_history(conn, task_uuid, label, None, Some(text))?;
+        Ok(id)
+    })
 }
 
 /// Mark a step done/undone, recording the execution result and git commit.
@@ -2781,36 +2794,38 @@ fn next_item_display_id(conn: &Connection, kind: &str) -> Result<i64> {
 }
 
 pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
-    if item.display_id.is_none() {
-        item.display_id = Some(next_item_display_id(conn, &item.kind)?);
-    }
-    let path = item
-        .path
-        .clone()
-        .context("item path must be set before insert")?;
-    let tags_json = serde_json::to_string(&item.tags)?;
-    conn.execute(
-        "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
-        rusqlite::params![
-            item.uuid.to_string(),
-            item.kind,
-            item.display_id,
-            item.title,
-            item.url,
-            item.project,
-            tags_json,
-            path,
-            item.summary,
-            item.body,
-            dt_to_str(&item.created),
-            dt_to_str(&item.modified),
-            item.status,
-            item.source_task_uuid.map(|u| u.to_string()),
-        ],
-    )?;
-    set_item_tags(conn, &item.uuid, &item.tags)?;
-    Ok(())
+    with_write_lock(conn, || {
+        if item.display_id.is_none() {
+            item.display_id = Some(next_item_display_id(conn, &item.kind)?);
+        }
+        let path = item
+            .path
+            .clone()
+            .context("item path must be set before insert")?;
+        let tags_json = serde_json::to_string(&item.tags)?;
+        conn.execute(
+            "INSERT INTO items (uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+            rusqlite::params![
+                item.uuid.to_string(),
+                item.kind,
+                item.display_id,
+                item.title,
+                item.url,
+                item.project,
+                tags_json,
+                path,
+                item.summary,
+                item.body,
+                dt_to_str(&item.created),
+                dt_to_str(&item.modified),
+                item.status,
+                item.source_task_uuid.map(|u| u.to_string()),
+            ],
+        )?;
+        set_item_tags(conn, &item.uuid, &item.tags)?;
+        Ok(())
+    })
 }
 
 pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
@@ -3042,61 +3057,125 @@ pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
     Ok(n > 0)
 }
 
+/// Run `f` holding SQLite's write lock for its whole duration.
+///
+/// Required for read-then-write allocation such as `next_display_id`: in WAL
+/// mode readers never block, so N concurrent agents all read the same "next"
+/// value and every one of them inserts it — producing N tasks that share a
+/// display id, making `sara done <id>` ambiguous. `BEGIN IMMEDIATE` takes the
+/// write lock *before* the read, serialising the whole allocate-and-insert.
+///
+/// `busy_timeout` (see `set_pragmas`) makes contenders wait rather than fail.
+/// If the caller already holds a transaction, that scope is used as-is —
+/// SQLite rejects a nested BEGIN.
+fn with_write_lock<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    if !conn.is_autocommit() {
+        return f();
+    }
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    match f() {
+        Ok(value) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(value)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
 fn fold_tag(tag: &str) -> String {
     tag.trim().to_lowercase()
+}
+
+/// Run `f` atomically: on error every statement it issued is rolled back.
+///
+/// The `set_*` replacement helpers below all DELETE the old rows and then
+/// INSERT the new ones in a loop. Without this, a failure part-way through the
+/// loop (SQLITE_BUSY under concurrent agents, disk-full, I/O error) commits the
+/// DELETE but not the INSERTs — silently destroying a memory's tags/files.
+///
+/// A SAVEPOINT is used rather than `unchecked_transaction()` because savepoints
+/// *nest*: some callers (e.g. `import`) already hold an open transaction, and
+/// issuing a nested BEGIN there fails with "cannot start a transaction within a
+/// transaction". Outside a transaction a SAVEPOINT implicitly opens one, so this
+/// is correct in both cases.
+///
+/// `name` must be a caller-supplied literal — it is interpolated into SQL.
+fn atomically<T>(conn: &Connection, name: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    conn.execute_batch(&format!("SAVEPOINT {name}"))?;
+    match f() {
+        Ok(value) => {
+            conn.execute_batch(&format!("RELEASE {name}"))?;
+            Ok(value)
+        }
+        Err(e) => {
+            // Best-effort: if the rollback itself fails the original error is
+            // still the useful one to surface.
+            let _ = conn.execute_batch(&format!("ROLLBACK TO {name}; RELEASE {name}"));
+            Err(e)
+        }
+    }
 }
 
 /// Replace an item's normalized tag set. Case-folded so "service-a" and
 /// "serviceA" collide into one vocabulary entry.
 pub fn set_item_tags(conn: &Connection, item_uuid: &Uuid, tags: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
-    conn.execute("DELETE FROM item_tags WHERE item_uuid = ?1", [&uuid])?;
-    for tag in tags {
-        let folded = fold_tag(tag);
-        if folded.is_empty() {
-            continue;
+    atomically(conn, "set_item_tags", || {
+        conn.execute("DELETE FROM item_tags WHERE item_uuid = ?1", [&uuid])?;
+        for tag in tags {
+            let folded = fold_tag(tag);
+            if folded.is_empty() {
+                continue;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO item_tags (item_uuid, tag) VALUES (?1, ?2)",
+                rusqlite::params![uuid, folded],
+            )?;
         }
-        conn.execute(
-            "INSERT OR IGNORE INTO item_tags (item_uuid, tag) VALUES (?1, ?2)",
-            rusqlite::params![uuid, folded],
-        )?;
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Replace an item's project references (a memory can reference more than one).
 pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
-    conn.execute("DELETE FROM item_projects WHERE item_uuid = ?1", [&uuid])?;
-    for project in projects {
-        let trimmed = project.trim();
-        if trimmed.is_empty() {
-            continue;
+    atomically(conn, "set_item_projects", || {
+        conn.execute("DELETE FROM item_projects WHERE item_uuid = ?1", [&uuid])?;
+        for project in projects {
+            let trimmed = project.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO item_projects (item_uuid, project) VALUES (?1, ?2)",
+                rusqlite::params![uuid, trimmed],
+            )?;
         }
-        conn.execute(
-            "INSERT OR IGNORE INTO item_projects (item_uuid, project) VALUES (?1, ?2)",
-            rusqlite::params![uuid, trimmed],
-        )?;
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Replace an item's file associations (a memory can be tied to multiple files).
 /// Paths should be absolute before calling; no normalisation is done here.
 pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
-    conn.execute("DELETE FROM item_files WHERE item_uuid = ?1", [&uuid])?;
-    for path in paths {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            continue;
+    atomically(conn, "set_item_files", || {
+        conn.execute("DELETE FROM item_files WHERE item_uuid = ?1", [&uuid])?;
+        for path in paths {
+            let trimmed = path.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO item_files (item_uuid, file_path) VALUES (?1, ?2)",
+                rusqlite::params![uuid, trimmed],
+            )?;
         }
-        conn.execute(
-            "INSERT OR IGNORE INTO item_files (item_uuid, file_path) VALUES (?1, ?2)",
-            rusqlite::params![uuid, trimmed],
-        )?;
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// File paths stored for a given memory (by its UUID).
@@ -3153,14 +3232,16 @@ pub fn set_item_task_links(
     links: &[(Uuid, &str)],
 ) -> Result<()> {
     let uuid = item_uuid.to_string();
-    conn.execute("DELETE FROM item_task_links WHERE item_uuid = ?1", [&uuid])?;
-    for (task_uuid, source) in links {
-        conn.execute(
+    atomically(conn, "set_item_task_links", || {
+        conn.execute("DELETE FROM item_task_links WHERE item_uuid = ?1", [&uuid])?;
+        for (task_uuid, source) in links {
+            conn.execute(
             "INSERT OR IGNORE INTO item_task_links (item_uuid, task_uuid, source) VALUES (?1, ?2, ?3)",
             rusqlite::params![uuid, task_uuid.to_string(), source],
         )?;
-    }
-    Ok(())
+        }
+        Ok(())
+    })
 }
 
 /// Completed tasks that have `path` in their `task_files` attachment list.
@@ -7522,5 +7603,185 @@ mod tests {
             )
             .unwrap();
         assert_eq!(a2_status, "active", "a2 remains active");
+    }
+    #[test]
+    fn set_item_files_rolls_back_when_an_insert_fails() {
+        let conn = open_in_memory_for_test();
+        let mut item =
+            crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_files(
+            &conn,
+            &item.uuid,
+            &["/a/keep.rs".into(), "/a/also.rs".into()],
+        )
+        .unwrap();
+
+        // Stand in for a real mid-loop failure (SQLITE_BUSY, disk-full, I/O).
+        conn.execute_batch(
+            "CREATE TRIGGER boom BEFORE INSERT ON item_files
+             WHEN NEW.file_path = '/a/BOOM.rs'
+             BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;",
+        )
+        .unwrap();
+
+        let r = set_item_files(
+            &conn,
+            &item.uuid,
+            &[
+                "/a/new.rs".into(),
+                "/a/BOOM.rs".into(),
+                "/a/third.rs".into(),
+            ],
+        );
+        assert!(r.is_err(), "the failing insert must surface as an error");
+
+        assert_eq!(
+            get_item_files(&conn, &item.uuid).unwrap(),
+            vec!["/a/also.rs".to_string(), "/a/keep.rs".to_string()],
+            "a failed replacement must roll back to the original files, not destroy them"
+        );
+    }
+
+    #[test]
+    fn set_item_tags_rolls_back_when_an_insert_fails() {
+        let conn = open_in_memory_for_test();
+        let mut item =
+            crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+        set_item_tags(&conn, &item.uuid, &["keep".into()]).unwrap();
+
+        conn.execute_batch(
+            "CREATE TRIGGER boom_tags BEFORE INSERT ON item_tags
+             WHEN NEW.tag = 'boom'
+             BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;",
+        )
+        .unwrap();
+
+        assert!(set_item_tags(&conn, &item.uuid, &["new".into(), "boom".into()]).is_err());
+        let tags: Vec<String> = conn
+            .prepare("SELECT tag FROM item_tags WHERE item_uuid = ?1 ORDER BY tag")
+            .unwrap()
+            .query_map([item.uuid.to_string()], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(tags, vec!["keep".to_string()]);
+    }
+
+    /// `import` calls `set_task_files_sourced` with an already-open
+    /// transaction. The atomicity guard must nest (SAVEPOINT), not issue a
+    /// nested BEGIN, which SQLite rejects.
+    #[test]
+    fn set_helpers_work_inside_an_existing_transaction() {
+        let mut conn = open_in_memory_for_test();
+        let mut item =
+            crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+        item.path = Some(String::new());
+        insert_item(&conn, &mut item).unwrap();
+
+        let tx = conn.transaction().unwrap();
+        set_item_files(&tx, &item.uuid, &["/a/x.rs".into()])
+            .expect("must nest inside an open transaction");
+        set_item_tags(&tx, &item.uuid, &["t".into()]).unwrap();
+        tx.commit().unwrap();
+
+        assert_eq!(
+            get_item_files(&conn, &item.uuid).unwrap(),
+            vec!["/a/x.rs".to_string()]
+        );
+    }
+
+    /// Two agents adding a task at the same time must not both receive the
+    /// same display id — `sara done <id>` would then be ambiguous.
+    #[test]
+    fn concurrent_task_inserts_get_distinct_display_ids() {
+        let dir = std::env::temp_dir().join(format!("sara-race-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.db");
+        {
+            let mut c = Connection::open(&path).unwrap();
+            set_pragmas(&c).unwrap();
+            apply_migrations(&mut c).unwrap();
+        }
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let mut handles = vec![];
+        for n in 0..8 {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                let c = Connection::open(&path).unwrap();
+                set_pragmas(&c).unwrap();
+                let mut t = Task::new(format!("t{n}"), "p".into());
+                barrier.wait();
+                insert_task(&c, &mut t).map(|_| t.id.unwrap())
+            }));
+        }
+        let ids: Vec<i64> = handles
+            .into_iter()
+            .filter_map(|h| h.join().unwrap().ok())
+            .collect();
+
+        let mut uniq = ids.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        println!("IDS: {ids:?} inserted={} unique={}", ids.len(), uniq.len());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            uniq.len(),
+            ids.len(),
+            "concurrent adds produced duplicate display ids: {ids:?}"
+        );
+    }
+
+    /// Same allocation race for memory labels (m1, m2, …): two agents running
+    /// `sara learn` concurrently must not both be handed `m1`.
+    #[test]
+    fn concurrent_memory_inserts_get_distinct_labels() {
+        let dir = std::env::temp_dir().join(format!("sara-race-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.db");
+        {
+            let mut c = Connection::open(&path).unwrap();
+            set_pragmas(&c).unwrap();
+            apply_migrations(&mut c).unwrap();
+        }
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let mut handles = vec![];
+        for n in 0..8 {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                let c = Connection::open(&path).unwrap();
+                set_pragmas(&c).unwrap();
+                let mut item = crate::infrastructure::model::Item::new_memory(
+                    format!("m{n}"),
+                    "body".into(),
+                    None,
+                );
+                item.path = Some(String::new());
+                barrier.wait();
+                insert_item(&c, &mut item).map(|_| item.display_id.unwrap())
+            }));
+        }
+        let ids: Vec<i64> = handles
+            .into_iter()
+            .filter_map(|h| h.join().unwrap().ok())
+            .collect();
+
+        let mut uniq = ids.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        println!("MEMORY IDS: {ids:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            uniq.len(),
+            ids.len(),
+            "concurrent learns produced duplicate memory labels: {ids:?}"
+        );
     }
 }
