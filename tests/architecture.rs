@@ -216,18 +216,28 @@ fn test_acceptance_gate_never_prints_directly() {
         .find("fn run_acceptance_gate")
         .expect("run_acceptance_gate must exist");
 
+    // Iterate lines rather than searching for "\n}\n": a Windows checkout has
+    // CRLF endings, so that needle never matches and the "body" would run to
+    // EOF, flagging prints belonging to entirely different functions.
     // A top-level fn body ends at the first `}` in column 0 (rustfmt guarantees
     // this, and `cargo fmt --check` runs in CI).
-    let body = &src[start..];
-    let end = body.find("\n}\n").map(|e| e + 2).unwrap_or(body.len());
-    let body = &body[..end];
+    let body: Vec<&str> = src[start..]
+        .lines()
+        .enumerate()
+        .take_while(|(n, l)| *n == 0 || !l.starts_with('}'))
+        .map(|(_, l)| l)
+        .collect();
 
     let violations: Vec<String> = body
-        .lines()
+        .iter()
         .enumerate()
         .filter(|(_, l)| {
             let t = l.trim();
-            !t.starts_with("//") && (t.contains("println!") || t.contains("print!"))
+            // `eprintln!` ends up on stderr, which is not part of the transport
+            // — and note it *contains* "println!", so it must be excluded first.
+            !t.starts_with("//")
+                && !t.contains("eprintln!")
+                && (t.contains("println!") || t.contains("print!"))
         })
         .map(|(n, l)| format!("  run_acceptance_gate + {n} lines: {}", l.trim()))
         .collect();
