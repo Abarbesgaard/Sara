@@ -835,7 +835,10 @@ mod tests {
         }
 
         let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
-        assert_eq!(reinforced, 1, "the surfaced memory must co-fire with the seed");
+        assert_eq!(
+            reinforced, 1,
+            "the surfaced memory must co-fire with the seed"
+        );
 
         let g = MemoryGraph::build(&conn).unwrap();
         assert!(
