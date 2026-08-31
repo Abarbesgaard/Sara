@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-31
+
+### Fixed
+
+- **Associative recall surfacings no longer inflate memory strength.** When
+  `recall --spread` (or an auto-spread on thin literal hits) radiated across the
+  memory graph, every associatively-surfaced memory was recorded as if it had
+  been deliberately recalled, so its usage-based strength climbed on graph
+  centrality alone — a memory the caller never queried could reach the top of
+  the ranking. Spread surfacings are now recorded as a distinct event that feeds
+  Hebbian co-activation (memories that fire together still link) but no longer
+  contributes to the strength boost. Deliberate keyword and semantic hits are
+  unaffected.
+
 ## [1.1.1] - 2026-08-28
 
 Fixes data-integrity bugs that surface under concurrent agents — the workload
