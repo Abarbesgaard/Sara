@@ -819,4 +819,28 @@ mod tests {
             "co-activation should have wired a and b together"
         );
     }
+
+    #[test]
+    fn consolidate_still_sees_a_spread_surfaced_memory() {
+        // A memory that only ever *surfaced* via spreading activation (never a
+        // deliberate recall) must still participate in Hebbian co-activation —
+        // separating it from strength must not blind consolidation to it.
+        let conn = db::open_in_memory_for_test();
+        let a = seed(&conn, &["x"]);
+        let b = seed(&conn, &["y"]);
+
+        for _ in 0..2 {
+            db::record_memory_recall(&conn, &a).unwrap(); // deliberate seed hit
+            db::record_memory_surfaced(&conn, &b).unwrap(); // uninvited spread hit
+        }
+
+        let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        assert_eq!(reinforced, 1, "the surfaced memory must co-fire with the seed");
+
+        let g = MemoryGraph::build(&conn).unwrap();
+        assert!(
+            g.edge_weight(&a, &b).is_some(),
+            "a spread-surfaced memory must still wire a co-activation edge"
+        );
+    }
 }
