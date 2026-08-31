@@ -143,7 +143,7 @@ pub fn recall_value(
         related
             .iter()
             .map(|r| {
-                let _ = db::record_memory_recall(conn, &r.item.uuid);
+                let _ = db::record_memory_surfaced(conn, &r.item.uuid);
                 json!({
                     "label": format!("m{}", r.item.display_id.unwrap_or(0)),
                     "text": r.item.body.clone(),
@@ -426,9 +426,11 @@ pub fn run(
                     snippet.trim(),
                     via
                 );
-                // These surfaced to the caller — reinforce, exactly like direct
-                // hits, so they feed future Hebbian consolidation. Fire-and-forget.
-                let _ = db::record_memory_recall(conn, &r.item.uuid);
+                // These surfaced only via spreading activation, not a deliberate
+                // query — record them as *surfaced* so they still feed Hebbian
+                // co-activation, but do NOT reinforce strength like a direct hit
+                // would. Fire-and-forget.
+                let _ = db::record_memory_surfaced(conn, &r.item.uuid);
             }
         }
     }
@@ -1527,6 +1529,58 @@ mod tests {
         let neighbour_lbl = format!("m{}", neighbour.display_id.unwrap_or(0));
         assert_eq!(n.path.first(), Some(&seed_lbl));
         assert_eq!(n.path.last(), Some(&neighbour_lbl));
+    }
+
+    #[test]
+    fn spread_surfacing_does_not_reinforce_strength() {
+        let conn = db::open_in_memory_for_test();
+        // A seed that matches the query directly, and a neighbour that only
+        // surfaces by spreading activation (shares no query term).
+        let seed = seed_memory(
+            &conn,
+            "postgres connection pooling",
+            "use pgbouncer in front of postgres",
+            &[],
+            &["web-app"],
+        );
+        let neighbour = seed_memory(
+            &conn,
+            "supavisor tuning",
+            "raise pool_size for burst traffic",
+            &[],
+            &["web-app"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &seed.uuid.to_string(),
+            &neighbour.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
+
+        // The neighbour has never been deliberately recalled — baseline strength.
+        assert_eq!(db::item_strength(&conn, &neighbour), 1.0);
+
+        // A deliberate recall for the seed that radiates to the neighbour.
+        let v = recall_value(&conn, &cfg(), "pgbouncer", &[], &[], &[], 20, true).unwrap();
+        assert!(
+            v["associative"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["text"].as_str() == Some("raise pool_size for burst traffic")),
+            "the neighbour must surface via spreading activation for this test to be meaningful"
+        );
+
+        // The neighbour surfaced ONLY as an uninvited graph side-effect. It must
+        // NOT gain strength the way a deliberately-recalled memory does, or the
+        // ranking signal is polluted by associative noise.
+        assert_eq!(
+            db::item_strength(&conn, &neighbour),
+            1.0,
+            "a spread-only surfacing must not reinforce strength like a deliberate recall"
+        );
     }
 
     #[test]

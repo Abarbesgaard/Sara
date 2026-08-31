@@ -3504,7 +3504,7 @@ pub fn memory_recall_events_since(
 ) -> Result<Vec<(Uuid, DateTime<Utc>)>> {
     let mut stmt = conn.prepare(
         "SELECT ref_uuid, at FROM events
-         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1
+         WHERE action IN ('memory_recalled','memory_surfaced') AND ref_uuid IS NOT NULL AND at >= ?1
          ORDER BY at ASC",
     )?;
     let rows = stmt.query_map([dt_to_str(cutoff)], |r| {
@@ -3801,6 +3801,23 @@ pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
     record_event(
         conn,
         "memory_recalled",
+        Some(item_uuid),
+        Some("memory"),
+        &[],
+        None,
+    )
+}
+
+/// Record that a memory *surfaced* as an uninvited side-effect of spreading
+/// activation, rather than being deliberately recalled. Logged under a distinct
+/// action so it feeds Hebbian co-activation (memories that fire together still
+/// link, see [`memory_recall_events_since`]) WITHOUT inflating strength the way
+/// a deliberate recall does (see [`recall_usage_boost`]) — an associative hit
+/// the agent never queried must not climb the ranking on graph centrality alone.
+pub fn record_memory_surfaced(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
+    record_event(
+        conn,
+        "memory_surfaced",
         Some(item_uuid),
         Some("memory"),
         &[],
