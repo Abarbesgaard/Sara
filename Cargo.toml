@@ -3,7 +3,7 @@
 # published crate is `sara-tasks` while the installed binary stays `sara`
 # (see [[bin]] below).
 name = "sara-tasks"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 description = "Sara — folder-aware task manager"
 license = "MIT"

@@ -483,8 +483,9 @@ pub enum Command {
     },
 
     /// (Re)build the semantic index: embed every memory with Sara's bundled
-    /// model so `sara recall --semantic` can match by meaning. Run once after
-    /// enabling semantic recall, or after a bulk import.
+    /// model so `sara recall` can match by meaning. New memories are embedded
+    /// automatically on `learn`; run this once to backfill memories learned
+    /// before automatic embedding, or after a bulk import.
     ReindexEmbeddings,
     /// surfaced together — into reinforced `co_activated` synapses, so the
     /// memory graph learns its own wiring from use.

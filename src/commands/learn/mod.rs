@@ -582,12 +582,13 @@ fn save(
     db::insert_item(conn, &mut item)?;
     db::set_item_projects(conn, &item.uuid, &projects)?;
 
-    // Keep the semantic index current: when semantic recall is enabled, embed
-    // the freshly-learned memory so future `recall --semantic` can match it by
-    // meaning. Best-effort — never blocks learning.
-    if cfg.recall.semantic {
-        crate::infrastructure::embedding::index_memory(conn, &item);
-    }
+    // Keep the semantic index current: semantic recall is ALWAYS enabled
+    // (SemanticOpts::from_cfg), so every learned memory must be embedded or it
+    // could never match by meaning. Always index — do not gate on the
+    // deprecated `recall.semantic` toggle, which left semantic recall silently
+    // dead in every project that never flipped it. Best-effort — never blocks
+    // learning.
+    crate::infrastructure::embedding::index_memory(conn, &item);
 
     // Store file associations.
     if !files.is_empty() {
@@ -1175,5 +1176,44 @@ mod tests {
         // A new memory sharing only one of the canonical's two tags (partial
         // overlap) must not error when check_overlap runs against it.
         super::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
+    }
+
+    #[test]
+    fn learn_always_embeds_even_with_default_config() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        // The default config leaves the legacy `recall.semantic` toggle OFF.
+        // Semantic *querying* is always enabled (SemanticOpts::from_cfg), so the
+        // write side must ALWAYS embed too — otherwise recall silently degrades
+        // to keyword-only in every project that never flipped the deprecated flag.
+        let cfg = Config::default();
+        assert!(
+            !cfg.recall.semantic,
+            "guard: default config keeps the deprecated toggle off"
+        );
+
+        let v = super::learn_value(
+            &conn,
+            &cfg,
+            "dependabot bump broke the restore step; pin the lockfile version",
+            &["ci".to_string()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+
+        let item = db::get_item_by_handle(&conn, v["label"].as_str().unwrap()).unwrap();
+        let stored = db::get_embedding(&conn, &item.uuid.to_string()).unwrap();
+        assert!(
+            stored.is_some(),
+            "every learned memory must be embedded so semantic recall always \
+             works, regardless of the deprecated recall.semantic toggle"
+        );
     }
 }
