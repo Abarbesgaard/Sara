@@ -3632,22 +3632,43 @@ fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
 
 /// Task-linkage-derived base strength (see module docs on `item_strength`).
 fn item_base_strength(conn: &Connection, item: &Item) -> f64 {
-    if let Some(source) = item.source_task_uuid {
-        match get_task_by_uuid_prefix(conn, &source.to_string()) {
-            Ok(Some(task)) if task.status == Status::Completed => return 2.0,
-            Ok(Some(_)) => return 1.5,
-            _ => {}
+    let base = 'base: {
+        if let Some(source) = item.source_task_uuid {
+            match get_task_by_uuid_prefix(conn, &source.to_string()) {
+                Ok(Some(task)) if task.status == Status::Completed => break 'base 2.0,
+                Ok(Some(_)) => break 'base 1.5,
+                _ => {}
+            }
         }
+        // Fall back to item_task_links: memories linked via `sara learn --task` /
+        // file auto-detection carry real task linkage even without a
+        // source_task_uuid, and must not be scored (and pruned) as Weak.
+        let linked: Vec<Status> = get_item_task_links(conn, &item.uuid)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(t, _)| t.status)
+            .collect();
+        base_strength_from_links(&linked)
+    };
+    cap_provisional(&item.status, base)
+}
+
+/// Base-strength cap for provisional (auto-synthesised, unreviewed) memories.
+/// A provisional whose source task is Completed would otherwise score 2.0 =
+/// "Strong" the instant `sara done` creates it — 0 recalls, no human review —
+/// overstating trust and polluting recall precision before promotion.
+const PROVISIONAL_BASE_CAP: f64 = 1.0;
+
+/// Hold a provisional memory's *base* strength in the Weak band so its label
+/// reflects that it is a hint until `sara promote` accepts it. Recall-usage and
+/// canonical-derived bonuses can still lift a genuinely useful provisional on
+/// top of this base; promotion (status -> active) removes the cap entirely.
+fn cap_provisional(status: &str, base: f64) -> f64 {
+    if status == "provisional" {
+        base.min(PROVISIONAL_BASE_CAP)
+    } else {
+        base
     }
-    // Fall back to item_task_links: memories linked via `sara learn --task` /
-    // file auto-detection carry real task linkage even without a
-    // source_task_uuid, and must not be scored (and pruned) as Weak.
-    let linked: Vec<Status> = get_item_task_links(conn, &item.uuid)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(t, _)| t.status)
-        .collect();
-    base_strength_from_links(&linked)
 }
 
 /// Shared core of the base-strength fallback: given the statuses of a memory's
@@ -3715,7 +3736,7 @@ pub fn item_base_strengths(
             Some(_) => 1.5,
             None => base_strength_from_links(link_status.get(&item.uuid).map_or(&[], |v| v)),
         };
-        out.insert(item.uuid, strength);
+        out.insert(item.uuid, cap_provisional(&item.status, strength));
     }
     out
 }
@@ -7065,6 +7086,31 @@ mod tests {
         let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
         item.path = Some(String::new());
 
+        assert_eq!(item_strength(&conn, &item), 2.0);
+    }
+
+    #[test]
+    fn provisional_memory_is_not_labeled_strong_despite_completed_source() {
+        // A fresh `sara done` auto-memory: source task Completed, status
+        // provisional, no recalls. Base must be capped to the Weak band so it
+        // does not present as "Strong" (>=2.0) before human review/promotion.
+        let conn = mem();
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+        let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
+        item.path = Some(String::new());
+        item.status = "provisional".to_string();
+
+        let s = item_strength(&conn, &item);
+        assert!(
+            s < 1.5,
+            "provisional must not reach Strong/Linked from base: {s}"
+        );
+        assert_eq!(s, 1.0, "capped to the Weak base band");
+
+        // Promotion removes the cap: the same memory, now active, scores Strong.
+        item.status = "active".to_string();
         assert_eq!(item_strength(&conn, &item), 2.0);
     }
 

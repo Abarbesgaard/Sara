@@ -122,7 +122,15 @@ pub fn learn_value(
     if !force {
         crate::infrastructure::safety::check_size(text)?;
         crate::infrastructure::safety::check_secrets(text)?;
-        check_overlap(conn, tags, &resolved_files)?;
+        // Scope the mandatory overlap band to the province this memory lands in
+        // (explicit -p, else the current project) so common tags don't flag
+        // other provinces' memories as must-resolve.
+        let primary_project = projects.first().cloned().or_else(|| {
+            crate::infrastructure::project::detect_current_project(conn, cfg)
+                .ok()
+                .map(|(p, _)| p)
+        });
+        check_overlap(conn, tags, &resolved_files, primary_project.as_deref())?;
     }
 
     let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
@@ -272,7 +280,12 @@ pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
 ///
 /// File-overlap: any memory already linked to one of the new memory's files → warn.
 /// Prints warnings to stderr; never blocks the write (use --force to silence).
-pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]) -> Result<()> {
+pub(crate) fn check_overlap(
+    conn: &Connection,
+    tags: &[String],
+    files: &[String],
+    current_project: Option<&str>,
+) -> Result<()> {
     let normalized: Vec<String> = tags
         .iter()
         .map(|t| t.trim().to_lowercase())
@@ -326,12 +339,34 @@ pub(crate) fn check_overlap(conn: &Connection, tags: &[String], files: &[String]
             .into_iter()
             .partition(|u| canonical_derived_count(conn, u) > 0);
 
-    if !near_dupes.is_empty() || !canonical_partial.is_empty() {
-        let all_dupes: Vec<uuid::Uuid> = near_dupes
-            .iter()
-            .copied()
-            .chain(canonical_partial.iter().copied())
-            .collect();
+    // p3: the mandatory-resolve band is only actionable for SAME-province
+    // overlaps — a common tag (auth/api/db) otherwise floods it with other
+    // provinces' memories the author cannot resolve. Keep same-project hits in
+    // the mandatory band; demote cross-project ones to the soft "related" note.
+    // With no project context (current_project = None) the old global behaviour
+    // is preserved.
+    let mut plain_partial = plain_partial;
+    let same_project = |u: &uuid::Uuid| -> bool {
+        match current_project {
+            None => true,
+            Some(p) => {
+                db::get_item_by_uuid(conn, &u.to_string())
+                    .ok()
+                    .and_then(|i| i.project)
+                    .as_deref()
+                    == Some(p)
+            }
+        }
+    };
+    let (mandatory, cross_project): (Vec<uuid::Uuid>, Vec<uuid::Uuid>) = near_dupes
+        .iter()
+        .copied()
+        .chain(canonical_partial.iter().copied())
+        .partition(&same_project);
+    plain_partial.extend(cross_project);
+
+    if !mandatory.is_empty() {
+        let all_dupes: Vec<uuid::Uuid> = mandatory;
         eprintln!(
             "Warning: {} existing {} with identical or canonical-matching tags [{}]:",
             all_dupes.len(),
@@ -934,6 +969,7 @@ mod tests {
             &conn,
             &["tag-y".to_string()],
             std::slice::from_ref(&file_path),
+            None,
         );
         assert!(
             result.is_ok(),
@@ -1138,6 +1174,6 @@ mod tests {
 
         // A new memory sharing only one of the canonical's two tags (partial
         // overlap) must not error when check_overlap runs against it.
-        super::check_overlap(&conn, &["codeql".into()], &[]).unwrap();
+        super::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
     }
 }

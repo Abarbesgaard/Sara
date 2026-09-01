@@ -47,6 +47,7 @@ pub fn run(
         cfg,
         &form.description,
         &split_tags(&form.tags),
+        &form.project,
         SIMILAR_LIMIT,
     ) {
         Ok(hits) if !hits.is_empty() => {
@@ -58,6 +59,17 @@ pub fn run(
         }
         Ok(_) => {}
         Err(e) => eprintln!("Warning: recall check failed: {e}"),
+    }
+
+    // p4: flag a same-project OPEN task with the same description before creating
+    // a silent duplicate. Non-blocking — the task is still created.
+    if let Some(dup) = find_duplicate_open_task(conn, &form.project, &form.description) {
+        println!(
+            "⚠ An open task in this project already matches — reuse it instead of duplicating:\n  task {} ({}): {}\n",
+            dup.id.unwrap_or(0),
+            &dup.uuid.to_string()[..8],
+            dup.description
+        );
     }
 
     let task = persist::save(
@@ -123,9 +135,19 @@ pub fn run_value(
         cfg,
         &form.description,
         &split_tags(&form.tags),
+        &form.project,
         SIMILAR_LIMIT,
     )
     .unwrap_or_default();
+
+    // p4: same-project open-task duplicate (non-blocking), surfaced structurally.
+    let duplicate = find_duplicate_open_task(conn, &form.project, &form.description).map(|t| {
+        serde_json::json!({
+            "id": t.id,
+            "uuid": t.uuid.to_string(),
+            "description": t.description,
+        })
+    });
 
     let task: Task = persist::save(
         conn,
@@ -147,6 +169,7 @@ pub fn run_value(
         "description": task.description,
         "branch": tied_branch,
         "similar": similar,
+        "duplicate": duplicate,
     }))
 }
 
@@ -175,8 +198,43 @@ fn split_tags(tags: &str) -> Vec<String> {
         .collect()
 }
 
+/// p4: a same-project OPEN (pending) task whose description matches the new one
+/// (case-insensitive, trimmed). Surfaced as a warning so identical tasks aren't
+/// silently duplicated. Non-blocking — the caller still creates the task.
+fn find_duplicate_open_task(conn: &Connection, project: &str, description: &str) -> Option<Task> {
+    let want = description.trim().to_lowercase();
+    db::list_tasks(conn, Some(project))
+        .ok()?
+        .into_iter()
+        .find(|t| t.description.trim().to_lowercase() == want)
+}
+
+/// p2: full-body only for the stronger bands (canonical/high/medium — the whole
+/// point of surfacing them is to prevent re-derivation); the weakest `semantic`
+/// band gets an indented snippet so low-relevance paraphrase matches don't flood
+/// the founding output. Returns the indented, newline-terminated block to print.
+fn render_similar_body(confidence: &str, body: &str) -> String {
+    if confidence == "semantic" {
+        let snippet: String = body.chars().take(200).collect();
+        let ellipsis = if body.chars().count() > 200 {
+            " …"
+        } else {
+            ""
+        };
+        format!("      {}{}\n", snippet.trim(), ellipsis)
+    } else {
+        body.lines().map(|l| format!("      {l}\n")).collect()
+    }
+}
+
 /// Render one `find_similar` hit for the human terminal. Memory hits print their
 /// **full body** (the actionable knowledge); task hits print a snippet + ref.
+/// Two refinements keep the founding output signal-dense:
+///   * cross-province memory hits are surfaced but clearly labeled, so a common
+///     tag doesn't masquerade as local prior art (they also rank after
+///     same-project hits — see `find_similar`);
+///   * the weakest `semantic` band prints a snippet, not a full body, so
+///     low-relevance paraphrase matches don't flood the terminal.
 fn print_similar_hit(hit: &serde_json::Value) {
     let confidence = hit["confidence"].as_str().unwrap_or("medium");
     if hit["ref_kind"].as_str() == Some("memory") {
@@ -186,17 +244,24 @@ fn print_similar_hit(hit: &serde_json::Value) {
         } else {
             ""
         };
+        let cross = if hit["same_project"].as_bool().unwrap_or(true) {
+            String::new()
+        } else {
+            format!(
+                " [other project: {}]",
+                hit["project"].as_str().unwrap_or("?")
+            )
+        };
         println!(
-            "  [memory] [{}] {}{}: {}",
+            "  [memory] [{}] {}{}{}: {}",
             confidence,
             label,
             provisional,
+            cross,
             hit["title"].as_str().unwrap_or("")
         );
-        // The whole body, indented — no second recall needed to read it.
-        for line in hit["body"].as_str().unwrap_or("").lines() {
-            println!("      {line}");
-        }
+        let body = hit["body"].as_str().unwrap_or("");
+        print!("{}", render_similar_body(confidence, body));
     } else {
         println!(
             "  [{}] [{}] task {}: {} — {}",
@@ -206,5 +271,69 @@ fn print_similar_hit(hit: &serde_json::Value) {
             hit["description"].as_str().unwrap_or(""),
             hit["snippet"].as_str().unwrap_or("")
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::model::Task;
+
+    #[test]
+    fn duplicate_open_task_detected_case_insensitively_same_project() {
+        let conn = db::open_in_memory_for_test();
+        let mut t = Task::new("Implement JWT login for API".into(), "proj".into());
+        db::insert_task(&conn, &mut t).unwrap();
+
+        // Exact-but-differently-cased description in the same project matches.
+        let dup = find_duplicate_open_task(&conn, "proj", "  implement jwt login for api ");
+        assert!(dup.is_some(), "an open same-project task must be flagged");
+
+        // A distinct description does not match.
+        assert!(find_duplicate_open_task(&conn, "proj", "something else").is_none());
+
+        // The same description in a different project does not match.
+        assert!(find_duplicate_open_task(&conn, "other", "Implement JWT login for API").is_none());
+    }
+
+    #[test]
+    fn completed_task_is_not_a_duplicate() {
+        use crate::infrastructure::model::Status;
+        let conn = db::open_in_memory_for_test();
+        let mut t = Task::new("Implement JWT login for API".into(), "proj".into());
+        db::insert_task(&conn, &mut t).unwrap();
+        t.status = Status::Completed;
+        db::update_task(&conn, &t).unwrap();
+
+        // list_tasks only returns pending tasks, so a completed one is not a dup.
+        assert!(
+            find_duplicate_open_task(&conn, "proj", "Implement JWT login for API").is_none(),
+            "a completed task must not block re-adding"
+        );
+    }
+
+    #[test]
+    fn semantic_band_renders_snippet_but_strong_bands_render_full_body() {
+        // p2: a long, weak `semantic` hit is truncated to a single snippet line.
+        let long: String = "word ".repeat(100); // 500 chars
+        let semantic = render_similar_body("semantic", &long);
+        assert_eq!(
+            semantic.lines().count(),
+            1,
+            "a semantic hit collapses to a single snippet line"
+        );
+        assert!(
+            semantic.contains('…'),
+            "an over-length semantic body is truncated with an ellipsis"
+        );
+
+        // A stronger band keeps its full, multi-line body verbatim.
+        let full = render_similar_body("canonical", "line1\nline2\nline3");
+        assert_eq!(
+            full.lines().count(),
+            3,
+            "a canonical hit prints every line of its body"
+        );
+        assert!(!full.contains('…'), "a full-body render is never truncated");
     }
 }

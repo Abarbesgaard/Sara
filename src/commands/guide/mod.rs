@@ -210,20 +210,41 @@ pub fn steps(
 
     let task = db::resolve_task(conn, id)?;
     let mut steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
+    let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
     if let Some(n) = until {
         steps.truncate(n);
     }
 
-    if steps.is_empty() {
+    if steps.is_empty() && acceptance.is_empty() {
         println!("No steps defined for task {}.", task.id.unwrap_or(0));
         return Ok(());
     }
-    for (i, s) in steps.iter().enumerate() {
-        let mark = if s.done { "[x]" } else { "[ ]" };
-        let badge = if s.source == "ai" { " (ai)" } else { "" };
-        println!("{} {}. {}{}", mark, i + 1, s.text, badge);
-        if let Some(intent) = &s.intent {
-            println!("      {intent}");
+
+    if !steps.is_empty() {
+        println!("Steps (tick with `step done <id> N`):");
+        for (i, s) in steps.iter().enumerate() {
+            let mark = if s.done { "[x]" } else { "[ ]" };
+            let badge = if s.source == "ai" { " (ai)" } else { "" };
+            println!("  {} {}. {}{}", mark, i + 1, s.text, badge);
+            if let Some(intent) = &s.intent {
+                println!("        {intent}");
+            }
+        }
+    }
+
+    // Acceptance criteria live in a SEPARATE 1-based namespace from steps, and
+    // were previously invisible here (only `verify`/`info` showed them) — which
+    // makes `step done <id> N` easy to mis-target. Surface them under a labeled
+    // section that names the disambiguating `--kind acceptance` flag.
+    if !acceptance.is_empty() {
+        println!("Acceptance criteria (tick with `step done <id> N --kind acceptance`):");
+        for (i, a) in acceptance.iter().enumerate() {
+            let mark = if a.done { "[x]" } else { "[ ]" };
+            let badge = if a.source == "ai" { " (ai)" } else { "" };
+            println!("  {} {}. {}{}", mark, i + 1, a.text, badge);
+            if let Some(intent) = &a.intent {
+                println!("        {intent}");
+            }
         }
     }
     Ok(())
@@ -957,11 +978,21 @@ pub fn validate_value(
     }
 
     db::set_validated(conn, &task.uuid, &head)?;
+
+    // p7: acceptance is the definition-of-done gate (intentional), but silently
+    // stamping over unfinished checklist steps hides work the author meant to
+    // track. Surface the count as an advisory — never a block.
+    let open_steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?
+        .iter()
+        .filter(|s| !s.done)
+        .count();
+
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "validated_commit": head,
         "gate_skipped": skip_gate,
+        "open_steps": open_steps,
     }))
 }
 
@@ -981,6 +1012,14 @@ pub fn validate(conn: &Connection, id: &str, no_run: bool) -> Result<()> {
         v["task"].as_i64().unwrap_or(0),
         v["validated_commit"].as_str().unwrap_or_default()
     );
+    let open = v["open_steps"].as_u64().unwrap_or(0);
+    if open > 0 {
+        println!(
+            "  advisory: {open} checklist step(s) still open — acceptance is green, \
+             but the plan isn't fully ticked (see `sara steps {}`).",
+            v["task"].as_i64().unwrap_or(0)
+        );
+    }
     Ok(())
 }
 
