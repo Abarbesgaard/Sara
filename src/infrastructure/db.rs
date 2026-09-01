@@ -525,6 +525,106 @@ fn apply_migrations(conn: &mut Connection) -> Result<()> {
                  coalesce(title,'')||' '||coalesce(summary,'')||' '||coalesce(body,'')
              FROM items WHERE status = 'provisional';",
         ),
+        M::up_with_hook(
+            "",
+            // Hot-path indexes. Until now `tasks` carried only the UNIQUE on
+            // `uuid`, and `annotations` / `task_checklist` / `task_links` /
+            // `events` carried none at all, so every per-task read and every
+            // filtered list was a full table SCAN followed by a TEMP B-TREE
+            // sort. Each index below was chosen from the actual query shapes in
+            // this file and verified with EXPLAIN QUERY PLAN to turn its SCAN
+            // into a SEARCH and to satisfy the ORDER BY from the index itself.
+            //
+            // Applied through a hook that skips any index whose table is
+            // absent. rusqlite_migration tracks a single `user_version`
+            // watermark, so a database that upgraded across an inserted
+            // migration can sit at a high version with a partial schema (the
+            // same hazard the GitHub-columns backfill above exists to repair).
+            // A bare `CREATE INDEX` would then abort every migration run and
+            // leave the CLI unable to open the database at all; indexes are
+            // pure optimisation, so skipping one is always preferable.
+            //
+            // `end` is a SQL keyword, hence the quoting. The partial indexes
+            // (`WHERE ... IS NOT NULL`) match the queries' own NULL guards and
+            // keep the index off rows that can never qualify.
+            |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
+                let tables: std::collections::HashSet<String> = tx
+                    .prepare("SELECT name FROM sqlite_master WHERE type='table'")?
+                    .query_map([], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<_>>()?;
+                for (table, ddl) in [
+                    // Dominant task shape: `WHERE project=? AND status=?`,
+                    // usually ordered by urgency. The trailing `urgency DESC`
+                    // makes that sort free.
+                    (
+                        "tasks",
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_project_status
+                            ON tasks(project, status, urgency DESC)",
+                    ),
+                    // Same, for cross-project variants that filter on status only.
+                    (
+                        "tasks",
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_status_urgency
+                            ON tasks(status, urgency DESC)",
+                    ),
+                    // Completion history: `WHERE end IS NOT NULL ORDER BY end DESC`.
+                    (
+                        "tasks",
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_end
+                            ON tasks(\"end\" DESC) WHERE \"end\" IS NOT NULL",
+                    ),
+                    // Short display-id lookup: `WHERE id=? AND status='pending'`.
+                    (
+                        "tasks",
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_id
+                            ON tasks(id) WHERE id IS NOT NULL",
+                    ),
+                    // Per-task child rows: all were `WHERE task_uuid=? ORDER BY ...`
+                    // against unindexed tables, i.e. a full scan per task opened.
+                    (
+                        "annotations",
+                        "CREATE INDEX IF NOT EXISTS idx_annotations_task
+                            ON annotations(task_uuid, entry)",
+                    ),
+                    (
+                        "task_checklist",
+                        "CREATE INDEX IF NOT EXISTS idx_task_checklist_task
+                            ON task_checklist(task_uuid, position, id)",
+                    ),
+                    (
+                        "task_links",
+                        "CREATE INDEX IF NOT EXISTS idx_task_links_task
+                            ON task_links(task_uuid, entry)",
+                    ),
+                    // Reverse dependency edge. The PRIMARY KEY autoindex is
+                    // (task_uuid, depends_on_uuid), so it cannot serve the
+                    // `WHERE depends_on_uuid=?` direction blocker lookups use.
+                    (
+                        "dependencies",
+                        "CREATE INDEX IF NOT EXISTS idx_dependencies_depends_on
+                            ON dependencies(depends_on_uuid)",
+                    ),
+                    // Event-history windows: `WHERE action IN (...) AND at >= ?`.
+                    (
+                        "events",
+                        "CREATE INDEX IF NOT EXISTS idx_events_action_at
+                            ON events(action, at)",
+                    ),
+                    // Project detection by folder path on every CLI invocation.
+                    // `projects.name` is covered by its PRIMARY KEY autoindex.
+                    (
+                        "projects",
+                        "CREATE INDEX IF NOT EXISTS idx_projects_path
+                            ON projects(path, last_seen DESC) WHERE path IS NOT NULL",
+                    ),
+                ] {
+                    if tables.contains(table) {
+                        tx.execute_batch(ddl)?;
+                    }
+                }
+                Ok(())
+            },
+        ),
     ]);
     migrations
         .to_latest(conn)
@@ -3620,6 +3720,37 @@ pub fn item_strength(conn: &Connection, item: &Item) -> f64 {
         + canonical_derived_bonus(conn, &item.uuid)
 }
 
+/// Batched form of [`item_strength`] for scoring a whole set of items at once.
+///
+/// `item_strength` costs one `COUNT(*)` over `events` **per item**, and that
+/// scan is bounded by the number of `memory_recalled` rows rather than by the
+/// item — so listing every memory degrades as O(memories × recall events).
+/// On a real store (388 memories, ~7k recall events) that was 121 ms of a
+/// 138 ms `sara memories`, i.e. ~2.7M row visits to compute 388 numbers.
+///
+/// Here the two set-wide components are each fetched in a single grouped query
+/// and looked up per item, composing the batched forms the graph build already
+/// relies on ([`item_base_strengths`], [`recall_usage_boosts`],
+/// [`canonical_derived_bonuses`]). The result is identical to calling
+/// [`item_strength`] on each item — pinned by
+/// `item_strengths_batch_matches_item_strength`.
+pub fn item_strengths(conn: &Connection, items: &[Item]) -> std::collections::HashMap<Uuid, f64> {
+    let bases = item_base_strengths(conn, items);
+    let boosts = recall_usage_boosts(conn);
+    let bonuses = canonical_derived_bonuses(conn);
+    items
+        .iter()
+        .map(|item| {
+            // `item_base_strengths` returns an entry for every item passed, so
+            // the default is unreachable; 1.0 is the Weak floor regardless.
+            let s = bases.get(&item.uuid).copied().unwrap_or(1.0)
+                + boosts.get(&item.uuid).copied().unwrap_or(0.0)
+                + bonuses.get(&item.uuid).copied().unwrap_or(0.0);
+            (item.uuid, s)
+        })
+        .collect()
+}
+
 /// +0.1 per incoming `derived_from` edge, capped at +0.5 (see [`item_strength`]).
 fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
     let count = get_memory_links_to(conn, &item_uuid.to_string())
@@ -3901,6 +4032,50 @@ pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid,
 /// batch consumer avoid the per-item boost query.
 pub fn item_strength_with_boost(conn: &Connection, item: &Item, recall_boost: f64) -> f64 {
     item_base_strength(conn, item) + recall_boost
+}
+
+/// Batched form of [`memory_recall_daily_counts`]: the same per-day buckets for
+/// **every** memory that was recalled in the window, from a single query.
+///
+/// The per-item form scans the `memory_recalled` event log once per memory, so
+/// a caller scoring the whole store (the `sara dream` constellation) paid
+/// O(memories × recall events). The bucketing arithmetic here is deliberately
+/// identical to the per-item version — including the `0..days` age filter that
+/// drops both future timestamps and the exact-boundary day — so the two agree
+/// exactly. Memories absent from the map had no recalls in the window.
+/// Pinned by `memory_recall_daily_counts_batch_matches_per_item`.
+pub fn memory_recall_daily_counts_all(
+    conn: &Connection,
+    days: i64,
+) -> std::collections::HashMap<Uuid, Vec<u64>> {
+    let mut out: std::collections::HashMap<Uuid, Vec<u64>> = std::collections::HashMap::new();
+    let now = Utc::now();
+    let cutoff = dt_to_str(&(now - chrono::Duration::days(days)));
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT ref_uuid, at FROM events
+         WHERE action='memory_recalled' AND ref_uuid IS NOT NULL AND at >= ?1",
+    ) else {
+        return out;
+    };
+    let rows = stmt.query_map([cutoff], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    });
+    if let Ok(rows) = rows {
+        for (uuid_str, at) in rows.flatten() {
+            let Ok(u) = Uuid::parse_str(&uuid_str) else {
+                continue;
+            };
+            if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&at) {
+                let age_days = (now - ts.with_timezone(&Utc)).num_days();
+                if (0..days).contains(&age_days) {
+                    let idx = (days - 1 - age_days) as usize;
+                    out.entry(u)
+                        .or_insert_with(|| vec![0u64; days.max(1) as usize])[idx] += 1;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Per-day recall counts for the last `days` days (oldest day first). Powers
@@ -6851,6 +7026,153 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn memory_recall_daily_counts_batch_matches_per_item() {
+        let conn = mem();
+        let mut hot = make_memory("hot", &[]);
+        insert_item(&conn, &mut hot).unwrap();
+        let mut warm = make_memory("warm", &[]);
+        insert_item(&conn, &mut warm).unwrap();
+        let mut cold = make_memory("cold", &[]);
+        insert_item(&conn, &mut cold).unwrap();
+
+        for _ in 0..5 {
+            record_memory_recall(&conn, &hot.uuid).unwrap();
+        }
+        record_memory_recall(&conn, &warm.uuid).unwrap();
+
+        // Backdated recalls land in earlier buckets. One sits outside the
+        // window and one is clearly in the future (far enough that `num_days`,
+        // which truncates toward zero, actually reports a negative age); the
+        // per-item form drops both, so the batch must drop them too.
+        for (days_ago, target) in [(2_i64, &hot), (6, &warm), (9, &hot), (-3, &warm)] {
+            let at = (Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339();
+            conn.execute(
+                "INSERT INTO events (action, ref_uuid, kind, tags_json, project, at)
+                 VALUES ('memory_recalled', ?1, 'memory', '[]', NULL, ?2)",
+                rusqlite::params![target.uuid.to_string(), at],
+            )
+            .unwrap();
+        }
+
+        let batch = memory_recall_daily_counts_all(&conn, 7);
+        for item in [&hot, &warm, &cold] {
+            let per_item = memory_recall_daily_counts(&conn, &item.uuid, 7);
+            let batched = batch
+                .get(&item.uuid)
+                .cloned()
+                .unwrap_or_else(|| vec![0u64; 7]);
+            assert_eq!(
+                per_item, batched,
+                "{} disagreed: per-item {per_item:?} vs batched {batched:?}",
+                item.title
+            );
+        }
+
+        // The fixture must actually exercise multiple buckets, or the test
+        // could pass on an all-zero map.
+        let hot_counts = batch.get(&hot.uuid).cloned().unwrap_or_default();
+        assert!(
+            hot_counts.iter().filter(|c| **c > 0).count() >= 2,
+            "fixture too flat: {hot_counts:?}"
+        );
+        assert!(!batch.contains_key(&cold.uuid), "no recalls -> absent");
+    }
+
+    #[test]
+    fn item_strengths_batch_matches_item_strength() {
+        let conn = mem();
+
+        // A memory with no linkage at all (base only).
+        let mut plain = make_memory("plain", &[]);
+        insert_item(&conn, &mut plain).unwrap();
+
+        // A memory that has been recalled (exercises the batched boost).
+        let mut recalled = make_memory("recalled", &[]);
+        insert_item(&conn, &mut recalled).unwrap();
+        for _ in 0..4 {
+            record_memory_recall(&conn, &recalled.uuid).unwrap();
+        }
+
+        // A canonical memory with incoming `derived_from` edges (exercises the
+        // batched bonus), including enough edges to hit the +0.5 cap.
+        let mut canonical = make_memory("canonical", &[]);
+        insert_item(&conn, &mut canonical).unwrap();
+        for i in 0..7 {
+            let mut child = make_memory(&format!("child {i}"), &[]);
+            insert_item(&conn, &mut child).unwrap();
+            insert_memory_link(
+                &conn,
+                &child.uuid.to_string(),
+                &canonical.uuid.to_string(),
+                "derived_from",
+                1.0,
+            )
+            .unwrap();
+        }
+
+        // A memory carrying both a recall history and incoming edges, so the
+        // two batched components are proven to combine, not just apply alone.
+        let mut both = make_memory("both", &[]);
+        insert_item(&conn, &mut both).unwrap();
+        record_memory_recall(&conn, &both.uuid).unwrap();
+        let mut both_child = make_memory("both child", &[]);
+        insert_item(&conn, &mut both_child).unwrap();
+        insert_memory_link(
+            &conn,
+            &both_child.uuid.to_string(),
+            &both.uuid.to_string(),
+            "derived_from",
+            1.0,
+        )
+        .unwrap();
+
+        // A provisional memory whose source task is Completed: base would be
+        // 2.0 but the provisional cap pulls it to 1.0. Without this shape the
+        // batch could drop `cap_provisional` entirely and still agree.
+        let mut task = seed_task(&conn);
+        task.status = Status::Completed;
+        update_task(&conn, &task).unwrap();
+        let mut prov =
+            Item::new_memory("provisional".to_string(), "b".to_string(), Some(task.uuid));
+        prov.path = Some(String::new());
+        prov.status = "provisional".to_string();
+        insert_item(&conn, &mut prov).unwrap();
+
+        // A non-provisional memory on that same completed task, so the cap is
+        // proven to apply selectively rather than uniformly.
+        let mut promoted =
+            Item::new_memory("promoted".to_string(), "b".to_string(), Some(task.uuid));
+        promoted.path = Some(String::new());
+        insert_item(&conn, &mut promoted).unwrap();
+
+        let items = list_memories(&conn).unwrap();
+        assert!(items.len() >= 4);
+        let batch = item_strengths(&conn, &items);
+
+        // The batched value must equal the per-item value for every memory —
+        // this is the whole contract that lets `sara memories` use it.
+        for item in &items {
+            let per_item = item_strength(&conn, item);
+            let batched = batch.get(&item.uuid).copied().unwrap_or(f64::NAN);
+            assert!(
+                (per_item - batched).abs() < 1e-9,
+                "{}: per-item {per_item} != batched {batched}",
+                item.title
+            );
+        }
+
+        // Guard against the batch trivially agreeing because every strength is
+        // the same number: the fixture must actually spread them out.
+        let mut distinct: Vec<String> = batch.values().map(|v| format!("{v:.4}")).collect();
+        distinct.sort();
+        distinct.dedup();
+        assert!(
+            distinct.len() >= 3,
+            "fixture too flat to be meaningful: {distinct:?}"
         );
     }
 

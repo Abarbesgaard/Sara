@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-01
+
+A performance release. Every change was verified to produce byte-identical
+output against a real 12 MB database before and after, so behaviour is
+unchanged throughout — only the cost of producing it differs.
+
+### Performance
+
+- **Added indexes for the hot query paths.** The `tasks`, `annotations`,
+  `task_checklist`, `task_links` and `events` tables carried no user indexes at
+  all, so routine listing and filtering fell back to full table scans plus a
+  temporary B-tree for ordering. Ten composite and partial indexes now cover the
+  query shapes the CLI actually issues. At the current store size the difference
+  is hidden by caching, but at 20x scale the affected queries run 18x-197x
+  faster, for about 5% more database size. Applied automatically as a schema
+  migration on first run.
+
+- **Memory graph construction no longer scales with the square of the store.**
+  Building the associative graph — which happens on every `recall --spread`,
+  `dream` and `reflect` — compared all n²/2 memory pairs to find shared tags,
+  files and tasks. The anchor sets are now inverted into postings lists, so only
+  pairs that genuinely share an anchor are ever scored. Measured end to end:
+  4.2x faster at 4,386 memories, 9.3x-13.5x at 10,386. A store dominated by one
+  near-universal tag defeats that inversion, so the build estimates both costs
+  up front and keeps the previous direct comparison when it would be cheaper;
+  both paths share one scoring routine and produce identical graphs.
+
+- **`sara memories` and `sara dream` no longer rescan the recall log once per
+  memory.** Memory strength counts recall events, and that count was issued
+  separately for every memory listed — work proportional to memories times
+  recall events. On a real store (388 memories, ~7,000 recall events) listing
+  memories spent 121 ms of its 138 ms on those repeated scans. The strength
+  components are now fetched in one grouped query each and looked up per memory.
+  `sara memories` is 8.4x faster (136 ms to 16 ms) and `sara dream` 4.1x
+  (257 ms to 63 ms). The same fix applies to the `memories` MCP tool.
+
+### Changed
+
+- **The release binary is 22.5% smaller** (20.2 MB to 15.7 MB), from disabling
+  panic unwinding and stripping symbols. Link-time optimization was measured and
+  deliberately left off: it saved a further 0.6 MB but tripled release build
+  time and made no measurable runtime difference, since Sara is dominated by
+  process start-up and database I/O rather than by optimizable code.
+
 ## [1.1.2] - 2026-08-31
 
 ### Fixed

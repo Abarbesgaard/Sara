@@ -133,10 +133,13 @@ impl SaraServer {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
                 let items = crate::infrastructure::db::list_memories(conn)?;
+                // Batched: see `db::item_strengths` — the per-item form scans
+                // the recall-event log once per memory.
+                let strengths = crate::infrastructure::db::item_strengths(conn, &items);
                 let rows: Vec<serde_json::Value> = items
                     .iter()
                     .map(|m| {
-                        let strength = crate::infrastructure::db::item_strength(conn, m);
+                        let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
                         let label = format!(
                             "{}{}",
                             m.kind.chars().next().unwrap_or('m'),

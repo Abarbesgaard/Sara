@@ -840,15 +840,19 @@ fn force_layout(stars: &mut [Star], affinity: &[(usize, usize, f64)], iterations
 
 fn load_web(conn: &Connection) -> Result<WebData> {
     let memories = db::list_memories(conn)?;
+    // Batched: `item_strength` scans the recall-event log per call, so scoring
+    // every star individually made loading the web O(memories x recall events).
+    let strengths = db::item_strengths(conn, &memories);
+    // Same batching for the 7-day recall pulse, which was likewise one event
+    // scan per memory.
+    let recent_counts = db::memory_recall_daily_counts_all(conn, 7);
     let mut index = HashMap::new();
     let mut stars: Vec<Star> = memories
         .iter()
         .enumerate()
         .map(|(i, m)| {
             index.insert(m.uuid.to_string(), i);
-            let recent: u64 = db::memory_recall_daily_counts(conn, &m.uuid, 7)
-                .iter()
-                .sum();
+            let recent: u64 = recent_counts.get(&m.uuid).map_or(0, |c| c.iter().sum());
             let label = item_label(m);
             let haystack = format!(
                 "{} {} {} {}",
@@ -860,7 +864,7 @@ fn load_web(conn: &Connection) -> Result<WebData> {
             Star {
                 label,
                 title: m.title.clone(),
-                strength: db::item_strength(conn, m),
+                strength: strengths.get(&m.uuid).copied().unwrap_or(1.0),
                 provisional: m.status == "provisional",
                 tags: m.tags.clone(),
                 haystack,
