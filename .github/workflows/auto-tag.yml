@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  # Needed by the cascade-verification step to list release.yml runs.
+  actions: read
 
 jobs:
   tag:
@@ -42,7 +44,40 @@ jobs:
           # GITHUB_TOKEN-created events do not cascade into further workflow runs.
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
+          # Fail loudly rather than tagging with no release. When RELEASE_TOKEN
+          # is empty the push URL degrades to an anonymous/GITHUB_TOKEN push that
+          # still "succeeds", so the tag appears and release.yml never runs.
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASE_TOKEN is empty or expired. Refusing to tag:" \
+                 "the push would not cascade into release.yml and the version" \
+                 "would be tagged but never released. Rotate the PAT."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.version }}"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${{ steps.version.outputs.version }}"
+
+      # A tag with no release is the exact failure that hid v1.2.0, v1.2.1 and
+      # v1.3.0. Confirm the push actually cascaded instead of assuming it did.
+      - name: Verify the tag push cascaded into a release run
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.version }}"
+          for i in $(seq 1 10); do
+            sleep 15
+            if gh run list --repo "${{ github.repository }}" \
+                 --workflow release.yml --branch "$TAG" \
+                 --limit 1 --json databaseId --jq '.[0].databaseId' \
+               | grep -q '[0-9]'; then
+              echo "Release workflow triggered for $TAG."
+              exit 0
+            fi
+            echo "No release run for $TAG yet (attempt $i/10)…"
+          done
+          echo "::error::Tag $TAG was pushed but no release run started." \
+               "The push did not cascade — check RELEASE_TOKEN and that" \
+               "actions/checkout uses persist-credentials: false."
+          exit 1

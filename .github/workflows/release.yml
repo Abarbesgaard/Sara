@@ -23,6 +23,12 @@ jobs:
 
   # Cross-compiled binaries (tar.gz) for Linux + macOS, attached to the release.
   # Archive names match scripts/install.sh: sara-<target>.tar.gz
+  #
+  # There is deliberately no `use-cross` input: it is not a valid input for
+  # upload-rust-binary-action, which warned "Unexpected input(s) 'use-cross'"
+  # and ignored it on every run. The action already installs and uses `cross`
+  # by itself when the target needs it — the v1.4.0 aarch64-unknown-linux-gnu
+  # asset was verified as a genuine `ELF 64-bit ARM aarch64` binary.
   binaries:
     needs: create-release
     strategy:
@@ -31,16 +37,12 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            use-cross: false
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            use-cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            use-cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
-            use-cross: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +54,6 @@ jobs:
           archive: sara-$target
           checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}
-          use-cross: ${{ matrix.use-cross }}
 
   # Debian package (.deb) for amd64. Uploaded both versioned (cargo-deb's name)
   # and as a stable `sara_amd64.deb` so the README's latest-download URL works.

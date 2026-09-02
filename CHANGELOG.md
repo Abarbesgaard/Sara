@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **A broken release cascade now fails loudly instead of silently.** `auto-tag`
+  refuses to create the tag at all when `RELEASE_TOKEN` is empty or expired
+  (previously the push degraded to a non-cascading one that still reported
+  success), and after tagging it polls for the `release.yml` run and fails the
+  job if none starts. A tag with no release was the exact silent failure that
+  swallowed v1.2.0, v1.2.1 and v1.3.0.
+- **Dropped the `use-cross` input from `release.yml`.** It is not a valid input
+  for `upload-rust-binary-action`, which logged `Unexpected input(s)
+  'use-cross'` and ignored it on every run. The action handles `cross` itself;
+  the v1.4.0 `aarch64-unknown-linux-gnu` asset was verified to be a genuine
+  `ELF 64-bit ARM aarch64` binary.
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
