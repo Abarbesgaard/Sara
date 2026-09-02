@@ -405,6 +405,13 @@ pub(crate) struct ReflectParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct DiagnoseMemoriesParams {
     pub(crate) project_path: Option<String>,
+    /// Cosine floor for treating a co-occurring pair as a real candidate.
+    /// Defaults to 0.75 — lower widens the net, higher keeps near-duplicates only.
+    pub(crate) threshold: Option<f32>,
+    /// Only report pairs where both memories belong to this project.
+    pub(crate) project: Option<String>,
+    /// Return at most N candidates (sorted worst-first).
+    pub(crate) limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

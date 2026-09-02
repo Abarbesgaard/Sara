@@ -3158,6 +3158,20 @@ pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String
     })
 }
 
+/// The projects an item is linked to (the `item_projects` link table is the
+/// canonical attribution for memories — `items.project` is always NULL for
+/// them). Used to scope memory-wide scans to a single province.
+pub fn get_item_projects(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT project FROM item_projects WHERE item_uuid = ?1 ORDER BY project")?;
+    let rows = stmt.query_map([item_uuid.to_string()], |r| r.get::<_, String>(0))?;
+    let mut out = vec![];
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// Replace an item's file associations (a memory can be tied to multiple files).
 /// Paths should be absolute before calling; no normalisation is done here.
 pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {

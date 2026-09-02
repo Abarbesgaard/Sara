@@ -607,11 +607,22 @@ pub enum Command {
         provisional_days: i64,
     },
 
-    /// Scan all active memories and report pairs sharing files or full tag sets
-    /// with no memory_links edge — unlinked conflict candidates for review.
+    /// Scan active memories and report pairs sharing files or full tag sets
+    /// with no memory_links edge AND a close semantic body match — unlinked
+    /// conflict candidates for review, worst first.
     /// Alias: `sara conflicts`
     #[command(name = "diagnose-memories", alias = "conflicts")]
     DiagnoseMemories {
+        /// Cosine floor for treating a co-occurring pair as a real candidate.
+        /// Lower to widen the net, raise for near-duplicates only.
+        #[arg(long, default_value_t = crate::commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD)]
+        threshold: f32,
+        /// Only report pairs where both memories belong to this project
+        #[arg(long, short)]
+        project: Option<String>,
+        /// Show at most N candidates (they are sorted worst-first)
+        #[arg(long)]
+        limit: Option<usize>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
