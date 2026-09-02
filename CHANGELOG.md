@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.3.0] - 2026-09-02
 
 ### Changed
 
@@ -25,6 +25,41 @@
   `project` MCP parameter, and the count appended to `prune-memories` now honour
   `item_projects`, so running the scan in one repo no longer advertises another
   project's pairs.
+
+## [1.2.1] - 2026-09-01
+
+### Fixed
+
+- **`learn` now always embeds, so semantic recall is genuinely always-on.**
+  Semantic *querying* was already unconditional, but the *write* side was still
+  gated behind the deprecated `recall.semantic` config toggle (default false).
+  In every project that never flipped that "deprecated / ignored" flag no
+  embeddings were ever stored, so semantic recall silently found nothing and
+  degraded to keyword-only FTS. `learn` now always indexes. Existing corpora can
+  be backfilled with `sara reindex-embeddings`.
+
+## [1.2.0] - 2026-09-01
+
+### Added
+
+- **Project-aware prior art.** `find_similar` ranks same-project matches first
+  and labels them (`project` / `same_project` JSON fields).
+- **Duplicate open-task guard on `add`** (`warn` / `duplicate` JSON); completed
+  tasks do not block re-adding.
+- **`steps` surfaces acceptance criteria** in their own labeled section.
+- **`validate` reports an `open_steps` count** and prints an advisory.
+
+### Changed
+
+- Weak semantic hits on `add` render as a snippet rather than the full body; the
+  recall floor stays at 0.30 so legitimate paraphrases still surface.
+- `check_overlap` only blocks on same-project memories; cross-project matches
+  demote to a soft note.
+
+### Fixed
+
+- `item_base_strength` caps provisional memories at Weak (1.0); previously every
+  fresh `done` auto-memory falsely displayed as Strong (2.0).
 
 ## [1.1.2] - 2026-08-31
 
