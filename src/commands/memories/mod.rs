@@ -8,12 +8,16 @@ use crate::infrastructure::db;
 /// strength shown so a human can audit which memories the recall system trusts.
 pub fn run(conn: &Connection, as_json: bool) -> Result<()> {
     let memories = db::list_memories(conn)?;
+    // One grouped query per strength component instead of one per memory:
+    // `item_strength` scans the `memory_recalled` event log every call, so the
+    // per-item form made this command O(memories x recall events).
+    let strengths = db::item_strengths(conn, &memories);
 
     if as_json {
         let v: Vec<_> = memories
             .iter()
             .map(|m| {
-                let strength = db::item_strength(conn, m);
+                let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
                 let label = format!(
                     "{}{}",
                     m.kind.chars().next().unwrap_or('m'),
@@ -52,7 +56,7 @@ pub fn run(conn: &Connection, as_json: bool) -> Result<()> {
 
     println!("Memories (newest first):");
     for m in &memories {
-        let strength = db::item_strength(conn, m);
+        let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
         let label = format!(
             "{}{}",
             m.kind.chars().next().unwrap_or('m'),

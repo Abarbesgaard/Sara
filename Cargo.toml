@@ -64,3 +64,26 @@ base64 = "0.22"
 rmcp = { version = "2", features = ["server", "macros", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "macros", "sync"] }
 schemars = "1"
+
+# ── Release profile ──────────────────────────────────────────────────────────
+# Sara is a short-lived CLI, so the shipped artefact's size matters more than
+# link-time micro-optimization. Measured on this crate (20.2 MB baseline):
+#
+#   strip only .................. 17.85 MB (-11.8%)   build 36s
+#   strip + thin LTO ............ 18.18 MB (-10.2%)   build 41s
+#   strip + thin LTO + cgu=1 .... 16.85 MB (-16.8%)   build 75s
+#   strip + panic=abort ......... 15.70 MB (-22.5%)   build 28s  <- chosen
+#   all of the above + fat LTO .. 15.11 MB (-25.4%)   build 72s
+#
+# Fat LTO buys a further 0.6 MB for +44s on every release build, and measured
+# no faster at runtime (1.00x on `sara list`) because sara is dominated by
+# process start-up and SQLite I/O, not by code the optimizer could improve.
+# So LTO is deliberately left off; the size win comes from dropping unwinding.
+#
+# `panic = "abort"` is safe here: nothing unwinds deliberately (no `catch_unwind`
+# anywhere in the crate), and the TUI's `panic::set_hook` terminal restore still
+# runs, since the hook fires before the abort. Cargo keeps unwinding for test
+# harnesses, so `#[should_panic]` tests are unaffected.
+[profile.release]
+panic = "abort"      # drops landing pads and unwinding tables: the bulk of the win
+strip = true         # symbols are not useful in a shipped CLI

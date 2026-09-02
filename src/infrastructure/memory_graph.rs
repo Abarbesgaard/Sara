@@ -23,7 +23,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::infrastructure::db;
@@ -56,6 +56,15 @@ fn relation_weight(relation: &str, stored: f64) -> f64 {
 
 /// No single edge may exceed this, so a densely-anchored pair can't dominate.
 const MAX_EDGE: f64 = 1.0;
+
+/// How much dearer one inverted candidate pair is than one step of the dense
+/// all-pairs walk: the inverted route hashes the pair into a dedup set and
+/// sorts it before scoring, where the dense route just advances two counters.
+/// Used to decide between the two strategies in [`MemoryGraph::build`]; only
+/// the route changes, never the resulting graph. Deliberately conservative —
+/// when anchors are sparse (the normal case) inverting wins by orders of
+/// magnitude, so the exact figure only matters near the crossover.
+const INVERT_OVERHEAD: u128 = 4;
 
 // ── graph ───────────────────────────────────────────────────────────────────
 
@@ -156,30 +165,92 @@ impl MemoryGraph {
         // two binds near its base weight. Without this, ubiquitous anchors
         // (e.g. a `memory` tag on a third of the store) over-connect the graph
         // until spreading activation degenerates into global centrality.
+        //
+        // Rather than always testing all n²/2 pairs, invert the anchor sets
+        // into postings lists (anchor → the memories carrying it) and read the
+        // candidate pairs straight off them: two memories can only earn an
+        // implicit edge if they appear together under some anchor. Where
+        // anchors are sparse — the normal case — work drops from O(n² · |set|²)
+        // to O(Σ df²), proportional to the edges that actually exist rather
+        // than to the square of the store. The strategy choice below keeps the
+        // old dense walk for the one shape that defeats inversion. Document
+        // frequency falls out as `postings.len()`, since every anchor set was
+        // deduped above, so no separate counting pass is needed.
         let n = nodes.len();
-        let tag_df = document_frequencies(&tag_sets);
-        let file_df = document_frequencies(&file_sets);
-        let task_df = document_frequencies(&task_sets);
+        let tag_post = postings(&tag_sets);
+        let file_post = postings(&file_sets);
+        let task_post = postings(&task_sets);
+
+        // Hoisted out of the scoring loop: `ln(n)` is loop-invariant and was
+        // previously recomputed for every shared anchor of every pair.
+        let ln_n = (n as f64).ln();
         let idf = |df: usize| -> f64 {
             if n < 2 || df == 0 || df >= n {
                 return 0.0;
             }
-            (n as f64 / df as f64).ln() / (n as f64).ln()
+            (n as f64 / df as f64).ln() / ln_n
         };
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let mut w = 0.0;
-                for t in shared(&tag_sets[i], &tag_sets[j]) {
-                    w += W_SHARED_TAG * idf(*tag_df.get(t).unwrap_or(&0));
-                }
-                for f in shared(&file_sets[i], &file_sets[j]) {
-                    w += W_SHARED_FILE * idf(*file_df.get(f).unwrap_or(&0));
-                }
-                for t in shared(&task_sets[i], &task_sets[j]) {
-                    w += W_SHARED_TASK * idf(*task_df.get(t).unwrap_or(&0));
-                }
+
+        // Weight of one pair. Both strategies below call this, so they cannot
+        // drift apart: the summation order (tags, then files, then tasks, each
+        // in `i`'s set order) is fixed here, which keeps the floating-point
+        // result identical no matter how the pair was reached.
+        let score = |i: usize, j: usize| -> f64 {
+            let mut w = 0.0;
+            for t in shared(&tag_sets[i], &tag_sets[j]) {
+                w += W_SHARED_TAG * idf(tag_post.get(t).map_or(0, Vec::len));
+            }
+            for f in shared(&file_sets[i], &file_sets[j]) {
+                w += W_SHARED_FILE * idf(file_post.get(f).map_or(0, Vec::len));
+            }
+            for t in shared(&task_sets[i], &task_sets[j]) {
+                w += W_SHARED_TASK * idf(task_post.get(t).map_or(0, Vec::len));
+            }
+            w
+        };
+
+        // Pick the cheaper way to reach every pair that could carry weight.
+        //
+        // Inverting is normally a huge win: anchors are sparse, so Σ C(df, 2)
+        // is orders of magnitude below C(n, 2). But one near-ubiquitous anchor
+        // breaks that. A tag on `n - 1` memories has a tiny yet non-zero idf,
+        // so it cannot be skipped, and it alone yields ~C(n, 2) candidates —
+        // at which point building and hashing the candidate set costs strictly
+        // more than just walking the pairs directly. Estimating both from the
+        // postings lengths is nearly free, and the factor keeps us on the dense
+        // path unless inverting wins clearly. Either path produces the same
+        // graph; only the route to it differs.
+        let inverted_pairs = pair_estimate(&tag_post, n)
+            + pair_estimate(&file_post, n)
+            + pair_estimate(&task_post, n);
+        let dense_pairs = (n as u128) * (n.saturating_sub(1) as u128) / 2;
+
+        if inverted_pairs.saturating_mul(INVERT_OVERHEAD) < dense_pairs {
+            // Anchors with idf 0 (`df >= n`) or too rare to pair (`df < 2`)
+            // cannot lift a pair past `add`'s `w > 0` guard, so `collect_pairs`
+            // drops them — which also keeps the widest postings lists free.
+            let mut candidates: HashSet<(usize, usize)> = HashSet::new();
+            collect_pairs(&tag_post, n, &mut candidates);
+            collect_pairs(&file_post, n, &mut candidates);
+            collect_pairs(&task_post, n, &mut candidates);
+
+            // Sorted so accumulation order — and so the floating-point sum —
+            // is identical on every run.
+            let mut pairs: Vec<(usize, usize)> = candidates.into_iter().collect();
+            pairs.sort_unstable();
+            for (i, j) in pairs {
+                let w = score(i, j);
                 if w > 0.0 {
                     add(i, j, w, &mut edges);
+                }
+            }
+        } else {
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    let w = score(i, j);
+                    if w > 0.0 {
+                        add(i, j, w, &mut edges);
+                    }
                 }
             }
         }
@@ -389,9 +460,11 @@ pub struct Activation {
 }
 
 /// Elements shared between two small unordered sets (each element yielded once,
-/// from `a`'s occurrences).
-fn shared<'a, T: PartialEq>(a: &'a [T], b: &[T]) -> impl Iterator<Item = &'a T> {
-    a.iter().filter(|x| b.contains(x))
+/// from `a`'s occurrences). Deliberately a linear scan: anchor sets hold a
+/// handful of entries, where comparing a few short strings beats hashing them.
+/// A `HashSet` here measured ~30% *slower* on a 4k-memory store.
+fn shared<'a, T: PartialEq>(a: &'a [T], b: &'a [T]) -> impl Iterator<Item = &'a T> {
+    a.iter().filter(move |x| b.contains(x))
 }
 
 /// Return `v` with duplicate elements removed, preserving first-seen order.
@@ -402,19 +475,54 @@ fn dedup<T: Clone + Eq + std::hash::Hash>(v: Vec<T>) -> Vec<T> {
     v.into_iter().filter(|x| seen.insert(x.clone())).collect()
 }
 
-/// Document frequency of each anchor: how many memories carry it. Duplicates
-/// within a single memory count once, so `df` is a true per-memory count.
-fn document_frequencies<T: Clone + Eq + std::hash::Hash>(sets: &[Vec<T>]) -> HashMap<T, usize> {
-    let mut df: HashMap<T, usize> = HashMap::new();
-    for set in sets {
-        let mut seen = std::collections::HashSet::new();
+/// Postings list per anchor: which memories carry it, in node order. Inverting
+/// the per-memory anchor sets this way is what lets edge building enumerate
+/// only co-occurring pairs. Because every input set is deduped, the length of a
+/// postings list *is* that anchor's document frequency — how many memories
+/// carry it — so no separate counting pass is needed.
+fn postings<T: Clone + Eq + std::hash::Hash>(sets: &[Vec<T>]) -> HashMap<T, Vec<usize>> {
+    let mut post: HashMap<T, Vec<usize>> = HashMap::new();
+    for (i, set) in sets.iter().enumerate() {
         for v in set {
-            if seen.insert(v.clone()) {
-                *df.entry(v.clone()).or_insert(0) += 1;
+            post.entry(v.clone()).or_default().push(i);
+        }
+    }
+    post
+}
+
+/// Upper bound on the candidate pairs inverting these postings would yield,
+/// counting only anchors [`collect_pairs`] would actually walk. Derived from
+/// the postings lengths alone, so choosing a strategy costs nothing.
+fn pair_estimate<T>(post: &HashMap<T, Vec<usize>>, n: usize) -> u128 {
+    post.values()
+        .map(|members| {
+            let df = members.len();
+            if df < 2 || df >= n {
+                0
+            } else {
+                (df as u128) * (df as u128 - 1) / 2
+            }
+        })
+        .sum()
+}
+
+/// Every pair of memories co-occurring under some anchor, normalised to
+/// `(min, max)`. Anchors held by fewer than two memories pair with nothing, and
+/// anchors held by all of them score idf 0, so both are skipped: neither can
+/// produce a non-zero edge, and skipping the ubiquitous ones avoids generating
+/// the largest candidate sets for no gain.
+fn collect_pairs<T>(post: &HashMap<T, Vec<usize>>, n: usize, out: &mut HashSet<(usize, usize)>) {
+    for members in post.values() {
+        let df = members.len();
+        if df < 2 || df >= n {
+            continue;
+        }
+        for (a, &i) in members.iter().enumerate() {
+            for &j in &members[a + 1..] {
+                out.insert(if i < j { (i, j) } else { (j, i) });
             }
         }
     }
-    df
 }
 
 // ── Hebbian consolidation ────────────────────────────────────────────────────
@@ -561,6 +669,144 @@ mod tests {
         assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
         assert!(expected > 0.0 && expected < W_SHARED_TAG);
         assert_eq!(g.edge_weight(&a, &c), None);
+    }
+
+    /// Seeds a store from `tags_by_node`, builds the graph, and asserts every
+    /// implicit edge matches the naive O(n²) all-pairs form the optimisation
+    /// replaced — weights included, to 1e-12. `expect_inverted` pins which
+    /// strategy `build` should have chosen for this fixture, so a change that
+    /// silently stops exercising one of the two branches fails loudly.
+    fn assert_matches_naive_reference(tags_by_node: &[Vec<String>], expect_inverted: bool) {
+        let conn = db::open_in_memory_for_test();
+        let n = tags_by_node.len();
+        let uuids: Vec<Uuid> = tags_by_node
+            .iter()
+            .map(|tags| {
+                let refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+                seed(&conn, &refs)
+            })
+            .collect();
+
+        let mut df: HashMap<&str, usize> = HashMap::new();
+        for set in tags_by_node {
+            for t in set {
+                *df.entry(t.as_str()).or_insert(0) += 1;
+            }
+        }
+
+        // Confirm the fixture really drives the branch it claims to.
+        let inverted: u128 = df
+            .values()
+            .map(|&d| {
+                if d < 2 || d >= n {
+                    0
+                } else {
+                    (d as u128) * (d as u128 - 1) / 2
+                }
+            })
+            .sum();
+        let dense = (n as u128) * (n as u128 - 1) / 2;
+        assert_eq!(
+            inverted.saturating_mul(INVERT_OVERHEAD) < dense,
+            expect_inverted,
+            "fixture selected the wrong strategy (inverted={inverted}, dense={dense})"
+        );
+
+        let g = MemoryGraph::build(&conn).unwrap();
+        assert_eq!(g.nodes.len(), n);
+
+        let idf = |d: usize| -> f64 {
+            if n < 2 || d == 0 || d >= n {
+                return 0.0;
+            }
+            (n as f64 / d as f64).ln() / (n as f64).ln()
+        };
+        let mut expected: HashMap<(usize, usize), f64> = HashMap::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let mut w = 0.0;
+                for t in &tags_by_node[i] {
+                    if tags_by_node[j].contains(t) {
+                        w += W_SHARED_TAG * idf(df[t.as_str()]);
+                    }
+                }
+                if w > 0.0 {
+                    expected.insert((i, j), w.min(MAX_EDGE));
+                }
+            }
+        }
+
+        assert!(
+            expected.len() > 50,
+            "fixture is too sparse to be meaningful: {} edges",
+            expected.len()
+        );
+        assert_eq!(
+            g.edge_count(),
+            expected.len(),
+            "edge count diverged from the naive reference"
+        );
+        for ((i, j), want) in expected {
+            let got = g
+                .edge_weight(&uuids[i], &uuids[j])
+                .unwrap_or_else(|| panic!("edge {i}-{j} missing from the optimised graph"));
+            assert!(
+                (got - want).abs() < 1e-12,
+                "edge {i}-{j}: got {got}, want {want}"
+            );
+        }
+    }
+
+    /// Deterministic xorshift, so both fixtures below are reproducible.
+    fn rng() -> impl FnMut() -> u64 {
+        let mut state: u64 = 0x2545_F491_4F6C_DD1D;
+        move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        }
+    }
+
+    #[test]
+    fn sparse_anchors_take_the_inverted_path_and_match_the_naive_reference() {
+        // Rare anchors only: Σ C(df, 2) sits far below C(n, 2), so `build`
+        // inverts the postings. A tag on every memory (idf 0) is included to
+        // prove `collect_pairs` may drop it without changing the graph.
+        const N: usize = 120;
+        let mut next = rng();
+        let tags_by_node: Vec<Vec<String>> = (0..N)
+            .map(|_| {
+                let mut tags: Vec<String> = vec!["memory".into()];
+                for _ in 0..(1 + next() % 3) {
+                    tags.push(format!("topic-{}", next() % 40));
+                }
+                dedup(tags)
+            })
+            .collect();
+        assert_matches_naive_reference(&tags_by_node, true);
+    }
+
+    #[test]
+    fn a_near_ubiquitous_anchor_takes_the_dense_path_and_match_the_naive_reference() {
+        // A tag on two thirds of the store has a tiny but non-zero idf, so it
+        // cannot be skipped and alone yields ~C(n, 2) candidate pairs. `build`
+        // must fall back to the dense walk — and still produce the same graph.
+        const N: usize = 120;
+        let mut next = rng();
+        let tags_by_node: Vec<Vec<String>> = (0..N)
+            .map(|i| {
+                let mut tags: Vec<String> = vec!["memory".into()];
+                if i % 3 != 0 {
+                    tags.push("common".into());
+                }
+                for _ in 0..(next() % 3) {
+                    tags.push(format!("topic-{}", next() % 12));
+                }
+                dedup(tags)
+            })
+            .collect();
+        assert_matches_naive_reference(&tags_by_node, false);
     }
 
     #[test]
