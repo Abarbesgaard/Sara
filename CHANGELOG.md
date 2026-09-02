@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`diagnose-memories` now reports conflicts, not co-occurrence.** The scan
+  flagged a pair on *any* single shared file path or an identical tag set, with
+  no test of what the two memories actually said. On a real 417-memory store
+  that produced 1189 "conflict candidates": 84% of the file-overlap pairs shared
+  exactly one path, and because the pass is quadratic in memories-per-file, two
+  hub files (`db.rs` with 27 memories, `mod.rs` with 18) generated 42% of them
+  on their own. Scoring those pairs against the embeddings sara already stores
+  gave a median cosine of 0.55 — the median "conflict" was barely on topic.
+  Candidates are now gated on `DEFAULT_CONFLICT_THRESHOLD` (0.75), which removes
+  ~94% of them while keeping every hand-verified duplicate. A pair whose
+  embedding is missing is kept (fail-open) so a lagging index never hides a
+  candidate silently.
+- **Candidates are sorted worst-first and carry their score.** The previous
+  order was `HashMap` iteration order, so the list reshuffled between runs and
+  the one true duplicate could sit anywhere in ~4700 lines of output. Pairs are
+  now sorted by cosine descending, print their score, and can be capped with
+  `--limit` (the reported `total` stays the untruncated count).
+- **The scan can be scoped to a project.** `diagnose-memories --project`, the
+  `project` MCP parameter, and the count appended to `prune-memories` now honour
+  `item_projects`, so running the scan in one repo no longer advertises another
+  project's pairs.
+
 ## [1.1.2] - 2026-08-31
 
 ### Fixed

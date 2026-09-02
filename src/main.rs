@@ -520,8 +520,18 @@ fn run() -> Result<()> {
         } => {
             let actual_dry_run = !apply && dry_run;
             commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
-            // Informational: surface unlinked conflict candidates alongside prune output.
-            if let Ok(diag) = commands::diagnose_memories::diagnose_value(&conn) {
+            // Informational: surface unlinked conflict candidates alongside prune
+            // output — scoped to this province so a scan here never advertises
+            // another project's pairs.
+            let scope = infrastructure::project::detect_current_project(&conn, &cfg)
+                .ok()
+                .map(|(name, _)| name);
+            if let Ok(diag) = commands::diagnose_memories::diagnose_value(
+                &conn,
+                commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD,
+                scope.as_deref(),
+                None,
+            ) {
                 let n = diag["count"].as_u64().unwrap_or(0);
                 if n > 0 {
                     println!(
@@ -531,8 +541,13 @@ fn run() -> Result<()> {
             }
         }
 
-        Command::DiagnoseMemories { json } => {
-            commands::diagnose_memories::run(&conn, json)?;
+        Command::DiagnoseMemories {
+            threshold,
+            project,
+            limit,
+            json,
+        } => {
+            commands::diagnose_memories::run(&conn, json, threshold, project.as_deref(), limit)?;
         }
 
         Command::Reflect {

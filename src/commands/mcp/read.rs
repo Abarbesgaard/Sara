@@ -323,19 +323,30 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Health report for the memory graph: surfaces orphaned, \
-        contradictory, duplicated and never-recalled memories. Read-only — archives \
-        nothing. Use it to decide what to `relearn`, `forget` or `prune_memories`."
+        description = "Health report for the memory graph: surfaces unlinked pairs that \
+        both co-occur (shared file or identical tag set) AND are semantically close, \
+        worst-first by cosine. Read-only — archives nothing. Use it to decide what to \
+        `relearn`, `forget` or `prune_memories`."
     )]
     fn diagnose_memories(
         &self,
         Parameters(p): Parameters<DiagnoseMemoriesParams>,
     ) -> Result<String, ErrorData> {
+        let threshold = p
+            .threshold
+            .unwrap_or(commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD);
         let v = self
             .with_project(
                 p.project_path.as_deref(),
                 "mcp diagnose_memories",
-                |conn, _cfg| commands::diagnose_memories::diagnose_value(conn),
+                |conn, _cfg| {
+                    commands::diagnose_memories::diagnose_value(
+                        conn,
+                        threshold,
+                        p.project.as_deref(),
+                        p.limit,
+                    )
+                },
             )
             .map_err(mcp_err)?;
         ok_json(v)
