@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.4.0] - 2026-09-02
+
+### Added
+
+- **Indexes on the hot query paths.** `tasks`, `annotations`, `task_checklist`,
+  `task_links` and `events` carried no user indexes at all; migration 23 adds
+  ten. It uses `M::up_with_hook` with a `sqlite_master` check because
+  rusqlite_migration tracks a single `user_version` watermark, so a database can
+  sit at a high version with a partial schema — a bare `CREATE INDEX` there
+  aborts every migration and bricks the CLI.
+
+### Changed
+
+- **`memory_graph` no longer compares every pair.** Inverting anchors into
+  postings lists gives 4.2x at 4386 memories and 9.3–13.5x at 10386. A cost
+  estimate with a dense fallback guards the case where one anchor sits on nearly
+  every memory, where the inversion is a regression.
+- **Memory strength is batched.** `item_strength` issued a `COUNT` over the
+  `memory_recalled` log per memory — 121ms of the 138ms spent in
+  `sara memories`. Batching gives 8.4x on `memories` and 4.1x on `dream`.
+- Binary size drops ~22.5%, from `panic=abort` + `strip` (LTO measured no
+  speedup at all).
+
+### Fixed
+
+- **Auto-tag now actually triggers a release.** `actions/checkout` persisted
+  `GITHUB_TOKEN` as an `http.extraheader` for github.com, shadowing the
+  `RELEASE_TOKEN` in the push URL. Tags therefore landed as `GITHUB_TOKEN`
+  pushes, which by design do not cascade into other workflows — so v1.2.0,
+  v1.2.1 and v1.3.0 were tagged but never built or published. The checkout now
+  sets `persist-credentials: false`.
+
 ## [1.3.0] - 2026-09-02
 
 ### Changed
