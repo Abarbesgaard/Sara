@@ -53,7 +53,6 @@ fn run() -> Result<()> {
         }
     }
     let command_label = args[1..].join(" ");
-    // Telemetry captures the command *name* only (the first token), never argv.
     let command_name = args
         .get(1)
         .cloned()
@@ -67,12 +66,8 @@ fn run() -> Result<()> {
         db::begin_undo_batch(&command_label);
     }
 
-    // Emit the one-time first-run telemetry notice (best-effort; never fatal).
     infrastructure::telemetry::maybe_show_notice(&cfg);
 
-    // Wrap dispatch so a per-command telemetry record is written on BOTH the ok
-    // and error paths. `command` is moved into the closure (the match consumes
-    // it) while `cfg`/`conn` are borrowed, so `cfg` remains usable for capture.
     let command = cli.command;
     let started = std::time::Instant::now();
     let result: Result<()> = (|| -> Result<()> {

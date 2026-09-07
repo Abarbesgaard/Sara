@@ -117,9 +117,6 @@ impl SaraServer {
         db::begin_undo_batch(label);
         let started = std::time::Instant::now();
         let result = f(&conn, &self.cfg);
-        // Fire-and-forget telemetry: one record per MCP tool call, source=mcp,
-        // carrying only the tool label (never arguments or results). Replaces
-        // the old dead `mcp_tool` write into the memory-strength `events` table.
         let elapsed_ms = started.elapsed().as_millis() as u64;
         crate::infrastructure::telemetry::capture(
             &self.cfg,

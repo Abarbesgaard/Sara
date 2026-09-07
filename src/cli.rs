@@ -563,15 +563,10 @@ pub enum Command {
         json: bool,
     },
 
-    /// Inspect or control local usage telemetry. With no action, prints status.
-    /// Actions: `on`, `off`, `status`. Use `--show` to print the queued records.
     Telemetry {
-        /// on | off | status (default: status)
         action: Option<String>,
-        /// Print the queued telemetry records that capture has recorded locally
         #[arg(long)]
         show: bool,
-        /// Emit as JSON (with --show, the raw queued records)
         #[arg(long)]
         json: bool,
     },
