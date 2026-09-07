@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Flag-level CLI telemetry.** Each captured CLI invocation now records a
+  `flags` field — the flag *names* supplied (e.g. `--json --tag -p`), sorted,
+  deduplicated, and with all values stripped so free-text and secrets never
+  reach the collector. MCP calls record an empty `flags` (they use named
+  params, not CLI flags). This makes it possible to see which flags are
+  actually used and to compare, e.g., `--json` usage across commands.
+
 ### Fixed
 
 - **A broken release cascade now fails loudly instead of silently.** `auto-tag`

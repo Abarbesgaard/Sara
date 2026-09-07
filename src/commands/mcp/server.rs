@@ -123,6 +123,7 @@ impl SaraServer {
             &self.cfg,
             crate::infrastructure::telemetry::Source::Mcp,
             label,
+            "",
             elapsed_ms,
             &result,
         );

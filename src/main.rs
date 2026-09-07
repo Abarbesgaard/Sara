@@ -53,6 +53,7 @@ fn run() -> Result<()> {
         }
     }
     let command_label = args[1..].join(" ");
+    let command_flags = infrastructure::telemetry::extract_cli_flags(&args[1..]);
     let command_name = args
         .get(1)
         .cloned()
@@ -721,6 +722,7 @@ fn run() -> Result<()> {
             &cfg,
             infrastructure::telemetry::Source::Cli,
             &command_name,
+            &command_flags,
             elapsed_ms,
             &result,
         );
