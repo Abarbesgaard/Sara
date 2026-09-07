@@ -41,18 +41,25 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Mark step N of a task done, recording a result and the current git commit."
+        description = "Mark step N of a task DONE (ticks the box), recording a result and the current git commit. This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" with its 1-based position. Address the item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). Do NOT call `check` to tick — check only adds."
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp step_done", |conn, _cfg| {
-                commands::guide::step_done_value(
-                    conn,
-                    &p.id,
-                    p.n,
-                    p.result.as_deref(),
-                    p.kind.as_deref(),
-                )
+                if let Some(step_id) = p.step_id {
+                    commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
+                } else {
+                    let n = p.n.ok_or_else(|| {
+                        anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
+                    })?;
+                    commands::guide::step_done_value(
+                        conn,
+                        &p.id,
+                        n,
+                        p.result.as_deref(),
+                        p.kind.as_deref(),
+                    )
+                }
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -95,7 +102,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Add a checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command."
+        description = "ADD a new checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command. This APPENDS a new item — it does NOT tick an existing one; to mark an item satisfied use `step_done`. Returns the new item's `step_id` (rowid) and `index` (1-based position) — pass either back to step_done/step_remove."
     )]
     fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, ErrorData> {
         let v = self
@@ -114,14 +121,23 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Reopen a previously-completed step (or acceptance criterion) of a task.")]
+    #[tool(
+        description = "Reopen a previously-completed step (or acceptance criterion) of a task. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns)."
+    )]
     fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
                 "mcp step_undone",
                 |conn, _cfg| {
-                    commands::guide::step_undone_value(conn, &p.id, p.n, p.kind.as_deref())
+                    if let Some(step_id) = p.step_id {
+                        commands::guide::step_undone_by_id_value(conn, step_id)
+                    } else {
+                        let n = p.n.ok_or_else(|| {
+                            anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
+                        })?;
+                        commands::guide::step_undone_value(conn, &p.id, n, p.kind.as_deref())
+                    }
                 },
             )
             .map_err(mcp_err)?;
@@ -129,7 +145,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber."
+        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns)."
     )]
     fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, ErrorData> {
         let v = self
@@ -137,7 +153,14 @@ impl SaraServer {
                 p.project_path.as_deref(),
                 "mcp step_remove",
                 |conn, _cfg| {
-                    commands::guide::step_remove_value(conn, &p.id, p.n, p.kind.as_deref())
+                    if let Some(step_id) = p.step_id {
+                        commands::guide::step_remove_by_id_value(conn, step_id)
+                    } else {
+                        let n = p.n.ok_or_else(|| {
+                            anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
+                        })?;
+                        commands::guide::step_remove_value(conn, &p.id, n, p.kind.as_deref())
+                    }
                 },
             )
             .map_err(mcp_err)?;

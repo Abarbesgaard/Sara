@@ -6,6 +6,63 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+/// Accept a task id given as either a JSON string or a bare number. The guide
+/// tools *return* the numeric `task` field (e.g. `{"task": 14}`); agents
+/// faithfully round-trip that value into the next call, so the input must
+/// tolerate both `"14"` and `14`.
+fn de_id<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct V;
+    impl serde::de::Visitor<'_> for V {
+        type Value = String;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a task id as a string or integer")
+        }
+        fn visit_str<E>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_string<E>(self, v: String) -> Result<String, E> {
+            Ok(v)
+        }
+        fn visit_i64<E>(self, v: i64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_u64<E>(self, v: u64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+    }
+    d.deserialize_any(V)
+}
+
+/// Accept a 1-based position given as a number or a numeric string, defaulting to
+/// `None` when absent. Paired with `#[serde(default, alias = "index", ...)]` so a
+/// model round-tripping the emitted `index` field deserializes cleanly.
+fn de_opt_index<'de, D>(d: D) -> Result<Option<usize>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(i64),
+        Str(String),
+    }
+    use serde::de::Error;
+    match Option::<NumOrStr>::deserialize(d)? {
+        None => Ok(None),
+        Some(NumOrStr::Num(n)) => usize::try_from(n)
+            .map(Some)
+            .map_err(|_| D::Error::custom("position must be non-negative")),
+        Some(NumOrStr::Str(s)) => s
+            .trim()
+            .parse::<usize>()
+            .map(Some)
+            .map_err(|_| D::Error::custom("position must be a 1-based integer")),
+    }
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ListParams {
     /// Absolute path of the target git repo/project. Omit to use the launch dir.
@@ -55,9 +112,17 @@ pub(crate) struct StepsParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct StepDoneParams {
     pub(crate) project_path: Option<String>,
+    /// Task id or 8-char uuid prefix. Also accepts the numeric `task` field the
+    /// tools emit (`task`/`task_id` aliases, string or number).
+    #[serde(alias = "task", alias = "task_id", deserialize_with = "de_id")]
     pub(crate) id: String,
-    /// 1-based step number.
-    pub(crate) n: usize,
+    /// 1-based step number (the `index` the tools return). Optional when `step_id`
+    /// is given instead.
+    #[serde(default, alias = "index", deserialize_with = "de_opt_index")]
+    pub(crate) n: Option<usize>,
+    /// Address the item directly by its row id (the `step_id` returned by `check`),
+    /// instead of by 1-based position. Takes precedence over `n`.
+    pub(crate) step_id: Option<i64>,
     /// Execution result / evidence recorded with the step.
     pub(crate) result: Option<String>,
     /// Item kind: "step" (default) or "acceptance".
@@ -151,6 +216,9 @@ pub(crate) struct DepParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct CheckParams {
     pub(crate) project_path: Option<String>,
+    /// Task id or 8-char uuid prefix. Also accepts the numeric `task` field the
+    /// tools emit (`task`/`task_id` aliases, string or number).
+    #[serde(alias = "task", alias = "task_id", deserialize_with = "de_id")]
     pub(crate) id: String,
     /// The step / acceptance-criterion text.
     pub(crate) text: String,
@@ -224,9 +292,17 @@ pub(crate) struct RecordRunParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct StepEditParams {
     pub(crate) project_path: Option<String>,
+    /// Task id or 8-char uuid prefix. Also accepts the numeric `task` field the
+    /// tools emit (`task`/`task_id` aliases, string or number).
+    #[serde(alias = "task", alias = "task_id", deserialize_with = "de_id")]
     pub(crate) id: String,
-    /// 1-based step number.
-    pub(crate) n: usize,
+    /// 1-based step number (the `index` the tools return). Optional when `step_id`
+    /// is given instead.
+    #[serde(default, alias = "index", deserialize_with = "de_opt_index")]
+    pub(crate) n: Option<usize>,
+    /// Address the item directly by its row id (the `step_id` returned by `check`),
+    /// instead of by 1-based position. Takes precedence over `n`.
+    pub(crate) step_id: Option<i64>,
     /// Item kind: "step" (default) or "acceptance".
     pub(crate) kind: Option<String>,
 }

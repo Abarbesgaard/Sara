@@ -287,6 +287,18 @@ pub fn step_done_value(
     }))
 }
 
+/// Tick a checklist item addressed by its row id (the `step_id` that `check`
+/// returns), resolving its task/kind/position first. Lets MCP callers round-trip
+/// the `step_id` they were handed rather than having to know the 1-based `n`.
+pub fn step_done_by_id_value(
+    conn: &Connection,
+    step_id: i64,
+    result: Option<&str>,
+) -> Result<serde_json::Value> {
+    let (uuid, kind, index) = db::locate_step(conn, step_id)?;
+    step_done_value(conn, &uuid.to_string(), index, result, Some(&kind))
+}
+
 /// `sara step done <id> <n>` — record completion of a step.
 pub fn step_done(
     conn: &Connection,
@@ -351,6 +363,12 @@ pub fn step_undone_value(
     }))
 }
 
+/// Reopen a checklist item addressed by its row id (see `step_done_by_id_value`).
+pub fn step_undone_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
+    let (uuid, kind, index) = db::locate_step(conn, step_id)?;
+    step_undone_value(conn, &uuid.to_string(), index, Some(&kind))
+}
+
 /// `sara step undone <id> <n>` — reopen a step.
 pub fn step_undone(
     conn: &Connection,
@@ -403,6 +421,12 @@ pub fn step_remove_value(
     }))
 }
 
+/// Delete a checklist item addressed by its row id (see `step_done_by_id_value`).
+pub fn step_remove_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
+    let (uuid, kind, index) = db::locate_step(conn, step_id)?;
+    step_remove_value(conn, &uuid.to_string(), index, Some(&kind))
+}
+
 /// `sara step remove <id> <N> [--kind acceptance]` — delete a checklist item.
 pub fn step_remove(
     conn: &Connection,
@@ -443,12 +467,17 @@ pub fn check_value(
     let kind = kind_arg(kind);
     let source = source.unwrap_or("human");
     let step_id = db::add_step(conn, &task.uuid, text, intent, kind, source, verify)?;
+    // Position of the item just appended within its kind — the 1-based `n` a
+    // caller feeds to step_done/step_remove. Returned so agents can round-trip it
+    // instead of guessing (or misusing the raw step_id rowid).
+    let index = db::get_steps(conn, &task.uuid, kind)?.len();
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "kind": kind,
         "text": text,
         "step_id": step_id,
+        "index": index,
     }))
 }
 
