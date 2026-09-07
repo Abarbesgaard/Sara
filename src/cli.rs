@@ -563,6 +563,14 @@ pub enum Command {
         json: bool,
     },
 
+    Telemetry {
+        action: Option<String>,
+        #[arg(long)]
+        show: bool,
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
     /// Relations: supersedes, similar_to, derived_from, used_in
     #[command(name = "link-memory")]

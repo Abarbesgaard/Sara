@@ -69,6 +69,22 @@ impl Default for RecallConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct TelemetryConfig {
+    pub enabled: bool,
+    pub endpoint: Option<String>,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        TelemetryConfig {
+            enabled: true,
+            endpoint: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub default_project: String,
     pub date_dialect: String,
@@ -77,6 +93,7 @@ pub struct Config {
     pub vault_path: Option<PathBuf>,
     /// Semantic-recall settings (default OFF — recall stays lexical).
     pub recall: RecallConfig,
+    pub telemetry: TelemetryConfig,
 }
 
 impl Default for Config {
@@ -87,6 +104,7 @@ impl Default for Config {
             urgency: UrgencyConfig::default(),
             vault_path: None,
             recall: RecallConfig::default(),
+            telemetry: TelemetryConfig::default(),
         }
     }
 }

@@ -115,21 +115,15 @@ impl SaraServer {
             .map_err(|_| anyhow::anyhow!("sara database mutex was poisoned"))?;
         let _cwd = CwdGuard::enter(project_path)?;
         db::begin_undo_batch(label);
+        let started = std::time::Instant::now();
         let result = f(&conn, &self.cfg);
-        // Fire-and-forget event recording: derive project name from the registered
-        // path that matches the current cwd (best-effort, None if not found).
-        let project_name = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.to_str().map(str::to_owned))
-            .and_then(|cwd| db::get_project_by_path(&conn, &cwd).ok().flatten())
-            .map(|p| p.name);
-        let _ = db::record_event(
-            &conn,
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        crate::infrastructure::telemetry::capture(
+            &self.cfg,
+            crate::infrastructure::telemetry::Source::Mcp,
             label,
-            None,
-            Some("mcp_tool"),
-            &[],
-            project_name.as_deref(),
+            elapsed_ms,
+            &result,
         );
         result
     }
