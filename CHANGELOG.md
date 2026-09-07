@@ -5,11 +5,13 @@
 ### Added
 
 - **Flag-level CLI telemetry.** Each captured CLI invocation now records a
-  `flags` field — the flag *names* supplied (e.g. `--json --tag -p`), sorted,
-  deduplicated, and with all values stripped so free-text and secrets never
-  reach the collector. MCP calls record an empty `flags` (they use named
-  params, not CLI flags). This makes it possible to see which flags are
-  actually used and to compare, e.g., `--json` usage across commands.
+  `flags` field — the flag *names* supplied (e.g. `["--json","--tag","-p"]`),
+  sorted and deduplicated, with all values stripped so free-text and secrets
+  never reach the collector. Stored as a JSON array so VictoriaLogs
+  `unroll by (flags)` can expand it for per-flag aggregation. The field is
+  omitted entirely when empty (all MCP calls, flagless CLI calls). This makes
+  it possible to see which flags are actually used and to compare, e.g.,
+  `--json` usage across commands.
 
 ### Fixed
 

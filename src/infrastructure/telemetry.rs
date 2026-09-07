@@ -24,9 +24,12 @@ pub struct TelemetryRecord {
     pub ts: String,
     pub source: &'static str,
     pub name: String,
-    /// Flag NAMES supplied on the CLI (e.g. `--json -a`), sorted, deduped, and
-    /// space-separated. Flag *values* are never recorded. Empty for MCP calls.
-    pub flags: String,
+    /// Flag NAMES supplied on the CLI (e.g. `["--json","--tag","-p"]`), sorted and
+    /// deduped. Stored as a JSON array so VictoriaLogs `unroll by (flags)` can
+    /// expand it for per-flag aggregation. Flag *values* are never recorded, and
+    /// the field is omitted entirely when empty (all MCP calls, flagless CLI calls).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
     pub duration_ms: u64,
     pub ok: bool,
     pub err_code: Option<&'static str>,
@@ -59,10 +62,10 @@ pub fn err_code(err: &anyhow::Error) -> &'static str {
 ///
 /// Keeps only tokens that begin with `-` (short or long), strips any `=value`
 /// suffix, drops the bare `--` end-of-options marker and negative-number
-/// operands, then returns a sorted, deduplicated, space-separated string.
-/// Value tokens (`--tag foo`, `-p proj`) are naturally excluded because they
-/// do not start with `-`, so free-text and secrets never reach the collector.
-pub fn extract_cli_flags(args: &[String]) -> String {
+/// operands, then returns a sorted, deduplicated list. Value tokens
+/// (`--tag foo`, `-p proj`) are naturally excluded because they do not start
+/// with `-`, so free-text and secrets never reach the collector.
+pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
     let mut flags: Vec<String> = args
         .iter()
         .filter(|a| {
@@ -75,14 +78,14 @@ pub fn extract_cli_flags(args: &[String]) -> String {
         .collect();
     flags.sort();
     flags.dedup();
-    flags.join(" ")
+    flags
 }
 
 pub fn build_record<T>(
     install_id: &str,
     source: Source,
     name: &str,
-    flags: &str,
+    flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
 ) -> TelemetryRecord {
@@ -91,7 +94,7 @@ pub fn build_record<T>(
         ts: chrono::Utc::now().to_rfc3339(),
         source: source.as_str(),
         name: name.to_string(),
-        flags: flags.to_string(),
+        flags: flags.to_vec(),
         duration_ms,
         ok: result.is_ok(),
         err_code: result.as_ref().err().map(err_code),
@@ -206,7 +209,7 @@ pub fn capture<T>(
     cfg: &Config,
     source: Source,
     name: &str,
-    flags: &str,
+    flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
 ) {
@@ -494,7 +497,8 @@ mod tests {
     fn records_cli_invocation() {
         let _g = lock();
         let path = temp_queue("cli");
-        let rec = build_record("iid-1", Source::Cli, "recall", "--json --tag", 12, &Ok(()));
+        let flags = [String::from("--json"), String::from("--tag")];
+        let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()));
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
@@ -502,7 +506,7 @@ mod tests {
         let r = &rows[0];
         assert_eq!(r["source"], "cli");
         assert_eq!(r["name"], "recall");
-        assert_eq!(r["flags"], "--json --tag");
+        assert_eq!(r["flags"], serde_json::json!(["--json", "--tag"]));
         assert_eq!(r["ok"], true);
         assert_eq!(r["duration_ms"], 12);
         assert_eq!(r["install_id"], "iid-1");
@@ -528,10 +532,15 @@ mod tests {
 
         append(
             &path,
-            &build_record("iid-1", Source::Cli, "list", "", 3, &Ok(())),
+            &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(())),
         )
         .unwrap();
-        assert_eq!(read_lines(&path).len(), 2);
+        let rows = read_lines(&path);
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows[1].as_object().unwrap().get("flags").is_none(),
+            "flags omitted entirely when empty"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -539,7 +548,7 @@ mod tests {
     fn records_mcp_invocation() {
         let _g = lock();
         let path = temp_queue("mcp");
-        let rec = build_record("iid-2", Source::Mcp, "mcp add", "", 7, &Ok(()));
+        let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()));
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
@@ -556,17 +565,17 @@ mod tests {
         // values are excluded; long+short captured; sorted + deduped
         assert_eq!(
             extract_cli_flags(&a("recall --tag herdr -p pling --json")),
-            "--json --tag -p"
+            vec!["--json", "--tag", "-p"]
         );
         // `=value` form keeps only the name; duplicates collapse
         assert_eq!(
             extract_cli_flags(&a("learn --tag=a --tag=b --auto-files")),
-            "--auto-files --tag"
+            vec!["--auto-files", "--tag"]
         );
         // bare `--`, negative numbers, and a lone `-` are not flags
-        assert_eq!(extract_cli_flags(&a("modify 5 -- -3 -")), "");
+        assert!(extract_cli_flags(&a("modify 5 -- -3 -")).is_empty());
         // no flags at all
-        assert_eq!(extract_cli_flags(&a("done 3f45")), "");
+        assert!(extract_cli_flags(&a("done 3f45")).is_empty());
     }
 
     #[test]
@@ -592,7 +601,7 @@ mod tests {
         assert_eq!(err_code(&other), "other");
 
         let failed: anyhow::Result<()> = Err(io_err);
-        let rec = build_record("iid", Source::Cli, "validate", "", 5, &failed);
+        let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed);
         assert!(!rec.ok);
         assert_eq!(rec.err_code, Some("io"));
         let json = serde_json::to_string(&rec).unwrap();
@@ -615,7 +624,7 @@ mod tests {
             std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
         }
         assert!(!enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", "", 1, &Ok(()));
+        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert!(
             !path.exists(),
             "no queue file created while disabled by env"
@@ -625,7 +634,7 @@ mod tests {
             std::env::remove_var("SARA_NO_TELEMETRY");
         }
         assert!(enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", "", 1, &Ok(()));
+        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
         cfg.telemetry.enabled = false;
