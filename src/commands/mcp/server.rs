@@ -12,6 +12,7 @@ use rusqlite::Connection;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{ErrorData, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::transport::async_rw::AsyncRwTransport;
 use rmcp::transport::stdio;
 use rmcp::{ServerHandler, ServiceExt, tool_handler};
 
@@ -166,7 +167,13 @@ pub fn run(conn: Connection, cfg: &Config) -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async move {
-        let service = server.serve(stdio()).await?;
+        // Copilot CLI probes with a custom `server/discover` request before
+        // `initialize`; rmcp's handshake would die on it. Absorb pre-init
+        // unknown traffic so the server always comes up (see `transport`).
+        let (stdin, stdout) = stdio();
+        let transport =
+            super::transport::TolerantInit::new(AsyncRwTransport::new_server(stdin, stdout));
+        let service = server.serve(transport).await?;
         service.waiting().await?;
         Ok::<(), anyhow::Error>(())
     })
