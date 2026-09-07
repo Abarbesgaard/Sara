@@ -58,9 +58,11 @@ nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
 
-# Telemetry flush (nightly): a tiny blocking HTTP client (rustls, no OpenSSL) used
-# ONLY by the detached `__telemetry_flush` child to POST the queue to the collector.
-ureq = "2"
+# Telemetry flush (nightly): a tiny blocking HTTP client used ONLY by the detached
+# `__telemetry_flush` child to POST the queue to the collector. TLS is disabled on
+# purpose — the collector is reached over plain HTTP (local/tailnet), and pulling in
+# rustls/ring breaks the Windows CI build for no benefit here.
+ureq = { version = "2", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 # setsid(2) so the detached flush child fully outlives the short-lived CLI process.
