@@ -64,16 +64,16 @@ base64 = "0.22"
 # rustls/ring breaks the Windows CI build for no benefit here.
 ureq = { version = "2", default-features = false }
 
-[target.'cfg(unix)'.dependencies]
-# setsid(2) so the detached flush child fully outlives the short-lived CLI process.
-libc = "0.2"
-
 # ── MCP server (`sara mcp`) ──────────────────────────────────────────────────
 # Async runtime is built ONLY inside the `mcp` command; the rest of the CLI stays
 # synchronous. rmcp is the official Rust MCP SDK (stdio transport, tokio-based).
 rmcp = { version = "2", features = ["server", "macros", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "macros", "sync"] }
 schemars = "1"
+
+[target.'cfg(unix)'.dependencies]
+# setsid(2) so the detached flush child fully outlives the short-lived CLI process.
+libc = "0.2"
 
 # ── Release profile ──────────────────────────────────────────────────────────
 # Sara is a short-lived CLI, so the shipped artefact's size matters more than
