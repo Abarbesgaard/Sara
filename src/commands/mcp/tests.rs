@@ -579,3 +579,101 @@ fn plan_show_value_returns_a_briefing() {
         .expect("plan_show");
     assert_eq!(v["briefing"].as_array().map(|a| a.len()), Some(1));
 }
+
+// ── Guide-tool ergonomics: tolerate the vocabulary the tools emit ────────────
+// The MCP guide tools return {task, step_id, index} but historically required
+// {id, n}. Agents faithfully round-trip the emitted names and hit
+// "failed to deserialize parameters: missing field `id`". These tests pin the
+// tolerant contract: aliases (task/task_id -> id, index -> n), string-or-number
+// ids, step_id addressing, and check returning the new item's position.
+use super::params::{CheckParams, StepDoneParams, StepEditParams};
+
+#[test]
+fn step_done_params_accept_task_and_index_aliases() {
+    // A model round-tripping a step_done/step_undone response: {task, index}.
+    let p: StepDoneParams = serde_json::from_value(serde_json::json!({ "task": 14, "index": 1 }))
+        .expect("{task,index} must deserialize into StepDoneParams");
+    assert_eq!(p.id, "14");
+    assert_eq!(p.n, Some(1));
+}
+
+#[test]
+fn step_done_params_accept_string_id_and_step_id() {
+    // A model round-tripping a check response: {task, step_id}.
+    let p: StepDoneParams =
+        serde_json::from_value(serde_json::json!({ "task": "14", "step_id": 1614 }))
+            .expect("{task,step_id} must deserialize into StepDoneParams");
+    assert_eq!(p.id, "14");
+    assert_eq!(p.step_id, Some(1614));
+}
+
+#[test]
+fn step_edit_params_accept_index_and_step_id_aliases() {
+    let by_index: StepEditParams =
+        serde_json::from_value(serde_json::json!({ "task": 14, "index": 2 }))
+            .expect("{task,index} must deserialize into StepEditParams");
+    assert_eq!(by_index.id, "14");
+    assert_eq!(by_index.n, Some(2));
+    let by_step_id: StepEditParams =
+        serde_json::from_value(serde_json::json!({ "id": "14", "step_id": 99 }))
+            .expect("{id,step_id} must deserialize into StepEditParams");
+    assert_eq!(by_step_id.step_id, Some(99));
+}
+
+#[test]
+fn check_params_accept_task_alias_as_number() {
+    let p: CheckParams =
+        serde_json::from_value(serde_json::json!({ "task": 14, "text": "criterion" }))
+            .expect("{task,text} must deserialize into CheckParams");
+    assert_eq!(p.id, "14");
+    assert_eq!(p.text, "criterion");
+}
+
+#[test]
+fn check_value_returns_the_new_items_position() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let first = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "a", None, None, None, None)
+        })
+        .expect("check");
+    assert_eq!(first["index"].as_u64(), Some(1), "first step is position 1");
+    let second = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "b", None, None, None, None)
+        })
+        .expect("check");
+    assert_eq!(
+        second["index"].as_u64(),
+        Some(2),
+        "second step is position 2"
+    );
+}
+
+#[test]
+fn step_done_by_step_id_ticks_the_right_item() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    // Add two acceptance criteria; capture the second one's step_id.
+    server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "c1", None, Some("acceptance"), None, None)
+        })
+        .expect("check c1");
+    let c2 = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "c2", None, Some("acceptance"), None, None)
+        })
+        .expect("check c2");
+    let step_id = c2["step_id"].as_i64().expect("check returns step_id");
+    // Tick by rowid (what the agent had in hand) — must land on criterion #2.
+    let done = server
+        .with_project(None, "done", |conn, _cfg| {
+            commands::guide::step_done_by_id_value(conn, step_id, Some("proved"))
+        })
+        .expect("step_done_by_id");
+    assert_eq!(done["kind"], db::STEP_KIND_ACCEPTANCE);
+    assert_eq!(done["index"].as_u64(), Some(2));
+    assert_eq!(done["done"], true);
+}

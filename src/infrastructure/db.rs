@@ -2463,6 +2463,28 @@ pub fn step_id_by_index(
         .ok_or_else(|| anyhow::anyhow!("No {kind} #{index} on this task"))
 }
 
+/// Reverse of `step_id_by_index`: given a checklist row id, return the task it
+/// belongs to, its kind, and its 1-based position within that kind. Lets MCP
+/// callers address an item by the `step_id` that `check` handed back, instead of
+/// having to know its position.
+pub fn locate_step(conn: &Connection, step_id: i64) -> Result<(Uuid, String, usize)> {
+    let (task_uuid_str, kind): (String, String) = conn
+        .query_row(
+            "SELECT task_uuid, kind FROM task_checklist WHERE id=?1",
+            [step_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| anyhow::anyhow!("No checklist item with step_id {step_id}"))?;
+    let uuid = Uuid::parse_str(&task_uuid_str)?;
+    let steps = get_steps(conn, &uuid, &kind)?;
+    let index = steps
+        .iter()
+        .position(|s| s.id == step_id)
+        .map(|i| i + 1)
+        .ok_or_else(|| anyhow::anyhow!("step_id {step_id} not found within its kind"))?;
+    Ok((uuid, kind, index))
+}
+
 /// Move a checklist item one slot up (`up=true`) or down within its own kind
 /// (steps reorder among steps, acceptance among acceptance). Returns `true` if
 /// the order changed, `false` when the item is already at the section boundary.
