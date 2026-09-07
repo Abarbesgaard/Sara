@@ -67,6 +67,34 @@ impl Default for RecallConfig {
     }
 }
 
+/// Telemetry capture settings. Sara records one local record per CLI command
+/// and per MCP tool call so it can answer basic questions about its own usage
+/// (command mix, CLI vs MCP, durations, failure rates). Capture is local-only;
+/// transmission to a self-hosted collector is a separate, dependent feature.
+///
+/// `enabled` defaults to `true` so aggregate usage reflects the real
+/// population, but the default is deliberately *visible* — a first-run notice,
+/// `sara telemetry --show`, and the `SARA_NO_TELEMETRY` kill switch — so it can
+/// never silently disable itself the way the old `recall.semantic` toggle did.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TelemetryConfig {
+    /// Master switch for local telemetry capture.
+    pub enabled: bool,
+    /// Optional self-hosted collector URL used by the (dependent) background
+    /// flush feature. Unused by capture; stored here so it round-trips.
+    pub endpoint: Option<String>,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        TelemetryConfig {
+            enabled: true,
+            endpoint: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -77,6 +105,8 @@ pub struct Config {
     pub vault_path: Option<PathBuf>,
     /// Semantic-recall settings (default OFF — recall stays lexical).
     pub recall: RecallConfig,
+    /// Local telemetry capture settings.
+    pub telemetry: TelemetryConfig,
 }
 
 impl Default for Config {
@@ -87,6 +117,7 @@ impl Default for Config {
             urgency: UrgencyConfig::default(),
             vault_path: None,
             recall: RecallConfig::default(),
+            telemetry: TelemetryConfig::default(),
         }
     }
 }

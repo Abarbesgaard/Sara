@@ -563,6 +563,19 @@ pub enum Command {
         json: bool,
     },
 
+    /// Inspect or control local usage telemetry. With no action, prints status.
+    /// Actions: `on`, `off`, `status`. Use `--show` to print the queued records.
+    Telemetry {
+        /// on | off | status (default: status)
+        action: Option<String>,
+        /// Print the queued telemetry records that capture has recorded locally
+        #[arg(long)]
+        show: bool,
+        /// Emit as JSON (with --show, the raw queued records)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
     /// Relations: supersedes, similar_to, derived_from, used_in
     #[command(name = "link-memory")]
