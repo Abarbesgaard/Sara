@@ -3,7 +3,7 @@
 # published crate is `sara-tasks` while the installed binary stays `sara`
 # (see [[bin]] below).
 name = "sara-tasks"
-version = "1.5.1"
+version = "1.6.0-nightly.1"
 edition = "2024"
 description = "Sara — folder-aware task manager"
 license = "MIT"
@@ -57,6 +57,14 @@ toml = "0.8"
 nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
+
+# Telemetry flush (nightly): a tiny blocking HTTP client (rustls, no OpenSSL) used
+# ONLY by the detached `__telemetry_flush` child to POST the queue to the collector.
+ureq = "2"
+
+[target.'cfg(unix)'.dependencies]
+# setsid(2) so the detached flush child fully outlives the short-lived CLI process.
+libc = "0.2"
 
 # ── MCP server (`sara mcp`) ──────────────────────────────────────────────────
 # Async runtime is built ONLY inside the `mcp` command; the rest of the CLI stays

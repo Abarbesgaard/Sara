@@ -708,17 +708,24 @@ fn run() -> Result<()> {
                 let name = cmd.get_name().to_string();
                 clap_complete::generate(shell, &mut cmd, name, &mut io::stdout());
             }
+
+            Command::TelemetryFlush => {
+                let _ = infrastructure::telemetry::flush(&cfg);
+            }
         }
         Ok(())
     })();
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    infrastructure::telemetry::capture(
-        &cfg,
-        infrastructure::telemetry::Source::Cli,
-        &command_name,
-        elapsed_ms,
-        &result,
-    );
+    if command_name != "__telemetry_flush" {
+        infrastructure::telemetry::capture(
+            &cfg,
+            infrastructure::telemetry::Source::Cli,
+            &command_name,
+            elapsed_ms,
+            &result,
+        );
+        infrastructure::telemetry::spawn_flush(&cfg);
+    }
     result
 }
 

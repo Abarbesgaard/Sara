@@ -72,6 +72,7 @@ impl Default for RecallConfig {
 pub struct TelemetryConfig {
     pub enabled: bool,
     pub endpoint: Option<String>,
+    pub token: Option<String>,
 }
 
 impl Default for TelemetryConfig {
@@ -79,6 +80,7 @@ impl Default for TelemetryConfig {
         TelemetryConfig {
             enabled: true,
             endpoint: None,
+            token: None,
         }
     }
 }
