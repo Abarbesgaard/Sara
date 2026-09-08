@@ -571,6 +571,11 @@ pub enum Command {
         json: bool,
     },
 
+    /// (internal) Ship queued telemetry to the collector, then remove what was
+    /// sent. Spawned detached by the CLI/MCP after each call; not for direct use.
+    #[command(name = "__telemetry_flush", hide = true)]
+    TelemetryFlush,
+
     /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
     /// Relations: supersedes, similar_to, derived_from, used_in
     #[command(name = "link-memory")]
@@ -615,9 +620,9 @@ pub enum Command {
         provisional_days: i64,
     },
 
-    /// Scan active memories and report pairs sharing files or full tag sets
-    /// with no memory_links edge AND a close semantic body match — unlinked
-    /// conflict candidates for review, worst first.
+    /// Find memories that may be duplicates or contradictions: pairs that read
+    /// alike (close semantic match) and share a file or an identical tag set,
+    /// but that you haven't linked or reconciled yet. Read-only; worst first.
     /// Alias: `sara conflicts`
     #[command(name = "diagnose-memories", alias = "conflicts")]
     DiagnoseMemories {

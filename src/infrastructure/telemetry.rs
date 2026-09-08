@@ -24,6 +24,12 @@ pub struct TelemetryRecord {
     pub ts: String,
     pub source: &'static str,
     pub name: String,
+    /// Flag NAMES supplied on the CLI (e.g. `["--json","--tag","-p"]`), sorted and
+    /// deduped. Stored as a JSON array so VictoriaLogs `unroll by (flags)` can
+    /// expand it for per-flag aggregation. Flag *values* are never recorded, and
+    /// the field is omitted entirely when empty (all MCP calls, flagless CLI calls).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
     pub duration_ms: u64,
     pub ok: bool,
     pub err_code: Option<&'static str>,
@@ -52,10 +58,34 @@ pub fn err_code(err: &anyhow::Error) -> &'static str {
     "other"
 }
 
+/// Extract flag NAMES (never values) from CLI argv, for telemetry.
+///
+/// Keeps only tokens that begin with `-` (short or long), strips any `=value`
+/// suffix, drops the bare `--` end-of-options marker and negative-number
+/// operands, then returns a sorted, deduplicated list. Value tokens
+/// (`--tag foo`, `-p proj`) are naturally excluded because they do not start
+/// with `-`, so free-text and secrets never reach the collector.
+pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
+    let mut flags: Vec<String> = args
+        .iter()
+        .filter(|a| {
+            a.len() > 1
+                && a.starts_with('-')
+                && a.as_str() != "--"
+                && !a.as_bytes().get(1).is_some_and(u8::is_ascii_digit)
+        })
+        .map(|a| a.split('=').next().unwrap_or(a).to_string())
+        .collect();
+    flags.sort();
+    flags.dedup();
+    flags
+}
+
 pub fn build_record<T>(
     install_id: &str,
     source: Source,
     name: &str,
+    flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
 ) -> TelemetryRecord {
@@ -64,6 +94,7 @@ pub fn build_record<T>(
         ts: chrono::Utc::now().to_rfc3339(),
         source: source.as_str(),
         name: name.to_string(),
+        flags: flags.to_vec(),
         duration_ms,
         ok: result.is_ok(),
         err_code: result.as_ref().err().map(err_code),
@@ -178,6 +209,7 @@ pub fn capture<T>(
     cfg: &Config,
     source: Source,
     name: &str,
+    flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
 ) {
@@ -187,8 +219,250 @@ pub fn capture<T>(
     let Ok(path) = queue_path() else {
         return;
     };
-    let rec = build_record(&install_id(), source, name, duration_ms, result);
+    let rec = build_record(&install_id(), source, name, flags, duration_ms, result);
     let _ = append(&path, &rec);
+}
+
+// ── Auto-flush (nightly) ─────────────────────────────────────────────────────
+// Capture writes records to the local queue; the flush ships them to a collector
+// and removes exactly the records it sent. It runs in a DETACHED child so the
+// short-lived CLI never blocks, is serialised by a single-sender lock, and is
+// throttled so it does not POST on every invocation.
+
+/// Compiled-in default collector (the nightly self-hosted VictoriaLogs). Overridable
+/// by `SARA_TELEMETRY_ENDPOINT` or `config.telemetry.endpoint`.
+pub const DEFAULT_ENDPOINT: Option<&str> = Some(
+    "http://100.72.1.121:9428/insert/jsonline\
+     ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version",
+);
+
+const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
+
+/// Resolve the collector endpoint: env > config > compiled default.
+pub fn resolve_endpoint(cfg: &Config) -> Option<String> {
+    if let Ok(e) = std::env::var("SARA_TELEMETRY_ENDPOINT")
+        && !e.is_empty()
+    {
+        return Some(e);
+    }
+    if let Some(e) = &cfg.telemetry.endpoint
+        && !e.is_empty()
+    {
+        return Some(e.clone());
+    }
+    DEFAULT_ENDPOINT.map(str::to_string)
+}
+
+fn resolve_token(cfg: &Config) -> Option<String> {
+    if let Ok(t) = std::env::var("SARA_TELEMETRY_TOKEN")
+        && !t.is_empty()
+    {
+        return Some(t);
+    }
+    cfg.telemetry.token.clone().filter(|t| !t.is_empty())
+}
+
+fn flush_interval() -> std::time::Duration {
+    let secs = std::env::var("SARA_TELEMETRY_FLUSH_INTERVAL")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_FLUSH_INTERVAL_SECS);
+    std::time::Duration::from_secs(secs)
+}
+
+/// A file living beside the queue so `SARA_TELEMETRY_QUEUE` redirects it too
+/// (keeping tests off the real data dir).
+fn queue_sibling(name: &str) -> anyhow::Result<PathBuf> {
+    let q = queue_path()?;
+    let parent = q.parent().unwrap_or_else(|| Path::new("."));
+    Ok(parent.join(name))
+}
+
+/// Exclusive single-sender lock. `create_new` is atomic; a lingering lock from a
+/// crashed flush older than the flush interval is treated as stale and stolen.
+struct FlushLock(PathBuf);
+
+impl FlushLock {
+    fn try_acquire() -> anyhow::Result<Option<FlushLock>> {
+        let path = queue_sibling("telemetry-flush.lock")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(_) => Ok(Some(FlushLock(path))),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stale = std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .map(|age| age > flush_interval().max(std::time::Duration::from_secs(60)))
+                    .unwrap_or(false);
+                if stale {
+                    let _ = std::fs::remove_file(&path);
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&path)
+                    {
+                        Ok(_) => Ok(Some(FlushLock(path))),
+                        Err(_) => Ok(None),
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+impl Drop for FlushLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn within_min_interval() -> bool {
+    let Ok(marker) = queue_sibling("telemetry-last-flush") else {
+        return false;
+    };
+    std::fs::metadata(&marker)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .map(|age| age < flush_interval())
+        .unwrap_or(false)
+}
+
+fn touch_last_flush() {
+    if let Ok(marker) = queue_sibling("telemetry-last-flush") {
+        if let Some(parent) = marker.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&marker, b"1");
+    }
+}
+
+fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(t) => Ok(t
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(String::from)
+            .collect()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Drop the first `n` lines, keeping any lines appended after they were read.
+/// Append-only + the single-sender lock guarantee the first `n` lines are exactly
+/// what was sent. Rewrites atomically via temp-file + rename.
+fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
+    let remaining = read_lines(path)?;
+    let kept = if n >= remaining.len() {
+        Vec::new()
+    } else {
+        remaining[n..].to_vec()
+    };
+    let tmp = path.with_extension("jsonl.tmp");
+    if kept.is_empty() {
+        std::fs::write(&tmp, b"")?;
+    } else {
+        let mut body = kept.join("\n");
+        body.push('\n');
+        std::fs::write(&tmp, body.as_bytes())?;
+    }
+    std::fs::rename(&tmp, path)
+}
+
+/// POST the JSONL body. Ok(true) on HTTP 2xx, Ok(false) on any other status,
+/// Err on a transport failure. Non-2xx and transport failures both leave the queue.
+fn post_jsonl(endpoint: &str, token: Option<&str>, body: &str) -> anyhow::Result<bool> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    let mut req = agent
+        .post(endpoint)
+        .set("Content-Type", "application/stream+json");
+    if let Some(t) = token {
+        req = req.set("Authorization", &format!("Bearer {t}"));
+    }
+    match req.send_string(body) {
+        Ok(resp) => Ok((200..300).contains(&resp.status())),
+        Err(ureq::Error::Status(code, _)) => Ok((200..300).contains(&code)),
+        Err(e) => Err(anyhow::anyhow!("telemetry transport error: {e}")),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum FlushOutcome {
+    Skipped,
+    Empty,
+    Sent(usize),
+    Failed,
+}
+
+/// Ship the queued records to the collector and remove exactly those sent.
+/// Never panics; every failure mode leaves the queue intact.
+pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
+    if !enabled(cfg) {
+        return Ok(FlushOutcome::Skipped);
+    }
+    let Some(endpoint) = resolve_endpoint(cfg) else {
+        return Ok(FlushOutcome::Skipped);
+    };
+    let Some(_lock) = FlushLock::try_acquire()? else {
+        return Ok(FlushOutcome::Skipped);
+    };
+    if within_min_interval() {
+        return Ok(FlushOutcome::Skipped);
+    }
+    let path = queue_path()?;
+    let lines = read_lines(&path)?;
+    if lines.is_empty() {
+        return Ok(FlushOutcome::Empty);
+    }
+    let n = lines.len();
+    let mut body = lines.join("\n");
+    body.push('\n');
+    let sent = post_jsonl(&endpoint, resolve_token(cfg).as_deref(), &body)?;
+    if !sent {
+        return Ok(FlushOutcome::Failed);
+    }
+    remove_prefix_lines(&path, n)?;
+    touch_last_flush();
+    Ok(FlushOutcome::Sent(n))
+}
+
+/// Spawn the flush as a fully-detached child so the caller never blocks.
+pub fn spawn_flush(cfg: &Config) {
+    if !enabled(cfg) || resolve_endpoint(cfg).is_none() {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("__telemetry_flush")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    let _ = cmd.spawn();
 }
 
 #[cfg(test)]
@@ -223,7 +497,8 @@ mod tests {
     fn records_cli_invocation() {
         let _g = lock();
         let path = temp_queue("cli");
-        let rec = build_record("iid-1", Source::Cli, "recall", 12, &Ok(()));
+        let flags = [String::from("--json"), String::from("--tag")];
+        let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()));
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
@@ -231,6 +506,7 @@ mod tests {
         let r = &rows[0];
         assert_eq!(r["source"], "cli");
         assert_eq!(r["name"], "recall");
+        assert_eq!(r["flags"], serde_json::json!(["--json", "--tag"]));
         assert_eq!(r["ok"], true);
         assert_eq!(r["duration_ms"], 12);
         assert_eq!(r["install_id"], "iid-1");
@@ -242,6 +518,7 @@ mod tests {
             "ts",
             "source",
             "name",
+            "flags",
             "duration_ms",
             "ok",
             "err_code",
@@ -255,10 +532,15 @@ mod tests {
 
         append(
             &path,
-            &build_record("iid-1", Source::Cli, "list", 3, &Ok(())),
+            &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(())),
         )
         .unwrap();
-        assert_eq!(read_lines(&path).len(), 2);
+        let rows = read_lines(&path);
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows[1].as_object().unwrap().get("flags").is_none(),
+            "flags omitted entirely when empty"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -266,7 +548,7 @@ mod tests {
     fn records_mcp_invocation() {
         let _g = lock();
         let path = temp_queue("mcp");
-        let rec = build_record("iid-2", Source::Mcp, "mcp add", 7, &Ok(()));
+        let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()));
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
@@ -274,6 +556,26 @@ mod tests {
         assert_eq!(rows[0]["source"], "mcp");
         assert_eq!(rows[0]["name"], "mcp add");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn extract_cli_flags_names_only_sorted_deduped() {
+        let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
+
+        // values are excluded; long+short captured; sorted + deduped
+        assert_eq!(
+            extract_cli_flags(&a("recall --tag herdr -p pling --json")),
+            vec!["--json", "--tag", "-p"]
+        );
+        // `=value` form keeps only the name; duplicates collapse
+        assert_eq!(
+            extract_cli_flags(&a("learn --tag=a --tag=b --auto-files")),
+            vec!["--auto-files", "--tag"]
+        );
+        // bare `--`, negative numbers, and a lone `-` are not flags
+        assert!(extract_cli_flags(&a("modify 5 -- -3 -")).is_empty());
+        // no flags at all
+        assert!(extract_cli_flags(&a("done 3f45")).is_empty());
     }
 
     #[test]
@@ -299,7 +601,7 @@ mod tests {
         assert_eq!(err_code(&other), "other");
 
         let failed: anyhow::Result<()> = Err(io_err);
-        let rec = build_record("iid", Source::Cli, "validate", 5, &failed);
+        let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed);
         assert!(!rec.ok);
         assert_eq!(rec.err_code, Some("io"));
         let json = serde_json::to_string(&rec).unwrap();
@@ -322,7 +624,7 @@ mod tests {
             std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
         }
         assert!(!enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", 1, &Ok(()));
+        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert!(
             !path.exists(),
             "no queue file created while disabled by env"
@@ -332,7 +634,7 @@ mod tests {
             std::env::remove_var("SARA_NO_TELEMETRY");
         }
         assert!(enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", 1, &Ok(()));
+        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
         cfg.telemetry.enabled = false;
@@ -342,5 +644,224 @@ mod tests {
             std::env::remove_var("SARA_TELEMETRY_QUEUE");
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    // ── flush tests ──────────────────────────────────────────────────────────
+    use std::io::Read as _;
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+
+    fn temp_dir_isolated(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "sara-flush-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn write_queue(path: &Path, n: usize) {
+        let mut body = String::new();
+        for i in 0..n {
+            body.push_str(&format!("{{\"name\":\"cmd{i}\",\"ok\":true}}\n"));
+        }
+        std::fs::write(path, body).unwrap();
+    }
+
+    /// One-shot HTTP server: returns (url, receiver-of-request-body). `status_line`
+    /// e.g. "HTTP/1.1 200 OK" or "HTTP/1.1 500 Internal Server Error".
+    fn mock_server(status_line: &'static str) -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf: Vec<u8> = Vec::new();
+                let mut tmp = [0u8; 2048];
+                loop {
+                    let n = stream.read(&mut tmp).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
+                        let clen = headers
+                            .lines()
+                            .find_map(|l| l.strip_prefix("content-length:"))
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                            .unwrap_or(0);
+                        let body_start = pos + 4;
+                        while buf.len() < body_start + clen {
+                            let n = stream.read(&mut tmp).unwrap_or(0);
+                            if n == 0 {
+                                break;
+                            }
+                            buf.extend_from_slice(&tmp[..n]);
+                        }
+                        let end = (body_start + clen).min(buf.len());
+                        let body = String::from_utf8_lossy(&buf[body_start..end]).to_string();
+                        let _ = tx.send(body);
+                        break;
+                    }
+                }
+                use std::io::Write as _;
+                let resp =
+                    format!("{status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = stream.write_all(resp.as_bytes());
+            }
+        });
+        (format!("http://{addr}/insert"), rx)
+    }
+
+    fn flush_cfg() -> Config {
+        let mut cfg = Config::default();
+        cfg.telemetry.enabled = true;
+        cfg
+    }
+
+    fn set_flush_env(dir: &Path, endpoint: &str) {
+        unsafe {
+            std::env::remove_var("SARA_NO_TELEMETRY");
+            std::env::set_var("SARA_TELEMETRY_QUEUE", dir.join("queue.jsonl"));
+            std::env::set_var("SARA_TELEMETRY_ENDPOINT", endpoint);
+            std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "0");
+        }
+    }
+
+    fn clear_flush_env() {
+        unsafe {
+            std::env::remove_var("SARA_TELEMETRY_QUEUE");
+            std::env::remove_var("SARA_TELEMETRY_ENDPOINT");
+            std::env::remove_var("SARA_TELEMETRY_FLUSH_INTERVAL");
+            std::env::remove_var("SARA_NO_TELEMETRY");
+        }
+    }
+
+    #[test]
+    fn flush_sends_and_truncates_queue() {
+        let _g = lock();
+        let dir = temp_dir_isolated("send");
+        let (url, rx) = mock_server("HTTP/1.1 200 OK");
+        set_flush_env(&dir, &url);
+        write_queue(&dir.join("queue.jsonl"), 3);
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Sent(3));
+
+        let body = rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(body.lines().filter(|l| !l.trim().is_empty()).count(), 3);
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            0
+        );
+
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_leaves_queue_on_failure() {
+        let _g = lock();
+        let dir = temp_dir_isolated("fail");
+        let (url, _rx) = mock_server("HTTP/1.1 500 Internal Server Error");
+        set_flush_env(&dir, &url);
+        write_queue(&dir.join("queue.jsonl"), 4);
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Failed);
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            4,
+            "no records dropped when the collector rejects the push"
+        );
+
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_respects_optout() {
+        let _g = lock();
+        let dir = temp_dir_isolated("optout");
+        let (url, _rx) = mock_server("HTTP/1.1 200 OK");
+        set_flush_env(&dir, &url);
+        write_queue(&dir.join("queue.jsonl"), 2);
+        unsafe {
+            std::env::set_var("SARA_NO_TELEMETRY", "1");
+        }
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Skipped);
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            2,
+            "opt-out leaves the queue untouched and sends nothing"
+        );
+
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_min_interval_gates_repeat_sends() {
+        let _g = lock();
+        let dir = temp_dir_isolated("interval");
+        let (url, _rx) = mock_server("HTTP/1.1 200 OK");
+        set_flush_env(&dir, &url);
+        // A big interval + a fresh last-flush marker means: skip despite data.
+        unsafe {
+            std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "3600");
+        }
+        std::fs::write(dir.join("telemetry-last-flush"), b"1").unwrap();
+        write_queue(&dir.join("queue.jsonl"), 2);
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Skipped);
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            2
+        );
+
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_prefix_lines_keeps_later_appends() {
+        let _g = lock();
+        let dir = temp_dir_isolated("prefix");
+        let path = dir.join("queue.jsonl");
+        write_queue(&path, 5);
+
+        remove_prefix_lines(&path, 3).unwrap();
+
+        let rows = super::read_lines(&path).unwrap();
+        assert_eq!(rows.len(), 2, "only the first 3 sent lines are dropped");
+        assert!(rows[0].contains("cmd3"));
+        assert!(rows[1].contains("cmd4"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_single_sender_lock_blocks_second() {
+        let _g = lock();
+        let dir = temp_dir_isolated("lock");
+        set_flush_env(&dir, "http://127.0.0.1:9/insert");
+        // Hold the lock, then a flush attempt must skip rather than double-send.
+        let held = FlushLock::try_acquire().unwrap();
+        assert!(held.is_some(), "first acquire succeeds");
+        write_queue(&dir.join("queue.jsonl"), 1);
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Skipped);
+
+        drop(held);
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
