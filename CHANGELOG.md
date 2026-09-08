@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Complete telemetry coverage.** Every MCP tool call now records the tool's
+  argument *names* (values stripped, sorted/deduped — the MCP analog of the CLI
+  `flags` field), so it's possible to see which options each tool is called with
+  (e.g. `recall` with `spread`, `prune_memories` with `dry_run`). MCP telemetry
+  is now captured at a single choke point that wraps the tool router, so calls
+  that fail *before* a handler runs — unknown tools and parameter-validation
+  errors — are recorded too (previously invisible). On the CLI side, usage
+  errors, `--help`, and `--version` are now recorded before the process exits,
+  instead of leaving no trace. Values, argv, and paths are still never recorded.
+
 ## [1.6.0] - 2026-09-08
 
 ### Added

@@ -24,10 +24,12 @@ pub struct TelemetryRecord {
     pub ts: String,
     pub source: &'static str,
     pub name: String,
-    /// Flag NAMES supplied on the CLI (e.g. `["--json","--tag","-p"]`), sorted and
-    /// deduped. Stored as a JSON array so VictoriaLogs `unroll by (flags)` can
-    /// expand it for per-flag aggregation. Flag *values* are never recorded, and
-    /// the field is omitted entirely when empty (all MCP calls, flagless CLI calls).
+    /// The named options a call used, stored as a JSON array so a collector can
+    /// `unroll` it for per-name aggregation. For CLI records these are flag
+    /// NAMES (e.g. `["--json","--tag","-p"]`, see [`extract_cli_flags`]); for
+    /// MCP records they are the tool's argument NAMES (e.g.
+    /// `["dry_run","project_path"]`, see [`extract_mcp_params`]). Values are
+    /// never recorded, and the field is omitted entirely when empty.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
     pub duration_ms: u64,
@@ -79,6 +81,28 @@ pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
     flags.sort();
     flags.dedup();
     flags
+}
+
+/// Extract parameter NAMES (never values) from an MCP tool call's raw JSON
+/// arguments, for telemetry. The MCP analog of [`extract_cli_flags`]: returns
+/// the sorted, deduplicated names of the arguments the client actually sent
+/// (e.g. `["dry_run","project_path","tag"]`), with all *values* discarded so
+/// task ids, queries, file paths and bodies never reach the collector. A key
+/// whose value is JSON `null` is treated as absent.
+pub fn extract_mcp_params(
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Vec<String> {
+    let Some(map) = arguments else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = map
+        .iter()
+        .filter(|(_, v)| !v.is_null())
+        .map(|(k, _)| k.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 pub fn build_record<T>(
@@ -576,6 +600,31 @@ mod tests {
         assert!(extract_cli_flags(&a("modify 5 -- -3 -")).is_empty());
         // no flags at all
         assert!(extract_cli_flags(&a("done 3f45")).is_empty());
+    }
+
+    #[test]
+    fn extract_mcp_params_names_only_sorted_deduped() {
+        use serde_json::json;
+
+        // argument NAMES are captured, sorted; values (a query, a path) are
+        // never included in the output.
+        let args = json!({
+            "query": "how did I fix the auth bug",
+            "project_path": "/Users/secret/repo",
+            "spread": true,
+        });
+        assert_eq!(
+            extract_mcp_params(args.as_object()),
+            vec!["project_path", "query", "spread"]
+        );
+
+        // a key whose value is JSON null counts as absent
+        let with_null = json!({ "id": "3f45", "project_path": null });
+        assert_eq!(extract_mcp_params(with_null.as_object()), vec!["id"]);
+
+        // no arguments at all
+        assert!(extract_mcp_params(None).is_empty());
+        assert!(extract_mcp_params(json!({}).as_object()).is_empty());
     }
 
     #[test]

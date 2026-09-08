@@ -58,7 +58,37 @@ fn run() -> Result<()> {
         .get(1)
         .cloned()
         .unwrap_or_else(|| "unknown".to_string());
-    let cli = Cli::parse_from(args);
+    // Record the invocation even when clap would exit the process itself — a
+    // usage error, `--help`, or `--version` otherwise leaves no telemetry.
+    let cli = match Cli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            if let Ok(cfg) = config::load() {
+                use clap::error::ErrorKind;
+                let ok = matches!(
+                    e.kind(),
+                    ErrorKind::DisplayHelp
+                        | ErrorKind::DisplayVersion
+                        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+                );
+                let res: Result<()> = if ok {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("cli usage error"))
+                };
+                infrastructure::telemetry::capture(
+                    &cfg,
+                    infrastructure::telemetry::Source::Cli,
+                    &command_name,
+                    &command_flags,
+                    0,
+                    &res,
+                );
+                infrastructure::telemetry::spawn_flush(&cfg);
+            }
+            e.exit();
+        }
+    };
 
     let cfg = config::load()?;
     let mut conn = db::open()?;

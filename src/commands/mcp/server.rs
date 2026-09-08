@@ -100,10 +100,10 @@ impl SaraServer {
     /// project, and opens an undo batch — all on one thread, so both the cwd and
     /// the thread-local undo context are coherent for the enclosed call.
     ///
-    /// After the closure returns, a minimal event is written to the `events` table
-    /// (action = tool label, project = derived from cwd) so every MCP tool call
-    /// is automatically captured as an activity record. Recording errors are
-    /// suppressed — a failed INSERT never aborts the tool result.
+    /// Telemetry for the call is NOT recorded here — it is captured once,
+    /// centrally, in [`SaraServer::call_tool`], which sees the raw request (so
+    /// it can record argument names and catch failures that happen before this
+    /// closure ever runs, e.g. parameter deserialization errors).
     pub(crate) fn with_project<T>(
         &self,
         project_path: Option<&str>,
@@ -116,19 +116,7 @@ impl SaraServer {
             .map_err(|_| anyhow::anyhow!("sara database mutex was poisoned"))?;
         let _cwd = CwdGuard::enter(project_path)?;
         db::begin_undo_batch(label);
-        let started = std::time::Instant::now();
-        let result = f(&conn, &self.cfg);
-        let elapsed_ms = started.elapsed().as_millis() as u64;
-        crate::infrastructure::telemetry::capture(
-            &self.cfg,
-            crate::infrastructure::telemetry::Source::Mcp,
-            label,
-            &[],
-            elapsed_ms,
-            &result,
-        );
-        crate::infrastructure::telemetry::spawn_flush(&self.cfg);
-        result
+        f(&conn, &self.cfg)
     }
 }
 
@@ -155,6 +143,49 @@ impl ServerHandler for SaraServer {
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info = Implementation::new("sara", env!("CARGO_PKG_VERSION"));
         info
+    }
+
+    /// Central telemetry choke point for EVERY tool call. Reads the raw request
+    /// before dispatch so it records: the tool name, the argument NAMES the
+    /// client sent (values stripped — see `extract_mcp_params`), the duration,
+    /// and whether the call succeeded. Because it wraps the router itself, it
+    /// also captures failures that occur before a handler body runs — parameter
+    /// deserialization errors (returned as an `is_error` result) and unknown
+    /// tools (returned as `Err`) — which per-handler instrumentation would miss.
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let tool_name = request.name.to_string();
+        let params =
+            crate::infrastructure::telemetry::extract_mcp_params(request.arguments.as_ref());
+
+        let started = std::time::Instant::now();
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let outcome = self.tool_router.call(tcc).await;
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+
+        // A deserialization/validation failure comes back as Ok(result) with
+        // is_error=true; an unknown or disabled tool comes back as Err. Both are
+        // failures for telemetry purposes.
+        let telem: anyhow::Result<()> = match &outcome {
+            Ok(r) if r.is_error == Some(true) => {
+                Err(anyhow::anyhow!("mcp tool returned an error result"))
+            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!(e.to_string())),
+        };
+        crate::infrastructure::telemetry::capture(
+            &self.cfg,
+            crate::infrastructure::telemetry::Source::Mcp,
+            &format!("mcp {tool_name}"),
+            &params,
+            elapsed_ms,
+            &telem,
+        );
+        crate::infrastructure::telemetry::spawn_flush(&self.cfg);
+        outcome
     }
 }
 
