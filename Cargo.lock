@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "sara-tasks"
-version = "1.6.0-nightly.2"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "base64",

@@ -2,16 +2,27 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-08
+
 ### Added
 
+- **Usage telemetry (opt-out).** Each CLI command and MCP tool call now records
+  a small, structured usage record — the command/tool name, whether it came
+  from the CLI or the MCP server, duration, and success/error — and ships it to
+  a self-hosted collector. Only fixed scalar fields are captured; raw arguments,
+  file paths, and message bodies are never included. Inspect what would be sent
+  with `sara telemetry --show`; disable entirely with `sara telemetry off` or
+  `SARA_NO_TELEMETRY=1`.
+- **Automatic background delivery.** Queued usage records are flushed to the
+  collector without blocking the command, so telemetry never slows down a normal
+  invocation and a collector outage cannot stall the CLI.
 - **Flag-level CLI telemetry.** Each captured CLI invocation now records a
   `flags` field — the flag *names* supplied (e.g. `["--json","--tag","-p"]`),
   sorted and deduplicated, with all values stripped so free-text and secrets
-  never reach the collector. Stored as a JSON array so VictoriaLogs
-  `unroll by (flags)` can expand it for per-flag aggregation. The field is
-  omitted entirely when empty (all MCP calls, flagless CLI calls). This makes
-  it possible to see which flags are actually used and to compare, e.g.,
-  `--json` usage across commands.
+  never reach the collector. Stored as a JSON array so per-flag aggregation can
+  expand it. The field is omitted entirely when empty (all MCP calls, flagless
+  CLI calls). This makes it possible to see which flags are actually used and to
+  compare, e.g., `--json` usage across commands.
 
 ### Changed
 
