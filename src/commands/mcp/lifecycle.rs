@@ -68,7 +68,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs every acceptance criterion's verify command and refuses (errors) unless all are present and pass. Errors if the project is not a git repo."
+        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs each acceptance criterion's verify command and refuses (errors) unless all are present and pass. Criteria already proven at the current commit with a clean working tree are reused from cache (skipped); identical verify commands run once. Errors if the project is not a git repo."
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
         let v = self
@@ -78,6 +78,7 @@ impl SaraServer {
                     &p.id,
                     false,
                     commands::guide::GateOutput::Capture,
+                    false,
                 )
             })
             .map_err(mcp_err)?;

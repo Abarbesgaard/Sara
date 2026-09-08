@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Faster `validate` — result cache + command de-duplication.** The acceptance
+  gate no longer blindly re-runs every verify command. A criterion that is
+  already green at the *current* commit is reused from cache (skipped) when the
+  working tree is clean, so re-validating an unchanged repo is near-instant
+  instead of re-running the whole test suite. Within a single run, identical
+  verify commands are executed once and their result applied to every criterion
+  that shares them. The cache is bypassed automatically when the tree is dirty
+  (uncommitted changes mean HEAD no longer describes what's on disk), and can be
+  forced off with the new `validate --fresh` flag. `validate` now reports how
+  many criteria were reused from cache.
 - **Complete telemetry coverage.** Every MCP tool call now records the tool's
   argument *names* (values stripped, sorted/deduped — the MCP analog of the CLI
   `flags` field), so it's possible to see which options each tool is called with
