@@ -237,6 +237,24 @@ pub fn capture<T>(
     duration_ms: u64,
     result: &anyhow::Result<T>,
 ) {
+    // The test binary must never emit telemetry: seed/setup helpers would
+    // otherwise write bogus records (e.g. "seed") that later flush to the
+    // collector and pollute the dashboards. Unit tests exercise the real
+    // gating/writing path through `capture_impl` directly.
+    if cfg!(test) {
+        return;
+    }
+    capture_impl(cfg, source, name, flags, duration_ms, result);
+}
+
+fn capture_impl<T>(
+    cfg: &Config,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+) {
     if !enabled(cfg) {
         return;
     }
@@ -673,7 +691,7 @@ mod tests {
             std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
         }
         assert!(!enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert!(
             !path.exists(),
             "no queue file created while disabled by env"
@@ -683,7 +701,7 @@ mod tests {
             std::env::remove_var("SARA_NO_TELEMETRY");
         }
         assert!(enabled(&cfg));
-        capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
         assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
         cfg.telemetry.enabled = false;
