@@ -58,6 +58,27 @@ pub fn head_commit(repo: &Path) -> Option<String> {
     if sha.is_empty() { None } else { Some(sha) }
 }
 
+/// Return `Some(true)` if the working tree is clean (no staged, unstaged, or
+/// untracked changes), `Some(false)` if it is dirty, or `None` if git status
+/// cannot be determined (not a repo, git missing, command failed).
+///
+/// Used by the acceptance gate: a verify result may only be trusted from cache
+/// when the tree exactly matches the commit the criterion was proven at. Any
+/// uncommitted change means HEAD no longer describes what's on disk, so the
+/// cache must be bypassed and the command re-run.
+pub fn is_clean(repo: &Path) -> Option<bool> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["status", "--porcelain"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().is_empty())
+}
+
 /// Heuristic: find the most likely base branch for comparison.
 /// Prefers the default remote branch, then falls back to main/master.
 pub fn default_base(repo: &Path) -> String {
@@ -174,6 +195,36 @@ mod tests {
     fn current_branch_in_repo() {
         let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let _ = current_branch(repo);
+    }
+
+    #[test]
+    fn is_clean_detects_dirty_and_clean_trees() {
+        let dir = test_dir("is-clean");
+        make_git_repo_with_remote(&dir, None);
+        std::fs::write(dir.join("a.txt"), "1").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        assert_eq!(is_clean(&dir), Some(true), "committed tree is clean");
+
+        std::fs::write(dir.join("a.txt"), "changed").unwrap();
+        assert_eq!(is_clean(&dir), Some(false), "modified file → dirty");
+
+        // Untracked files also count as dirty.
+        std::process::Command::new("git")
+            .args(["checkout", "--", "a.txt"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        assert_eq!(is_clean(&dir), Some(false), "untracked file → dirty");
     }
 
     // --- parse_github_owner_repo ---
