@@ -620,9 +620,9 @@ pub enum Command {
         provisional_days: i64,
     },
 
-    /// Scan active memories and report pairs sharing files or full tag sets
-    /// with no memory_links edge AND a close semantic body match — unlinked
-    /// conflict candidates for review, worst first.
+    /// Find memories that may be duplicates or contradictions: pairs that read
+    /// alike (close semantic match) and share a file or an identical tag set,
+    /// but that you haven't linked or reconciled yet. Read-only; worst first.
     /// Alias: `sara conflicts`
     #[command(name = "diagnose-memories", alias = "conflicts")]
     DiagnoseMemories {

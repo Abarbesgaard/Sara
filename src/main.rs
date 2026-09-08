@@ -546,7 +546,7 @@ fn run() -> Result<()> {
                     let n = diag["count"].as_u64().unwrap_or(0);
                     if n > 0 {
                         println!(
-                            "\n{n} unlinked conflict candidate(s) also found — run `sara diagnose-memories` to review."
+                            "\n{n} memory pair(s) may be duplicates or contradictions — run `sara diagnose-memories` to review."
                         );
                     }
                 }

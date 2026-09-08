@@ -13,6 +13,17 @@
   it possible to see which flags are actually used and to compare, e.g.,
   `--json` usage across commands.
 
+### Changed
+
+- **`diagnose-memories` output now explains itself.** The header, per-pair
+  legend, and resolution hints were rewritten in plain language: it says the
+  pairs "may be saying the same thing — or contradicting each other," labels
+  the `[0-1]` similarity score and what each pair shares, and lists the three
+  reconciliation commands with a when-to-use-each note (`--supersedes` /
+  `relearn` / `link-memory ... similar_to`). The `prune-memories` follow-up
+  line and the CLI `--help` text use the same plain wording. No behaviour
+  change — messaging only.
+
 ### Fixed
 
 - **A broken release cascade now fails loudly instead of silently.** `auto-tag`
