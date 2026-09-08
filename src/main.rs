@@ -83,6 +83,7 @@ fn run() -> Result<()> {
                     &command_flags,
                     0,
                     &res,
+                    None,
                 );
                 infrastructure::telemetry::spawn_flush(&cfg);
             }
@@ -755,6 +756,7 @@ fn run() -> Result<()> {
             &command_flags,
             elapsed_ms,
             &result,
+            None,
         );
         infrastructure::telemetry::spawn_flush(&cfg);
     }

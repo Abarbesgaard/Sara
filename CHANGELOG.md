@@ -23,6 +23,17 @@
   errors — are recorded too (previously invisible). On the CLI side, usage
   errors, `--help`, and `--version` are now recorded before the process exits,
   instead of leaving no trace. Values, argv, and paths are still never recorded.
+- **MCP call origin.** Each MCP telemetry record now includes the calling
+  agent's identity from the `initialize` handshake — `client` (e.g. `claude-ai`,
+  `cursor`, `Copilot`) and `client_version` — so it's possible to see *which*
+  agent invoked a tool. Omitted for CLI records. No other client data is
+  recorded.
+
+### Documentation
+
+- README now points AI agents at the `nightly` branch for the newest
+  agent-facing optimizations (faster `validate`, richer instrumentation) ahead
+  of tagged releases.
 
 ## [1.6.0] - 2026-09-08
 

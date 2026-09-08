@@ -38,6 +38,23 @@ pub struct TelemetryRecord {
     pub version: &'static str,
     pub os: &'static str,
     pub arch: &'static str,
+    /// For MCP records, the calling client's reported name from the `initialize`
+    /// handshake (e.g. `claude-ai`, `cursor`, `Copilot`) — the *origin* of the
+    /// tool call. `None` for CLI records and for MCP clients that sent no name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// For MCP records, the calling client's reported version, paired with
+    /// [`client`]. `None` for CLI records.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+}
+
+/// Identity of an MCP client, taken from the `initialize` handshake's
+/// `clientInfo`. Used to record *which agent* invoked a tool.
+#[derive(Debug, Clone)]
+pub struct McpClient {
+    pub name: String,
+    pub version: String,
 }
 
 pub fn err_code(err: &anyhow::Error) -> &'static str {
@@ -112,6 +129,7 @@ pub fn build_record<T>(
     flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
 ) -> TelemetryRecord {
     TelemetryRecord {
         install_id: install_id.to_string(),
@@ -125,6 +143,8 @@ pub fn build_record<T>(
         version: env!("CARGO_PKG_VERSION"),
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
+        client: client.map(|c| c.name.clone()),
+        client_version: client.map(|c| c.version.clone()),
     }
 }
 
@@ -236,6 +256,7 @@ pub fn capture<T>(
     flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
 ) {
     // The test binary must never emit telemetry: seed/setup helpers would
     // otherwise write bogus records (e.g. "seed") that later flush to the
@@ -244,7 +265,7 @@ pub fn capture<T>(
     if cfg!(test) {
         return;
     }
-    capture_impl(cfg, source, name, flags, duration_ms, result);
+    capture_impl(cfg, source, name, flags, duration_ms, result, client);
 }
 
 fn capture_impl<T>(
@@ -254,6 +275,7 @@ fn capture_impl<T>(
     flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
 ) {
     if !enabled(cfg) {
         return;
@@ -261,7 +283,7 @@ fn capture_impl<T>(
     let Ok(path) = queue_path() else {
         return;
     };
-    let rec = build_record(&install_id(), source, name, flags, duration_ms, result);
+    let rec = build_record(&install_id(), source, name, flags, duration_ms, result, client);
     let _ = append(&path, &rec);
 }
 
@@ -275,7 +297,7 @@ fn capture_impl<T>(
 /// by `SARA_TELEMETRY_ENDPOINT` or `config.telemetry.endpoint`.
 pub const DEFAULT_ENDPOINT: Option<&str> = Some(
     "http://100.72.1.121:9428/insert/jsonline\
-     ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version",
+     ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version,client",
 );
 
 const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
@@ -540,7 +562,7 @@ mod tests {
         let _g = lock();
         let path = temp_queue("cli");
         let flags = [String::from("--json"), String::from("--tag")];
-        let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()));
+        let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()), None);
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
@@ -574,7 +596,7 @@ mod tests {
 
         append(
             &path,
-            &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(())),
+            &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(()), None),
         )
         .unwrap();
         let rows = read_lines(&path);
@@ -590,13 +612,40 @@ mod tests {
     fn records_mcp_invocation() {
         let _g = lock();
         let path = temp_queue("mcp");
-        let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()));
+        let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()), None);
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["source"], "mcp");
         assert_eq!(rows[0]["name"], "mcp add");
+        // No client info supplied → the origin fields are omitted entirely.
+        assert!(rows[0].as_object().unwrap().get("client").is_none());
+        assert!(
+            rows[0]
+                .as_object()
+                .unwrap()
+                .get("client_version")
+                .is_none()
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn records_mcp_client_origin() {
+        let _g = lock();
+        let path = temp_queue("mcp-client");
+        let client = McpClient {
+            name: "claude-ai".into(),
+            version: "0.1.0".into(),
+        };
+        let rec = build_record("iid-3", Source::Mcp, "mcp recall", &[], 4, &Ok(()), Some(&client));
+        append(&path, &rec).unwrap();
+
+        let rows = read_lines(&path);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["client"], "claude-ai", "records the calling agent");
+        assert_eq!(rows[0]["client_version"], "0.1.0");
         let _ = std::fs::remove_file(&path);
     }
 
@@ -668,7 +717,7 @@ mod tests {
         assert_eq!(err_code(&other), "other");
 
         let failed: anyhow::Result<()> = Err(io_err);
-        let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed);
+        let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed, None);
         assert!(!rec.ok);
         assert_eq!(rec.err_code, Some("io"));
         let json = serde_json::to_string(&rec).unwrap();
@@ -691,7 +740,7 @@ mod tests {
             std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
         }
         assert!(!enabled(&cfg));
-        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None);
         assert!(
             !path.exists(),
             "no queue file created while disabled by env"
@@ -701,7 +750,7 @@ mod tests {
             std::env::remove_var("SARA_NO_TELEMETRY");
         }
         assert!(enabled(&cfg));
-        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None);
         assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
         cfg.telemetry.enabled = false;
