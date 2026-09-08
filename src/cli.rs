@@ -684,6 +684,10 @@ pub enum Command {
         /// (escape hatch for environments where the checks cannot run locally)
         #[arg(long)]
         no_run: bool,
+        /// Ignore the "already proven at this commit" cache and re-run every
+        /// verify command, even for criteria already green at the current HEAD
+        #[arg(long)]
+        fresh: bool,
     },
 
     /// List open feedback (human comments) for a task

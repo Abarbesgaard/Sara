@@ -751,6 +751,9 @@ pub struct AcceptanceGate {
     pub ran: usize,
     /// Criteria that ran and exited 0 (ticked as a side effect).
     pub passed: usize,
+    /// Criteria proven green from cache — already `done` at the current HEAD with
+    /// a clean tree — so their verify command was skipped this run.
+    pub cached: usize,
     /// Text of criteria that ran but exited non-zero.
     pub failures: Vec<String>,
     /// Text of criteria that carry NO `verify_cmd` — unprovable, so they block.
@@ -886,6 +889,7 @@ pub fn run_acceptance_gate(
     conn: &Connection,
     task_id_or_uuid: &str,
     mode: GateOutput,
+    fresh: bool,
 ) -> Result<AcceptanceGate> {
     let task = db::resolve_task(conn, task_id_or_uuid)?;
     let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
@@ -895,20 +899,85 @@ pub fn run_acceptance_gate(
         .and_then(|p| p.path);
     let commit = project_head(conn, &task.project);
 
+    // Cache eligibility: only trust a stored pass when the caller didn't ask for
+    // a fresh run, we know the current commit, and the working tree is clean
+    // (otherwise HEAD no longer describes what's on disk).
+    let tree_clean = !fresh
+        && working_dir
+            .as_deref()
+            .and_then(|d| crate::infrastructure::git::is_clean(std::path::Path::new(d)))
+            .unwrap_or(false);
+    let cache_ok = !fresh && tree_clean && commit.is_some();
+
     let mut gate = AcceptanceGate {
         total: acceptance.len(),
         ran: 0,
         passed: 0,
+        cached: 0,
         failures: Vec::new(),
         missing_verify: Vec::new(),
         transcript: Vec::new(),
     };
+
+    // Within a single gate run, identical verify commands are executed once and
+    // their outcome reused — attaching the same suite to several criteria costs
+    // one run, not N. Keyed on the exact command string.
+    let mut ran_cmds: std::collections::HashMap<String, (bool, Option<i32>, String)> =
+        std::collections::HashMap::new();
 
     for s in &acceptance {
         let Some(cmd) = &s.verify_cmd else {
             gate.missing_verify.push(s.text.clone());
             continue;
         };
+
+        // 1. Cache: already proven green at this exact commit with a clean tree.
+        if cache_ok && s.done && s.done_commit.as_deref() == commit.as_deref() {
+            gate.cached += 1;
+            mode.say(format!("$ {cmd}"));
+            mode.say(format!(
+                "  ⏭ cached — already proven at {} (clean tree), skipped \"{}\"",
+                commit.as_deref().unwrap_or("?"),
+                s.text
+            ));
+            gate.transcript.push(GateRun {
+                text: s.text.clone(),
+                cmd: cmd.clone(),
+                passed: true,
+                exit_code: Some(0),
+                output: format!("cached: proven at {}", commit.as_deref().unwrap_or("?")),
+            });
+            continue;
+        }
+
+        // 2. Dedup: this command already ran earlier in the gate — reuse it.
+        if let Some((passed, code, out)) = ran_cmds.get(cmd).cloned() {
+            if passed {
+                let note = format!("verify passed: {cmd}");
+                db::set_step_done(conn, s.id, true, Some(&note), commit.as_deref())?;
+                gate.passed += 1;
+                mode.say(format!(
+                    "  ↻ same command already run — reusing pass for \"{}\"",
+                    s.text
+                ));
+            } else {
+                gate.failures.push(s.text.clone());
+                mode.say(format!(
+                    "  ↻ same command already run — reusing failure for \"{}\"",
+                    s.text
+                ));
+            }
+            gate.transcript.push(GateRun {
+                text: s.text.clone(),
+                cmd: cmd.clone(),
+                passed,
+                exit_code: code,
+                output: out,
+            });
+            continue;
+        }
+
+        // 3. Execute.
         gate.ran += 1;
         mode.say(format!("$ {cmd}"));
         let mut command = std::process::Command::new("sh");
@@ -940,6 +1009,7 @@ pub fn run_acceptance_gate(
                 db::set_step_done(conn, s.id, true, Some(&note), commit.as_deref())?;
                 gate.passed += 1;
                 mode.say(format!("  ✓ passed — ticked \"{}\"", s.text));
+                ran_cmds.insert(cmd.clone(), (true, st.code(), out.clone()));
                 gate.transcript.push(GateRun {
                     text: s.text.clone(),
                     cmd: cmd.clone(),
@@ -952,6 +1022,7 @@ pub fn run_acceptance_gate(
                 let code = st.code().unwrap_or(-1);
                 mode.say(format!("  ✗ exit {code} — \"{}\"", s.text));
                 gate.failures.push(s.text.clone());
+                ran_cmds.insert(cmd.clone(), (false, st.code(), out.clone()));
                 gate.transcript.push(GateRun {
                     text: s.text.clone(),
                     cmd: cmd.clone(),
@@ -963,12 +1034,14 @@ pub fn run_acceptance_gate(
             Err(e) => {
                 mode.say(format!("  ✗ failed to run ({e}) — \"{}\"", s.text));
                 gate.failures.push(s.text.clone());
+                let msg = format!("failed to run: {e}");
+                ran_cmds.insert(cmd.clone(), (false, None, msg.clone()));
                 gate.transcript.push(GateRun {
                     text: s.text.clone(),
                     cmd: cmd.clone(),
                     passed: false,
                     exit_code: None,
-                    output: format!("failed to run: {e}"),
+                    output: msg,
                 });
             }
         }
@@ -988,14 +1061,17 @@ pub fn validate_value(
     id: &str,
     skip_gate: bool,
     mode: GateOutput,
+    fresh: bool,
 ) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     guard_branch_mutation(conn, id, &task, false)?;
     let head = project_head(conn, &task.project)
         .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
 
+    let mut gate_ran = 0usize;
+    let mut gate_cached = 0usize;
     if !skip_gate {
-        let gate = run_acceptance_gate(conn, id, mode)?;
+        let gate = run_acceptance_gate(conn, id, mode, fresh)?;
         if !gate.is_green() {
             anyhow::bail!(
                 "validate refused — acceptance gate is red: {}.{} \
@@ -1004,6 +1080,8 @@ pub fn validate_value(
                 gate.failure_detail()
             );
         }
+        gate_ran = gate.ran;
+        gate_cached = gate.cached;
     }
 
     db::set_validated(conn, &task.uuid, &head)?;
@@ -1022,25 +1100,36 @@ pub fn validate_value(
         "validated_commit": head,
         "gate_skipped": skip_gate,
         "open_steps": open_steps,
+        "criteria_ran": gate_ran,
+        "criteria_cached": gate_cached,
     }))
 }
 
 /// `sara validate <id>` — prove every acceptance criterion green, then stamp the
 /// guide as fresh against current HEAD. With `no_run`, stamps without running
 /// the gate (escape hatch for environments where the checks cannot run locally).
-pub fn validate(conn: &Connection, id: &str, no_run: bool) -> Result<()> {
+/// With `fresh`, ignores the "already proven at this commit" cache and re-runs
+/// every verify command.
+pub fn validate(conn: &Connection, id: &str, no_run: bool, fresh: bool) -> Result<()> {
     if no_run {
         eprintln!(
             "⚠ validate --no-run: stamping WITHOUT running the acceptance gate — \
              'validated' will not be backed by a passing command."
         );
     }
-    let v = validate_value(conn, id, no_run, GateOutput::Stream)?;
+    let v = validate_value(conn, id, no_run, GateOutput::Stream, fresh)?;
     println!(
         "Stamped task {} validated @ {}.",
         v["task"].as_i64().unwrap_or(0),
         v["validated_commit"].as_str().unwrap_or_default()
     );
+    let cached = v["criteria_cached"].as_u64().unwrap_or(0);
+    if cached > 0 {
+        println!(
+            "  {cached} criterion/criteria reused from cache (already proven at this \
+             commit) — use `--fresh` to force a full re-run."
+        );
+    }
     let open = v["open_steps"].as_u64().unwrap_or(0);
     if open > 0 {
         println!(
@@ -1330,7 +1419,7 @@ mod tests {
     fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("true"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(gate.is_green(), "one criterion, verify passes → green");
         assert_eq!(gate.passed, 1);
     }
@@ -1339,7 +1428,7 @@ mod tests {
     fn gate_red_when_verify_command_fails() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("false"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "failing verify → red");
         assert_eq!(gate.failures.len(), 1);
     }
@@ -1348,7 +1437,7 @@ mod tests {
     fn gate_red_when_a_criterion_has_no_verify_command() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, None);
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "unprovable criterion → red");
         assert_eq!(gate.missing_verify.len(), 1);
     }
@@ -1358,7 +1447,7 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         let mut task = Task::new("no criteria".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "no definition of done → red");
         assert_eq!(gate.total, 0);
     }
@@ -1371,7 +1460,7 @@ mod tests {
         // `cargo test` output corrupted the JSON-RPC stream.
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("echo MARKER_ON_STDOUT; exit 1"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
 
         assert!(!gate.is_green(), "exit 1 → red");
         assert_eq!(gate.transcript.len(), 1);
@@ -1391,9 +1480,150 @@ mod tests {
     fn capture_mode_records_stderr_too() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("echo OOPS 1>&2; exit 3"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture).unwrap();
+        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert_eq!(gate.transcript[0].exit_code, Some(3));
         assert!(gate.transcript[0].output.contains("OOPS"));
+    }
+
+    /// Init a throwaway git repo with a single commit; return (repo dir, short HEAD).
+    fn init_git_repo() -> (std::path::PathBuf, String) {
+        let dir = std::env::temp_dir().join(format!("sara-gate-git-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(&dir)
+                .args(args)
+                .output()
+                .unwrap();
+        };
+        run(&["init", "-b", "main"]);
+        run(&["config", "user.email", "t@t.com"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("f.txt"), "hi").unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-m", "init"]);
+        let head = crate::infrastructure::git::head_commit(&dir).unwrap();
+        (dir, head)
+    }
+
+    #[test]
+    fn gate_deduplicates_identical_verify_commands() {
+        // Three criteria sharing one verify command should run it once and apply
+        // the result to all three.
+        let conn = db::open_in_memory_for_test();
+        let marker =
+            std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_file(&marker);
+        let cmd = format!("echo x >> {}", marker.display());
+
+        let mut task = Task::new("dedup".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        for _ in 0..3 {
+            db::add_step(
+                &conn,
+                &task.uuid,
+                "criterion",
+                None,
+                db::STEP_KIND_ACCEPTANCE,
+                "human",
+                Some(&cmd),
+            )
+            .unwrap();
+        }
+
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        assert!(gate.is_green(), "all criteria pass → green");
+        assert_eq!(gate.ran, 1, "identical command executes exactly once");
+        assert_eq!(gate.passed, 3, "all three criteria counted green");
+        let lines = std::fs::read_to_string(&marker).unwrap().lines().count();
+        assert_eq!(lines, 1, "command body ran exactly once");
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    #[test]
+    fn gate_caches_criteria_already_proven_at_head() {
+        // A criterion already done at the current HEAD, with a clean tree, is
+        // reused from cache: its verify command must NOT run again.
+        let conn = db::open_in_memory_for_test();
+        let (repo, head) = init_git_repo();
+        let marker =
+            std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_file(&marker);
+        let cmd = format!("echo ran >> {}", marker.display());
+
+        let mut task = Task::new("cache".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
+        let sid = db::add_step(
+            &conn,
+            &task.uuid,
+            "criterion",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            Some(&cmd),
+        )
+        .unwrap();
+        // Pre-prove it at the current HEAD.
+        db::set_step_done(&conn, sid, true, Some("pre"), Some(&head)).unwrap();
+
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        assert!(gate.is_green(), "cached pass keeps the gate green");
+        assert_eq!(gate.cached, 1, "criterion served from cache");
+        assert_eq!(gate.ran, 0, "cached criterion is not executed");
+        assert!(!marker.exists(), "verify command must not run when cached");
+
+        // --fresh forces a real re-run.
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, true).unwrap();
+        assert_eq!(gate.cached, 0, "--fresh ignores the cache");
+        assert_eq!(gate.ran, 1, "--fresh re-runs the verify command");
+        assert!(marker.exists(), "fresh run executes the command");
+
+        let _ = std::fs::remove_file(&marker);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn gate_bypasses_cache_when_tree_is_dirty() {
+        // Same setup, but an uncommitted change means HEAD no longer describes
+        // what's on disk — the cache must be bypassed and the command re-run.
+        let conn = db::open_in_memory_for_test();
+        let (repo, head) = init_git_repo();
+        let marker =
+            std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_file(&marker);
+        let cmd = format!("echo ran >> {}", marker.display());
+
+        let mut task = Task::new("dirty".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
+        let sid = db::add_step(
+            &conn,
+            &task.uuid,
+            "criterion",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            Some(&cmd),
+        )
+        .unwrap();
+        db::set_step_done(&conn, sid, true, Some("pre"), Some(&head)).unwrap();
+
+        // Dirty the working tree (uncommitted file).
+        std::fs::write(repo.join("dirty.txt"), "x").unwrap();
+
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        assert_eq!(gate.cached, 0, "dirty tree disables the cache");
+        assert_eq!(gate.ran, 1, "dirty tree forces a re-run");
+        assert!(marker.exists(), "verify command runs when the tree is dirty");
+
+        let _ = std::fs::remove_file(&marker);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     #[test]
