@@ -587,7 +587,7 @@ fn plan_show_value_returns_a_briefing() {
 // "failed to deserialize parameters: missing field `id`". These tests pin the
 // tolerant contract: aliases (task/task_id -> id, index -> n), string-or-number
 // ids, step_id addressing, and check returning the new item's position.
-use super::params::{CheckParams, StepDoneParams, StepEditParams};
+use super::params::{AddParams, BeginParams, CheckParams, StepDoneParams, StepEditParams};
 
 #[test]
 fn step_done_params_accept_task_and_index_aliases() {
@@ -677,4 +677,53 @@ fn step_done_by_step_id_ticks_the_right_item() {
     assert_eq!(done["kind"], db::STEP_KIND_ACCEPTANCE);
     assert_eq!(done["index"].as_u64(), Some(2));
     assert_eq!(done["done"], true);
+}
+
+// Agents routinely pass a single tag/file as a bare string ("dsa") rather than
+// a one-element array (["dsa"]). Vec<String> alone rejects that with
+// "failed to deserialize parameters: invalid type: string". These pin the
+// tolerant contract: scalar-or-array coercion for tags/files across MCP params.
+#[test]
+fn begin_params_accept_scalar_tags_and_files() {
+    let p: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "Update DSA case StatusValue enum",
+        "tags": "dsa",
+        "files": "src/status.rs"
+    }))
+    .expect(r#"{tags:"dsa"} must deserialize into BeginParams"#);
+    assert_eq!(p.tags.as_deref(), Some(&["dsa".to_string()][..]));
+    assert_eq!(p.files.as_deref(), Some(&["src/status.rs".to_string()][..]));
+}
+
+#[test]
+fn begin_params_still_accept_array_tags_and_files() {
+    let p: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": ["a", "b"],
+        "files": ["x", "y"]
+    }))
+    .expect("array tags/files must still deserialize");
+    assert_eq!(
+        p.tags.as_deref(),
+        Some(&["a".to_string(), "b".to_string()][..])
+    );
+    assert_eq!(
+        p.files.as_deref(),
+        Some(&["x".to_string(), "y".to_string()][..])
+    );
+    // Absent stays None.
+    let none: BeginParams = serde_json::from_value(serde_json::json!({ "description": "d" }))
+        .expect("absent tags/files -> None");
+    assert!(none.tags.is_none());
+    assert!(none.files.is_none());
+}
+
+#[test]
+fn add_params_accept_scalar_tags() {
+    let p: AddParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": "solo"
+    }))
+    .expect(r#"{tags:"solo"} must deserialize into AddParams"#);
+    assert_eq!(p.tags.as_deref(), Some(&["solo".to_string()][..]));
 }
