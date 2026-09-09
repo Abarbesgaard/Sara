@@ -24,14 +24,44 @@ use serde_json::{Value, json};
 
 use crate::commands;
 use crate::infrastructure::config::Config;
+use crate::infrastructure::telemetry::{self, Source};
+
+/// Emit one nested telemetry event for a folded internal operation of `begin`
+/// and append it to the returned event log. `begin` is a composition — this
+/// makes each internal step a discrete, ordered, recorded event (event-sourcing
+/// inspired) rather than a single opaque call. The `via_begin` flag marks the
+/// event as part of a `begin` composition so it stays filterable, and the name
+/// carries the `mcp ` prefix when the founding call came in over MCP.
+fn emit_folded(cfg: &Config, source: Source, log: &mut Vec<Value>, op: &str, dur_ms: u64) {
+    let name = match source {
+        Source::Mcp => format!("mcp {op}"),
+        Source::Cli => op.to_string(),
+    };
+    telemetry::capture(
+        cfg,
+        source,
+        &name,
+        &["via_begin".to_string()],
+        dur_ms,
+        &Ok::<(), anyhow::Error>(()),
+        None,
+    );
+    log.push(json!({ "op": op, "duration_ms": dur_ms }));
+}
 
 /// Compose the full "start a task" flow and return a structured result. Every
 /// sub-step reuses the same value function the standalone command calls, so
 /// `begin` can never drift from `add`/`recall`/`check`/… behaviour.
+///
+/// Each folded internal operation also emits its OWN nested telemetry event
+/// (flagged `via_begin`) and is recorded in the returned `folded` event log, so
+/// the whole internal composition of a single `begin` is observable — the
+/// `source` decides whether those events are named `mcp <op>` or plain `<op>`.
 #[allow(clippy::too_many_arguments)]
 pub fn begin_value(
     conn: &Connection,
     cfg: &Config,
+    source: Source,
     description: &str,
     tags: &[String],
     files: &[String],
@@ -49,8 +79,12 @@ pub fn begin_value(
     }
 
     let mut warnings: Vec<String> = Vec::new();
+    // The ordered event log of every folded internal operation this `begin`
+    // performs, returned to the caller and mirrored into telemetry.
+    let mut folded: Vec<Value> = Vec::new();
 
     // 1. Create the task.
+    let t = std::time::Instant::now();
     let created = commands::add::run_value(
         conn,
         cfg,
@@ -64,6 +98,13 @@ pub fn begin_value(
         &[],
         &[],
     )?;
+    emit_folded(
+        cfg,
+        source,
+        &mut folded,
+        "add",
+        t.elapsed().as_millis() as u64,
+    );
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
 
@@ -73,27 +114,54 @@ pub fn begin_value(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| description.trim());
+    let t = std::time::Instant::now();
     commands::guide::assignment_value(conn, &id, assignment_text)?;
+    emit_folded(
+        cfg,
+        source,
+        &mut folded,
+        "assignment",
+        t.elapsed().as_millis() as u64,
+    );
 
     // 3. Rationale (why this task exists), when supplied.
     let rationale_text = rationale.map(str::trim).filter(|s| !s.is_empty());
     if let Some(why) = rationale_text {
+        let t = std::time::Instant::now();
         commands::guide::rationale_value(conn, &id, why)?;
+        emit_folded(
+            cfg,
+            source,
+            &mut folded,
+            "rationale",
+            t.elapsed().as_millis() as u64,
+        );
     }
 
     // 4. Acceptance criterion — OPTIONAL. A task without a definition of done is
     //    allowed to proceed, but we warn so it is a deliberate choice, not a
     //    silent gap.
     let acceptance = match check.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(text) => Some(commands::guide::check_value(
-            conn,
-            &id,
-            text,
-            None,
-            Some("acceptance"),
-            Some("agent"),
-            verify,
-        )?),
+        Some(text) => {
+            let t = std::time::Instant::now();
+            let c = commands::guide::check_value(
+                conn,
+                &id,
+                text,
+                None,
+                Some("acceptance"),
+                Some("agent"),
+                verify,
+            )?;
+            emit_folded(
+                cfg,
+                source,
+                &mut folded,
+                "check",
+                t.elapsed().as_millis() as u64,
+            );
+            Some(c)
+        }
         None => {
             warnings.push(
                 "no acceptance criterion — define done with \
@@ -120,6 +188,7 @@ pub fn begin_value(
     let recall =
         commands::recall::recall_value(conn, cfg, &recall_query, &[], &[], &[], limit, false)?;
     let recall_ms = recall_started.elapsed().as_millis() as u64;
+    emit_folded(cfg, source, &mut folded, "recall", recall_ms);
     let labels = recall_labels(&recall, id_num);
 
     // 6. Bind the recall onto the task as a compact finding, so the lookup is
@@ -129,6 +198,7 @@ pub fn begin_value(
         Value::Null
     } else {
         let text = format!("recall at task start matched {}", labels.join(", "));
+        let t = std::time::Instant::now();
         commands::annotate::annotate_value(
             conn,
             &id,
@@ -138,11 +208,26 @@ pub fn begin_value(
             None,
             false,
         )?;
+        emit_folded(
+            cfg,
+            source,
+            &mut folded,
+            "annotate",
+            t.elapsed().as_millis() as u64,
+        );
         Value::String(text)
     };
 
     // 7. The execution cursor — where the work goes next.
+    let t = std::time::Instant::now();
     let next = commands::guide::next_value(conn, &id)?;
+    emit_folded(
+        cfg,
+        source,
+        &mut folded,
+        "next",
+        t.elapsed().as_millis() as u64,
+    );
 
     Ok(json!({
         "task": id_num,
@@ -161,6 +246,7 @@ pub fn begin_value(
         },
         "finding": finding,
         "next": next,
+        "folded": folded,
         "warnings": warnings,
     }))
 }
@@ -187,6 +273,7 @@ pub fn run(
     let v = begin_value(
         conn,
         cfg,
+        Source::Cli,
         description,
         tags,
         files,
@@ -199,19 +286,6 @@ pub fn run(
         query,
         limit,
     )?;
-
-    // `begin` folds a `recall` inside it, so that lookup never reaches the CLI
-    // dispatcher's own telemetry. Emit a distinct, nested event for it so the
-    // folded recall is visible in the usage log rather than silently absorbed.
-    crate::infrastructure::telemetry::capture(
-        cfg,
-        crate::infrastructure::telemetry::Source::Cli,
-        "recall",
-        &["via_begin".to_string()],
-        v["recall"]["duration_ms"].as_u64().unwrap_or(0),
-        &Ok::<(), anyhow::Error>(()),
-        None,
-    );
 
     if as_json {
         println!("{}", serde_json::to_string_pretty(&v)?);
@@ -330,6 +404,7 @@ mod tests {
         let v = begin_value(
             &conn,
             &cfg(),
+            Source::Cli,
             "Fix the failing build",
             &["ci".to_string()],
             &[],
@@ -370,6 +445,7 @@ mod tests {
         let v = begin_value(
             &conn,
             &cfg(),
+            Source::Cli,
             "Add a config flag",
             &[],
             &[],
@@ -409,6 +485,7 @@ mod tests {
         let v = begin_value(
             &conn,
             &cfg(),
+            Source::Cli,
             "Some long verbose task description",
             &["tagx".to_string()],
             &[],
@@ -426,33 +503,98 @@ mod tests {
     }
 
     #[test]
-    fn begin_exposes_the_folded_recall_duration_for_nested_telemetry() {
-        // `begin` folds a `recall` inside it, so that recall never passes
-        // through the MCP `call_tool` telemetry choke point. To let each caller
-        // emit a separate, nested telemetry event for the folded lookup,
-        // `begin_value` must surface how long the internal recall took.
+    fn begin_records_every_folded_operation_as_an_ordered_event() {
+        // `begin` is a composition: internally it runs add, assignment,
+        // rationale, check, recall, annotate and next. Each folded operation is
+        // surfaced as its own ordered event (event-sourcing inspired) so the
+        // whole internal fan-out of a single `begin` is observable, both in the
+        // returned `folded` log and — for real runs — in telemetry.
         let conn = db::open_in_memory_for_test();
         let v = begin_value(
             &conn,
             &cfg(),
+            Source::Cli,
             "Fix the failing build",
             &["ci".to_string()],
             &[],
             Some("proj"),
             None,
             None,
-            None,
+            Some("the restore is red on NU1608"),
+            Some("dotnet build is green"),
             Some("dotnet build"),
-            None,
             None,
             5,
         )
         .expect("begin succeeds");
 
+        // The folded recall still reports its own duration.
         assert!(
             v["recall"]["duration_ms"].is_u64(),
             "the folded recall reports its own duration for nested telemetry, got {}",
             v["recall"]
+        );
+
+        // With assignment, rationale and check all supplied, every folded
+        // operation is recorded, in composition order. `annotate` is
+        // conditional — it only fires when recall matched prior art, and the
+        // in-memory test store holds none — so it is absent here.
+        let ops: Vec<String> = v["folded"]
+            .as_array()
+            .expect("folded event log is an array")
+            .iter()
+            .map(|e| e["op"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(
+            ops,
+            vec!["add", "assignment", "rationale", "check", "recall", "next",],
+            "every folded internal operation that ran is logged in order: {ops:?}"
+        );
+        // Each event carries a duration.
+        for e in v["folded"].as_array().unwrap() {
+            assert!(
+                e["duration_ms"].is_u64(),
+                "each folded event records its duration: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn begin_folded_log_skips_operations_that_did_not_run() {
+        // When rationale, check and (matched) recall are absent, their folded
+        // events are not fabricated — the log reflects only what actually ran.
+        let conn = db::open_in_memory_for_test();
+        let v = begin_value(
+            &conn,
+            &cfg(),
+            Source::Cli,
+            "Add a config flag",
+            &[],
+            &[],
+            Some("proj"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            5,
+        )
+        .expect("begin succeeds without acceptance");
+
+        let ops: Vec<String> = v["folded"]
+            .as_array()
+            .expect("folded event log is an array")
+            .iter()
+            .map(|e| e["op"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert!(
+            ops.contains(&"add".to_string()) && ops.contains(&"recall".to_string()),
+            "the always-run operations are logged: {ops:?}"
+        );
+        assert!(
+            !ops.contains(&"rationale".to_string()) && !ops.contains(&"check".to_string()),
+            "operations that did not run are not logged: {ops:?}"
         );
     }
 }
