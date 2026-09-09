@@ -293,12 +293,15 @@ fn capture_impl<T>(
 // short-lived CLI never blocks, is serialised by a single-sender lock, and is
 // throttled so it does not POST on every invocation.
 
-/// Compiled-in default collector (the nightly self-hosted VictoriaLogs). Overridable
-/// by `SARA_TELEMETRY_ENDPOINT` or `config.telemetry.endpoint`.
-pub const DEFAULT_ENDPOINT: Option<&str> = Some(
-    "http://100.72.1.121:9428/insert/jsonline\
-     ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version,client",
-);
+/// Compiled-in default collector: a public, write-only ingest gateway (hardened
+/// nginx in front of an isolated VictoriaLogs, reachable over HTTPS). This lets
+/// installs that aren't on the maintainer's private network still report anonymous
+/// usage. The gateway accepts only `POST /insert/jsonline`, rate-limits, caps body
+/// size, and forces its own safe query params, so the query string here is
+/// intentionally omitted. Overridable by `SARA_TELEMETRY_ENDPOINT` or
+/// `config.telemetry.endpoint` (e.g. to point at an internal collector).
+pub const DEFAULT_ENDPOINT: Option<&str> =
+    Some("https://sara-ingest.taile3c0c9.ts.net/insert/jsonline");
 
 const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
 

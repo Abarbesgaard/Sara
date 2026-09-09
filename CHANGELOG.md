@@ -28,6 +28,13 @@
   `cursor`, `Copilot`) and `client_version` — so it's possible to see *which*
   agent invoked a tool. Omitted for CLI records. No other client data is
   recorded.
+- **Public ingest endpoint.** The compiled-in default collector now points at a
+  public, write-only HTTPS ingest gateway instead of a private-network address,
+  so installs that aren't on the maintainer's network can still report anonymous
+  usage. The gateway accepts only inserts, rate-limits, caps body size, and
+  discards client-supplied query params. Still fully overridable via
+  `SARA_TELEMETRY_ENDPOINT` / `config.telemetry.endpoint`, and opt-out via
+  `SARA_NO_TELEMETRY`.
 
 ### Documentation
 
