@@ -783,7 +783,11 @@ fn run() -> Result<()> {
         Ok(())
     })();
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    if command_name != "__telemetry_flush" {
+    // Management commands that only inspect or ship telemetry must not record
+    // themselves — otherwise `sara telemetry --show` and the flush spawn a
+    // stream of self-referential "telemetry" records that carry no signal.
+    let is_telemetry_meta = command_name == "__telemetry_flush" || command_name == "telemetry";
+    if !is_telemetry_meta {
         infrastructure::telemetry::capture(
             &cfg,
             infrastructure::telemetry::Source::Cli,
