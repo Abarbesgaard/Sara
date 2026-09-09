@@ -345,6 +345,20 @@ fn flush_interval() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// Cap on the JSONL body of a single flush POST. A backlog larger than this is
+/// shipped in several sub-cap requests so an intermediary (e.g. an nginx
+/// `client_max_body_size`) cannot 413 the whole batch and wedge the queue.
+/// Overridable via `SARA_TELEMETRY_MAX_BATCH_BYTES` (0/invalid falls back).
+const DEFAULT_MAX_BATCH_BYTES: usize = 12 * 1024;
+
+fn max_batch_bytes() -> usize {
+    std::env::var("SARA_TELEMETRY_MAX_BATCH_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_BATCH_BYTES)
+}
+
 /// A file living beside the queue so `SARA_TELEMETRY_QUEUE` redirects it too
 /// (keeping tests off the real data dir).
 fn queue_sibling(name: &str) -> anyhow::Result<PathBuf> {
@@ -502,16 +516,36 @@ pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
     if lines.is_empty() {
         return Ok(FlushOutcome::Empty);
     }
-    let n = lines.len();
-    let mut body = lines.join("\n");
-    body.push('\n');
-    let sent = post_jsonl(&endpoint, resolve_token(cfg).as_deref(), &body)?;
-    if !sent {
+    let token = resolve_token(cfg);
+    let budget = max_batch_bytes();
+    let total = lines.len();
+    let mut sent_count = 0usize;
+    // Ship in contiguous front-to-back batches, each under the byte budget, so a
+    // large backlog drains incrementally instead of failing as one oversized POST.
+    while sent_count < total {
+        let mut end = sent_count;
+        let mut batch_bytes = 0usize;
+        while end < total {
+            let add = lines[end].len() + 1; // + newline
+            if end > sent_count && batch_bytes + add > budget {
+                break;
+            }
+            batch_bytes += add;
+            end += 1;
+        }
+        let mut body = lines[sent_count..end].join("\n");
+        body.push('\n');
+        if !post_jsonl(&endpoint, token.as_deref(), &body)? {
+            break;
+        }
+        sent_count = end;
+    }
+    if sent_count == 0 {
         return Ok(FlushOutcome::Failed);
     }
-    remove_prefix_lines(&path, n)?;
+    remove_prefix_lines(&path, sent_count)?;
     touch_last_flush();
-    Ok(FlushOutcome::Sent(n))
+    Ok(FlushOutcome::Sent(sent_count))
 }
 
 /// Spawn the flush as a fully-detached child so the caller never blocks.
@@ -846,6 +880,56 @@ mod tests {
         (format!("http://{addr}/insert"), rx)
     }
 
+    /// Multi-request mock: handles one connection per entry in `statuses`,
+    /// replying with that status line (in order) and forwarding each request
+    /// body to the channel. Lets a test assert how a backlog is batched.
+    fn mock_server_multi(statuses: Vec<&'static str>) -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            for status_line in statuses {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    break;
+                };
+                let mut buf: Vec<u8> = Vec::new();
+                let mut tmp = [0u8; 2048];
+                loop {
+                    let n = stream.read(&mut tmp).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
+                        let clen = headers
+                            .lines()
+                            .find_map(|l| l.strip_prefix("content-length:"))
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                            .unwrap_or(0);
+                        let body_start = pos + 4;
+                        while buf.len() < body_start + clen {
+                            let n = stream.read(&mut tmp).unwrap_or(0);
+                            if n == 0 {
+                                break;
+                            }
+                            buf.extend_from_slice(&tmp[..n]);
+                        }
+                        let end = (body_start + clen).min(buf.len());
+                        let body = String::from_utf8_lossy(&buf[body_start..end]).to_string();
+                        let _ = tx.send(body);
+                        break;
+                    }
+                }
+                use std::io::Write as _;
+                let resp =
+                    format!("{status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = stream.write_all(resp.as_bytes());
+            }
+        });
+        (format!("http://{addr}/insert"), rx)
+    }
+
     fn flush_cfg() -> Config {
         let mut cfg = Config::default();
         cfg.telemetry.enabled = true;
@@ -888,6 +972,86 @@ mod tests {
             0
         );
 
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_chunks_oversized_queue_into_sublimit_batches() {
+        let _g = lock();
+        let dir = temp_dir_isolated("chunk");
+        // ~25-byte records; a 100-byte cap forces ~3 records per POST.
+        write_queue(&dir.join("queue.jsonl"), 10);
+        let (url, rx) = mock_server_multi(vec!["HTTP/1.1 200 OK"; 6]);
+        set_flush_env(&dir, &url);
+        unsafe {
+            std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
+        }
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Sent(10), "whole backlog drains");
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            0,
+            "queue fully emptied via multiple sub-cap requests"
+        );
+
+        let mut total = 0usize;
+        let mut requests = 0usize;
+        while let Ok(body) = rx.recv_timeout(std::time::Duration::from_secs(2)) {
+            let n = body.lines().filter(|l| !l.trim().is_empty()).count();
+            assert!(n >= 1);
+            assert!(
+                body.len() <= 100 + 30,
+                "each POST stays near the cap, got {} bytes",
+                body.len()
+            );
+            total += n;
+            requests += 1;
+        }
+        assert_eq!(total, 10, "every record shipped exactly once");
+        assert!(
+            requests >= 3,
+            "oversized backlog split across POSTs, got {requests}"
+        );
+
+        unsafe {
+            std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
+        }
+        clear_flush_env();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
+        let _g = lock();
+        let dir = temp_dir_isolated("chunk-fail");
+        write_queue(&dir.join("queue.jsonl"), 6);
+        // First batch accepted, second rejected (e.g. a 413) — progress is kept
+        // and the unsent tail stays queued, so the queue can never wedge.
+        let (url, rx) = mock_server_multi(vec![
+            "HTTP/1.1 200 OK",
+            "HTTP/1.1 413 Request Entity Too Large",
+        ]);
+        set_flush_env(&dir, &url);
+        unsafe {
+            std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
+        }
+
+        let out = flush(&flush_cfg()).unwrap();
+        assert_eq!(out, FlushOutcome::Sent(3), "only the accepted batch drains");
+        assert_eq!(
+            super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+            3,
+            "the rejected tail remains queued for a later flush"
+        );
+
+        let first = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(first.lines().filter(|l| !l.trim().is_empty()).count(), 3);
+
+        unsafe {
+            std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
+        }
         clear_flush_env();
         let _ = std::fs::remove_dir_all(&dir);
     }
