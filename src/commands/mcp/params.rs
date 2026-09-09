@@ -102,6 +102,33 @@ pub(crate) struct AddParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct BeginParams {
+    pub(crate) project_path: Option<String>,
+    /// The task description (what you're about to work on).
+    pub(crate) description: String,
+    pub(crate) project: Option<String>,
+    /// Priority: H, M, or L.
+    pub(crate) priority: Option<String>,
+    /// Tags — also folded into the recall query.
+    pub(crate) tags: Option<Vec<String>>,
+    /// Files this task touches — also folded into the recall query.
+    pub(crate) files: Option<Vec<String>>,
+    /// The originating request/prompt (defaults to the description).
+    pub(crate) assignment: Option<String>,
+    /// Why this task exists (the rationale).
+    pub(crate) rationale: Option<String>,
+    /// Acceptance criterion — the definition of done (optional; a task without
+    /// one is allowed but the result carries a warning).
+    pub(crate) check: Option<String>,
+    /// Shell command that verifies the acceptance criterion.
+    pub(crate) verify: Option<String>,
+    /// Override the recall query (defaults to the description + tags).
+    pub(crate) query: Option<String>,
+    /// Max memories to recall (default 5).
+    pub(crate) limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct StepsParams {
     pub(crate) project_path: Option<String>,
     pub(crate) id: String,
