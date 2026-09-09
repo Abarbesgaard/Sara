@@ -116,8 +116,10 @@ pub fn begin_value(
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .unwrap_or(derived);
+    let recall_started = std::time::Instant::now();
     let recall =
         commands::recall::recall_value(conn, cfg, &recall_query, &[], &[], &[], limit, false)?;
+    let recall_ms = recall_started.elapsed().as_millis() as u64;
     let labels = recall_labels(&recall, id_num);
 
     // 6. Bind the recall onto the task as a compact finding, so the lookup is
@@ -155,6 +157,7 @@ pub fn begin_value(
             "matched": labels,
             "keyword": recall["keyword"],
             "associative": recall["associative"],
+            "duration_ms": recall_ms,
         },
         "finding": finding,
         "next": next,
@@ -196,6 +199,19 @@ pub fn run(
         query,
         limit,
     )?;
+
+    // `begin` folds a `recall` inside it, so that lookup never reaches the CLI
+    // dispatcher's own telemetry. Emit a distinct, nested event for it so the
+    // folded recall is visible in the usage log rather than silently absorbed.
+    crate::infrastructure::telemetry::capture(
+        cfg,
+        crate::infrastructure::telemetry::Source::Cli,
+        "recall",
+        &["via_begin".to_string()],
+        v["recall"]["duration_ms"].as_u64().unwrap_or(0),
+        &Ok::<(), anyhow::Error>(()),
+        None,
+    );
 
     if as_json {
         println!("{}", serde_json::to_string_pretty(&v)?);
@@ -407,5 +423,36 @@ mod tests {
         )
         .expect("begin succeeds");
         assert_eq!(v["recall"]["query"].as_str().unwrap(), "windows path gate");
+    }
+
+    #[test]
+    fn begin_exposes_the_folded_recall_duration_for_nested_telemetry() {
+        // `begin` folds a `recall` inside it, so that recall never passes
+        // through the MCP `call_tool` telemetry choke point. To let each caller
+        // emit a separate, nested telemetry event for the folded lookup,
+        // `begin_value` must surface how long the internal recall took.
+        let conn = db::open_in_memory_for_test();
+        let v = begin_value(
+            &conn,
+            &cfg(),
+            "Fix the failing build",
+            &["ci".to_string()],
+            &[],
+            Some("proj"),
+            None,
+            None,
+            None,
+            Some("dotnet build"),
+            None,
+            None,
+            5,
+        )
+        .expect("begin succeeds");
+
+        assert!(
+            v["recall"]["duration_ms"].is_u64(),
+            "the folded recall reports its own duration for nested telemetry, got {}",
+            v["recall"]
+        );
     }
 }

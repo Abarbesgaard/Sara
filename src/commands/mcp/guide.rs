@@ -37,6 +37,19 @@ impl SaraServer {
                 )
             })
             .map_err(mcp_err)?;
+        // `begin` folds a `recall` inside it, so that lookup never passes
+        // through `call_tool`'s telemetry choke point. Emit a distinct, nested
+        // event so the folded recall shows up in the usage log alongside the
+        // outer `mcp begin`, rather than being silently absorbed.
+        crate::infrastructure::telemetry::capture(
+            self.cfg(),
+            crate::infrastructure::telemetry::Source::Mcp,
+            "mcp recall",
+            &["via_begin".to_string()],
+            v["recall"]["duration_ms"].as_u64().unwrap_or(0),
+            &Ok::<(), anyhow::Error>(()),
+            None,
+        );
         ok_json(v)
     }
 
