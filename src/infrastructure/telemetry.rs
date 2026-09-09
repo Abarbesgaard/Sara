@@ -283,7 +283,15 @@ fn capture_impl<T>(
     let Ok(path) = queue_path() else {
         return;
     };
-    let rec = build_record(&install_id(), source, name, flags, duration_ms, result, client);
+    let rec = build_record(
+        &install_id(),
+        source,
+        name,
+        flags,
+        duration_ms,
+        result,
+        client,
+    );
     let _ = append(&path, &rec);
 }
 
@@ -624,13 +632,7 @@ mod tests {
         assert_eq!(rows[0]["name"], "mcp add");
         // No client info supplied → the origin fields are omitted entirely.
         assert!(rows[0].as_object().unwrap().get("client").is_none());
-        assert!(
-            rows[0]
-                .as_object()
-                .unwrap()
-                .get("client_version")
-                .is_none()
-        );
+        assert!(rows[0].as_object().unwrap().get("client_version").is_none());
         let _ = std::fs::remove_file(&path);
     }
 
@@ -642,7 +644,15 @@ mod tests {
             name: "claude-ai".into(),
             version: "0.1.0".into(),
         };
-        let rec = build_record("iid-3", Source::Mcp, "mcp recall", &[], 4, &Ok(()), Some(&client));
+        let rec = build_record(
+            "iid-3",
+            Source::Mcp,
+            "mcp recall",
+            &[],
+            4,
+            &Ok(()),
+            Some(&client),
+        );
         append(&path, &rec).unwrap();
 
         let rows = read_lines(&path);

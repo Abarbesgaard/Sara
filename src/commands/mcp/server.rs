@@ -163,12 +163,14 @@ impl ServerHandler for SaraServer {
 
         // Identify the calling agent from the `initialize` handshake's clientInfo
         // (e.g. claude-ai, cursor, Copilot) so telemetry records the tool's origin.
-        let client = context.peer.peer_info().map(|info| {
-            crate::infrastructure::telemetry::McpClient {
-                name: info.client_info.name.clone(),
-                version: info.client_info.version.clone(),
-            }
-        });
+        let client =
+            context
+                .peer
+                .peer_info()
+                .map(|info| crate::infrastructure::telemetry::McpClient {
+                    name: info.client_info.name.clone(),
+                    version: info.client_info.version.clone(),
+                });
 
         let started = std::time::Instant::now();
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
