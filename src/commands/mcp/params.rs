@@ -63,6 +63,29 @@ where
     }
 }
 
+/// Accept a list of strings given as either a JSON array (`["a","b"]`) or a
+/// single bare string (`"a"` -> `["a"]`), defaulting to `None` when absent or
+/// `null`. Agents routinely pass a lone tag/file as a scalar rather than a
+/// one-element array, which `Vec<String>` alone rejects with
+/// "invalid type: string, expected a sequence". Paired with `#[serde(default,
+/// deserialize_with = "de_opt_string_vec")]` on every `Option<Vec<String>>`.
+fn de_opt_string_vec<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Option::<OneOrMany>::deserialize(d)? {
+        None => None,
+        Some(OneOrMany::One(s)) => Some(vec![s]),
+        Some(OneOrMany::Many(v)) => Some(v),
+    })
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ListParams {
     /// Absolute path of the target git repo/project. Omit to use the launch dir.
@@ -88,16 +111,21 @@ pub(crate) struct AddParams {
     pub(crate) project: Option<String>,
     /// Priority: H, M, or L.
     pub(crate) priority: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
     /// Recurrence interval: daily, weekly, 2w, 3d, 1m, …
     pub(crate) recur: Option<String>,
     /// Notes to attach at creation.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) annotations: Option<Vec<String>>,
     /// URLs to link at creation.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) links: Option<Vec<String>>,
     /// Checklist steps to add at creation.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) checks: Option<Vec<String>>,
     /// UUID prefixes of tasks this new task depends on.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) depends_on: Option<Vec<String>>,
 }
 
@@ -110,8 +138,10 @@ pub(crate) struct BeginParams {
     /// Priority: H, M, or L.
     pub(crate) priority: Option<String>,
     /// Tags — also folded into the recall query.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
     /// Files this task touches — also folded into the recall query.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) files: Option<Vec<String>>,
     /// The originating request/prompt (defaults to the description).
     pub(crate) assignment: Option<String>,
@@ -173,11 +203,14 @@ pub(crate) struct RecallParams {
     pub(crate) query: String,
     /// Exact tag match against indexed memory tags (a memory must carry every
     /// tag given to match).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tag: Option<Vec<String>>,
     /// Exact project match against indexed memory project references (a
     /// memory matches if it references any of the given projects).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) project: Option<Vec<String>>,
     /// Filter by associated file path (exact match; trailing '/' = prefix/directory match).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) files: Option<Vec<String>>,
     /// Max results (default 20).
     pub(crate) limit: Option<i64>,
@@ -272,6 +305,7 @@ pub(crate) struct ModifyParams {
     /// Clear the due date.
     pub(crate) clear_due: Option<bool>,
     /// Tags — REPLACES the whole tag set (not additive).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
     /// Clear all tags.
     pub(crate) clear_tags: Option<bool>,
@@ -364,12 +398,16 @@ pub(crate) struct LearnParams {
     /// The memory text (a concise distilled paragraph — one key insight).
     pub(crate) text: String,
     /// Tags for lookup (repeatable). Prefer existing tags — check `sara tags` first.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
     /// Projects this memory references. Defaults to the current project.
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) projects: Option<Vec<String>>,
     /// UUID prefixes of tasks this memory was learned from/about (repeatable; source='explicit').
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tasks: Option<Vec<String>>,
     /// Absolute file paths to associate with this memory (repeatable).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) files: Option<Vec<String>>,
     /// Skip size and secret-pattern guardrails (use only when content is safe).
     pub(crate) force: Option<bool>,
@@ -401,8 +439,10 @@ pub(crate) struct RelearnParams {
     /// New body text (omit to only change tags/files).
     pub(crate) text: Option<String>,
     /// Replacement tag set (omit to keep existing tags).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
     /// Replacement file associations, absolute paths (omit to keep existing).
+    #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) files: Option<Vec<String>>,
     /// Skip size and secret-pattern guardrails (use only when content is safe).
     pub(crate) force: Option<bool>,
