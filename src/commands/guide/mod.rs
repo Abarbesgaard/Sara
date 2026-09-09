@@ -1419,7 +1419,8 @@ mod tests {
     fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("true"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(gate.is_green(), "one criterion, verify passes → green");
         assert_eq!(gate.passed, 1);
     }
@@ -1428,7 +1429,8 @@ mod tests {
     fn gate_red_when_verify_command_fails() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("false"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "failing verify → red");
         assert_eq!(gate.failures.len(), 1);
     }
@@ -1437,7 +1439,8 @@ mod tests {
     fn gate_red_when_a_criterion_has_no_verify_command() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, None);
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "unprovable criterion → red");
         assert_eq!(gate.missing_verify.len(), 1);
     }
@@ -1447,7 +1450,8 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         let mut task = Task::new("no criteria".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert!(!gate.is_green(), "no definition of done → red");
         assert_eq!(gate.total, 0);
     }
@@ -1460,7 +1464,8 @@ mod tests {
         // `cargo test` output corrupted the JSON-RPC stream.
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("echo MARKER_ON_STDOUT; exit 1"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
 
         assert!(!gate.is_green(), "exit 1 → red");
         assert_eq!(gate.transcript.len(), 1);
@@ -1480,7 +1485,8 @@ mod tests {
     fn capture_mode_records_stderr_too() {
         let conn = db::open_in_memory_for_test();
         let task = task_with_acceptance(&conn, Some("echo OOPS 1>&2; exit 3"));
-        let gate = run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
+        let gate =
+            run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert_eq!(gate.transcript[0].exit_code, Some(3));
         assert!(gate.transcript[0].output.contains("OOPS"));
     }
@@ -1512,8 +1518,7 @@ mod tests {
         // Three criteria sharing one verify command should run it once and apply
         // the result to all three.
         let conn = db::open_in_memory_for_test();
-        let marker =
-            std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
+        let marker = std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
         let cmd = format!("echo x >> {}", marker.display());
 
@@ -1548,8 +1553,7 @@ mod tests {
         // reused from cache: its verify command must NOT run again.
         let conn = db::open_in_memory_for_test();
         let (repo, head) = init_git_repo();
-        let marker =
-            std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
+        let marker = std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
         let cmd = format!("echo ran >> {}", marker.display());
 
@@ -1593,8 +1597,7 @@ mod tests {
         // what's on disk — the cache must be bypassed and the command re-run.
         let conn = db::open_in_memory_for_test();
         let (repo, head) = init_git_repo();
-        let marker =
-            std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
+        let marker = std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
         let cmd = format!("echo ran >> {}", marker.display());
 
@@ -1620,7 +1623,10 @@ mod tests {
             run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
         assert_eq!(gate.cached, 0, "dirty tree disables the cache");
         assert_eq!(gate.ran, 1, "dirty tree forces a re-run");
-        assert!(marker.exists(), "verify command runs when the tree is dirty");
+        assert!(
+            marker.exists(),
+            "verify command runs when the tree is dirty"
+        );
 
         let _ = std::fs::remove_file(&marker);
         let _ = std::fs::remove_dir_all(&repo);
