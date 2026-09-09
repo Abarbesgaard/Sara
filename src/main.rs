@@ -156,6 +156,41 @@ fn run() -> Result<()> {
                 )?;
             }
 
+            Command::Begin {
+                words,
+                project,
+                priority,
+                tag,
+                file,
+                assignment,
+                why,
+                check,
+                verify,
+                query,
+                limit,
+                json,
+            } => {
+                if words.is_empty() {
+                    anyhow::bail!("Task description cannot be empty");
+                }
+                commands::begin::run(
+                    &conn,
+                    &cfg,
+                    &words.join(" "),
+                    &tag,
+                    &file,
+                    project.as_deref(),
+                    priority.as_deref(),
+                    assignment.as_deref(),
+                    why.as_deref(),
+                    check.as_deref(),
+                    verify.as_deref(),
+                    query.as_deref(),
+                    limit,
+                    json,
+                )?;
+            }
+
             Command::Info {
                 id,
                 json,

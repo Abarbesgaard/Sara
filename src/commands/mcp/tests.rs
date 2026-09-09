@@ -29,7 +29,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 44, "expected 44 tools, got {names:?}");
+    assert_eq!(names.len(), 45, "expected 45 tools, got {names:?}");
     for expected in [
         // read
         "list",
@@ -44,6 +44,7 @@ fn exposes_the_agent_loop_tools() {
         "projects",
         // mutate (create / guide)
         "add",
+        "begin",
         "step_done",
         "annotate",
         "plan_import",
