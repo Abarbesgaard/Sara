@@ -12,6 +12,34 @@ use super::server::{SaraServer, mcp_err, ok_json};
 
 #[tool_router(router = guide_router, vis = "pub(crate)")]
 impl SaraServer {
+    #[tool(
+        description = "Start a task in one call: create it, set its assignment/why, register an optional acceptance criterion, recall related memories, and bind them to the task as a finding. Returns the task, its criteria, the recall hits, and the next cursor. Use this to BEGIN work — it is `add` + `recall` fused so the first action already yields a task with prior art attached. An acceptance criterion is optional (a warning is returned if omitted); the recall query defaults to the description + tags unless `query` overrides it."
+    )]
+    fn begin(&self, Parameters(p): Parameters<BeginParams>) -> Result<String, ErrorData> {
+        let tags = p.tags.clone().unwrap_or_default();
+        let files = p.files.clone().unwrap_or_default();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp begin", |conn, cfg| {
+                commands::begin::begin_value(
+                    conn,
+                    cfg,
+                    &p.description,
+                    &tags,
+                    &files,
+                    p.project.as_deref(),
+                    p.priority.as_deref(),
+                    p.assignment.as_deref(),
+                    p.rationale.as_deref(),
+                    p.check.as_deref(),
+                    p.verify.as_deref(),
+                    p.query.as_deref(),
+                    p.limit.unwrap_or(5),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
     #[tool(description = "Create a task (never opens the TUI). Returns the new task's id/uuid.")]
     fn add(&self, Parameters(p): Parameters<AddParams>) -> Result<String, ErrorData> {
         let words = vec![p.description.clone()];
