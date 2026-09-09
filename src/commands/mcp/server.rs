@@ -89,6 +89,12 @@ impl SaraServer {
         }
     }
 
+    /// The MCP server's telemetry/config handle, for handlers that need to emit
+    /// a nested telemetry event (e.g. `begin`'s folded `recall`).
+    pub(crate) fn cfg(&self) -> &Config {
+        &self.cfg
+    }
+
     /// The full tool set: the three capability routers combined. Shared by `new`
     /// (to populate the dispatch field) and the tool-count test.
     pub(crate) fn all_router() -> ToolRouter<Self> {
