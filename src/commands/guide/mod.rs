@@ -1287,6 +1287,15 @@ mod tests {
         Config::default()
     }
 
+    /// Render a path for embedding in an `sh` command line. On Windows,
+    /// `Path::display` yields backslashes, which the shell (Git-bash `sh`)
+    /// strips as escapes — so a marker written by the command lands at the wrong
+    /// place and the test cannot read it back. Forward slashes are accepted by
+    /// `sh` on every platform and keep the path intact.
+    fn sh_arg(p: &std::path::Path) -> String {
+        p.display().to_string().replace('\\', "/")
+    }
+
     #[test]
     fn next_surfaces_a_strong_relevant_memory() {
         use crate::infrastructure::model::Item;
@@ -1520,7 +1529,7 @@ mod tests {
         let conn = db::open_in_memory_for_test();
         let marker = std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
-        let cmd = format!("echo x >> {}", marker.display());
+        let cmd = format!("echo x >> {}", sh_arg(&marker));
 
         let mut task = Task::new("dedup".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
@@ -1555,7 +1564,7 @@ mod tests {
         let (repo, head) = init_git_repo();
         let marker = std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
-        let cmd = format!("echo ran >> {}", marker.display());
+        let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
         let mut task = Task::new("cache".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
@@ -1599,7 +1608,7 @@ mod tests {
         let (repo, head) = init_git_repo();
         let marker = std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_file(&marker);
-        let cmd = format!("echo ran >> {}", marker.display());
+        let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
         let mut task = Task::new("dirty".into(), "proj".into());
         db::insert_task(&conn, &mut task).unwrap();
