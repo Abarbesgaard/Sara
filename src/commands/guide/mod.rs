@@ -304,9 +304,7 @@ pub fn step_done_current_value(
         .iter()
         .position(|s| !s.done)
         .map(|i| i + 1)
-        .ok_or_else(|| {
-            anyhow::anyhow!("no incomplete {kind_str} remains on task {id}")
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("no incomplete {kind_str} remains on task {id}"))?;
     step_done_value(conn, id, n, result, kind)
 }
 
