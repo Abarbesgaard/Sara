@@ -478,13 +478,22 @@ mod tests {
         let base = ymd(2025, 6, 10);
 
         // Valid positive counts advance forward as expected.
-        assert_eq!(advance_by_interval(base, "3d"), base + chrono::Duration::days(3));
-        assert_eq!(advance_by_interval(base, "2w"), base + chrono::Duration::weeks(2));
+        assert_eq!(
+            advance_by_interval(base, "3d"),
+            base + chrono::Duration::days(3)
+        );
+        assert_eq!(
+            advance_by_interval(base, "2w"),
+            base + chrono::Duration::weeks(2)
+        );
         let m = advance_by_interval(base, "2m");
         assert_eq!((m.year(), m.month(), m.day()), (2025, 8, 10));
 
         // Named aliases still work.
-        assert_eq!(advance_by_interval(base, "daily"), base + chrono::Duration::days(1));
+        assert_eq!(
+            advance_by_interval(base, "daily"),
+            base + chrono::Duration::days(1)
+        );
         assert_eq!(advance_by_interval(base, "monthly"), add_months(base, 1));
 
         // Malformed counts (zero, negative, out-of-range) must never produce a
