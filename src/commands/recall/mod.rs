@@ -69,6 +69,29 @@ struct Hit {
     semantic: bool,
     /// Cosine similarity to the query for a semantic hit (`None` for lexical hits).
     cosine: Option<f32>,
+    /// When this hit stands in for a whole canonical family (a pattern memory
+    /// plus its per-application derived children), the family it represents.
+    /// `Some` means recall collapsed the near-duplicate siblings into this one
+    /// representative rather than returning every member — bounding the response
+    /// and freeing the top-k for diverse memories. `None` for standalone hits.
+    cluster: Option<ClusterInfo>,
+}
+
+/// A collapsed canonical family: the pattern memory (canonical) plus its
+/// per-application derived children, represented in recall output by a single
+/// highest-valued member instead of every near-duplicate. Lets the caller see
+/// "one of a cluster of N related memories" and jump to the canonical, without
+/// the whole family flooding the response.
+#[derive(Clone, Debug)]
+struct ClusterInfo {
+    /// The canonical (root) memory's label, e.g. "m228" — the family's anchor.
+    canonical_label: String,
+    /// Total memories in the family: the canonical plus all its derived
+    /// children (the *true* corpus size, not merely how many surfaced here).
+    size: usize,
+    /// How many sibling members of this family were collapsed OUT of this recall
+    /// result to leave a single representative — for transparency.
+    collapsed_here: usize,
 }
 
 /// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
@@ -369,8 +392,16 @@ pub fn run(
         } else {
             format!(" [derived from: {}]", h.derived_from_labels.join(", "))
         };
+        let cluster_str = match &h.cluster {
+            Some(c) if c.collapsed_here > 0 => format!(
+                " [cluster {} of {} — {} sibling(s) collapsed]",
+                c.canonical_label, c.size, c.collapsed_here
+            ),
+            Some(c) => format!(" [cluster {} of {}]", c.canonical_label, c.size),
+            None => String::new(),
+        };
         println!(
-            "  [{}] {} {} {}: {}{}{}{}{}{}{}{}",
+            "  [{}] {} {} {}: {}{}{}{}{}{}{}{}{}",
             h.ref_kind,
             marker,
             h.label,
@@ -382,6 +413,7 @@ pub fn run(
             provisional_str,
             canonical_str,
             derived_from_str,
+            cluster_str,
             if age.is_empty() {
                 String::new()
             } else {
@@ -816,6 +848,7 @@ fn collect_hits(
                     loose,
                     semantic: false,
                     cosine: None,
+                    cluster: None,
                 });
             }
         }
@@ -859,6 +892,16 @@ fn collect_hits(
             )
             .then(b.modified.cmp(&a.modified))
     });
+
+    // Collapse canonical families: a pattern memory plus its per-application
+    // derived children are near-duplicates; returning every one floods the
+    // response (e.g. one dependabot fault with ~85 sibling memories) and eats
+    // the top-k. Fold each surfaced family down to its single highest-valued
+    // representative (already sorted first — the canonical, boosted by
+    // item_strength's canonical_derived_bonus), tagging it with the family it
+    // stands for. Done AFTER the sort (so the representative is the best member)
+    // and BEFORE truncate (so `limit` counts distinct clusters, not siblings).
+    let mut hits = collapse_clusters(conn, hits);
     hits.truncate(limit.max(0) as usize);
 
     // Usage reinforcement: log each memory that actually surfaced, so
@@ -871,6 +914,98 @@ fn collect_hits(
     }
 
     Ok(hits)
+}
+
+/// The canonical family a hit belongs to, or `None` if it stands alone.
+/// A derived child is grouped under its canonical (its first `derived_from`
+/// label); a canonical is grouped under itself; a plain memory (or task) has no
+/// family and is never collapsed. When a memory is both derived and canonical
+/// (a mid-tier), its parent link wins so it folds up, not down.
+fn family_key(h: &Hit) -> Option<String> {
+    if let Some(parent) = h.derived_from_labels.first() {
+        Some(parent.clone())
+    } else if !h.derived_children.is_empty() {
+        Some(h.label.clone())
+    } else {
+        None
+    }
+}
+
+/// Total members of a canonical family — the canonical plus all its derived
+/// children (the *true* corpus size, independent of how many surfaced). When
+/// the representative IS the canonical its `derived_children` already holds the
+/// full set, so no query is needed; otherwise (only children surfaced) resolve
+/// the canonical by label and count its incoming `derived_from` edges.
+fn family_size(conn: &Connection, rep: &Hit, canonical_label: &str) -> usize {
+    if rep.label == canonical_label {
+        return 1 + rep.derived_children.len();
+    }
+    match db::get_item_by_handle(conn, canonical_label) {
+        Ok(canon) => {
+            let children = db::get_memory_links_to(conn, &canon.uuid.to_string())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|l| l.relation == "derived_from")
+                .count();
+            1 + children
+        }
+        // Canonical not resolvable (shouldn't happen) — report only what we see.
+        Err(_) => 1,
+    }
+}
+
+/// Collapse each surfaced canonical family down to a single representative.
+///
+/// Walks the already-sorted hits, keeping the first (highest-valued) member of
+/// each family and dropping the rest — but always promoting the canonical to be
+/// the representative if it surfaces at all, since the canonical is the signal
+/// (its derived children are per-application evidence). Standalone memories and
+/// task hits pass through untouched. Each surviving representative of a family
+/// with more than one member is tagged with `ClusterInfo` so the caller sees
+/// "one of a cluster of N" and can jump to the canonical for the full family.
+fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
+    let mut kept: Vec<Hit> = Vec::with_capacity(hits.len());
+    // family label -> index of its representative in `kept`.
+    let mut rep_of: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    // family label -> how many members were folded out of this result.
+    let mut collapsed: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for h in hits {
+        match family_key(&h) {
+            None => kept.push(h),
+            Some(fam) => match rep_of.get(&fam).copied() {
+                None => {
+                    rep_of.insert(fam.clone(), kept.len());
+                    kept.push(h);
+                }
+                Some(idx) => {
+                    *collapsed.entry(fam.clone()).or_insert(0) += 1;
+                    // Promote the canonical to representative if it is the one
+                    // arriving now and the current rep is merely a child.
+                    if h.label == fam && kept[idx].label != fam {
+                        kept[idx] = h;
+                    }
+                    // Otherwise the incoming member is dropped (folded in).
+                }
+            },
+        }
+    }
+
+    // Tag each family representative with its cluster metadata.
+    for h in kept.iter_mut() {
+        if let Some(fam) = family_key(h) {
+            let size = family_size(conn, h, &fam);
+            if size > 1 {
+                h.cluster = Some(ClusterInfo {
+                    canonical_label: fam.clone(),
+                    size,
+                    collapsed_here: collapsed.get(&fam).copied().unwrap_or(0),
+                });
+            }
+        }
+    }
+
+    kept
 }
 
 /// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
@@ -897,6 +1032,11 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                 "derived_count": h.derived_children.len(),
                 "derived_children": h.derived_children,
                 "derived_from": h.derived_from_labels,
+                "cluster": h.cluster.as_ref().map(|c| json!({
+                    "canonical": c.canonical_label,
+                    "size": c.size,
+                    "collapsed_here": c.collapsed_here,
+                })),
                 "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                     "id": t.id.unwrap_or(0),
                     "description": t.description,
@@ -1009,6 +1149,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         loose: false,
         semantic: false,
         cosine: None,
+        cluster: None,
     }
 }
 
@@ -2069,31 +2210,11 @@ mod tests {
         )
         .unwrap();
 
-        let hits = collect_hits(
-            &conn,
-            "",
-            &["codeql".to_string()],
-            &[],
-            &[],
-            20,
-            &SemanticOpts::off(),
-        )
-        .unwrap();
-        assert_eq!(hits.len(), 3);
-
-        // Find each hit by description.
-        let canonical_hit = hits
-            .iter()
-            .find(|h| h.description == "CodeQL config pattern")
-            .unwrap();
-        let derived_a_hit = hits
-            .iter()
-            .find(|h| h.description == "CodeQL config applied to repo-a")
-            .unwrap();
-        let derived_b_hit = hits
-            .iter()
-            .find(|h| h.description == "CodeQL config applied to repo-b")
-            .unwrap();
+        // Distinction fields are computed per-memory in item_hit (independent of
+        // the family collapse that collect_hits applies below).
+        let canonical_hit = item_hit(&conn, canonical.clone(), true);
+        let derived_a_hit = item_hit(&conn, derived_a.clone(), true);
+        let derived_b_hit = item_hit(&conn, derived_b.clone(), true);
 
         // Canonical: has 2 derived children (by label), no derived_from_labels.
         assert_eq!(
@@ -2128,6 +2249,119 @@ mod tests {
             derived_a_hit.derived_from_labels[0],
             derived_b_hit.derived_from_labels[0]
         );
+
+        // collect_hits COLLAPSES the family: the canonical + its 2 children fold
+        // into a single representative (the canonical, which sorts first via its
+        // strength bonus), tagged with the family size.
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["codeql".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "the canonical family collapses to one representative, got: {:?}",
+            hits.iter().map(|h| &h.description).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            hits[0].description, "CodeQL config pattern",
+            "the canonical is the surviving representative"
+        );
+        let cluster = hits[0]
+            .cluster
+            .as_ref()
+            .expect("the representative carries cluster metadata");
+        assert_eq!(cluster.canonical_label, canonical_hit.label);
+        assert_eq!(cluster.size, 3, "family size = canonical + 2 children");
+        assert_eq!(cluster.collapsed_here, 2, "2 siblings folded out");
+    }
+
+    #[test]
+    fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
+        let conn = db::open_in_memory_for_test();
+
+        // A canonical with three per-application derived children — the shape of
+        // a recurring fault (e.g. the dependabot/NSubstitute family) that would
+        // otherwise flood recall with near-duplicates.
+        let canonical = seed_memory(&conn, "canonical fix", "the pattern", &["dep"], &[]);
+        let mut children = vec![];
+        for i in 0..3 {
+            let c = seed_memory(
+                &conn,
+                &format!("applied fix #{i}"),
+                &format!("per-PR application {i}"),
+                &["dep"],
+                &[],
+            );
+            db::insert_memory_link(
+                &conn,
+                &c.uuid.to_string(),
+                &canonical.uuid.to_string(),
+                "derived_from",
+                1.0,
+            )
+            .unwrap();
+            children.push(c);
+        }
+
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["dep".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
+
+        // Four memories in the corpus, one representative in the result.
+        assert_eq!(
+            hits.len(),
+            1,
+            "a 4-member family returns a single representative, got: {:?}",
+            hits.iter().map(|h| &h.description).collect::<Vec<_>>()
+        );
+        let rep = &hits[0];
+        assert_eq!(
+            rep.description, "canonical fix",
+            "the canonical is promoted to representative"
+        );
+        let cluster = rep.cluster.as_ref().expect("cluster metadata present");
+        assert_eq!(cluster.size, 4, "canonical + 3 children");
+        assert_eq!(cluster.collapsed_here, 3);
+    }
+
+    #[test]
+    fn recall_leaves_standalone_memories_uncollapsed() {
+        let conn = db::open_in_memory_for_test();
+
+        // Two unrelated memories with no derived_from linkage — neither should be
+        // collapsed or tagged with cluster metadata.
+        seed_memory(&conn, "note one", "body one", &["misc"], &[]);
+        seed_memory(&conn, "note two", "body two", &["misc"], &[]);
+
+        let hits = collect_hits(
+            &conn,
+            "",
+            &["misc".to_string()],
+            &[],
+            &[],
+            20,
+            &SemanticOpts::off(),
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 2, "unrelated memories are not collapsed");
+        assert!(
+            hits.iter().all(|h| h.cluster.is_none()),
+            "standalone memories carry no cluster metadata"
+        );
     }
 
     #[test]
@@ -2159,10 +2393,10 @@ mod tests {
         )
         .unwrap();
 
-        // A --project other-repo recall (no tags) must surface BOTH the
-        // derived memory (directly scoped) AND the canonical (via its
-        // derived_from child), even though the canonical itself is only
-        // scoped to "sara-repo".
+        // A --project other-repo recall (no tags) surfaces the family. The
+        // derived memory (directly scoped here) and its canonical (pulled in as
+        // a cross-project canonical) collapse into a single representative — the
+        // canonical, promoted — tagged with the family it stands for.
         let hits = collect_hits(
             &conn,
             "",
@@ -2175,18 +2409,20 @@ mod tests {
         .unwrap();
         assert_eq!(
             hits.len(),
-            2,
-            "expected derived + cross-project canonical, got descriptions: {:?}",
+            1,
+            "the cross-project family collapses to one representative, got: {:?}",
             hits.iter().map(|h| &h.description).collect::<Vec<_>>()
         );
-        assert!(
-            hits.iter()
-                .any(|h| h.description == "CodeQL config pattern")
+        assert_eq!(
+            hits[0].description, "CodeQL config pattern",
+            "the canonical is the surviving representative"
         );
-        assert!(
-            hits.iter()
-                .any(|h| h.description == "applied CodeQL config to other-repo")
-        );
+        let cluster = hits[0]
+            .cluster
+            .as_ref()
+            .expect("the representative carries cluster metadata");
+        assert_eq!(cluster.size, 2, "family size = canonical + 1 derived child");
+        assert_eq!(cluster.collapsed_here, 1, "the derived child folded out");
 
         // A project with no derived children anywhere must not pull the
         // canonical in.
