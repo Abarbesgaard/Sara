@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::commands;
 use crate::infrastructure::config::Config;
-use crate::infrastructure::telemetry::{self, Source};
+use crate::infrastructure::telemetry::{self, Source, Span};
 
 /// Emit one nested telemetry event for a folded internal operation of `begin`
 /// and append it to the returned event log. `begin` is a composition — this
@@ -32,12 +32,28 @@ use crate::infrastructure::telemetry::{self, Source};
 /// inspired) rather than a single opaque call. The `via_begin` flag marks the
 /// event as part of a `begin` composition so it stays filterable, and the name
 /// carries the `mcp ` prefix when the founding call came in over MCP.
-fn emit_folded(cfg: &Config, source: Source, log: &mut Vec<Value>, op: &str, dur_ms: u64) {
+///
+/// Every event is stamped with the composition's `trace_id` and its 0-based
+/// `seq` (derived from the log length so far), so the whole fan-out reconstructs
+/// as one correlated, ordered trace instead of records that merely happen to be
+/// adjacent in time. `n` carries an optional non-identifying outcome COUNT for
+/// the op (e.g. how many prior memories a `recall` matched) — a metric, never
+/// content.
+fn emit_folded(
+    cfg: &Config,
+    source: Source,
+    trace_id: &str,
+    log: &mut Vec<Value>,
+    op: &str,
+    dur_ms: u64,
+    n: Option<u64>,
+) {
+    let seq = log.len() as u32;
     let name = match source {
         Source::Mcp => format!("mcp {op}"),
         Source::Cli => op.to_string(),
     };
-    telemetry::capture(
+    telemetry::capture_span(
         cfg,
         source,
         &name,
@@ -45,8 +61,13 @@ fn emit_folded(cfg: &Config, source: Source, log: &mut Vec<Value>, op: &str, dur
         dur_ms,
         &Ok::<(), anyhow::Error>(()),
         None,
+        Some(Span { trace_id, seq, n }),
     );
-    log.push(json!({ "op": op, "duration_ms": dur_ms }));
+    let mut entry = json!({ "op": op, "seq": seq, "duration_ms": dur_ms });
+    if let Some(n) = n {
+        entry["n"] = json!(n);
+    }
+    log.push(entry);
 }
 
 /// Compose the full "start a task" flow and return a structured result. Every
@@ -82,6 +103,10 @@ pub fn begin_value(
     // The ordered event log of every folded internal operation this `begin`
     // performs, returned to the caller and mirrored into telemetry.
     let mut folded: Vec<Value> = Vec::new();
+    // One correlation id for this whole `begin` composition. Every folded event
+    // carries it (and an ordinal `seq`), so the fan-out reconstructs as a single
+    // ordered trace. Anonymous and ephemeral — a fresh random id per `begin`.
+    let trace_id = uuid::Uuid::new_v4().to_string();
 
     // 1. Create the task.
     let t = std::time::Instant::now();
@@ -101,9 +126,11 @@ pub fn begin_value(
     emit_folded(
         cfg,
         source,
+        &trace_id,
         &mut folded,
         "add",
         t.elapsed().as_millis() as u64,
+        None,
     );
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
@@ -119,9 +146,11 @@ pub fn begin_value(
     emit_folded(
         cfg,
         source,
+        &trace_id,
         &mut folded,
         "assignment",
         t.elapsed().as_millis() as u64,
+        None,
     );
 
     // 3. Rationale (why this task exists), when supplied.
@@ -132,9 +161,11 @@ pub fn begin_value(
         emit_folded(
             cfg,
             source,
+            &trace_id,
             &mut folded,
             "rationale",
             t.elapsed().as_millis() as u64,
+            None,
         );
     }
 
@@ -156,9 +187,11 @@ pub fn begin_value(
             emit_folded(
                 cfg,
                 source,
+                &trace_id,
                 &mut folded,
                 "check",
                 t.elapsed().as_millis() as u64,
+                None,
             );
             Some(c)
         }
@@ -188,8 +221,16 @@ pub fn begin_value(
     let recall =
         commands::recall::recall_value(conn, cfg, &recall_query, &[], &[], &[], limit, false)?;
     let recall_ms = recall_started.elapsed().as_millis() as u64;
-    emit_folded(cfg, source, &mut folded, "recall", recall_ms);
     let labels = recall_labels(&recall, id_num);
+    emit_folded(
+        cfg,
+        source,
+        &trace_id,
+        &mut folded,
+        "recall",
+        recall_ms,
+        Some(labels.len() as u64),
+    );
 
     // 6. Bind the recall onto the task as a compact finding, so the lookup is
     //    part of the record instead of a throwaway console read.
@@ -211,9 +252,11 @@ pub fn begin_value(
         emit_folded(
             cfg,
             source,
+            &trace_id,
             &mut folded,
             "annotate",
             t.elapsed().as_millis() as u64,
+            Some(labels.len() as u64),
         );
         Value::String(text)
     };
@@ -224,13 +267,16 @@ pub fn begin_value(
     emit_folded(
         cfg,
         source,
+        &trace_id,
         &mut folded,
         "next",
         t.elapsed().as_millis() as u64,
+        None,
     );
 
     Ok(json!({
         "task": id_num,
+        "begin_id": trace_id,
         "uuid": created["uuid"],
         "project": created["project"],
         "description": description.trim(),
@@ -557,6 +603,37 @@ mod tests {
                 "each folded event records its duration: {e}"
             );
         }
+
+        // The whole composition shares one correlation id and the events carry a
+        // contiguous 0-based `seq`, so the fan-out reconstructs as one ordered
+        // trace rather than timestamp-adjacent records.
+        assert!(
+            v["begin_id"].as_str().is_some_and(|s| !s.is_empty()),
+            "begin returns a trace/correlation id: {}",
+            v["begin_id"]
+        );
+        let seqs: Vec<u64> = v["folded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["seq"].as_u64().expect("each folded event has a seq"))
+            .collect();
+        assert_eq!(
+            seqs,
+            (0..seqs.len() as u64).collect::<Vec<_>>(),
+            "folded events carry a contiguous 0-based ordinal: {seqs:?}"
+        );
+        // The recall event reports its outcome count `n` (matches found).
+        let recall = v["folded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["op"] == "recall")
+            .expect("recall is folded");
+        assert!(
+            recall["n"].is_u64(),
+            "the folded recall reports how many prior memories it matched: {recall}"
+        );
     }
 
     #[test]
