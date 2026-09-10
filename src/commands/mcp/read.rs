@@ -68,7 +68,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array."
+        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array. Also returns a `patterns` array: recurring problem-solving patterns (canonical memories the hits belong to, with prior-application `instances`) — when present, prefer turning a pattern's `text` into a task via `add` (using it as the step guide) over re-deriving the solution, then `learn` the outcome and link it `derived_from` the canonical."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
         let v = self
