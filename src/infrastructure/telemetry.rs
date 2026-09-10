@@ -47,6 +47,33 @@ pub struct TelemetryRecord {
     /// [`client`]. `None` for CLI records.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// Correlation id shared by every event of one *composite* operation — a
+    /// `begin` and all its folded sub-ops carry the same id — so a collector can
+    /// reconstruct the whole trace deterministically instead of grouping by
+    /// timestamp proximity. Anonymous and ephemeral: a fresh random id per
+    /// composite, never persisted and never derived from content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    /// 0-based ordinal of this event within its [`trace_id`], giving a stable
+    /// total order that survives same-millisecond timestamp collisions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u32>,
+    /// A single non-identifying outcome COUNT for the event — e.g. how many
+    /// prior memories a folded `recall` matched. A metric like `duration_ms`,
+    /// never content: it says *how much*, never *what*.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n: Option<u64>,
+}
+
+/// Trace context for one event of a composite operation. Attached to folded
+/// sub-op telemetry (e.g. inside `begin`) so the events form a correlated,
+/// ordered trace rather than isolated records. Carries only anonymous metrics —
+/// a random `trace_id`, an ordinal `seq`, and an optional outcome count `n`.
+#[derive(Debug, Clone, Copy)]
+pub struct Span<'a> {
+    pub trace_id: &'a str,
+    pub seq: u32,
+    pub n: Option<u64>,
 }
 
 /// Identity of an MCP client, taken from the `initialize` handshake's
@@ -131,6 +158,31 @@ pub fn build_record<T>(
     result: &anyhow::Result<T>,
     client: Option<&McpClient>,
 ) -> TelemetryRecord {
+    build_record_span(
+        install_id,
+        source,
+        name,
+        flags,
+        duration_ms,
+        result,
+        client,
+        None,
+    )
+}
+
+/// Like [`build_record`] but also stamps the [`Span`] trace context
+/// (`trace_id`, `seq`, `n`) when the event is part of a composite operation.
+#[allow(clippy::too_many_arguments)]
+pub fn build_record_span<T>(
+    install_id: &str,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+    span: Option<Span>,
+) -> TelemetryRecord {
     TelemetryRecord {
         install_id: install_id.to_string(),
         ts: chrono::Utc::now().to_rfc3339(),
@@ -145,6 +197,9 @@ pub fn build_record<T>(
         arch: std::env::consts::ARCH,
         client: client.map(|c| c.name.clone()),
         client_version: client.map(|c| c.version.clone()),
+        trace_id: span.map(|s| s.trace_id.to_string()),
+        seq: span.map(|s| s.seq),
+        n: span.and_then(|s| s.n),
     }
 }
 
@@ -258,6 +313,23 @@ pub fn capture<T>(
     result: &anyhow::Result<T>,
     client: Option<&McpClient>,
 ) {
+    capture_span(cfg, source, name, flags, duration_ms, result, client, None);
+}
+
+/// Like [`capture`] but attaches [`Span`] trace context, so a folded sub-op of a
+/// composite operation records its `trace_id`/`seq`/`n`. Same test-gating as
+/// [`capture`].
+#[allow(clippy::too_many_arguments)]
+pub fn capture_span<T>(
+    cfg: &Config,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+    span: Option<Span>,
+) {
     // The test binary must never emit telemetry: seed/setup helpers would
     // otherwise write bogus records (e.g. "seed") that later flush to the
     // collector and pollute the dashboards. Unit tests exercise the real
@@ -265,9 +337,10 @@ pub fn capture<T>(
     if cfg!(test) {
         return;
     }
-    capture_impl(cfg, source, name, flags, duration_ms, result, client);
+    capture_impl(cfg, source, name, flags, duration_ms, result, client, span);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn capture_impl<T>(
     cfg: &Config,
     source: Source,
@@ -276,6 +349,7 @@ fn capture_impl<T>(
     duration_ms: u64,
     result: &anyhow::Result<T>,
     client: Option<&McpClient>,
+    span: Option<Span>,
 ) {
     if !enabled(cfg) {
         return;
@@ -283,7 +357,7 @@ fn capture_impl<T>(
     let Ok(path) = queue_path() else {
         return;
     };
-    let rec = build_record(
+    let rec = build_record_span(
         &install_id(),
         source,
         name,
@@ -291,6 +365,7 @@ fn capture_impl<T>(
         duration_ms,
         result,
         client,
+        span,
     );
     let _ = append(&path, &rec);
 }
@@ -654,6 +729,50 @@ mod tests {
     }
 
     #[test]
+    fn span_stamps_trace_correlation_fields() {
+        // A folded sub-op of a composite operation carries its trace context:
+        // the shared `trace_id`, an ordinal `seq`, and an optional outcome count
+        // `n`. Plain records (no span) omit all three, so the allowlist for a
+        // normal invocation is unaffected.
+        let _g = lock();
+        let path = temp_queue("span");
+        let span = Span {
+            trace_id: "trace-xyz",
+            seq: 4,
+            n: Some(3),
+        };
+        let rec = build_record_span(
+            "iid-s",
+            Source::Mcp,
+            "mcp recall",
+            &["via_begin".to_string()],
+            13,
+            &Ok(()),
+            None,
+            Some(span),
+        );
+        append(&path, &rec).unwrap();
+
+        // A record with no span omits the trace fields entirely.
+        let plain = build_record("iid-s", Source::Mcp, "mcp next", &[], 1, &Ok(()), None);
+        append(&path, &plain).unwrap();
+
+        let rows = read_lines(&path);
+        assert_eq!(rows[0]["trace_id"], "trace-xyz");
+        assert_eq!(rows[0]["seq"], 4);
+        assert_eq!(rows[0]["n"], 3);
+        let plain_obj = rows[1].as_object().unwrap();
+        assert!(
+            plain_obj.get("trace_id").is_none()
+                && plain_obj.get("seq").is_none()
+                && plain_obj.get("n").is_none(),
+            "records without a span carry no trace fields: {}",
+            rows[1]
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn records_mcp_invocation() {
         let _g = lock();
         let path = temp_queue("mcp");
@@ -787,7 +906,7 @@ mod tests {
             std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
         }
         assert!(!enabled(&cfg));
-        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None);
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
         assert!(
             !path.exists(),
             "no queue file created while disabled by env"
@@ -797,7 +916,7 @@ mod tests {
             std::env::remove_var("SARA_NO_TELEMETRY");
         }
         assert!(enabled(&cfg));
-        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None);
+        capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
         assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
         cfg.telemetry.enabled = false;
