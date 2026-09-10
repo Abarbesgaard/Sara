@@ -13,7 +13,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = guide_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Start a task in one call: create it, set its assignment/why, register an optional acceptance criterion, recall related memories, and bind them to the task as a finding. Returns the task, its criteria, the recall hits, and the next cursor. Use this to BEGIN work — it is `add` + `recall` fused so the first action already yields a task with prior art attached. An acceptance criterion is optional (a warning is returned if omitted); the recall query defaults to the description + tags unless `query` overrides it."
+        description = "Start a task in one call: create it, set its assignment/why, register an optional acceptance criterion, and seed the FIRST step — an explicit, agent-run recall of prior art. Returns the task, its criteria, the seeded recall step, and the next cursor (which points AT that recall step). Use this to BEGIN work. begin does NOT recall for you: it directs you to decide what prior knowledge bears on the task and call `recall` yourself as your first step, so prior art is early yet purposeful. An acceptance criterion is optional (a warning is returned if omitted)."
     )]
     fn begin(&self, Parameters(p): Parameters<BeginParams>) -> Result<String, ErrorData> {
         let tags = p.tags.clone().unwrap_or_default();
@@ -33,8 +33,6 @@ impl SaraServer {
                     p.rationale.as_deref(),
                     p.check.as_deref(),
                     p.verify.as_deref(),
-                    p.query.as_deref(),
-                    p.limit.unwrap_or(5),
                 )
             })
             .map_err(mcp_err)?;

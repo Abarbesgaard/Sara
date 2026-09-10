@@ -109,10 +109,10 @@ pub enum Command {
         /// Override priority (H/M/L)
         #[arg(long)]
         priority: Option<String>,
-        /// Tag (repeatable) — also folded into the recall query
+        /// Tag (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// File this task touches (repeatable) — also folded into the recall query
+        /// File this task touches (repeatable)
         #[arg(long)]
         file: Vec<String>,
         /// The originating request/prompt (defaults to the description)
@@ -127,12 +127,6 @@ pub enum Command {
         /// Shell command that verifies the acceptance criterion
         #[arg(long)]
         verify: Option<String>,
-        /// Override the recall query (defaults to the description + tags)
-        #[arg(long)]
-        query: Option<String>,
-        /// Max memories to recall
-        #[arg(long, default_value_t = 5)]
-        limit: i64,
         /// Emit the full result as JSON (for agents/scripts)
         #[arg(long)]
         json: bool,

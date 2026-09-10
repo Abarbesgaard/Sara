@@ -137,10 +137,10 @@ pub(crate) struct BeginParams {
     pub(crate) project: Option<String>,
     /// Priority: H, M, or L.
     pub(crate) priority: Option<String>,
-    /// Tags — also folded into the recall query.
+    /// Tags.
     #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) tags: Option<Vec<String>>,
-    /// Files this task touches — also folded into the recall query.
+    /// Files this task touches.
     #[serde(default, deserialize_with = "de_opt_string_vec")]
     pub(crate) files: Option<Vec<String>>,
     /// The originating request/prompt (defaults to the description).
@@ -152,10 +152,6 @@ pub(crate) struct BeginParams {
     pub(crate) check: Option<String>,
     /// Shell command that verifies the acceptance criterion.
     pub(crate) verify: Option<String>,
-    /// Override the recall query (defaults to the description + tags).
-    pub(crate) query: Option<String>,
-    /// Max memories to recall (default 5).
-    pub(crate) limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
