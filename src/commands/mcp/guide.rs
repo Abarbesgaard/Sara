@@ -69,21 +69,28 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Mark step N of a task DONE (ticks the box), recording a result and the current git commit. This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" with its 1-based position. Address the item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). Do NOT call `check` to tick — check only adds."
+        description = "Mark a step DONE (ticks the box), recording a result and the current git commit. With neither `n` nor `step_id`, it completes the current step — the first not-done one that `next` returns — so a `next` -> `step_done` round-trip needs no position tracking. Address a specific item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" (with its 1-based `n`, or none to tick the first outstanding one). Do NOT call `check` to tick — check only adds."
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, ErrorData> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp step_done", |conn, _cfg| {
                 if let Some(step_id) = p.step_id {
                     commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
-                } else {
-                    let n = p.n.ok_or_else(|| {
-                        anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
-                    })?;
+                } else if let Some(n) = p.n {
                     commands::guide::step_done_value(
                         conn,
                         &p.id,
                         n,
+                        p.result.as_deref(),
+                        p.kind.as_deref(),
+                    )
+                } else {
+                    // No `n`/`step_id`: default to the execution cursor (first
+                    // not-done item of `kind`) so `next` -> `step_done` round-trips
+                    // without the caller tracking positions.
+                    commands::guide::step_done_current_value(
+                        conn,
+                        &p.id,
                         p.result.as_deref(),
                         p.kind.as_deref(),
                     )
