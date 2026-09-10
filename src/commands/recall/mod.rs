@@ -101,12 +101,14 @@ pub fn recall_value(
             }
         }
         let keyword = keyword_json(&hits);
+        let patterns = detect_patterns(conn, &hits);
         return Ok(json!({
             "query": query,
             "tag": tags,
             "project": projects,
             "files": files,
             "keyword": keyword,
+            "patterns": patterns,
             "associative": [],
             "confidence": "recent",
             "caveat": "Most recent memories (no query or filter given).",
@@ -124,6 +126,7 @@ pub fn recall_value(
         &SemanticOpts::from_cfg(cfg),
     )?;
     let keyword = keyword_json(&hits);
+    let patterns = detect_patterns(conn, &hits);
 
     // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
     // Only meaningful when a free-text query drove the search (tag/file-only = high).
@@ -164,6 +167,7 @@ pub fn recall_value(
         "project": projects,
         "files": files,
         "keyword": keyword,
+        "patterns": patterns,
         "associative": associative,
         "spread": if spread { "explicit" } else if auto_spread { "auto" } else { "off" },
         "confidence": confidence,
@@ -875,6 +879,134 @@ fn collect_hits(
 
 /// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
 /// and query-driven paths.
+/// Minimum number of prior applications (incoming `derived_from` edges) for a
+/// canonical memory to be surfaced as a recurring *problem-solving pattern*.
+/// One application is just a canonical-and-its-copy; a genuine reusable pattern
+/// is one that has recurred, so require at least two.
+const PATTERN_MIN_INSTANCES: usize = 2;
+
+/// The full-body cap for a canonical memory's `text` in the patterns section.
+/// Canonical recipes are the whole point here (the agent turns them into a
+/// guide), so this is generous — it only guards against a pathological body.
+const PATTERN_TEXT_CAP: usize = 4000;
+
+/// Resolve a memory uuid to its `mN` handle.
+fn label_of(item: &Item) -> String {
+    format!(
+        "{}{}",
+        item.kind.chars().next().unwrap_or('m'),
+        item.display_id.unwrap_or(0)
+    )
+}
+
+/// Labels of the memories that derive from `uuid` (its incoming `derived_from`
+/// edges) — i.e. the prior applications of a canonical pattern.
+fn derived_child_labels(conn: &Connection, uuid: &str) -> Vec<String> {
+    db::get_memory_links_to(conn, uuid)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.relation == "derived_from")
+        .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
+        .map(|i| label_of(&i))
+        .collect()
+}
+
+/// Accumulator for one canonical anchor while scanning the hit set.
+struct PatternAcc {
+    item: Item,
+    instances: Vec<String>,
+    matched: Vec<String>,
+}
+
+/// From the resolved hit set, surface the canonical *problem-solving patterns*
+/// the hits belong to.
+///
+/// A pattern is anchored on a **canonical memory** — one with
+/// `>= PATTERN_MIN_INSTANCES` incoming `derived_from` edges — that is either a
+/// direct hit or the parent of a hit. This promotes what is otherwise buried in
+/// each hit's `derived_children`/`derived_from` flags into a dedicated,
+/// actionable section: the canonical's full recipe body plus a `guide` string
+/// telling the agent to turn it into a `sara add` task and link the outcome back
+/// with `derived_from`, so recurring fixes are applied from a proven guide
+/// instead of re-derived. Ranked most-recurrent first.
+fn detect_patterns(conn: &Connection, hits: &[Hit]) -> Vec<serde_json::Value> {
+    use std::collections::BTreeMap;
+    let mut anchors: BTreeMap<String, PatternAcc> = BTreeMap::new();
+
+    for h in hits {
+        let Some(uuid) = h.item_uuid else { continue };
+        // Candidate canonical anchors reachable from this hit:
+        //  - the hit itself, when it is canonical (has derived children); and
+        //  - each canonical this hit is derived from (its `derived_from` parents).
+        let mut candidates: Vec<String> = Vec::new();
+        if !h.derived_children.is_empty() {
+            candidates.push(uuid.to_string());
+        }
+        for l in db::get_memory_links_from(conn, &uuid.to_string()).unwrap_or_default() {
+            if l.relation == "derived_from" {
+                candidates.push(l.to_uuid);
+            }
+        }
+
+        for anchor_uuid in candidates {
+            let entry = anchors.entry(anchor_uuid.clone());
+            let acc = match entry {
+                std::collections::btree_map::Entry::Occupied(o) => o.into_mut(),
+                std::collections::btree_map::Entry::Vacant(v) => {
+                    let Ok(item) = db::get_item_by_uuid(conn, &anchor_uuid) else {
+                        continue;
+                    };
+                    let instances = derived_child_labels(conn, &anchor_uuid);
+                    v.insert(PatternAcc {
+                        item,
+                        instances,
+                        matched: Vec::new(),
+                    })
+                }
+            };
+            if !acc.matched.contains(&h.label) {
+                acc.matched.push(h.label.clone());
+            }
+        }
+    }
+
+    let mut patterns: Vec<(usize, usize, serde_json::Value)> = anchors
+        .into_values()
+        .filter(|a| a.instances.len() >= PATTERN_MIN_INSTANCES)
+        .map(|a| {
+            let label = label_of(&a.item);
+            let occurrences = a.instances.len();
+            let title = a.item.title.trim().to_string();
+            let text: String = a.item.body.chars().take(PATTERN_TEXT_CAP).collect();
+            let strength = db::item_strength(conn, &a.item);
+            let guide = format!(
+                "Recurring pattern: '{label}' has been applied {occurrences} times before \
+                 (see `instances`). The canonical `text` above is the proven approach — \
+                 rather than re-deriving it, create a task with `add` using it as the \
+                 step-by-step guide, then `learn` the outcome and link that memory \
+                 `derived_from {label}` so the pattern keeps strengthening."
+            );
+            let matched = a.matched.clone();
+            let v = json!({
+                "canonical": label,
+                "title": title,
+                "text": text,
+                "strength": strength,
+                "occurrences": occurrences,
+                "instances": a.instances,
+                "matched_hits": matched,
+                "guide": guide,
+            });
+            (occurrences, a.matched.len(), v)
+        })
+        .collect();
+
+    // Most-recurrent first; break ties by how many of THIS recall's hits the
+    // pattern claimed (more matched = more central to the query).
+    patterns.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+    patterns.into_iter().map(|(_, _, v)| v).collect()
+}
+
 fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
     hits.iter()
         .map(|h| {
@@ -2021,6 +2153,109 @@ mod tests {
         assert_eq!(hits[0].linked_tasks.len(), 1);
         assert_eq!(hits[0].linked_tasks[0].0.description, "fix auth");
         assert_eq!(hits[0].linked_tasks[0].1, "explicit");
+    }
+
+    #[test]
+    fn recall_surfaces_recurring_pattern_with_guide() {
+        let conn = db::open_in_memory_for_test();
+
+        // A canonical pattern with two prior applications = a recurring pattern.
+        let canonical = seed_memory(
+            &conn,
+            "CANONICAL NSubstitute dependabot restore fault",
+            "pin NSubstitute back to 5.3.0 in every test csproj and revert TestHelper",
+            &["nsubstitute"],
+            &[],
+        );
+        let app_a = seed_memory(
+            &conn,
+            "repo-a PR restore fault",
+            "applied the NSubstitute pin to repo-a",
+            &["nsubstitute"],
+            &[],
+        );
+        let app_b = seed_memory(
+            &conn,
+            "repo-b PR restore fault",
+            "applied the NSubstitute pin to repo-b",
+            &["nsubstitute"],
+            &[],
+        );
+        for child in [&app_a, &app_b] {
+            db::insert_memory_link(
+                &conn,
+                &child.uuid.to_string(),
+                &canonical.uuid.to_string(),
+                "derived_from",
+                1.0,
+            )
+            .unwrap();
+        }
+
+        let v = recall_value(
+            &conn,
+            &cfg(),
+            "",
+            &["nsubstitute".to_string()],
+            &[],
+            &[],
+            20,
+            false,
+        )
+        .unwrap();
+        let patterns = v["patterns"].as_array().expect("patterns array present");
+        assert_eq!(patterns.len(), 1, "exactly one recurring pattern expected");
+
+        let p = &patterns[0];
+        let canon_label = format!("m{}", canonical.display_id.unwrap_or(0));
+        assert_eq!(p["canonical"], serde_json::json!(canon_label));
+        assert_eq!(p["occurrences"], serde_json::json!(2));
+        // Full canonical recipe is surfaced as `text`, not a truncated preview.
+        assert!(
+            p["text"]
+                .as_str()
+                .unwrap()
+                .contains("pin NSubstitute back to 5.3.0"),
+            "pattern must carry the canonical's full recipe body"
+        );
+        // Instances name both prior applications.
+        let instances: Vec<String> = p["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(instances.len(), 2);
+        // Guide tells the agent to build a task from the pattern.
+        let guide = p["guide"].as_str().unwrap();
+        assert!(guide.contains("add") && guide.contains("derived_from"));
+    }
+
+    #[test]
+    fn recall_reports_no_pattern_for_a_lone_memory() {
+        let conn = db::open_in_memory_for_test();
+        seed_memory(
+            &conn,
+            "one-off finding",
+            "a single unrelated memory",
+            &["solo"],
+            &[],
+        );
+        let v = recall_value(
+            &conn,
+            &cfg(),
+            "",
+            &["solo".to_string()],
+            &[],
+            &[],
+            20,
+            false,
+        )
+        .unwrap();
+        assert!(
+            v["patterns"].as_array().unwrap().is_empty(),
+            "a memory with no derived applications is not a recurring pattern"
+        );
     }
 
     #[test]
