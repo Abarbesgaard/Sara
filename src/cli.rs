@@ -99,7 +99,7 @@ pub enum Command {
         depends_on: Vec<String>,
     },
 
-    /// Start a task: create it and surface related memories in one step
+    /// Start a task: create it and seed a first step to recall prior art
     Begin {
         /// The task description (the request you're about to work on)
         words: Vec<String>,
