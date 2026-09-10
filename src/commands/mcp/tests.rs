@@ -351,6 +351,39 @@ fn modify_value_sets_priority_and_requires_a_field() {
 }
 
 #[test]
+fn step_done_current_ticks_the_first_not_done_step() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    for text in ["step one", "step two"] {
+        server
+            .with_project(None, "check", |conn, _cfg| {
+                commands::guide::check_value(conn, &uuid, text, None, None, None, None)
+            })
+            .expect("check");
+    }
+    // No `n`/`step_id`: completes the execution cursor (step 1).
+    let first = server
+        .with_project(None, "done-current", |conn, _cfg| {
+            commands::guide::step_done_current_value(conn, &uuid, Some("did one"), None)
+        })
+        .expect("step_done_current");
+    assert_eq!(first["index"], 1);
+    assert_eq!(first["done"], true);
+    // Called again, the cursor advances to the next not-done step (step 2).
+    let second = server
+        .with_project(None, "done-current", |conn, _cfg| {
+            commands::guide::step_done_current_value(conn, &uuid, Some("did two"), None)
+        })
+        .expect("step_done_current");
+    assert_eq!(second["index"], 2);
+    // With everything done, it errors rather than silently no-op.
+    let none_left = server.with_project(None, "done-current", |conn, _cfg| {
+        commands::guide::step_done_current_value(conn, &uuid, None, None)
+    });
+    assert!(none_left.is_err(), "no incomplete step should error");
+}
+
+#[test]
 fn step_undone_then_remove_edit_the_checklist() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
