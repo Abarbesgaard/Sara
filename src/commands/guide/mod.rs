@@ -287,6 +287,29 @@ pub fn step_done_value(
     }))
 }
 
+/// Complete the *execution cursor* — the first not-done item of `kind` (default
+/// "step") — without the caller having to know its 1-based `n`. This mirrors what
+/// `next` surfaces, so a `next` → `step_done` round-trip needs no bookkeeping.
+/// Errors only when no incomplete item of that kind remains.
+pub fn step_done_current_value(
+    conn: &Connection,
+    id: &str,
+    result: Option<&str>,
+    kind: Option<&str>,
+) -> Result<serde_json::Value> {
+    let task = db::resolve_task(conn, id)?;
+    let kind_str = kind_arg(kind);
+    let steps = db::get_steps(conn, &task.uuid, kind_str)?;
+    let n = steps
+        .iter()
+        .position(|s| !s.done)
+        .map(|i| i + 1)
+        .ok_or_else(|| {
+            anyhow::anyhow!("no incomplete {kind_str} remains on task {id}")
+        })?;
+    step_done_value(conn, id, n, result, kind)
+}
+
 /// Tick a checklist item addressed by its row id (the `step_id` that `check`
 /// returns), resolving its task/kind/position first. Lets MCP callers round-trip
 /// the `step_id` they were handed rather than having to know the 1-based `n`.
