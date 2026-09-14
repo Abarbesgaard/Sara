@@ -664,6 +664,54 @@ fn check_params_accept_task_alias_as_number() {
 }
 
 #[test]
+fn begin_params_accept_comma_separated_tags_string() {
+    // Models frequently emit `tags` as a single comma-separated string instead
+    // of a JSON array. serde used to reject the whole call with
+    // "invalid type: string …, expected a sequence", failing `begin` on the
+    // first try. The tolerant deserializer must accept both forms.
+    use super::params::BeginParams;
+    let from_string: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "restore a red PR",
+        "tags": "ci,build,restitutio,pr-1384",
+    }))
+    .expect("comma-separated tags string must deserialize into BeginParams");
+    assert_eq!(
+        from_string.tags,
+        Some(vec![
+            "ci".to_string(),
+            "build".to_string(),
+            "restitutio".to_string(),
+            "pr-1384".to_string(),
+        ]),
+        "the comma string is split, trimmed, into a tag vec"
+    );
+    // Whitespace after commas is trimmed and empty segments dropped.
+    let spaced: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": "a, b ,,c",
+    }))
+    .expect("spaced/empty segments tolerated");
+    assert_eq!(
+        spaced.tags,
+        Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
+    );
+    // The canonical array form still works unchanged.
+    let from_array: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": ["ci", "build"],
+    }))
+    .expect("array tags still deserialize");
+    assert_eq!(
+        from_array.tags,
+        Some(vec!["ci".to_string(), "build".to_string()])
+    );
+    // Omitted entirely -> None (default), no error.
+    let none: BeginParams = serde_json::from_value(serde_json::json!({ "description": "d" }))
+        .expect("absent tags default to None");
+    assert_eq!(none.tags, None);
+}
+
+#[test]
 fn check_value_returns_the_new_items_position() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
