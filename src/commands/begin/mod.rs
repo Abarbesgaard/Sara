@@ -85,15 +85,21 @@ pub fn begin_value(
     //    allowed to proceed, but we warn so it is a deliberate choice, not a
     //    silent gap.
     let acceptance = match check.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(text) => Some(commands::guide::check_value(
-            conn,
-            &id,
-            text,
-            None,
-            Some("acceptance"),
-            Some("agent"),
-            verify,
-        )?),
+        Some(text) => {
+            let v = commands::guide::check_value(
+                conn,
+                &id,
+                text,
+                None,
+                Some("acceptance"),
+                Some("agent"),
+                verify,
+            )?;
+            if let Some(w) = v["warning"].as_str() {
+                warnings.push(w.to_string());
+            }
+            Some(v)
+        }
         None => {
             warnings.push(
                 "no acceptance criterion — define done with \

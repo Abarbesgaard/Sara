@@ -664,6 +664,54 @@ fn check_params_accept_task_alias_as_number() {
 }
 
 #[test]
+fn begin_params_accept_comma_separated_tags_string() {
+    // Models frequently emit `tags` as a single comma-separated string instead
+    // of a JSON array. serde used to reject the whole call with
+    // "invalid type: string …, expected a sequence", failing `begin` on the
+    // first try. The tolerant deserializer must accept both forms.
+    use super::params::BeginParams;
+    let from_string: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "restore a red PR",
+        "tags": "ci,build,restitutio,pr-1384",
+    }))
+    .expect("comma-separated tags string must deserialize into BeginParams");
+    assert_eq!(
+        from_string.tags,
+        Some(vec![
+            "ci".to_string(),
+            "build".to_string(),
+            "restitutio".to_string(),
+            "pr-1384".to_string(),
+        ]),
+        "the comma string is split, trimmed, into a tag vec"
+    );
+    // Whitespace after commas is trimmed and empty segments dropped.
+    let spaced: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": "a, b ,,c",
+    }))
+    .expect("spaced/empty segments tolerated");
+    assert_eq!(
+        spaced.tags,
+        Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
+    );
+    // The canonical array form still works unchanged.
+    let from_array: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": ["ci", "build"],
+    }))
+    .expect("array tags still deserialize");
+    assert_eq!(
+        from_array.tags,
+        Some(vec!["ci".to_string(), "build".to_string()])
+    );
+    // Omitted entirely -> None (default), no error.
+    let none: BeginParams = serde_json::from_value(serde_json::json!({ "description": "d" }))
+        .expect("absent tags default to None");
+    assert_eq!(none.tags, None);
+}
+
+#[test]
 fn check_value_returns_the_new_items_position() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
@@ -683,6 +731,47 @@ fn check_value_returns_the_new_items_position() {
         Some(2),
         "second step is position 2"
     );
+}
+
+#[test]
+fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    // An acceptance criterion with no verify command is unprovable — warn.
+    let acc = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "done", None, Some("acceptance"), None, None)
+        })
+        .expect("check");
+    assert!(
+        acc["warning"]
+            .as_str()
+            .unwrap_or("")
+            .contains("no verify command"),
+        "acceptance without verify warns: {acc}"
+    );
+    // With a verify command, no warning.
+    let acc_ok = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(
+                conn,
+                &uuid,
+                "done",
+                None,
+                Some("acceptance"),
+                None,
+                Some("cargo test"),
+            )
+        })
+        .expect("check");
+    assert!(acc_ok["warning"].is_null(), "verify present, no warning");
+    // A plain step never carries this warning.
+    let step = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "a", None, None, None, None)
+        })
+        .expect("check");
+    assert!(step["warning"].is_null(), "plain step never warns");
 }
 
 #[test]

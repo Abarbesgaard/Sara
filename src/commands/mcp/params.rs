@@ -63,6 +63,72 @@ where
     }
 }
 
+/// Accept a list of strings given as either a JSON array (`["a","b"]`) or a
+/// single delimited string (`"a,b"` / `"a, b"`) — models frequently emit the
+/// latter for `tags`/`files`-style fields, which serde would otherwise reject
+/// with `invalid type: string …, expected a sequence`, failing the whole call.
+/// The advertised JSON schema stays `array<string>` (the canonical form); this
+/// only widens what we *accept*. Splits on commas, trims, and drops empties.
+fn de_opt_string_list<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct V;
+    impl<'de> serde::de::Visitor<'de> for V {
+        type Value = Option<Vec<String>>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an array of strings or a comma-separated string")
+        }
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+        fn visit_some<D2>(self, d: D2) -> Result<Self::Value, D2::Error>
+        where
+            D2: serde::Deserializer<'de>,
+        {
+            d.deserialize_any(V)
+        }
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            let items: Vec<String> = v
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            Ok(Some(items))
+        }
+        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            self.visit_str(&v)
+        }
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut out = Vec::new();
+            while let Some(s) = seq.next_element::<String>()? {
+                out.push(s);
+            }
+            Ok(Some(out))
+        }
+    }
+    d.deserialize_option(V)
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ListParams {
     /// Absolute path of the target git repo/project. Omit to use the launch dir.
@@ -88,16 +154,21 @@ pub(crate) struct AddParams {
     pub(crate) project: Option<String>,
     /// Priority: H, M, or L.
     pub(crate) priority: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tags: Option<Vec<String>>,
     /// Recurrence interval: daily, weekly, 2w, 3d, 1m, …
     pub(crate) recur: Option<String>,
     /// Notes to attach at creation.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) annotations: Option<Vec<String>>,
     /// URLs to link at creation.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) links: Option<Vec<String>>,
     /// Checklist steps to add at creation.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) checks: Option<Vec<String>>,
     /// UUID prefixes of tasks this new task depends on.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) depends_on: Option<Vec<String>>,
 }
 
@@ -110,8 +181,10 @@ pub(crate) struct BeginParams {
     /// Priority: H, M, or L.
     pub(crate) priority: Option<String>,
     /// Tags — also folded into the recall query.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tags: Option<Vec<String>>,
     /// Files this task touches — also folded into the recall query.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) files: Option<Vec<String>>,
     /// The originating request/prompt (defaults to the description).
     pub(crate) assignment: Option<String>,
@@ -173,11 +246,14 @@ pub(crate) struct RecallParams {
     pub(crate) query: String,
     /// Exact tag match against indexed memory tags (a memory must carry every
     /// tag given to match).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tag: Option<Vec<String>>,
     /// Exact project match against indexed memory project references (a
     /// memory matches if it references any of the given projects).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) project: Option<Vec<String>>,
     /// Filter by associated file path (exact match; trailing '/' = prefix/directory match).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) files: Option<Vec<String>>,
     /// Max results (default 20).
     pub(crate) limit: Option<i64>,
@@ -272,6 +348,7 @@ pub(crate) struct ModifyParams {
     /// Clear the due date.
     pub(crate) clear_due: Option<bool>,
     /// Tags — REPLACES the whole tag set (not additive).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tags: Option<Vec<String>>,
     /// Clear all tags.
     pub(crate) clear_tags: Option<bool>,
@@ -364,12 +441,16 @@ pub(crate) struct LearnParams {
     /// The memory text (a concise distilled paragraph — one key insight).
     pub(crate) text: String,
     /// Tags for lookup (repeatable). Prefer existing tags — check `sara tags` first.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tags: Option<Vec<String>>,
     /// Projects this memory references. Defaults to the current project.
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) projects: Option<Vec<String>>,
     /// UUID prefixes of tasks this memory was learned from/about (repeatable; source='explicit').
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tasks: Option<Vec<String>>,
     /// Absolute file paths to associate with this memory (repeatable).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) files: Option<Vec<String>>,
     /// Skip size and secret-pattern guardrails (use only when content is safe).
     pub(crate) force: Option<bool>,
@@ -401,8 +482,10 @@ pub(crate) struct RelearnParams {
     /// New body text (omit to only change tags/files).
     pub(crate) text: Option<String>,
     /// Replacement tag set (omit to keep existing tags).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) tags: Option<Vec<String>>,
     /// Replacement file associations, absolute paths (omit to keep existing).
+    #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) files: Option<Vec<String>>,
     /// Skip size and secret-pattern guardrails (use only when content is safe).
     pub(crate) force: Option<bool>,
