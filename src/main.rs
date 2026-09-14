@@ -379,6 +379,9 @@ fn run() -> Result<()> {
                     v["kind"].as_str().unwrap_or("step"),
                     v["task"].as_i64().unwrap_or(0)
                 );
+                if let Some(w) = v["warning"].as_str() {
+                    eprintln!("warning: {w}");
+                }
             }
 
             Command::Next { id, json } => {
