@@ -686,6 +686,47 @@ fn check_value_returns_the_new_items_position() {
 }
 
 #[test]
+fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    // An acceptance criterion with no verify command is unprovable — warn.
+    let acc = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "done", None, Some("acceptance"), None, None)
+        })
+        .expect("check");
+    assert!(
+        acc["warning"]
+            .as_str()
+            .unwrap_or("")
+            .contains("no verify command"),
+        "acceptance without verify warns: {acc}"
+    );
+    // With a verify command, no warning.
+    let acc_ok = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(
+                conn,
+                &uuid,
+                "done",
+                None,
+                Some("acceptance"),
+                None,
+                Some("cargo test"),
+            )
+        })
+        .expect("check");
+    assert!(acc_ok["warning"].is_null(), "verify present, no warning");
+    // A plain step never carries this warning.
+    let step = server
+        .with_project(None, "check", |conn, _cfg| {
+            commands::guide::check_value(conn, &uuid, "a", None, None, None, None)
+        })
+        .expect("check");
+    assert!(step["warning"].is_null(), "plain step never warns");
+}
+
+#[test]
 fn step_done_by_step_id_ticks_the_right_item() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
