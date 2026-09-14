@@ -770,6 +770,40 @@ fn begin_params_accept_scalar_tags_and_files() {
 }
 
 #[test]
+fn begin_params_split_comma_separated_tags_string() {
+    // Models frequently emit `tags` as one comma-separated string. It must be
+    // SPLIT into distinct tags (not kept as a single comma-laden tag), matching
+    // the JSON-array form, and never hard-fail deserialization.
+    let p: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "restore a red PR",
+        "tags": "ci,build,restitutio,pr-1384",
+    }))
+    .expect("comma-separated tags string must deserialize into BeginParams");
+    assert_eq!(
+        p.tags.as_deref(),
+        Some(
+            &[
+                "ci".to_string(),
+                "build".to_string(),
+                "restitutio".to_string(),
+                "pr-1384".to_string(),
+            ][..]
+        ),
+        "the comma string is split into distinct tags"
+    );
+    // Whitespace after commas trimmed and empty segments dropped.
+    let spaced: BeginParams = serde_json::from_value(serde_json::json!({
+        "description": "d",
+        "tags": "a, b ,,c",
+    }))
+    .expect("spaced/empty segments tolerated");
+    assert_eq!(
+        spaced.tags.as_deref(),
+        Some(&["a".to_string(), "b".to_string(), "c".to_string()][..])
+    );
+}
+
+#[test]
 fn begin_params_still_accept_array_tags_and_files() {
     let p: BeginParams = serde_json::from_value(serde_json::json!({
         "description": "d",
