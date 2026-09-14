@@ -947,47 +947,88 @@ fn associative_guide(conn: &Connection, related: &[Related]) -> Vec<serde_json::
         .collect()
 }
 
-/// Render the keyword hits as JSON. Only the **top hit** carries its full,
-/// untruncated `text` — the rest come back as compact guide entries (label,
-/// ≤160-char `preview`, strength, and cluster handles) so the model gets one
-/// memory in full plus a map of the cluster it belongs to, and can drill into
-/// any sibling by re-calling `recall` with that memory's `mNN` label. This keeps
-/// the MCP payload lean instead of dumping every matched memory in full.
+/// Render the keyword hits as JSON. Only the **top hit** comes back in full —
+/// its complete metadata envelope plus the untruncated `text`. Every other hit
+/// collapses to a lean guide entry (`label`, ≤160-char `preview`, `strength`,
+/// and — only when they carry signal — cluster/canonical/derivation and
+/// linked-task handles), with none of the null/empty scaffolding fields. The
+/// model gets one memory in full plus a compact map of the cluster it belongs
+/// to, and can drill into any sibling by re-calling `recall` with that memory's
+/// `mNN` label. This keeps the MCP payload lean instead of dumping every matched
+/// memory's full envelope.
 fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
     hits.iter()
         .enumerate()
         .map(|(i, h)| {
-            let mut o = json!({
-                "ref_kind": h.ref_kind,
-                "label": h.label,
-                "description": h.description,
-                "preview": h.snippet,
-                "strength": h.strength,
-                "exact_match": h.exact_match,
-                "loose": h.loose,
-                "semantic": h.semantic,
-                "cosine": h.cosine,
-                "modified": h.modified.map(|m| m.to_rfc3339()),
-                "files": h.files,
-                "superseded_by": h.superseded_by,
-                "provisional": h.provisional,
-                "canonical": !h.derived_children.is_empty(),
-                "derived_count": h.derived_children.len(),
-                "derived_children": h.derived_children,
-                "derived_from": h.derived_from_labels,
-                "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
-                    "id": t.id.unwrap_or(0),
-                    "description": t.description,
-                    "source": src,
-                })).collect::<Vec<_>>(),
-            });
-            // Only the top hit is returned in full; the rest stay guide-only.
+            // Only the top hit is returned in full detail (all metadata + body);
+            // every other hit collapses to a lean guide entry so the payload
+            // stays small.
             if i == 0 {
-                o["text"] = json!(h.body);
+                json!({
+                    "ref_kind": h.ref_kind,
+                    "label": h.label,
+                    "description": h.description,
+                    "preview": h.snippet,
+                    "text": h.body,
+                    "strength": h.strength,
+                    "exact_match": h.exact_match,
+                    "loose": h.loose,
+                    "semantic": h.semantic,
+                    "cosine": h.cosine,
+                    "modified": h.modified.map(|m| m.to_rfc3339()),
+                    "files": h.files,
+                    "superseded_by": h.superseded_by,
+                    "provisional": h.provisional,
+                    "canonical": !h.derived_children.is_empty(),
+                    "derived_count": h.derived_children.len(),
+                    "derived_children": h.derived_children,
+                    "derived_from": h.derived_from_labels,
+                    "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
+                        "id": t.id.unwrap_or(0),
+                        "description": t.description,
+                        "source": src,
+                    })).collect::<Vec<_>>(),
+                })
+            } else {
+                keyword_guide(h)
             }
-            o
         })
         .collect()
+}
+
+/// Compact guide rendering of a non-top keyword hit: enough to identify the
+/// memory, gauge its weight, and know where it sits in its cluster so the model
+/// can drill into it with `recall("mNN")` — but no full body and none of the
+/// null/empty scaffolding fields that bloat the payload. Cluster/canonical,
+/// derivation, and linked-task pointers are only emitted when they carry signal.
+fn keyword_guide(h: &Hit) -> serde_json::Value {
+    let mut o = json!({
+        "label": h.label,
+        "preview": h.snippet,
+        "strength": h.strength,
+    });
+    let map = o.as_object_mut().expect("json object");
+    if !h.derived_children.is_empty() {
+        map.insert("canonical".into(), json!(true));
+    }
+    if !h.derived_from_labels.is_empty() {
+        map.insert("derived_from".into(), json!(h.derived_from_labels));
+    }
+    if !h.superseded_by.is_empty() {
+        map.insert("superseded_by".into(), json!(h.superseded_by));
+    }
+    if !h.linked_tasks.is_empty() {
+        map.insert(
+            "linked_tasks".into(),
+            json!(
+                h.linked_tasks
+                    .iter()
+                    .map(|(t, _src)| t.id.unwrap_or(0))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    o
 }
 
 /// Recent memories for a bare `sara recall` (no query, no filters): newest
@@ -1315,6 +1356,26 @@ mod tests {
                 "guide entries still carry a preview and label"
             );
             assert!(h["label"].as_str().is_some());
+            // Guide entries must be LEAN: none of the bulky/null scaffolding
+            // fields the top hit carries. Only signal-bearing keys survive.
+            for noise in [
+                "description",
+                "ref_kind",
+                "exact_match",
+                "loose",
+                "semantic",
+                "cosine",
+                "modified",
+                "files",
+                "provisional",
+                "derived_count",
+                "derived_children",
+            ] {
+                assert!(
+                    h.get(noise).is_none(),
+                    "guide entry must not carry `{noise}`: {h}"
+                );
+            }
         }
     }
 
