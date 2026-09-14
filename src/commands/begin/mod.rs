@@ -193,6 +193,9 @@ pub fn begin_value(
                 t.elapsed().as_millis() as u64,
                 None,
             );
+            if let Some(w) = c["warning"].as_str() {
+                warnings.push(w.to_string());
+            }
             Some(c)
         }
         None => {
