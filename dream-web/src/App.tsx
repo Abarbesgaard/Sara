@@ -3,6 +3,7 @@ import { fetchGraph, type Graph, type GraphNode } from "./api.ts";
 import { Graph3D } from "./components/Graph3D.tsx";
 import { Filters } from "./components/Filters.tsx";
 import { SidePanel } from "./components/SidePanel.tsx";
+import { usePulses } from "./usePulses.ts";
 
 export function App() {
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -13,6 +14,15 @@ export function App() {
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [search, setSearch] = useState("");
   const [focusLabel, setFocusLabel] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+
+  // Live recall feed — pulse nodes as other processes recall them.
+  const { pulses, lastFired } = usePulses(graph != null);
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setLive(Date.now() - lastFired.current < 2500), 500);
+    return () => clearInterval(id);
+  }, [lastFired]);
 
   useEffect(() => {
     fetchGraph().then(setGraph).catch((e) => setError(String(e)));
@@ -97,6 +107,9 @@ export function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </form>
+        <span className={`live ${live ? "on" : ""}`} title="pulses as agents recall memories">
+          <span className="live-dot" /> live
+        </span>
         <span className="db" title={graph.dbPath}>
           read-only
         </span>
@@ -104,6 +117,8 @@ export function App() {
 
       <div className="main">
         <Filters
+          open={filtersOpen}
+          onToggle={() => setFiltersOpen((o) => !o)}
           tags={graph.tags}
           projects={graph.projects}
           selectedTags={selectedTags}
@@ -125,6 +140,7 @@ export function App() {
             filtersActive={filtersActive}
             onSelect={setSelected}
             focusLabel={focusLabel}
+            pulses={pulses}
           />
         </main>
 

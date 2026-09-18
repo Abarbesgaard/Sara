@@ -29,6 +29,16 @@ export interface Graph {
   projects: string[];
 }
 
+export interface Pulse {
+  label: string;
+  at: string;
+}
+
+export interface PulseFeed {
+  now: string;
+  pulses: Pulse[];
+}
+
 export interface MemoryDetail {
   label: string;
   title: string;

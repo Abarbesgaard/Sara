@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { resolveDbPath } from "./dbPath.ts";
 import { openReadOnly } from "./db.ts";
 import type { DatabaseSync } from "node:sqlite";
-import { buildGraph, getMemory } from "./graph.ts";
+import { buildGraph, getMemory, recentRecalls } from "./graph.ts";
 
 const HOST = "127.0.0.1"; // localhost-only: no data ever leaves the machine.
 const PORT = Number(process.env.PORT ?? 7777);
@@ -47,6 +47,17 @@ app.get("/api/memory/:label", (req, res) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, dbPath, readOnly: true });
+});
+
+// Live recall feed: which memories another process recalled since the last
+// poll. Purely a read of events already written — records nothing itself.
+app.get("/api/pulses", (req, res) => {
+  try {
+    const since = typeof req.query.since === "string" ? req.query.since : null;
+    res.json(recentRecalls(db, since));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
 });
 
 // Serve the built frontend in production (`npm start`). In dev, Vite serves the

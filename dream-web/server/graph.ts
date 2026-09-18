@@ -44,6 +44,16 @@ export interface MemoryDetail {
   modifiedAt: string;
 }
 
+export interface Pulse {
+  label: string;
+  at: string;
+}
+
+export interface PulseFeed {
+  now: string; // DB clock — send back as `since` on the next poll
+  pulses: Pulse[];
+}
+
 // Tags on more than this many memories are treated as hubs: too generic to link
 // everyone together (it would collapse the graph into a hairball), so they are
 // skipped for shared-tag adjacency. They remain visible as node tags and stay
@@ -107,8 +117,8 @@ export function buildGraph(db: DatabaseSync, dbPath: string): Graph {
     .prepare(
       `SELECT ref_uuid,
               COUNT(*) AS all_time,
-              SUM(CASE WHEN at >= datetime('now','-7 days')  THEN 1 ELSE 0 END) AS d7,
-              SUM(CASE WHEN at >= datetime('now','-30 days') THEN 1 ELSE 0 END) AS d30
+              SUM(CASE WHEN datetime(at) >= datetime('now','-7 days')  THEN 1 ELSE 0 END) AS d7,
+              SUM(CASE WHEN datetime(at) >= datetime('now','-30 days') THEN 1 ELSE 0 END) AS d30
          FROM events
         WHERE action = 'memory_recalled' AND ref_uuid IS NOT NULL
         GROUP BY ref_uuid`,
@@ -273,5 +283,40 @@ export function getMemory(db: DatabaseSync, label: string): MemoryDetail | null 
     files,
     createdAt: String(row.created ?? ""),
     modifiedAt: String(row.modified ?? ""),
+  };
+}
+
+/** The live "firing" feed: memories recalled since `since` (a DB-clock string
+ * from a prior poll). Read-only — this only reads the events another process
+ * wrote. `now` is the DB clock to echo back on the next poll so the window
+ * stays aligned to the database, not the browser. Only visible memories fire.
+ *
+ * events.at is ISO-8601 with an offset; datetime() normalizes both sides to
+ * UTC 'YYYY-MM-DD HH:MM:SS' so the comparison is sound. */
+export function recentRecalls(db: DatabaseSync, since: string | null): PulseFeed {
+  const now = String(
+    (db.prepare(`SELECT strftime('%Y-%m-%d %H:%M:%f','now') AS now`).get() as Row).now,
+  );
+  // Only accept a well-formed 'YYYY-MM-DD HH:MM:SS(.fff)' cursor; otherwise fall
+  // back to a short default window. (The value is parameterized regardless.)
+  const cursor =
+    since && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(since) ? since : null;
+  const rows = db
+    .prepare(
+      `SELECT it.display_id AS did, MAX(e.at) AS at
+         FROM events e
+         JOIN items it ON it.uuid = e.ref_uuid
+        WHERE e.action = 'memory_recalled'
+          AND e.ref_uuid IS NOT NULL
+          AND it.kind = 'memory'
+          AND it.status IN (${VISIBLE_STATUSES.map(() => "?").join(",")})
+          AND strftime('%Y-%m-%d %H:%M:%f', e.at)
+              > COALESCE(?, strftime('%Y-%m-%d %H:%M:%f','now','-15 seconds'))
+        GROUP BY it.display_id`,
+    )
+    .all(...VISIBLE_STATUSES, cursor) as Row[];
+  return {
+    now,
+    pulses: rows.map((r) => ({ label: labelOf(r.did as number | null), at: String(r.at) })),
   };
 }

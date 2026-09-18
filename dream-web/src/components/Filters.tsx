@@ -1,6 +1,8 @@
 import { projectColor } from "../color.ts";
 
 interface Props {
+  open: boolean;
+  onToggle: () => void;
   tags: string[];
   projects: string[];
   selectedTags: Set<string>;
@@ -12,6 +14,8 @@ interface Props {
 }
 
 export function Filters({
+  open,
+  onToggle,
   tags,
   projects,
   selectedTags,
@@ -22,15 +26,32 @@ export function Filters({
   counts,
 }: Props) {
   const active = selectedTags.size > 0 || selectedProjects.size > 0;
+
+  if (!open) {
+    return (
+      <div className="filters collapsed">
+        <button className="fold" onClick={onToggle} title="Show filters" aria-label="Show filters">
+          ☰
+        </button>
+        {active && <span className="fold-badge" title="filters active" />}
+      </div>
+    );
+  }
+
   return (
     <div className="filters">
       <div className="filters-head">
         <h2>Filters</h2>
-        {active && (
-          <button className="clear" onClick={onClear}>
-            clear
+        <div className="filters-head-actions">
+          {active && (
+            <button className="clear" onClick={onClear}>
+              clear
+            </button>
+          )}
+          <button className="fold" onClick={onToggle} title="Hide filters" aria-label="Hide filters">
+            ⏴
           </button>
-        )}
+        </div>
       </div>
       <p className="counts">
         {active ? `${counts.shown} / ${counts.nodes}` : counts.nodes} memories · {counts.edges} links
