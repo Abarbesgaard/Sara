@@ -39,6 +39,19 @@ export interface PulseFeed {
   pulses: Pulse[];
 }
 
+export type ActivityAction = "recall" | "surface" | "learn" | "link" | "task";
+
+export interface ActivityPulse {
+  label: string;
+  action: ActivityAction;
+  at: string;
+}
+
+export interface ActivityFeed {
+  now: string;
+  pulses: ActivityPulse[];
+}
+
 export interface MemoryDetail {
   label: string;
   title: string;

@@ -54,6 +54,26 @@ export interface PulseFeed {
   pulses: Pulse[];
 }
 
+// A single "neural event": a memory node firing because some MCP call touched
+// it. `action` drives the colour/animation in the viewer.
+//   recall  — memory_recalled           (white)
+//   surface — memory_surfaced           (white, softer)
+//   learn   — a memory was just created (green — encoded)
+//   link    — a bond was just formed    (cyan — synapse)
+//   task    — a linked task changed     (amber — intention/motor)
+export type ActivityAction = "recall" | "surface" | "learn" | "link" | "task";
+
+export interface ActivityPulse {
+  label: string;
+  action: ActivityAction;
+  at: string;
+}
+
+export interface ActivityFeed {
+  now: string;
+  pulses: ActivityPulse[];
+}
+
 // Tags on more than this many memories are treated as hubs: too generic to link
 // everyone together (it would collapse the graph into a hairball), so they are
 // skipped for shared-tag adjacency. They remain visible as node tags and stay
@@ -319,4 +339,100 @@ export function recentRecalls(db: DatabaseSync, since: string | null): PulseFeed
     now,
     pulses: rows.map((r) => ({ label: labelOf(r.did as number | null), at: String(r.at) })),
   };
+}
+
+/** The unified "brain activity" feed. Read-only: it only reads streams other
+ * processes (the sara MCP/CLI) already wrote, and reports which visible memory
+ * nodes fired since `since`, each tagged with the kind of MCP action that lit
+ * it. No writer instrumentation is required — it derives task/link/learn events
+ * straight from the existing tables:
+ *   • recall / surface ← events (the recall log)
+ *   • learn            ← items.created           (a memory was just encoded)
+ *   • link             ← memory_links.created    (a bond was just formed)
+ *   • task             ← task_history.changed_at (a linked task advanced)
+ * plus any forward-looking synthetic events (memory_learned / memory_linked /
+ * task_touched) an emitter — or the demo driver — writes into the event log.
+ *
+ * All timestamps are normalized with strftime so ISO-with-offset (events) and
+ * bare-UTC (items/links/history) columns compare soundly against the DB clock. */
+export function recentActivity(db: DatabaseSync, since: string | null): ActivityFeed {
+  const now = String(
+    (db.prepare(`SELECT strftime('%Y-%m-%d %H:%M:%f','now') AS now`).get() as Row).now,
+  );
+  const cursor =
+    since && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(since) ? since : null;
+  const WIN = `COALESCE(?, strftime('%Y-%m-%d %H:%M:%f','now','-15 seconds'))`;
+  const vis = VISIBLE_STATUSES.map(() => "?").join(",");
+
+  const pulses: ActivityPulse[] = [];
+  const push = (did: unknown, action: ActivityAction, at: unknown) =>
+    pulses.push({ label: labelOf(did as number | null), action, at: String(at) });
+
+  // 1. Event-log actions: real recalls + any synthetic/forward-looking events.
+  const EV: Record<string, ActivityAction> = {
+    memory_recalled: "recall",
+    memory_surfaced: "surface",
+    memory_learned: "learn",
+    memory_linked: "link",
+    task_touched: "task",
+  };
+  const evActions = Object.keys(EV);
+  for (const r of db
+    .prepare(
+      `SELECT it.display_id AS did, e.action AS action, e.at AS at
+         FROM events e JOIN items it ON it.uuid = e.ref_uuid
+        WHERE e.action IN (${evActions.map(() => "?").join(",")})
+          AND e.ref_uuid IS NOT NULL
+          AND it.kind = 'memory' AND it.status IN (${vis})
+          AND strftime('%Y-%m-%d %H:%M:%f', e.at) > ${WIN}`,
+    )
+    .all(...evActions, ...VISIBLE_STATUSES, cursor) as Row[]) {
+    push(r.did, EV[String(r.action)] ?? "recall", r.at);
+  }
+
+  // 2. learn — a memory node was just created.
+  for (const r of db
+    .prepare(
+      `SELECT display_id AS did, created AS at
+         FROM items
+        WHERE kind = 'memory' AND status IN (${vis})
+          AND strftime('%Y-%m-%d %H:%M:%f', created) > ${WIN}`,
+    )
+    .all(...VISIBLE_STATUSES, cursor) as Row[]) {
+    push(r.did, "learn", r.at);
+  }
+
+  // 3. link — a bond just formed between two visible memories; both ends fire.
+  for (const r of db
+    .prepare(
+      `SELECT a.display_id AS da, b.display_id AS db, ml.created AS at
+         FROM memory_links ml
+         JOIN items a ON a.uuid = ml.from_uuid
+         JOIN items b ON b.uuid = ml.to_uuid
+        WHERE a.kind = 'memory' AND b.kind = 'memory'
+          AND a.status IN (${vis}) AND b.status IN (${vis})
+          AND strftime('%Y-%m-%d %H:%M:%f', ml.created) > ${WIN}`,
+    )
+    .all(...VISIBLE_STATUSES, ...VISIBLE_STATUSES, cursor) as Row[]) {
+    push(r.da, "link", r.at);
+    push(r.db, "link", r.at);
+  }
+
+  // 4. task — a task advanced; the memories linked to it fire (intention/motor).
+  for (const r of db
+    .prepare(
+      `SELECT it.display_id AS did, MAX(th.changed_at) AS at
+         FROM task_history th
+         JOIN item_task_links l ON l.task_uuid = th.task_uuid
+         JOIN items it ON it.uuid = l.item_uuid
+        WHERE it.kind = 'memory' AND it.status IN (${vis})
+          AND th.field IN ('status','checklist','annotation','file','link','rationale')
+          AND strftime('%Y-%m-%d %H:%M:%f', th.changed_at) > ${WIN}
+        GROUP BY it.display_id`,
+    )
+    .all(...VISIBLE_STATUSES, cursor) as Row[]) {
+    push(r.did, "task", r.at);
+  }
+
+  return { now, pulses };
 }

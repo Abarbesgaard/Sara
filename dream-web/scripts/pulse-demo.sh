@@ -41,10 +41,17 @@ trap cleanup EXIT INT TERM
 # Escape single quotes for safe inlining into SQL.
 esc() { printf "%s" "$1" | sed "s/'/''/g"; }
 
+# fire <uuid> [event_action]
+#   event_action defaults to memory_recalled. The viewer's /api/activity feed
+#   maps event names → brain actions/colours:
+#     memory_recalled → recall (white)   memory_learned → learn (green)
+#     memory_surfaced → surface (blue)   memory_linked  → link  (cyan)
+#     task_touched    → task   (amber)
 fire() {
   local uuid; uuid="$(esc "$1")"
+  local action="${2:-memory_recalled}"
   sq "INSERT INTO events(action, ref_uuid, kind, tags_json, project, at)
-      VALUES('memory_recalled', '$uuid', 'memory', '[\"demo\"]', '$TAG',
+      VALUES('$action', '$uuid', 'memory', '[\"demo\"]', '$TAG',
              strftime('%Y-%m-%dT%H:%M:%f','now') || '+00:00');" >/dev/null
 }
 
@@ -61,29 +68,35 @@ neighbours() {
       ORDER BY random() LIMIT 2;"
 }
 
-echo "dream-web pulse demo → firing recalls into $DB"
+echo "dream-web pulse demo → firing brain activity into $DB"
 echo "  duration ${DURATION}s · cascade every ~${INTERVAL}s · viewer: http://127.0.0.1:5173"
+echo "  actions: recall·learn·surface·task on the seed, link on its neighbours"
 echo "  (Ctrl-C to stop early; demo events auto-clean on exit)"
 echo ""
 
+# Seed actions cycle so you see every colour over a run.
+ACTIONS=(memory_recalled memory_learned memory_surfaced task_touched memory_recalled)
 END=$(( $(date +%s) + DURATION ))
 count=0
+i=0
 while [[ $(date +%s) -lt $END ]]; do
   seed="$(sq "SELECT uuid FROM items
               WHERE kind='memory' AND status IN ('active','provisional')
               ORDER BY random() LIMIT 1;")"
   [[ -z "$seed" ]] && break
 
-  fire "$seed"
+  action="${ACTIONS[$(( i % ${#ACTIONS[@]} ))]}"
+  i=$((i + 1))
+  fire "$seed" "$action"
   count=$((count + 1))
   label="$(sq "SELECT 'm' || COALESCE(display_id,0) FROM items WHERE uuid='$(esc "$seed")';")"
-  echo "  [$(date +%H:%M:%S)] fired $label + neighbours"
+  echo "  [$(date +%H:%M:%S)] ${action#memory_} → $label + link neighbours"
 
-  # Stagger the neighbours so the signal looks like it's spreading outward.
+  # Stagger the neighbours as a spreading synapse (link = cyan).
   while IFS= read -r nb; do
     [[ -z "$nb" ]] && continue
     sleep 1
-    fire "$nb"
+    fire "$nb" memory_linked
     count=$((count + 1))
   done < <(neighbours "$seed")
 
@@ -91,4 +104,4 @@ while [[ $(date +%s) -lt $END ]]; do
 done
 
 echo ""
-echo "done — emitted $count pulse event(s) over ${DURATION}s."
+echo "done — emitted $count activity event(s) over ${DURATION}s."

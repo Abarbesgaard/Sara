@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { resolveDbPath } from "./dbPath.ts";
 import { openReadOnly } from "./db.ts";
 import type { DatabaseSync } from "node:sqlite";
-import { buildGraph, getMemory, recentRecalls } from "./graph.ts";
+import { buildGraph, getMemory, recentRecalls, recentActivity } from "./graph.ts";
 
 const HOST = "127.0.0.1"; // localhost-only: no data ever leaves the machine.
 const PORT = Number(process.env.PORT ?? 7777);
@@ -49,12 +49,24 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, dbPath, readOnly: true });
 });
 
-// Live recall feed: which memories another process recalled since the last
-// poll. Purely a read of events already written — records nothing itself.
+// Live recall feed (legacy): which memories another process recalled since the
+// last poll. Kept for compatibility; the richer feed is /api/activity.
 app.get("/api/pulses", (req, res) => {
   try {
     const since = typeof req.query.since === "string" ? req.query.since : null;
     res.json(recentRecalls(db, since));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+// Unified brain-activity feed: every visible memory node that fired since the
+// last poll, tagged with the MCP action (recall/surface/learn/link/task) that
+// lit it. Read-only — derived from streams already on disk.
+app.get("/api/activity", (req, res) => {
+  try {
+    const since = typeof req.query.since === "string" ? req.query.since : null;
+    res.json(recentActivity(db, since));
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }

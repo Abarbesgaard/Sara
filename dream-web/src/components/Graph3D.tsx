@@ -3,6 +3,8 @@ import ForceGraph3D, { type ForceGraphMethods } from "react-force-graph-3d";
 import SpriteText from "three-spritetext";
 import * as THREE from "three";
 import type { Graph, GraphNode } from "../api.ts";
+import type { ActivityAction } from "../api.ts";
+import type { Firing } from "../usePulses.ts";
 import { nodeColor } from "../color.ts";
 import type { ViewSettings } from "./ViewToggles.tsx";
 
@@ -13,7 +15,7 @@ interface Props {
   filtersActive: boolean;
   onSelect: (n: GraphNode) => void;
   focusLabel: string | null; // fly-to target from the search box
-  pulses: Map<string, number>; // label -> wall-clock ms it last fired (live recall)
+  pulses: Map<string, Firing>; // label -> latest firing (when + which MCP action)
   view: ViewSettings; // visual-effect toggles (signals / biolum)
 }
 
@@ -24,13 +26,32 @@ const DIM = "#23262b";
 const PULSE_MS = 1900; // how long a recalled node keeps glowing
 const RIPPLE_MS = 1400; // how long a shockwave ring lives
 
+// The colour a node flashes toward for each MCP action — the neurotransmitter
+// palette. A node lights up to this hue on fire, then eases back to its normal
+// project colour. Ring + signal particles borrow the same hue.
+const ACTION_COLOR: Record<ActivityAction, THREE.Color> = {
+  recall: new THREE.Color(1.0, 1.0, 1.0), // white — sensory recall
+  surface: new THREE.Color(0.8, 0.86, 1.0), // soft blue-white — surfaced
+  learn: new THREE.Color(0.35, 1.0, 0.55), // green — memory encoded
+  link: new THREE.Color(0.35, 0.85, 1.0), // cyan — synapse formed
+  task: new THREE.Color(1.0, 0.72, 0.3), // amber — intention / motor
+};
+const ACTION_HEX: Record<ActivityAction, number> = {
+  recall: 0xffffff,
+  surface: 0xcfe0ff,
+  learn: 0x5cff8d,
+  link: 0x5cd8ff,
+  task: 0xffb84d,
+};
+
 function desaturate(hsl: string): string {
   // lower the saturation/lightness of an hsl() colour for provisional nodes
   return hsl.replace(/hsl\((\d+),\s*\d+%,\s*\d+%\)/, "hsl($1, 30%, 38%)");
 }
 
 // A soft radial-gradient sprite texture, built once, reused for every shockwave
-// ring — an expanding light ripple around a node the moment it fires.
+// ring — an expanding light ripple around a node the moment it fires. Baked in
+// neutral white so each ring can be tinted to its action colour at spawn.
 let RIPPLE_TEX: THREE.Texture | null = null;
 function rippleTexture(): THREE.Texture {
   if (RIPPLE_TEX) return RIPPLE_TEX;
@@ -40,9 +61,9 @@ function rippleTexture(): THREE.Texture {
   const ctx = c.getContext("2d")!;
   const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.30, s / 2, s / 2, s * 0.5);
   g.addColorStop(0, "rgba(255,255,255,0)");
-  g.addColorStop(0.72, "rgba(255,224,138,0.55)");
-  g.addColorStop(0.92, "rgba(255,224,138,0.95)");
-  g.addColorStop(1, "rgba(255,224,138,0)");
+  g.addColorStop(0.72, "rgba(255,255,255,0.55)");
+  g.addColorStop(0.92, "rgba(255,255,255,0.95)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, s, s);
   RIPPLE_TEX = new THREE.CanvasTexture(c);
@@ -68,6 +89,10 @@ export function Graph3D({
   // re-subscribing it every time a switch flips.
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  // Colour the next emitted signal particles should use — set just before an
+  // emit so the graph-level particle accessor can tint per firing action.
+  const signalColorRef = useRef<number>(0xffe08a);
 
   // react-force-graph falls back to window.innerWidth/Height when no explicit
   // size is given, which overflows the sidebar and pushes the graph's centre
@@ -141,20 +166,19 @@ export function Graph3D({
     const lastEmit = new Map<string, number>();
     const flare = new THREE.Color();
     const black = new THREE.Color(0, 0, 0);
-    const white = new THREE.Color(1, 1, 1);
     const baseCol = new THREE.Color();
     const outCol = new THREE.Color();
-    // Nodes whose material.color we've overridden mid-flash, so we know to
-    // restore them exactly once they cool back down.
-    const lit = new Set<string>();
+    // Nodes mid-flash: remember the action colour so cooling frames ease back
+    // from the right hue, and so we restore the base colour exactly once cool.
+    const lit = new Map<string, ActivityAction>();
     let raf = 0;
 
-    const spawnRipple = (n: FGNode) => {
+    const spawnRipple = (n: FGNode, action: ActivityAction) => {
       const scene = fgRef.current?.scene?.();
       if (!scene || n.x == null) return;
       const mat = new THREE.SpriteMaterial({
         map: rippleTexture(),
-        color: 0xffe08a,
+        color: ACTION_HEX[action],
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -166,9 +190,10 @@ export function Graph3D({
       ripples.push({ sprite, start: Date.now(), n });
     };
 
-    const emitSignals = (label: string) => {
+    const emitSignals = (label: string, action: ActivityAction) => {
       const fg = fgRef.current;
       if (!fg) return;
+      signalColorRef.current = ACTION_HEX[action];
       for (const l of data.links as unknown as { source: unknown; target: unknown }[]) {
         if (endpointLabel(l.source) === label || endpointLabel(l.target) === label) {
           fg.emitParticle(l as never);
@@ -183,25 +208,27 @@ export function Graph3D({
       for (const n of data.nodes) {
         const obj = (n as unknown as { __threeObj?: THREE.Object3D }).__threeObj;
         if (!obj) continue;
-        const firedAt = pulses.get(n.label);
+        const fired = pulses.get(n.label);
+        const firedAt = fired?.t;
+        const action: ActivityAction = fired?.action ?? lit.get(n.label) ?? "recall";
         const intensity = firedAt ? Math.max(0, 1 - (now - firedAt) / PULSE_MS) : 0;
 
         // New fire this frame → shockwave ring (+ signals if enabled), once.
         if (firedAt && lastEmit.get(n.label) !== firedAt) {
           lastEmit.set(n.label, firedAt);
-          spawnRipple(n);
-          if (v.signals) emitSignals(n.label);
+          spawnRipple(n, action);
+          if (v.signals) emitSignals(n.label, action);
         }
 
         // Swell while active. Light the node up: its material colour snaps to
-        // white on fire, then eases back to its normal project colour as it
-        // cools (a lighter emissive adds a touch of extra glow on top).
+        // the action's hue on fire, then eases back to its normal project
+        // colour as it cools (a lighter emissive adds a touch of extra glow).
         obj.scale.setScalar(1 + 2.3 * intensity);
 
         const isLit = lit.has(n.label);
         if (intensity > 0 || isLit) {
           baseCol.set(colorFor(n));
-          outCol.copy(baseCol).lerp(white, intensity); // 1 => white, 0 => base
+          outCol.copy(baseCol).lerp(ACTION_COLOR[action], intensity); // 1 => action hue, 0 => base
           flare.setRGB(0.7 * intensity, 0.7 * intensity, 0.7 * intensity);
           obj.traverse((c) => {
             const mat = (c as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
@@ -215,7 +242,7 @@ export function Graph3D({
               );
             }
           });
-          if (intensity > 0) lit.add(n.label);
+          if (intensity > 0) lit.set(n.label, action);
           else lit.delete(n.label); // cooled: leave it resting at base colour
         }
 
@@ -378,7 +405,9 @@ export function Graph3D({
       }
       linkDirectionalParticleSpeed={0.006}
       linkDirectionalParticleWidth={1.3}
-      linkDirectionalParticleColor={() => "#ffe08a"}
+      linkDirectionalParticleColor={() =>
+        `#${signalColorRef.current.toString(16).padStart(6, "0")}`
+      }
       onNodeClick={(n) => {
         onSelect(n);
         if (fgRef.current) flyTo(fgRef.current, n, 80);
