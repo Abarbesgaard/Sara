@@ -4,6 +4,7 @@ import SpriteText from "three-spritetext";
 import * as THREE from "three";
 import type { Graph, GraphNode } from "../api.ts";
 import { nodeColor } from "../color.ts";
+import type { ViewSettings } from "./ViewToggles.tsx";
 
 interface Props {
   graph: Graph;
@@ -13,6 +14,7 @@ interface Props {
   onSelect: (n: GraphNode) => void;
   focusLabel: string | null; // fly-to target from the search box
   pulses: Map<string, number>; // label -> wall-clock ms it last fired (live recall)
+  view: ViewSettings; // visual-effect toggles (signals / biolum)
 }
 
 // react-force-graph mutates node objects with x/y/z; keep our fields alongside.
@@ -20,10 +22,31 @@ type FGNode = GraphNode & { x?: number; y?: number; z?: number };
 
 const DIM = "#23262b";
 const PULSE_MS = 1900; // how long a recalled node keeps glowing
+const RIPPLE_MS = 1400; // how long a shockwave ring lives
 
 function desaturate(hsl: string): string {
   // lower the saturation/lightness of an hsl() colour for provisional nodes
   return hsl.replace(/hsl\((\d+),\s*\d+%,\s*\d+%\)/, "hsl($1, 30%, 38%)");
+}
+
+// A soft radial-gradient sprite texture, built once, reused for every shockwave
+// ring — an expanding light ripple around a node the moment it fires.
+let RIPPLE_TEX: THREE.Texture | null = null;
+function rippleTexture(): THREE.Texture {
+  if (RIPPLE_TEX) return RIPPLE_TEX;
+  const s = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.30, s / 2, s / 2, s * 0.5);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.72, "rgba(255,224,138,0.55)");
+  g.addColorStop(0.92, "rgba(255,224,138,0.95)");
+  g.addColorStop(1, "rgba(255,224,138,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  RIPPLE_TEX = new THREE.CanvasTexture(c);
+  return RIPPLE_TEX;
 }
 
 export function Graph3D({
@@ -34,12 +57,17 @@ export function Graph3D({
   onSelect,
   focusLabel,
   pulses,
+  view,
 }: Props) {
   const fgRef = useRef<ForceGraphMethods<FGNode> | undefined>(undefined);
-  const refAddedRef = useRef(false);
   const fitDoneRef = useRef(false);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const shellRef = useRef<THREE.Mesh | null>(null);
+
+  // Latest toggle set, readable from the imperative animation loop without
+  // re-subscribing it every time a switch flips.
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   // react-force-graph falls back to window.innerWidth/Height when no explicit
   // size is given, which overflows the sidebar and pushes the graph's centre
@@ -68,26 +96,32 @@ export function Graph3D({
     [graph],
   );
 
-  // Filter/pulse changes only affect colour & size — redraw without reheating
-  // the layout.
+  // Filter / signal-shape / palette changes only affect colour, size & link
+  // curvature — redraw without reheating the layout.
   useEffect(() => {
     fgRef.current?.refresh();
-  }, [filterSig]);
+  }, [filterSig, view.signals, view.biolum]);
 
   const baseVal = (n: FGNode) => Math.max(1, (n.strength - 0.9) * 6);
 
   const colorFor = (n: FGNode): string => {
     if (filtersActive && !matches(n)) return DIM;
-    const base = nodeColor(n.projects);
+    const base = nodeColor(n.projects, view.biolum);
     return n.provisional ? desaturate(base) : base;
   };
 
-  // Fast lookup from label -> live node object (carries the rendered __threeObj).
-  const nodeByLabel = useMemo(() => {
+  // Fast lookup from uuid -> live node object (for resolving link endpoints).
+  const nodeByUuid = useMemo(() => {
     const m = new Map<string, FGNode>();
-    for (const n of data.nodes) m.set(n.label, n);
+    for (const n of data.nodes) m.set(n.id, n);
     return m;
   }, [data]);
+
+  const endpointLabel = (x: unknown): string | undefined => {
+    if (x && typeof x === "object") return (x as FGNode).label;
+    if (typeof x === "string") return nodeByUuid.get(x)?.label;
+    return undefined;
+  };
 
   // Fly the camera to a searched node.
   useEffect(() => {
@@ -97,50 +131,125 @@ export function Graph3D({
     flyTo(fgRef.current, n, 100);
   }, [focusLabel, data]);
 
-  // Live recall pulse. Rather than asking react-force-graph to re-run its style
-  // accessors (unreliable for the 3D renderer), we mutate the node meshes
-  // directly on a steady setInterval: a recalled node's sphere swells and glows
-  // gold (emissive), then eases back to rest. setInterval — unlike rAF — keeps
-  // firing regardless of the render loop, and the graph's own animation loop
-  // paints the mutated meshes every frame.
+  // --- Activation loop: on recall a node flares bright, swells, and throws off
+  // an expanding shockwave ring; with `signals` on, particles also fire along
+  // its bonds. One rAF loop mutates the meshes every frame and reads the live
+  // toggle set via viewRef, so flipping a switch never restarts it. Nodes are
+  // otherwise still (no idle breathing).
   useEffect(() => {
-    const applyPulse = (obj: THREE.Object3D, intensity: number) => {
-      obj.scale.setScalar(1 + 1.9 * intensity);
-      obj.traverse((c) => {
-        const mat = (c as THREE.Mesh).material as
-          | THREE.MeshLambertMaterial
-          | undefined;
-        if (mat && (mat as unknown as { emissive?: THREE.Color }).emissive) {
-          (mat as unknown as { emissive: THREE.Color }).emissive.setRGB(
-            intensity,
-            0.82 * intensity,
-            0.32 * intensity,
-          );
-        }
+    const ripples: { sprite: THREE.Sprite; start: number; n: FGNode }[] = [];
+    const lastEmit = new Map<string, number>();
+    const flare = new THREE.Color();
+    const black = new THREE.Color(0, 0, 0);
+    const white = new THREE.Color(1, 1, 1);
+    const baseCol = new THREE.Color();
+    const outCol = new THREE.Color();
+    // Nodes whose material.color we've overridden mid-flash, so we know to
+    // restore them exactly once they cool back down.
+    const lit = new Set<string>();
+    let raf = 0;
+
+    const spawnRipple = (n: FGNode) => {
+      const scene = fgRef.current?.scene?.();
+      if (!scene || n.x == null) return;
+      const mat = new THREE.SpriteMaterial({
+        map: rippleTexture(),
+        color: 0xffe08a,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.95,
       });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(n.x, n.y ?? 0, n.z ?? 0);
+      scene.add(sprite);
+      ripples.push({ sprite, start: Date.now(), n });
     };
 
-    const id = window.setInterval(() => {
-      if (pulses.size === 0) return;
-      const now = Date.now();
-      for (const [label, t] of pulses) {
-        const n = nodeByLabel.get(label);
-        const obj = n && (n as unknown as { __threeObj?: THREE.Object3D }).__threeObj;
-        const intensity = Math.max(0, 1 - (now - t) / PULSE_MS);
-        if (!obj) {
-          if (intensity <= 0) pulses.delete(label);
-          continue;
-        }
-        if (intensity > 0) {
-          applyPulse(obj, intensity);
-        } else {
-          applyPulse(obj, 0); // reset scale + emissive to rest
-          pulses.delete(label);
+    const emitSignals = (label: string) => {
+      const fg = fgRef.current;
+      if (!fg) return;
+      for (const l of data.links as unknown as { source: unknown; target: unknown }[]) {
+        if (endpointLabel(l.source) === label || endpointLabel(l.target) === label) {
+          fg.emitParticle(l as never);
         }
       }
-    }, 60);
-    return () => window.clearInterval(id);
-  }, [pulses, nodeByLabel]);
+    };
+
+    const loop = () => {
+      const v = viewRef.current;
+      const now = Date.now();
+
+      for (const n of data.nodes) {
+        const obj = (n as unknown as { __threeObj?: THREE.Object3D }).__threeObj;
+        if (!obj) continue;
+        const firedAt = pulses.get(n.label);
+        const intensity = firedAt ? Math.max(0, 1 - (now - firedAt) / PULSE_MS) : 0;
+
+        // New fire this frame → shockwave ring (+ signals if enabled), once.
+        if (firedAt && lastEmit.get(n.label) !== firedAt) {
+          lastEmit.set(n.label, firedAt);
+          spawnRipple(n);
+          if (v.signals) emitSignals(n.label);
+        }
+
+        // Swell while active. Light the node up: its material colour snaps to
+        // white on fire, then eases back to its normal project colour as it
+        // cools (a lighter emissive adds a touch of extra glow on top).
+        obj.scale.setScalar(1 + 2.3 * intensity);
+
+        const isLit = lit.has(n.label);
+        if (intensity > 0 || isLit) {
+          baseCol.set(colorFor(n));
+          outCol.copy(baseCol).lerp(white, intensity); // 1 => white, 0 => base
+          flare.setRGB(0.7 * intensity, 0.7 * intensity, 0.7 * intensity);
+          obj.traverse((c) => {
+            const mat = (c as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
+            if (!mat) return;
+            if ((mat as unknown as { color?: THREE.Color }).color) {
+              (mat as unknown as { color: THREE.Color }).color.copy(outCol);
+            }
+            if ((mat as unknown as { emissive?: THREE.Color }).emissive) {
+              (mat as unknown as { emissive: THREE.Color }).emissive.copy(
+                intensity > 0 ? flare : black,
+              );
+            }
+          });
+          if (intensity > 0) lit.add(n.label);
+          else lit.delete(n.label); // cooled: leave it resting at base colour
+        }
+
+        if (firedAt && intensity <= 0) pulses.delete(n.label);
+      }
+
+      // Advance + retire shockwave rings.
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        const age = (now - r.start) / RIPPLE_MS;
+        if (age >= 1) {
+          fgRef.current?.scene?.()?.remove(r.sprite);
+          (r.sprite.material as THREE.SpriteMaterial).dispose();
+          ripples.splice(i, 1);
+          continue;
+        }
+        const scale = baseVal(r.n) * (2.4 + age * 15);
+        r.sprite.scale.setScalar(scale);
+        (r.sprite.material as THREE.SpriteMaterial).opacity = 0.95 * (1 - age);
+        if (r.n.x != null) r.sprite.position.set(r.n.x, r.n.y ?? 0, r.n.z ?? 0);
+      }
+
+      raf = requestAnimationFrame(loop);
+    };
+
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const r of ripples) {
+        fgRef.current?.scene?.()?.remove(r.sprite);
+        (r.sprite.material as THREE.SpriteMaterial).dispose();
+      }
+    };
+  }, [data, pulses, nodeByUuid]);
 
   // Enable auto-rotation once the layout settles, and make one final camera fit.
   const onSettled = () => {
@@ -183,7 +292,7 @@ export function Graph3D({
     const r = 0.5 * Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) || 120;
     const shellR = r * 0.9; // snug boundary sphere
 
-    if (!refAddedRef.current) {
+    if (!gridRef.current) {
       const ref = new THREE.Group();
       ref.name = "dream-reference";
 
@@ -212,7 +321,6 @@ export function Graph3D({
       shellRef.current = shell;
 
       scene.add(ref);
-      refAddedRef.current = true;
     }
 
     const grid = gridRef.current;
@@ -261,9 +369,16 @@ export function Graph3D({
         sprite.position.set(0, Math.max(3, (n.strength - 0.9) * 6) + 3, 0);
         return sprite;
       }}
+      linkCurvature={view.signals ? 0.18 : 0}
       linkColor={(l) => ((l as unknown as { kind: string }).kind === "bond" ? "#6ea8fe" : "#333941")}
       linkWidth={(l) => ((l as unknown as { kind: string }).kind === "bond" ? 1.1 : 0.3)}
       linkOpacity={0.45}
+      linkDirectionalParticles={(l) =>
+        view.signals && (l as unknown as { kind: string }).kind === "bond" ? 2 : 0
+      }
+      linkDirectionalParticleSpeed={0.006}
+      linkDirectionalParticleWidth={1.3}
+      linkDirectionalParticleColor={() => "#ffe08a"}
       onNodeClick={(n) => {
         onSelect(n);
         if (fgRef.current) flyTo(fgRef.current, n, 80);

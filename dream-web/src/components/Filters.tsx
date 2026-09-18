@@ -9,6 +9,7 @@ interface Props {
   selectedProjects: Set<string>;
   onToggleTag: (t: string) => void;
   onToggleProject: (p: string) => void;
+  biolum?: boolean;
   onClear: () => void;
   counts: { nodes: number; edges: number; shown: number };
 }
@@ -22,6 +23,7 @@ export function Filters({
   selectedProjects,
   onToggleTag,
   onToggleProject,
+  biolum = false,
   onClear,
   counts,
 }: Props) {
@@ -66,7 +68,7 @@ export function Filters({
               className={`chip ${selectedProjects.has(p) ? "on" : ""}`}
               onClick={() => onToggleProject(p)}
             >
-              <span className="dot" style={{ background: projectColor(p) }} />
+              <span className="dot" style={{ background: projectColor(p, biolum) }} />
               {p}
             </button>
           ))}

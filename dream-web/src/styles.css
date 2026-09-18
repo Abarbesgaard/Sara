@@ -335,3 +335,53 @@ body {
 .tt-meta {
   color: #8a8f98;
 }
+
+/* Visual-effect toggles — a floating cluster over the top-right of the canvas. */
+.view-toggles {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(16, 19, 24, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+.vt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.vt:hover {
+  color: var(--fg);
+  background: var(--panel-2);
+}
+.vt.on {
+  color: #0b0d10;
+  background: #ffe08a;
+  border-color: #ffe08a;
+}
+.vt-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  box-shadow: none;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.vt.on .vt-dot {
+  background: #0b0d10;
+  box-shadow: 0 0 6px 1px rgba(255, 224, 138, 0.9);
+}
