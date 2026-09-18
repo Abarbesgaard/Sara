@@ -386,14 +386,14 @@ body {
   box-shadow: 0 0 6px 1px rgba(255, 224, 138, 0.9);
 }
 
-/* Live cognition ticker — a running commentary of firings, bottom-left. */
+/* Live cognition ticker — a running commentary of firings, down the left side. */
 .ticker {
   position: absolute;
   left: 12px;
+  top: 12px;
   bottom: 12px;
   z-index: 5;
   width: 230px;
-  max-height: 46%;
   display: flex;
   flex-direction: column;
   background: rgba(16, 19, 24, 0.72);

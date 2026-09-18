@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ActivityAction, ActivityFeed } from "./api.ts";
 
 const POLL_MS = 2000;
-const STREAM_CAP = 40; // most recent firings kept for the cognition ticker
+const STREAM_CAP = 20; // most recent firings kept for the cognition ticker
 
 /** One live firing: when it happened (wall-clock ms) and which MCP action lit
  * the node — the 3D layer maps `action` to a colour/animation. */
