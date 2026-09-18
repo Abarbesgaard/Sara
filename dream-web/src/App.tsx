@@ -1,27 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchGraph, type Graph, type GraphNode } from "./api.ts";
 import { Graph3D } from "./components/Graph3D.tsx";
-import { Filters } from "./components/Filters.tsx";
 import { SidePanel } from "./components/SidePanel.tsx";
 import { ViewToggles, DEFAULT_VIEW, type ViewSettings } from "./components/ViewToggles.tsx";
+import { Ticker } from "./components/Ticker.tsx";
 import { usePulses } from "./usePulses.ts";
 
 export function App() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [search, setSearch] = useState("");
   const [focusLabel, setFocusLabel] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [view, setView] = useState<ViewSettings>(DEFAULT_VIEW);
   const toggleView = (key: keyof ViewSettings) =>
     setView((v) => ({ ...v, [key]: !v[key] }));
 
   // Live recall feed — pulse nodes as other processes recall them.
-  const { pulses, lastFired } = usePulses(graph != null);
+  const { pulses, stream, lastFired } = usePulses(graph != null);
   const [live, setLive] = useState(false);
   useEffect(() => {
     const id = setInterval(() => setLive(Date.now() - lastFired.current < 2500), 500);
@@ -32,32 +29,7 @@ export function App() {
     fetchGraph().then(setGraph).catch((e) => setError(String(e)));
   }, []);
 
-  const filtersActive = selectedTags.size > 0 || selectedProjects.size > 0;
-  const filterSig = useMemo(
-    () => `${[...selectedTags].sort().join(",")}|${[...selectedProjects].sort().join(",")}`,
-    [selectedTags, selectedProjects],
-  );
-
-  const matches = useMemo(() => {
-    return (n: GraphNode): boolean => {
-      const tagOk = selectedTags.size === 0 || n.tags.some((t) => selectedTags.has(t));
-      const projOk =
-        selectedProjects.size === 0 || n.projects.some((p) => selectedProjects.has(p));
-      return tagOk && projOk;
-    };
-  }, [selectedTags, selectedProjects]);
-
-  const shownCount = useMemo(() => {
-    if (!graph) return 0;
-    if (!filtersActive) return graph.nodes.length;
-    return graph.nodes.filter(matches).length;
-  }, [graph, matches, filtersActive]);
-
-  const toggle = (set: Set<string>, v: string): Set<string> => {
-    const next = new Set(set);
-    next.has(v) ? next.delete(v) : next.add(v);
-    return next;
-  };
+  const noFilter = useMemo(() => () => true, []);
 
   const runSearch = (q: string) => {
     if (!graph) return;
@@ -120,35 +92,19 @@ export function App() {
       </header>
 
       <div className="main">
-        <Filters
-          open={filtersOpen}
-          onToggle={() => setFiltersOpen((o) => !o)}
-          tags={graph.tags}
-          projects={graph.projects}
-          selectedTags={selectedTags}
-          selectedProjects={selectedProjects}
-          onToggleTag={(t) => setSelectedTags((s) => toggle(s, t))}
-          onToggleProject={(p) => setSelectedProjects((s) => toggle(s, p))}
-          biolum={view.biolum}
-          onClear={() => {
-            setSelectedTags(new Set());
-            setSelectedProjects(new Set());
-          }}
-          counts={{ nodes: graph.nodes.length, edges: graph.edges.length, shown: shownCount }}
-        />
-
         <main className="canvas">
           <ViewToggles settings={view} onToggle={toggleView} />
           <Graph3D
             graph={graph}
-            matches={matches}
-            filterSig={filterSig}
-            filtersActive={filtersActive}
+            matches={noFilter}
+            filterSig=""
+            filtersActive={false}
             onSelect={setSelected}
             focusLabel={focusLabel}
             pulses={pulses}
             view={view}
           />
+          <Ticker stream={stream} onPick={(label) => runSearch(label)} />
         </main>
 
         <SidePanel node={selected} onClose={() => setSelected(null)} />
