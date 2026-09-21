@@ -278,9 +278,10 @@ export function Graph3D({
     };
   }, [data, pulses, nodeByUuid]);
 
-  // Enable auto-rotation once the layout settles, and make one final camera fit.
+  // Steady view: settle the layout and make one final camera fit, then leave
+  // the camera still (no auto-rotation, so the cloud doesn't drift side to side).
   const onSettled = () => {
-    enableRotation();
+    disableRotation();
     syncReference();
     if (!fitDoneRef.current) {
       fgRef.current?.zoomToFit(700, 90);
@@ -288,13 +289,12 @@ export function Graph3D({
     }
   };
 
-  const enableRotation = () => {
+  const disableRotation = () => {
     const c = fgRef.current?.controls() as
       | { autoRotate?: boolean; autoRotateSpeed?: number }
       | undefined;
     if (c) {
-      c.autoRotate = true;
-      c.autoRotateSpeed = 0.22; // subtle
+      c.autoRotate = false;
     }
   };
 

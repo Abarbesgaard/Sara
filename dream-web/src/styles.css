@@ -17,6 +17,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -119,6 +120,7 @@ body {
   flex: 1;
   display: flex;
   min-height: 0;
+  overflow: hidden;
 }
 
 .filters {
@@ -235,6 +237,7 @@ body {
   flex: 1;
   min-width: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .side {
@@ -434,6 +437,10 @@ body {
 .ticker-rows {
   overflow-y: auto;
   padding: 4px 0;
+  scrollbar-width: none; /* Firefox */
+}
+.ticker-rows::-webkit-scrollbar {
+  display: none; /* WebKit */
 }
 .ticker-idle {
   padding: 8px 10px;
