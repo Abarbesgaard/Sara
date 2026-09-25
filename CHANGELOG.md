@@ -2,7 +2,27 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-25
+
 ### Added
+
+- **`sara begin` — one call to start a task.** Creates the task (with
+  `--tag`/`--file`/`--priority`), records the assignment (defaults to the
+  description) and optional `--why` rationale, registers an optional acceptance
+  criterion (`--check … --verify …`), attaches declared `--file` paths as task
+  anchors, and prints the next cursor. Also exposed as the MCP `begin` tool.
+- **`begin` seeds an agent-run recall step.** Instead of firing a mechanical,
+  description-derived query, `begin` seeds the task's first checklist step:
+  decide what prior knowledge bears on the task and call `recall` for exactly
+  that. `next` returns it as the cursor and it is gated by `step_done`, so prior
+  art is consulted early and deliberately.
+- **`recall` surfaces problem-solving patterns.** A new top-level `patterns[]`
+  array lists canonical memories (≥2 derived applications) that a hit belongs
+  to, with the full canonical recipe, its prior instances and a guide for
+  turning it into a task. `learn` also auto-attaches new memories to a matching
+  canonical at birth.
+- **`dream-web`** — a standalone, strictly read-only localhost 3D explorer of
+  the memory graph (`dream-web/`, `npm start`), a visual sibling to `sara dream`.
 
 - **Faster `validate` — result cache + command de-duplication.** The acceptance
   gate no longer blindly re-runs every verify command. A criterion that is
@@ -17,6 +37,15 @@
 
 ### Changed
 
+- **Lean `recall` payload.** Only the top hit carries its full text; the rest
+  are compact guide entries (label, ≤160-char preview, strength, cluster
+  handles). Recalling a bare `mNN` label drills into that memory in full. This
+  cuts dense-cluster payloads from ~37 KB to a few KB.
+- **`recall` collapses canonical families.** A canonical memory and its derived
+  children are returned as one representative tagged with the cluster size, so
+  near-duplicates no longer crowd out diverse results in the top-k.
+- **Verify-less acceptance criteria are warned at creation time** (CLI `check`,
+  MCP `check`/`begin`), instead of failing much later at `validate`.
 - **Hebbian `consolidate` is now idempotent and decays.** Each run recomputes the
   learned `co_activated` synapses from the recall window (weight = `delta` ×
   co-firing count) instead of adding onto previous runs, so running it
@@ -27,6 +56,15 @@
   larger than `--max-cluster` (default 8; MCP `max_cluster`; 0 disables) are now
   split at their weakest synapses, so already-consolidated families are
   recognised as such instead of being proposed for re-parenting.
+
+### Fixed
+
+- **MCP `step_done` defaults to the current step** when neither `n` nor
+  `step_id` is given, so `next` → `step_done(result)` round-trips (previously
+  ~25% of agent calls were rejected).
+- **Semantic `recall` applies project/kind filters before truncating to top-k**,
+  so filtered queries no longer return too few results.
+- **The info editor refreshes the task's project root on save.**
 
 ### Performance
 
