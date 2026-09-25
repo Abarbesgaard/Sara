@@ -92,6 +92,16 @@ pub fn run(
             }
         }
     }
+    if let Some(links) = v["auto_derived_from"].as_array() {
+        for link in links {
+            if let Some(canon_label) = link.as_str() {
+                println!(
+                    "  ↳ auto-linked as an application of canonical pattern {canon_label} \
+                     (unlink with `sara unlink-memory {label} derived_from {canon_label}`)"
+                );
+            }
+        }
+    }
     if let Some(links) = v["similar_to"].as_array() {
         for link in links {
             if let Some(other_label) = link.as_str() {
@@ -119,6 +129,10 @@ pub fn learn_value(
 ) -> Result<Value> {
     let text = text.trim();
     let resolved_files = collect_files(files, auto_files)?;
+    // Birth-time canonical attachment: canonical patterns this memory's tags
+    // place it inside. Computed before the write (needs the pre-insert tag view)
+    // and linked after, so a new instance auto-attaches to its pattern.
+    let mut auto_canonical: Vec<uuid::Uuid> = Vec::new();
     if !force {
         crate::infrastructure::safety::check_size(text)?;
         crate::infrastructure::safety::check_secrets(text)?;
@@ -131,6 +145,7 @@ pub fn learn_value(
                 .map(|(p, _)| p)
         });
         check_overlap(conn, tags, &resolved_files, primary_project.as_deref())?;
+        auto_canonical = canonical_overlap_candidates(conn, tags)?;
     }
 
     let item = save(conn, cfg, text, tags, projects, tasks, &resolved_files)?;
@@ -203,6 +218,31 @@ pub fn learn_value(
     let derived_from_labels = resolve_and_link(derived_from, "derived_from", "--derived-from")?;
     let similar_to_labels = resolve_and_link(similar_to, "similar_to", "--similar-to")?;
 
+    // Birth-time canonical attachment: auto-link `derived_from` to each canonical
+    // pattern this memory's tags landed it inside, unless the author already
+    // named that canonical in an explicit --derived-from/--supersedes/--similar-to
+    // (an explicit intent — including a deliberate supersede — always wins). The
+    // pattern strengthens as instances are learned, without a later `reflect`.
+    // Reversible with `sara unlink-memory <this> derived_from <canonical>`.
+    let mut auto_derived_labels: Vec<String> = Vec::new();
+    {
+        let already: std::collections::HashSet<&String> = superseded_labels
+            .iter()
+            .chain(derived_from_labels.iter())
+            .chain(similar_to_labels.iter())
+            .collect();
+        for u in &auto_canonical {
+            if let Ok(target) = db::get_item_by_uuid(conn, &u.to_string()) {
+                let label = format!("m{}", target.display_id.unwrap_or(0));
+                if already.contains(&label) || auto_derived_labels.contains(&label) {
+                    continue;
+                }
+                db::insert_memory_link(conn, &new_uuid, &u.to_string(), "derived_from", 1.0)?;
+                auto_derived_labels.push(label);
+            }
+        }
+    }
+
     let files_json: Vec<Value> = resolved_files.iter().map(|f| json!(f)).collect();
     let tasks_json: Vec<Value> = item
         .linked_tasks
@@ -226,6 +266,7 @@ pub fn learn_value(
         "superseded": superseded_labels,
         "derived_from": derived_from_labels,
         "similar_to": similar_to_labels,
+        "auto_derived_from": auto_derived_labels,
     }))
 }
 
@@ -270,6 +311,74 @@ pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
          or `sara relearn {label}` to enrich the canonical instead of creating a new memory.",
         if derived_count == 1 { "" } else { "s" }
     )
+}
+
+/// Canonical pattern memories the new memory's tags place it squarely inside:
+/// near-duplicates (shares ALL tags) or canonical partial-tag matches (shares
+/// ≥50% of tags with a memory that already has derived children). These are the
+/// birth-time auto-attach targets — a new memory landing on an established
+/// pattern is registered as another application (`derived_from`) automatically,
+/// so the pattern strengthens as instances are learned instead of only during a
+/// later `reflect` sweep.
+///
+/// Unlike `check_overlap`'s *mandatory warning* band, this deliberately does NOT
+/// restrict to the current project: a canonical pattern is inherently
+/// cross-project (the same fault recurring across repos is exactly what makes it
+/// canonical), so a new repo's instance must be allowed to attach to it. The
+/// confidence gate is instead "the overlap target is already a canonical".
+/// Returns candidate uuids (deduped, order-stable).
+pub(crate) fn canonical_overlap_candidates(
+    conn: &Connection,
+    tags: &[String],
+) -> Result<Vec<uuid::Uuid>> {
+    let normalized: Vec<String> = tags
+        .iter()
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if normalized.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut any_union: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
+    let mut all_intersection: Option<std::collections::HashSet<uuid::Uuid>> = None;
+    let mut per_tag_sets: Vec<std::collections::HashSet<uuid::Uuid>> = Vec::new();
+    for tag in &normalized {
+        let uuids: std::collections::HashSet<uuid::Uuid> = db::find_items_by_tag(conn, tag)?
+            .into_iter()
+            .filter(|i| i.kind == "memory")
+            .map(|i| i.uuid)
+            .collect();
+        any_union.extend(&uuids);
+        all_intersection = Some(match all_intersection {
+            Some(existing) => existing.intersection(&uuids).copied().collect(),
+            None => uuids.clone(),
+        });
+        per_tag_sets.push(uuids);
+    }
+
+    let near_dupes: std::collections::HashSet<uuid::Uuid> = all_intersection.unwrap_or_default();
+    let partial: std::collections::HashSet<uuid::Uuid> =
+        any_union.difference(&near_dupes).copied().collect();
+    let threshold = ((normalized.len() as f64) * 0.5).ceil() as usize;
+    let significant_partial: Vec<uuid::Uuid> = if normalized.len() > 1 {
+        partial
+            .into_iter()
+            .filter(|u| per_tag_sets.iter().filter(|set| set.contains(u)).count() >= threshold)
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Candidates = near-dupes ∪ significant partials, filtered to established
+    // canonicals (those with derived children).
+    let mut out: Vec<uuid::Uuid> = Vec::new();
+    for u in near_dupes.into_iter().chain(significant_partial) {
+        if !out.contains(&u) && canonical_derived_count(conn, &u) > 0 {
+            out.push(u);
+        }
+    }
+    Ok(out)
 }
 
 /// Detect existing memories whose tags overlap significantly with the new one,
@@ -1176,6 +1285,201 @@ mod tests {
         // A new memory sharing only one of the canonical's two tags (partial
         // overlap) must not error when check_overlap runs against it.
         super::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
+    }
+
+    #[test]
+    fn learn_auto_attaches_new_instance_to_canonical_pattern() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // Canonical pattern memory with two tags.
+        let canonical = super::learn_value(
+            &conn,
+            &cfg,
+            "CANONICAL nsubstitute dependabot restore fix",
+            &["nsubstitute".into(), "ci".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let canon_label = canonical["label"].as_str().unwrap().to_string();
+        let canon_uuid = db::get_item_by_handle(&conn, &canon_label).unwrap().uuid;
+
+        // One explicit derived application turns it into a canonical.
+        super::learn_value(
+            &conn,
+            &cfg,
+            "applied the nsubstitute pin to repo A",
+            &["nsubstitute".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            std::slice::from_ref(&canon_label),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 1);
+
+        // A NEW instance sharing all the canonical's tags, learned WITHOUT an
+        // explicit --derived-from (force=false so overlap detection runs): it
+        // must auto-attach to the canonical pattern.
+        let new_v = super::learn_value(
+            &conn,
+            &cfg,
+            "applied the nsubstitute pin to repo B under warnings-as-errors",
+            &["nsubstitute".into(), "ci".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+
+        let auto: Vec<String> = new_v["auto_derived_from"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            auto.contains(&canon_label),
+            "new instance must auto-attach to canonical, got {auto:?}"
+        );
+        assert_eq!(
+            super::canonical_derived_count(&conn, &canon_uuid),
+            2,
+            "canonical should now count the auto-attached instance"
+        );
+    }
+
+    #[test]
+    fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        let canonical = super::learn_value(
+            &conn,
+            &cfg,
+            "CANONICAL pattern",
+            &["p".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let canon_label = canonical["label"].as_str().unwrap().to_string();
+        let canon_uuid = db::get_item_by_handle(&conn, &canon_label).unwrap().uuid;
+        super::learn_value(
+            &conn,
+            &cfg,
+            "seed application",
+            &["p".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            std::slice::from_ref(&canon_label),
+            &[],
+        )
+        .unwrap();
+
+        // Author explicitly names the canonical: the explicit link wins, and the
+        // auto-attach must NOT create a second, duplicate derived_from edge.
+        let new_v = super::learn_value(
+            &conn,
+            &cfg,
+            "another application, explicitly linked",
+            &["p".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            &[],
+            std::slice::from_ref(&canon_label),
+            &[],
+        )
+        .unwrap();
+        let explicit: Vec<String> = new_v["derived_from"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        assert!(explicit.contains(&canon_label));
+        assert!(
+            new_v["auto_derived_from"].as_array().unwrap().is_empty(),
+            "explicit derived_from must suppress the auto-link for the same canonical"
+        );
+        // Exactly two applications (seed + this one), not three.
+        assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 2);
+    }
+
+    #[test]
+    fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
+        use crate::infrastructure::{config::Config, db};
+        let conn = db::open_in_memory_for_test();
+        let cfg = Config::default();
+
+        // A plain memory (no derived children) — not a pattern.
+        super::learn_value(
+            &conn,
+            &cfg,
+            "a plain finding",
+            &["solo".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            true,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+
+        // A near-duplicate by tag, but the overlap target is not canonical.
+        let new_v = super::learn_value(
+            &conn,
+            &cfg,
+            "another finding on the same topic",
+            &["solo".into()],
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(
+            new_v["auto_derived_from"].as_array().unwrap().is_empty(),
+            "auto-attach must fire only for canonical patterns, not plain overlaps"
+        );
     }
 
     #[test]
