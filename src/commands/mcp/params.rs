@@ -500,6 +500,9 @@ pub(crate) struct ReflectParams {
     pub(crate) project_path: Option<String>,
     /// Minimum co-activation weight for two memories to count as clustered.
     pub(crate) min_weight: Option<f64>,
+    /// Largest cluster to propose; bigger connected components are split at
+    /// their weakest synapses. 0 = never split. Default 8.
+    pub(crate) max_cluster: Option<usize>,
     /// If true, create the proposed `derived_from` edges. Default false
     /// (read-only: return the proposal so you can review it first).
     pub(crate) apply: Option<bool>,

@@ -604,10 +604,11 @@ fn run() -> Result<()> {
 
             Command::Reflect {
                 min_weight,
+                max_cluster,
                 apply,
                 json,
             } => {
-                commands::reflect::run(&conn, min_weight, json, apply)?;
+                commands::reflect::run(&conn, min_weight, max_cluster, json, apply)?;
             }
 
             Command::Assignment { id, text } => {

@@ -526,8 +526,10 @@ pub enum Command {
     /// automatically on `learn`; run this once to backfill memories learned
     /// before automatic embedding, or after a bulk import.
     ReindexEmbeddings,
-    /// surfaced together — into reinforced `co_activated` synapses, so the
-    /// memory graph learns its own wiring from use.
+    /// Hebbian consolidation: turn memories recalled together (within
+    /// `--bucket-secs`) over the last `--window-days` into `co_activated`
+    /// synapses, so the memory graph learns its own wiring from use. Recomputed
+    /// from the window each run: idempotent, and stale synapses decay away.
     Consolidate {
         /// Look back this many days of recall events
         #[arg(long, default_value_t = 30)]
@@ -687,6 +689,10 @@ pub enum Command {
         /// Minimum synapse weight for two memories to be treated as related.
         #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MIN_WEIGHT)]
         min_weight: f64,
+        /// Largest cluster to propose; bigger connected components are split at
+        /// their weakest synapses (0 = never split).
+        #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MAX_CLUSTER)]
+        max_cluster: usize,
         /// Materialise the proposed consolidations (create the derived_from
         /// links) instead of only printing them. Idempotent and cycle-guarded.
         #[arg(long)]
