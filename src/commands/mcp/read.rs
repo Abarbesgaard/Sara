@@ -272,11 +272,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Hebbian consolidation: sweep recent recall history and \
-        reinforce a `co_activated` synapse between every pair of memories that fired \
-        together (recalled within `bucket_secs` of each other). This is what makes \
-        related memories surface together in future recalls, so run it periodically — \
-        recall quality degrades without it. Returns the number of synapses reinforced."
+        description = "Hebbian consolidation: sweep the last `window_days` of recall \
+        history and set a `co_activated` synapse between every pair of memories that \
+        fired together (recalled within `bucket_secs` of each other), weighted by how \
+        often they co-fired. The learned wiring is recomputed from the window on each \
+        run, so it is idempotent and synapses whose co-firings have aged out decay \
+        away. This is what makes related memories surface together in future recalls, \
+        so run it periodically. Returns the number of synapses in the learned wiring."
     )]
     fn consolidate(
         &self,
@@ -313,12 +315,15 @@ impl SaraServer {
         let min_weight = p
             .min_weight
             .unwrap_or(crate::commands::reflect::DEFAULT_MIN_WEIGHT);
+        let max_cluster = p
+            .max_cluster
+            .unwrap_or(crate::commands::reflect::DEFAULT_MAX_CLUSTER);
         let v = self
             .with_project(p.project_path.as_deref(), "mcp reflect", |conn, _cfg| {
                 if p.apply.unwrap_or(false) {
-                    commands::reflect::apply_value(conn, min_weight)
+                    commands::reflect::apply_value(conn, min_weight, max_cluster)
                 } else {
-                    commands::reflect::reflect_value(conn, min_weight)
+                    commands::reflect::reflect_value(conn, min_weight, max_cluster)
                 }
             })
             .map_err(mcp_err)?;
