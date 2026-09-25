@@ -3,7 +3,7 @@
 # published crate is `sara-tasks` while the installed binary stays `sara`
 # (see [[bin]] below).
 name = "sara-tasks"
-version = "1.6.0"
+version = "1.7.0"
 edition = "2024"
 description = "Sara — folder-aware task manager"
 license = "MIT"
@@ -13,6 +13,8 @@ homepage = "https://github.com/Abarbesgaard/Sara"
 readme = "README.md"
 keywords = ["task", "cli", "tui", "productivity", "todo"]
 categories = ["command-line-utilities"]
+# dream-web is a standalone Node app, not part of the Rust crate.
+exclude = ["dream-web/"]
 
 [[bin]]
 name = "sara"
