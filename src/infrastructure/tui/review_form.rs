@@ -8,7 +8,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 use crate::infrastructure::model::Priority;
 use crate::infrastructure::tui::fzf;
@@ -535,7 +535,7 @@ impl<'a> FormState<'a> {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 /// Run the form. Returns Some(FormInput) on submit, None on cancel.
-pub fn run_form<B: Backend>(
+pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     ctx: FormContext,
 ) -> Result<Option<FormInput>> {

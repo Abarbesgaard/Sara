@@ -1,4 +1,4 @@
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 use crate::infrastructure::db::LinkFlags;
 use crate::infrastructure::model::{Status, Task};

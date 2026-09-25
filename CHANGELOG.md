@@ -34,6 +34,14 @@
   pass and similar-work lookup** — one grouped query instead of an event-log scan
   per memory (`prune-memories` ~200 ms → ~25 ms on a 780-memory store).
 
+### Security
+
+- **Upgrade the TUI stack to clear the open RustSec advisories.** `ratatui`
+  0.29 → 0.30, `crossterm` 0.28 → 0.29, and the unmaintained `tui-textarea` is
+  replaced by its maintained fork `ratatui-textarea` 0.9. This moves `lru` from
+  0.12.5 to 0.18.x (RUSTSEC-2026-0253, RUSTSEC-2026-0002) and drops the
+  unmaintained `paste` crate (RUSTSEC-2024-0436); `cargo audit` is clean.
+
 ## [1.6.0] - 2026-09-08
 
 ### Added

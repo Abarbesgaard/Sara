@@ -2160,7 +2160,7 @@ mod tests {
             editing: false,
             commenting: false,
             adding_step: false,
-            editor: tui_textarea::TextArea::default(),
+            editor: ratatui_textarea::TextArea::default(),
             due_error: false,
             dep_error: None,
             scroll: 0,
