@@ -557,7 +557,7 @@ from reading and planning a task through to completing it:
 | `resolve` | Resolve a feedback item by its id |
 | `start` / `stop` | Time tracking (`stop` snapshots a tied branch's changed files) |
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
-| `consolidate` | Reinforce `co_activated` synapses between memories recalled together |
+| `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
 | `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |

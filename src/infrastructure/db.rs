@@ -3611,23 +3611,34 @@ pub fn delete_memory_link(
     Ok(changed > 0)
 }
 
-/// Hebbian reinforcement: strengthen (or create) an undirected `co_activated`
-/// edge between two memories that fired together in recall. Stored canonically
-/// with the lexicographically smaller uuid as `from_uuid`, so the pair collapses
-/// to one row regardless of argument order. Weight accumulates across calls;
-/// a brand-new edge starts at `delta`. No-op when `a == b`.
-pub fn reinforce_coactivation(conn: &Connection, a: &str, b: &str, delta: f64) -> Result<()> {
-    if a == b {
-        return Ok(());
-    }
-    let (from, to) = if a < b { (a, b) } else { (b, a) };
-    conn.execute(
-        "INSERT INTO memory_links (from_uuid, to_uuid, relation, weight, created)
-         VALUES (?1, ?2, 'co_activated', ?3, ?4)
-         ON CONFLICT(from_uuid, to_uuid, relation)
-         DO UPDATE SET weight = weight + excluded.weight",
-        rusqlite::params![from, to, delta, dt_to_str(&Utc::now())],
+/// Atomically replace every `co_activated` edge with `edges` (`(a, b, weight)`).
+/// Each undirected pair is stored canonically with the lexicographically smaller
+/// uuid as `from_uuid`; self-pairs are skipped. Deliberate relations are
+/// untouched. This makes Hebbian consolidation a pure function of the recall
+/// window: re-running it is idempotent, and pairs that stopped co-firing drop out.
+pub fn replace_coactivations(conn: &Connection, edges: &[(String, String, f64)]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM memory_links WHERE relation = 'co_activated'",
+        [],
     )?;
+    {
+        let now = dt_to_str(&Utc::now());
+        let mut stmt = tx.prepare(
+            "INSERT INTO memory_links (from_uuid, to_uuid, relation, weight, created)
+             VALUES (?1, ?2, 'co_activated', ?3, ?4)
+             ON CONFLICT(from_uuid, to_uuid, relation)
+             DO UPDATE SET weight = weight + excluded.weight",
+        )?;
+        for (a, b, w) in edges {
+            if a == b {
+                continue;
+            }
+            let (from, to) = if a < b { (a, b) } else { (b, a) };
+            stmt.execute(rusqlite::params![from, to, w, now])?;
+        }
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -4186,6 +4197,7 @@ pub fn prune_memories(
     };
 
     let now = Utc::now();
+    let strengths = item_strengths(conn, &all);
     let mut candidates: Vec<PruneCandidate> = vec![];
     let mut superseded_stmt = conn.prepare(
         "SELECT COUNT(*) FROM memory_links ml \
@@ -4229,7 +4241,7 @@ pub fn prune_memories(
         }
 
         // Signal 3: weak (no task link) and old
-        let strength = item_strength(conn, item);
+        let strength = strengths.get(&item.uuid).copied().unwrap_or(1.0);
         if strength < 1.5 && age_days >= weak_days {
             candidates.push(PruneCandidate {
                 label,
@@ -4325,12 +4337,14 @@ pub fn count_review_candidates(
     };
 
     let now = Utc::now();
+    let strengths = item_strengths(conn, &all);
     let mut count = 0usize;
     let mut oldest_age_days = 0i64;
     for item in &all {
         let age_days = (now - item.created).num_days();
         let provisional_stale = item.status == "provisional" && age_days >= provisional_days;
-        let weak_old = item_strength(conn, item) < 1.5 && age_days >= weak_days;
+        let strength = strengths.get(&item.uuid).copied().unwrap_or(1.0);
+        let weak_old = strength < 1.5 && age_days >= weak_days;
         if provisional_stale || weak_old {
             count += 1;
             if age_days > oldest_age_days {
@@ -4566,10 +4580,12 @@ pub fn find_similar_strong_memories(
     }
 
     // Filter to Strong only, load file associations, sort by strength desc.
+    let candidates: Vec<Item> = candidates.into_values().collect();
+    let strengths = item_strengths(conn, &candidates);
     let mut strong: Vec<Item> = candidates
-        .into_values()
+        .into_iter()
         .filter_map(|mut item| {
-            let s = item_strength(conn, &item);
+            let s = strengths.get(&item.uuid).copied().unwrap_or(1.0);
             if s >= 2.0 {
                 item.files = get_item_files(conn, &item.uuid).unwrap_or_default();
                 Some(item)
