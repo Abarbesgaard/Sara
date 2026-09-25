@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use super::{ProjectAction, ProjectListState, ProjectRow};
 
-pub(super) fn list_loop<B: Backend>(
+pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     st: &mut ProjectListState,
 ) -> Result<ProjectAction> {
