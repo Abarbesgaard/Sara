@@ -2,8 +2,8 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{Terminal, backend::Backend};
+use ratatui_textarea::TextArea;
 use rusqlite::Connection;
-use tui_textarea::TextArea;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
@@ -19,7 +19,7 @@ use super::handler::{
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
 
-pub(super) fn edit_loop<B: Backend>(
+pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     conn: &Connection,
     cfg: &Config,
