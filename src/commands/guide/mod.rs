@@ -492,14 +492,26 @@ pub fn check_value(
     // caller feeds to step_done/step_remove. Returned so agents can round-trip it
     // instead of guessing (or misusing the raw step_id rowid).
     let index = db::get_steps(conn, &task.uuid, kind)?.len();
-    Ok(json!({
+    let mut out = json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "kind": kind,
         "text": text,
         "step_id": step_id,
         "index": index,
-    }))
+    });
+    // An acceptance criterion with no verify command is unprovable: the closing
+    // `validate` gate has nothing to run against it and fails ("no verify
+    // command"). Surface that footgun the moment the criterion is born, not six
+    // phases later at the gate, so the caller can add `--verify "<cmd>"` now.
+    if kind == db::STEP_KIND_ACCEPTANCE && verify.map(str::trim).filter(|v| !v.is_empty()).is_none()
+    {
+        out["warning"] = json!(
+            "acceptance criterion has no verify command — `validate` cannot prove \
+             it and will refuse; add one with `--verify \"<cmd>\"`"
+        );
+    }
+    Ok(out)
 }
 
 /// `sara verify [--step N] [--run] [--tick-on-pass]` — surface/run verification

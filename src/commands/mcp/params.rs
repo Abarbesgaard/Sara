@@ -64,11 +64,13 @@ where
 }
 
 /// Accept a list of strings given as either a JSON array (`["a","b"]`) or a
-/// single bare string (`"a"` -> `["a"]`), defaulting to `None` when absent or
-/// `null`. Agents routinely pass a lone tag/file as a scalar rather than a
-/// one-element array, which `Vec<String>` alone rejects with
-/// "invalid type: string, expected a sequence". Paired with `#[serde(default,
-/// deserialize_with = "de_opt_string_vec")]` on every `Option<Vec<String>>`.
+/// single string. A bare scalar is split on commas (`"a,b"` -> `["a","b"]`,
+/// `"a"` -> `["a"]`), trimmed, with empty segments dropped; absent or `null`
+/// yields `None`. Agents routinely pass tags/files either as a lone scalar or
+/// as a comma-separated string rather than a JSON array, which `Vec<String>`
+/// alone rejects with "invalid type: string, expected a sequence", failing the
+/// whole call. Paired with `#[serde(default, deserialize_with =
+/// "de_opt_string_vec")]` on every `Option<Vec<String>>`.
 fn de_opt_string_vec<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -81,7 +83,13 @@ where
     }
     Ok(match Option::<OneOrMany>::deserialize(d)? {
         None => None,
-        Some(OneOrMany::One(s)) => Some(vec![s]),
+        Some(OneOrMany::One(s)) => Some(
+            s.split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect(),
+        ),
         Some(OneOrMany::Many(v)) => Some(v),
     })
 }

@@ -80,7 +80,7 @@ impl SaraServer {
                     p.tag.as_deref().unwrap_or(&[]),
                     p.project.as_deref().unwrap_or(&[]),
                     p.files.as_deref().unwrap_or(&[]),
-                    p.limit.unwrap_or(20),
+                    p.limit.unwrap_or(10),
                     p.spread.unwrap_or(false),
                 )
             })
