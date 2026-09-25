@@ -503,7 +503,7 @@ pub enum Command {
         #[arg(long)]
         top: Option<i64>,
         /// Max results
-        #[arg(long, default_value_t = 20)]
+        #[arg(long, default_value_t = 10)]
         limit: i64,
         /// Also surface associatively-related memories by spreading activation
         /// across the memory graph (synapses = links + shared anchors), not just

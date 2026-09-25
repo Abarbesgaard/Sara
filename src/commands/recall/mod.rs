@@ -137,6 +137,29 @@ pub fn recall_value(
         }));
     }
 
+    // Drill-deeper: a bare memory handle like `m228` resolves that memory
+    // directly and returns it in full plus its cluster as a guide — the "recall
+    // deeper" affordance an agent uses after a lean recall surfaced the label.
+    if let Some(item) = resolve_label_query(conn, query) {
+        let _ = db::record_memory_recall(conn, &item.uuid);
+        let hit = item_hit(conn, item, true);
+        let related = spreading_related(conn, std::slice::from_ref(&hit))?;
+        let associative = associative_guide(conn, &related);
+        let label = hit.label.clone();
+        return Ok(json!({
+            "query": query,
+            "tag": tags,
+            "project": projects,
+            "files": files,
+            "keyword": keyword_json(std::slice::from_ref(&hit)),
+            "associative": associative,
+            "spread": "label",
+            "confidence": "exact",
+            "caveat": format!("Resolved memory {label} by label; `associative` maps its cluster."),
+            "deep": true,
+        }));
+    }
+
     let hits = collect_hits(
         conn,
         query,
@@ -163,20 +186,7 @@ pub fn recall_value(
     let do_spread = spread || auto_spread;
     let associative: Vec<_> = if do_spread {
         let related = spreading_related(conn, &hits)?;
-        related
-            .iter()
-            .map(|r| {
-                let _ = db::record_memory_surfaced(conn, &r.item.uuid);
-                json!({
-                    "label": format!("m{}", r.item.display_id.unwrap_or(0)),
-                    "text": r.item.body.clone(),
-                    "preview": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()).chars().take(160).collect::<String>(),
-                    "activation": r.activation,
-                    "strength": db::item_strength(conn, &r.item),
-                    "via": r.path,
-                })
-            })
-            .collect()
+        associative_guide(conn, &related)
     } else {
         vec![]
     };
@@ -288,6 +298,33 @@ pub fn run(
         .collect();
 
     let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
+
+    // Drill-deeper: `sara recall m228` resolves the handle and prints that memory
+    // in full plus its cluster, mirroring the JSON path's label lookup.
+    if !recent && let Some(item) = resolve_label_query(conn, query) {
+        let _ = db::record_memory_recall(conn, &item.uuid);
+        let hit = item_hit(conn, item, true);
+        println!("Memory {} (resolved by label):", hit.label);
+        println!("  {}", hit.body.trim());
+        let related = spreading_related(conn, std::slice::from_ref(&hit))?;
+        if !related.is_empty() {
+            println!("\nCluster (recall a label for its full text):");
+            for r in &related {
+                let label = format!("m{}", r.item.display_id.unwrap_or(0));
+                let snippet: String = r
+                    .item
+                    .summary
+                    .clone()
+                    .unwrap_or_else(|| r.item.body.clone())
+                    .chars()
+                    .take(100)
+                    .collect();
+                println!("  ~{label} ({:.2}): {}", r.activation, snippet.trim());
+                let _ = db::record_memory_surfaced(conn, &r.item.uuid);
+            }
+        }
+        return Ok(());
+    }
 
     let hits = if recent {
         recent_hits(conn, limit)?
@@ -1010,41 +1047,138 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
 
 /// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
 /// and query-driven paths.
-fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
-    hits.iter()
-        .map(|h| {
+/// Resolve a query that is a bare memory handle (`m<NN>`) to its item, for the
+/// "recall deeper" drill-in. Returns `None` for ordinary free-text queries so
+/// they still go through keyword/associative search. Only memory handles (`m…`)
+/// qualify — not `n`/`l` handles or uuid prefixes — since recall is memory-facing.
+fn resolve_label_query(conn: &Connection, query: &str) -> Option<Item> {
+    let q = query.trim();
+    let is_memory_handle = q.len() >= 2
+        && (q.starts_with('m') || q.starts_with('M'))
+        && q[1..].chars().all(|c| c.is_ascii_digit());
+    if !is_memory_handle {
+        return None;
+    }
+    db::get_item_by_handle(conn, q).ok()
+}
+
+/// Render spreading-activation neighbours as a compact **guide** — label,
+/// ≤160-char preview, activation, strength, and the synaptic path — with NO full
+/// body. The associative array is a map to the cluster, not a payload; an agent
+/// pulls any neighbour in full by re-calling `recall` with its `mNN` label.
+fn associative_guide(conn: &Connection, related: &[Related]) -> Vec<serde_json::Value> {
+    related
+        .iter()
+        .map(|r| {
+            let _ = db::record_memory_surfaced(conn, &r.item.uuid);
             json!({
-                "ref_kind": h.ref_kind,
-                "label": h.label,
-                "description": h.description,
-                "text": h.body,
-                "preview": h.snippet,
-                "strength": h.strength,
-                "exact_match": h.exact_match,
-                "loose": h.loose,
-                "semantic": h.semantic,
-                "cosine": h.cosine,
-                "modified": h.modified.map(|m| m.to_rfc3339()),
-                "files": h.files,
-                "superseded_by": h.superseded_by,
-                "provisional": h.provisional,
-                "canonical": !h.derived_children.is_empty(),
-                "derived_count": h.derived_children.len(),
-                "derived_children": h.derived_children,
-                "derived_from": h.derived_from_labels,
-                "cluster": h.cluster.as_ref().map(|c| json!({
-                    "canonical": c.canonical_label,
-                    "size": c.size,
-                    "collapsed_here": c.collapsed_here,
-                })),
-                "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
-                    "id": t.id.unwrap_or(0),
-                    "description": t.description,
-                    "source": src,
-                })).collect::<Vec<_>>(),
+                "label": format!("m{}", r.item.display_id.unwrap_or(0)),
+                "preview": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()).chars().take(160).collect::<String>(),
+                "activation": r.activation,
+                "strength": db::item_strength(conn, &r.item),
+                "via": r.path,
             })
         })
         .collect()
+}
+
+/// Render the keyword hits as JSON. Only the **top hit** comes back in full —
+/// its complete metadata envelope plus the untruncated `text`. Every other hit
+/// collapses to a lean guide entry (`label`, ≤160-char `preview`, `strength`,
+/// and — only when they carry signal — cluster/canonical/derivation and
+/// linked-task handles), with none of the null/empty scaffolding fields. The
+/// model gets one memory in full plus a compact map of the cluster it belongs
+/// to, and can drill into any sibling by re-calling `recall` with that memory's
+/// `mNN` label. This keeps the MCP payload lean instead of dumping every matched
+/// memory's full envelope.
+fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
+    hits.iter()
+        .enumerate()
+        .map(|(i, h)| {
+            // Only the top hit is returned in full detail (all metadata + body);
+            // every other hit collapses to a lean guide entry so the payload
+            // stays small.
+            if i == 0 {
+                json!({
+                    "ref_kind": h.ref_kind,
+                    "label": h.label,
+                    "description": h.description,
+                    "preview": h.snippet,
+                    "text": h.body,
+                    "strength": h.strength,
+                    "exact_match": h.exact_match,
+                    "loose": h.loose,
+                    "semantic": h.semantic,
+                    "cosine": h.cosine,
+                    "modified": h.modified.map(|m| m.to_rfc3339()),
+                    "files": h.files,
+                    "superseded_by": h.superseded_by,
+                    "provisional": h.provisional,
+                    "canonical": !h.derived_children.is_empty(),
+                    "derived_count": h.derived_children.len(),
+                    "derived_children": h.derived_children,
+                    "derived_from": h.derived_from_labels,
+                    "cluster": h.cluster.as_ref().map(|c| json!({
+                        "canonical": c.canonical_label,
+                        "size": c.size,
+                        "collapsed_here": c.collapsed_here,
+                    })),
+                    "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
+                        "id": t.id.unwrap_or(0),
+                        "description": t.description,
+                        "source": src,
+                    })).collect::<Vec<_>>(),
+                })
+            } else {
+                keyword_guide(h)
+            }
+        })
+        .collect()
+}
+
+/// Compact guide rendering of a non-top keyword hit: enough to identify the
+/// memory, gauge its weight, and know where it sits in its cluster so the model
+/// can drill into it with `recall("mNN")` — but no full body and none of the
+/// null/empty scaffolding fields that bloat the payload. Cluster/canonical,
+/// derivation, and linked-task pointers are only emitted when they carry signal.
+fn keyword_guide(h: &Hit) -> serde_json::Value {
+    let mut o = json!({
+        "label": h.label,
+        "preview": h.snippet,
+        "strength": h.strength,
+    });
+    let map = o.as_object_mut().expect("json object");
+    if !h.derived_children.is_empty() {
+        map.insert("canonical".into(), json!(true));
+    }
+    if !h.derived_from_labels.is_empty() {
+        map.insert("derived_from".into(), json!(h.derived_from_labels));
+    }
+    if let Some(c) = h.cluster.as_ref() {
+        map.insert(
+            "cluster".into(),
+            json!({
+                "canonical": c.canonical_label,
+                "size": c.size,
+                "collapsed_here": c.collapsed_here,
+            }),
+        );
+    }
+    if !h.superseded_by.is_empty() {
+        map.insert("superseded_by".into(), json!(h.superseded_by));
+    }
+    if !h.linked_tasks.is_empty() {
+        map.insert(
+            "linked_tasks".into(),
+            json!(
+                h.linked_tasks
+                    .iter()
+                    .map(|(t, _src)| t.id.unwrap_or(0))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    o
 }
 
 /// Recent memories for a bare `sara recall` (no query, no filters): newest
@@ -1338,6 +1472,116 @@ mod tests {
     }
 
     #[test]
+    fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
+        let conn = db::open_in_memory_for_test();
+        // Two memories that both match the query. Distinct long bodies so a
+        // full-vs-preview mistake is unambiguous.
+        seed_memory(
+            &conn,
+            "widget alpha",
+            &format!("alpha body {}", "aaaaa ".repeat(40)),
+            &[],
+            &["p"],
+        );
+        seed_memory(
+            &conn,
+            "widget beta",
+            &format!("beta body {}", "bbbbb ".repeat(40)),
+            &[],
+            &["p"],
+        );
+
+        let v = recall_value(&conn, &cfg(), "widget body", &[], &[], &[], 10, false).unwrap();
+        let hits = v["keyword"].as_array().unwrap();
+        assert!(hits.len() >= 2, "both memories should surface: {hits:?}");
+        // The top hit carries the full body...
+        assert!(
+            hits[0]["text"].as_str().is_some_and(|t| t.len() > 160),
+            "top hit must carry its full untruncated body"
+        );
+        // ...every other hit is a guide entry: preview present, no full text.
+        for h in &hits[1..] {
+            assert!(h["text"].is_null(), "non-top hits carry no full body: {h}");
+            assert!(
+                h["preview"].as_str().is_some(),
+                "guide entries still carry a preview and label"
+            );
+            assert!(h["label"].as_str().is_some());
+            // Guide entries must be LEAN: none of the bulky/null scaffolding
+            // fields the top hit carries. Only signal-bearing keys survive.
+            for noise in [
+                "description",
+                "ref_kind",
+                "exact_match",
+                "loose",
+                "semantic",
+                "cosine",
+                "modified",
+                "files",
+                "provisional",
+                "derived_count",
+                "derived_children",
+            ] {
+                assert!(
+                    h.get(noise).is_none(),
+                    "guide entry must not carry `{noise}`: {h}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn recall_by_label_drills_into_a_single_memory_in_full() {
+        let conn = db::open_in_memory_for_test();
+        let seed = seed_memory(
+            &conn,
+            "canonical fix",
+            &format!("the canonical mend {}", "detail ".repeat(40)),
+            &[],
+            &["p"],
+        );
+        let neighbour = seed_memory(
+            &conn,
+            "related note",
+            "a related sibling in the cluster",
+            &[],
+            &["p"],
+        );
+        db::insert_memory_link(
+            &conn,
+            &seed.uuid.to_string(),
+            &neighbour.uuid.to_string(),
+            "similar_to",
+            1.0,
+        )
+        .unwrap();
+        let label = format!("m{}", seed.display_id.unwrap());
+
+        // Recalling the bare handle returns that memory in full + its cluster guide.
+        let v = recall_value(&conn, &cfg(), &label, &[], &[], &[], 10, false).unwrap();
+        assert_eq!(v["deep"], true, "label recall is a deep drill-in");
+        assert_eq!(v["spread"], "label");
+        let hits = v["keyword"].as_array().unwrap();
+        assert_eq!(hits.len(), 1, "exactly the resolved memory");
+        assert!(
+            hits[0]["text"].as_str().is_some_and(|t| t.len() > 160),
+            "the drilled-into memory comes back in full"
+        );
+        // Its cluster is a guide (no full bodies).
+        let assoc = v["associative"].as_array().unwrap();
+        assert!(
+            assoc.iter().any(
+                |a| a["label"].as_str() == Some(&format!("m{}", neighbour.display_id.unwrap()))
+            ),
+            "the linked neighbour appears in the cluster guide: {assoc:?}"
+        );
+        assert!(
+            assoc.iter().all(|a| a["text"].is_null()),
+            "cluster guide carries no full text"
+        );
+    }
+
+    #[test]
     fn recall_default_surfaces_semantic_paraphrase() {
         // Semantic recall is ALWAYS on: a paraphrase sharing no literal keyword
         // with any memory is surfaced by embedding similarity, even with a
@@ -1465,7 +1709,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|a| a["text"].as_str().unwrap().contains("mutex")),
+                .any(|a| a["preview"].as_str().unwrap().contains("mutex")),
             "auto-spread should surface the linked neighbour"
         );
 
@@ -1476,8 +1720,12 @@ mod tests {
         assert!(
             assoc
                 .iter()
-                .any(|a| a["text"].as_str().unwrap().contains("mutex")),
+                .any(|a| a["preview"].as_str().unwrap().contains("mutex")),
             "spread should surface the linked neighbour in the associative array"
+        );
+        assert!(
+            assoc.iter().all(|a| a["text"].is_null()),
+            "the associative array is a guide — it carries no full body text"
         );
         assert!(
             assoc.iter().all(|a| a["activation"].is_number()),
@@ -1710,7 +1958,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|r| r["text"].as_str() == Some("raise pool_size for burst traffic")),
+                .any(|r| r["preview"].as_str() == Some("raise pool_size for burst traffic")),
             "the neighbour must surface via spreading activation for this test to be meaningful"
         );
 
