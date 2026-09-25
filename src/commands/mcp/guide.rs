@@ -244,7 +244,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary."
+        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary. If the new memory's tags place it inside an established canonical pattern (same-project near-duplicate, or ≥50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from` — so patterns strengthen as instances are learned. An explicit `derived_from`/`supersedes`/`similar_to` to the same memory overrides the auto-link."
     )]
     fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, ErrorData> {
         let tags = p.tags.unwrap_or_default();
