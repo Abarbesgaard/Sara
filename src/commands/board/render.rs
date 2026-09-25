@@ -47,7 +47,7 @@ pub(super) fn visible_rows(st: &BoardState) -> Vec<Row> {
     rows
 }
 
-pub(super) fn board_loop<B: Backend>(
+pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     st: &mut BoardState,
 ) -> Result<BoardAction> {
