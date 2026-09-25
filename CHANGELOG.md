@@ -15,6 +15,25 @@
   forced off with the new `validate --fresh` flag. `validate` now reports how
   many criteria were reused from cache.
 
+### Changed
+
+- **Hebbian `consolidate` is now idempotent and decays.** Each run recomputes the
+  learned `co_activated` synapses from the recall window (weight = `delta` ×
+  co-firing count) instead of adding onto previous runs, so running it
+  periodically no longer inflates every synapse towards the cap, and synapses
+  whose co-firings have aged out of the window disappear.
+- **`reflect` splits chained mega-clusters.** Single-linkage clustering could
+  chain whole families of memories into one blob via weak bridges. Components
+  larger than `--max-cluster` (default 8; MCP `max_cluster`; 0 disables) are now
+  split at their weakest synapses, so already-consolidated families are
+  recognised as such instead of being proposed for re-parenting.
+
+### Performance
+
+- **Batched memory-strength scoring in `prune-memories`, the `done` hygiene
+  pass and similar-work lookup** — one grouped query instead of an event-log scan
+  per memory (`prune-memories` ~200 ms → ~25 ms on a 780-memory store).
+
 ## [1.6.0] - 2026-09-08
 
 ### Added

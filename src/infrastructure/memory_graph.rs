@@ -16,9 +16,9 @@
 //!
 //! Plasticity is Hebbian: memories that surface together in one recall "fire
 //! together", and [`consolidate`] turns those co-firings (read from the
-//! `memory_recalled` event log) into reinforced `co_activated` edge weight, so
-//! the graph learns its own wiring from use. Disused nodes and their boosts
-//! already decay elsewhere (see `db::item_strength`), so the network stays lean.
+//! `memory_recalled` event log) into `co_activated` edge weight, so the graph
+//! learns its own wiring from use. The wiring is recomputed over a sliding
+//! window, so synapses that stop firing decay away and the network stays lean.
 
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
@@ -620,10 +620,14 @@ pub fn coactivation_pairs(
 }
 
 /// Hebbian consolidation pass: read the last `window_days` of recall events,
-/// find co-firing pairs (within `bucket`), and reinforce a `co_activated` edge
-/// for each by `delta` per co-firing. Returns the number of pairs reinforced.
-/// Idempotent in spirit — weight simply accumulates, and disused edges decay
-/// with their nodes elsewhere.
+/// find co-firing pairs (within `bucket`), and set each pair's `co_activated`
+/// edge to `delta` × its co-firing count, replacing all previous `co_activated`
+/// edges. Returns the number of synapses written.
+///
+/// The learned wiring is recomputed from the window rather than accumulated, so
+/// running it repeatedly over the same history is idempotent (weight tracks the
+/// evidence, not the number of runs), and a synapse decays away once all of the
+/// co-firings behind it have left the window.
 pub fn consolidate(
     conn: &Connection,
     window_days: i64,
@@ -633,11 +637,12 @@ pub fn consolidate(
 ) -> Result<usize> {
     let cutoff = Utc::now() - Duration::days(window_days.max(0));
     let events = db::memory_recall_events_since(conn, &cutoff)?;
-    let pairs = coactivation_pairs(&events, bucket, max_bucket);
-    for (a, b, count) in &pairs {
-        db::reinforce_coactivation(conn, &a.to_string(), &b.to_string(), delta * *count as f64)?;
-    }
-    Ok(pairs.len())
+    let edges: Vec<(String, String, f64)> = coactivation_pairs(&events, bucket, max_bucket)
+        .into_iter()
+        .map(|(a, b, count)| (a.to_string(), b.to_string(), delta * count as f64))
+        .collect();
+    db::replace_coactivations(conn, &edges)?;
+    Ok(edges.len())
 }
 
 #[cfg(test)]
@@ -1064,6 +1069,69 @@ mod tests {
             g.edge_weight(&a, &b).is_some(),
             "co-activation should have wired a and b together"
         );
+    }
+
+    fn co_activated_weight(conn: &Connection, a: &Uuid, b: &Uuid) -> Option<f64> {
+        let (a, b) = (a.to_string(), b.to_string());
+        let (from, to) = if a < b { (a, b) } else { (b, a) };
+        db::all_memory_links(conn)
+            .unwrap()
+            .into_iter()
+            .find(|l| l.relation == "co_activated" && l.from_uuid == from && l.to_uuid == to)
+            .map(|l| l.weight)
+    }
+
+    #[test]
+    fn consolidate_is_idempotent_over_the_same_events() {
+        // Re-running over an unchanged event log must not re-count the same
+        // co-firings: the weight reflects the evidence, not how often it ran.
+        let conn = db::open_in_memory_for_test();
+        let a = seed(&conn, &["x"]);
+        let b = seed(&conn, &["y"]);
+        db::record_memory_recall(&conn, &a).unwrap();
+        db::record_memory_recall(&conn, &b).unwrap();
+
+        consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        let first = co_activated_weight(&conn, &a, &b).expect("edge after first run");
+        for _ in 0..3 {
+            consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        }
+        let again = co_activated_weight(&conn, &a, &b).expect("edge after reruns");
+        assert!(
+            (first - 0.1).abs() < 1e-9 && (again - first).abs() < 1e-9,
+            "weight drifted across reruns: first={first}, again={again}"
+        );
+    }
+
+    #[test]
+    fn consolidate_drops_synapses_whose_cofirings_left_the_window() {
+        // Hebbian decay: once every co-firing behind an edge is older than the
+        // window, the next pass removes the edge instead of keeping it forever.
+        let conn = db::open_in_memory_for_test();
+        let a = seed(&conn, &["x"]);
+        let b = seed(&conn, &["y"]);
+        db::record_memory_recall(&conn, &a).unwrap();
+        db::record_memory_recall(&conn, &b).unwrap();
+        consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        assert!(co_activated_weight(&conn, &a, &b).is_some());
+
+        let old = (Utc::now() - Duration::days(60)).to_rfc3339();
+        conn.execute("UPDATE events SET at = ?1", [old]).unwrap();
+        let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        assert_eq!(reinforced, 0);
+        assert_eq!(co_activated_weight(&conn, &a, &b), None);
+    }
+
+    #[test]
+    fn consolidate_leaves_deliberate_links_untouched() {
+        let conn = db::open_in_memory_for_test();
+        let a = seed(&conn, &["x"]);
+        let b = seed(&conn, &["y"]);
+        db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "similar_to", 1.0).unwrap();
+        consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
+        let links = db::all_memory_links(&conn).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].relation, "similar_to");
     }
 
     #[test]

@@ -11,6 +11,11 @@ use crate::infrastructure::{db, memory_graph::MemoryGraph};
 /// explicit link, or several summed anchors clears it.
 pub const DEFAULT_MIN_WEIGHT: f64 = 0.5;
 
+/// Default largest cluster `reflect` will propose. A connected component above
+/// this is single-linkage chaining (A~B~C~…), not one lesson, so it is split at
+/// its weakest synapses until every piece fits. 0 disables splitting.
+pub const DEFAULT_MAX_CLUSTER: usize = 8;
+
 /// A proposed consolidation: a cluster of related, not-yet-consolidated memories
 /// and the canonical+derived_from restructuring that would tidy them.
 #[derive(Debug)]
@@ -66,7 +71,10 @@ impl UnionFind {
 /// consolidated: there exists a memory `P` such that every member either *is* `P`
 /// or has an outgoing `derived_from` edge to `P` (i.e. a canonical and its
 /// children, or siblings under a shared parent).
-pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
+///
+/// A component larger than `max_cluster` (0 = unlimited) that is not already
+/// consolidated is split by [`split_component`] before being proposed.
+pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> Result<Value> {
     let graph = MemoryGraph::build(conn)?;
     if graph.is_empty() {
         return Ok(json!({ "clusters": [], "count": 0 }));
@@ -82,12 +90,14 @@ pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
 
     // Cluster via union-find over strong-enough edges.
     let mut uf = UnionFind::new(graph.nodes.len());
+    let mut eligible: Vec<(usize, usize, f64)> = Vec::new();
     for (a, b, w) in graph.edges() {
         if w < min_weight {
             continue;
         }
         if let (Some(&ia), Some(&ib)) = (index.get(&a.to_string()), index.get(&b.to_string())) {
             uf.union(ia, ib);
+            eligible.push((ia, ib, w));
         }
     }
 
@@ -120,15 +130,36 @@ pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
         tags_by_uuid.insert(m.uuid.to_string(), tags);
     }
 
+    let uuids_of = |members: &[usize]| -> Vec<String> {
+        members
+            .iter()
+            .map(|&i| graph.nodes[i].uuid.to_string())
+            .collect()
+    };
+
+    // Split oversized components, but only ones not already tidied: a canonical
+    // with many children is one consolidated family, not a chain to break up.
+    let mut pieces: Vec<Vec<usize>> = Vec::new();
+    for members in components.into_values() {
+        if members.len() < 2 {
+            continue;
+        }
+        if max_cluster > 0
+            && members.len() > max_cluster
+            && !is_already_consolidated(&uuids_of(&members), &derived_parents)
+        {
+            pieces.extend(split_component(members, &eligible, max_cluster));
+        } else {
+            pieces.push(members);
+        }
+    }
+
     let mut clusters: Vec<Cluster> = Vec::new();
-    for member_idx in components.values() {
+    for member_idx in &pieces {
         if member_idx.len() < 2 {
             continue;
         }
-        let uuids: Vec<String> = member_idx
-            .iter()
-            .map(|&i| graph.nodes[i].uuid.to_string())
-            .collect();
+        let uuids = uuids_of(member_idx);
 
         if is_already_consolidated(&uuids, &derived_parents) {
             continue;
@@ -201,6 +232,45 @@ pub fn reflect_value(conn: &Connection, min_weight: f64) -> Result<Value> {
     }))
 }
 
+/// Break a chained component into pieces of at most `max` members by repeatedly
+/// dropping its weakest synapse level and re-taking connected components
+/// (divisive single linkage). Tightly-bound cores survive; the weak bridges that
+/// chained them together are what get cut. Members left without any surviving
+/// edge come back as singletons, which callers ignore.
+fn split_component(
+    members: Vec<usize>,
+    edges: &[(usize, usize, f64)],
+    max: usize,
+) -> Vec<Vec<usize>> {
+    if members.len() <= max {
+        return vec![members];
+    }
+    let local: HashMap<usize, usize> = members.iter().enumerate().map(|(k, &i)| (i, k)).collect();
+    let inside: Vec<(usize, usize, f64)> = edges
+        .iter()
+        .copied()
+        .filter(|(a, b, _)| local.contains_key(a) && local.contains_key(b))
+        .collect();
+    let Some(weakest) = inside.iter().map(|e| e.2).min_by(f64::total_cmp) else {
+        return members.into_iter().map(|m| vec![m]).collect();
+    };
+    let kept: Vec<(usize, usize, f64)> = inside.into_iter().filter(|e| e.2 > weakest).collect();
+
+    let mut uf = UnionFind::new(members.len());
+    for (a, b, _) in &kept {
+        uf.union(local[a], local[b]);
+    }
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (k, &m) in members.iter().enumerate() {
+        groups.entry(uf.find(k)).or_default().push(m);
+    }
+    let mut out = Vec::new();
+    for group in groups.into_values() {
+        out.extend(split_component(group, &kept, max));
+    }
+    out
+}
+
 /// A component is already consolidated when some memory `P` is a common parent:
 /// every member either *is* `P` or has a `derived_from` edge to `P`.
 fn is_already_consolidated(
@@ -252,8 +322,8 @@ fn shared_tags(uuids: &[String], tags_by_uuid: &HashMap<String, Vec<String>>) ->
 /// reported rather than aborting the whole pass.
 ///
 /// Returns `{ applied, links[], skipped[], clusters }`.
-pub fn apply_value(conn: &Connection, min_weight: f64) -> Result<Value> {
-    let proposal = reflect_value(conn, min_weight)?;
+pub fn apply_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> Result<Value> {
+    let proposal = reflect_value(conn, min_weight, max_cluster)?;
     let clusters = proposal["clusters"].as_array().cloned().unwrap_or_default();
 
     let mut applied: Vec<Value> = Vec::new();
@@ -304,9 +374,15 @@ pub fn apply_value(conn: &Connection, min_weight: f64) -> Result<Value> {
 
 /// `sara reflect [--apply]` — propose (default) or materialise canonical+derived
 /// consolidations for clusters of related, not-yet-tidied memories.
-pub fn run(conn: &Connection, min_weight: f64, json_output: bool, apply: bool) -> Result<()> {
+pub fn run(
+    conn: &Connection,
+    min_weight: f64,
+    max_cluster: usize,
+    json_output: bool,
+    apply: bool,
+) -> Result<()> {
     if apply {
-        let v = apply_value(conn, min_weight)?;
+        let v = apply_value(conn, min_weight, max_cluster)?;
         if json_output {
             println!("{}", serde_json::to_string_pretty(&v)?);
             return Ok(());
@@ -344,7 +420,7 @@ pub fn run(conn: &Connection, min_weight: f64, json_output: bool, apply: bool) -
         return Ok(());
     }
 
-    let v = reflect_value(conn, min_weight)?;
+    let v = reflect_value(conn, min_weight, max_cluster)?;
     let count = v["count"].as_u64().unwrap_or(0);
 
     if json_output {
@@ -412,6 +488,66 @@ mod tests {
         db::insert_memory_link(conn, &from.to_string(), &to.to_string(), relation, 1.0).unwrap();
     }
 
+    fn weighted_link(conn: &rusqlite::Connection, from: &Uuid, to: &Uuid, weight: f64) {
+        db::insert_memory_link(
+            conn,
+            &from.to_string(),
+            &to.to_string(),
+            "similar_to",
+            weight,
+        )
+        .unwrap();
+    }
+
+    fn cluster_sizes(v: &serde_json::Value) -> Vec<usize> {
+        let mut sizes: Vec<usize> = v["clusters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["members"].as_array().unwrap().len())
+            .collect();
+        sizes.sort_unstable_by(|a, b| b.cmp(a));
+        sizes
+    }
+
+    #[test]
+    fn chained_mega_component_is_split_at_its_weakest_links() {
+        // Single linkage chains a long run of moderately-related memories into
+        // one blob. Two tight triangles joined by a weak chain must come back as
+        // the two triangles, not as one 12-member cluster.
+        let conn = db::open_in_memory_for_test();
+        let m: Vec<Uuid> = (0..12)
+            .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
+            .collect();
+        for w in m[2..10].windows(2) {
+            weighted_link(&conn, &w[0], &w[1], 1.0); // chain edge: 0.7
+        }
+        for tri in [&m[0..3], &m[9..12]] {
+            weighted_link(&conn, &tri[0], &tri[1], 2.0); // tight edge: capped 1.0
+            weighted_link(&conn, &tri[1], &tri[2], 2.0);
+            weighted_link(&conn, &tri[0], &tri[2], 2.0);
+        }
+
+        let unsplit = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, 0).unwrap();
+        assert_eq!(cluster_sizes(&unsplit), vec![12], "0 disables splitting");
+
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, 4).unwrap();
+        assert_eq!(cluster_sizes(&v), vec![3, 3]);
+    }
+
+    #[test]
+    fn component_within_max_size_is_not_split() {
+        let conn = db::open_in_memory_for_test();
+        let m: Vec<Uuid> = (0..4)
+            .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
+            .collect();
+        weighted_link(&conn, &m[0], &m[1], 2.0);
+        weighted_link(&conn, &m[1], &m[2], 1.0);
+        weighted_link(&conn, &m[2], &m[3], 1.0);
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, 4).unwrap();
+        assert_eq!(cluster_sizes(&v), vec![4]);
+    }
+
     #[test]
     fn fresh_related_cluster_is_proposed_with_a_canonical() {
         let conn = db::open_in_memory_for_test();
@@ -435,7 +571,8 @@ mod tests {
         link(&conn, &a, &b, "similar_to");
         link(&conn, &b, &c, "similar_to");
 
-        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
         assert_eq!(v["count"].as_u64().unwrap(), 1, "one cluster expected");
         let cluster = &v["clusters"][0];
         assert_eq!(cluster["members"].as_array().unwrap().len(), 3);
@@ -464,7 +601,8 @@ mod tests {
         link(&conn, &child_a, &canonical, "derived_from");
         link(&conn, &child_b, &canonical, "derived_from");
 
-        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
         assert_eq!(
             v["count"].as_u64().unwrap(),
             0,
@@ -478,7 +616,8 @@ mod tests {
         insert_memory(&conn, "memory about auth", "auth");
         insert_memory(&conn, "memory about billing", "billing");
 
-        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
         assert_eq!(
             v["count"].as_u64().unwrap(),
             0,
@@ -509,7 +648,8 @@ mod tests {
         link(&conn, &a, &b, "similar_to");
         link(&conn, &b, &c, "similar_to");
 
-        let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
         assert_eq!(
             v["applied"].as_u64().unwrap(),
             2,
@@ -533,11 +673,15 @@ mod tests {
         link(&conn, &a, &b, "similar_to");
         link(&conn, &b, &c, "similar_to");
 
-        let first = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let first =
+            super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+                .unwrap();
         assert_eq!(first["applied"].as_u64().unwrap(), 2);
 
         // Second run: the cluster is now consolidated -> nothing to propose/apply.
-        let second = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let second =
+            super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+                .unwrap();
         assert_eq!(second["applied"].as_u64().unwrap(), 0, "no re-application");
         assert!(second["skipped"].as_array().unwrap().is_empty());
 
@@ -547,7 +691,9 @@ mod tests {
             2,
             "no duplicate links"
         );
-        let proposal = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let proposal =
+            super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+                .unwrap();
         assert_eq!(
             proposal["count"].as_u64().unwrap(),
             0,
@@ -579,7 +725,8 @@ mod tests {
         db::insert_task(&conn, &mut task).unwrap();
         db::set_item_task_links(&conn, &a, &[(task.uuid, "explicit")]).unwrap();
 
-        let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT).unwrap();
+        let v = super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
         // c -> a applies; b -> a is skipped for the cycle it would create.
         assert_eq!(
             v["applied"].as_u64().unwrap(),
