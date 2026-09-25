@@ -166,8 +166,6 @@ fn run() -> Result<()> {
                 why,
                 check,
                 verify,
-                query,
-                limit,
                 json,
             } => {
                 if words.is_empty() {
@@ -185,8 +183,6 @@ fn run() -> Result<()> {
                     why.as_deref(),
                     check.as_deref(),
                     verify.as_deref(),
-                    query.as_deref(),
-                    limit,
                     json,
                 )?;
             }
