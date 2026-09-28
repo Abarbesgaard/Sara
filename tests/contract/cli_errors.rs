@@ -12,7 +12,10 @@ fn fails(s: &Sara, args: &[&str]) -> (Option<i32>, String) {
         "expected `sara {}` to fail but it succeeded",
         args.join(" "),
     );
-    (out.status.code(), String::from_utf8_lossy(&out.stderr).into())
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr).into(),
+    )
 }
 
 #[test]
@@ -29,7 +32,10 @@ fn unknown_task_id_exits_1() {
 #[test]
 fn secret_guardrail_rejects_and_exits_1() {
     let s = Sara::new();
-    let (code, stderr) = fails(&s, &["learn", "--tag", "x", "AKIAIOSFODNN7EXAMPLE is the key"]);
+    let (code, stderr) = fails(
+        &s,
+        &["learn", "--tag", "x", "AKIAIOSFODNN7EXAMPLE is the key"],
+    );
     assert_eq!(code, Some(1), "guardrail rejection should exit 1");
     assert!(
         stderr.to_lowercase().contains("secret"),
