@@ -1,0 +1,41 @@
+---
+source: tests/contract/mcp.rs
+expression: redact(begin)
+---
+{
+  "acceptance": {
+    "index": 1,
+    "kind": "acceptance",
+    "step_id": "[redacted]",
+    "task": 1,
+    "text": "client compiles and unit tests pass",
+    "uuid": "[redacted]",
+    "warning": "acceptance criterion has no verify command — `validate` cannot prove it and will refuse; add one with `--verify \"<cmd>\"`"
+  },
+  "assignment": "Wire up the payments client",
+  "description": "Wire up the payments client",
+  "next": {
+    "index": 1,
+    "intent": "Before investigating or editing, decide what prior knowledge bears on this task — the patterns, prior fixes, gotchas, and conventions it might repeat — then call `recall` with a query aimed at exactly that. Record which memories apply (or are deliberately rejected, and why) when you close this step. Do this first so prior art shapes the work rather than being consulted after the fact.",
+    "source": "sara",
+    "task": 1,
+    "text": "Recall prior art before doing anything else",
+    "total": 1,
+    "verify_cmd": null
+  },
+  "project": "Demo",
+  "rationale": null,
+  "recall_step": {
+    "index": 1,
+    "kind": "step",
+    "step_id": "[redacted]",
+    "task": 1,
+    "text": "Recall prior art before doing anything else",
+    "uuid": "[redacted]"
+  },
+  "task": 1,
+  "uuid": "[redacted]",
+  "warnings": [
+    "acceptance criterion has no verify command — `validate` cannot prove it and will refuse; add one with `--verify \"<cmd>\"`"
+  ]
+}

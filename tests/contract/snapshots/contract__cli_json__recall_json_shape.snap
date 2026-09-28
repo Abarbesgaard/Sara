@@ -1,0 +1,39 @@
+---
+source: tests/contract/cli_json.rs
+expression: "redact(s.json(&[\"recall\", \"--json\", \"imports\"]))"
+---
+{
+  "associative": [],
+  "caveat": "Keyword-match only (literal FTS). Paraphrased or conceptually similar content with different wording may not appear.",
+  "confidence": "medium",
+  "files": [],
+  "keyword": [
+    {
+      "canonical": false,
+      "cluster": null,
+      "cosine": null,
+      "derived_children": [],
+      "derived_count": 0,
+      "derived_from": [],
+      "description": "Prefer explicit imports in split modules",
+      "exact_match": false,
+      "files": [],
+      "label": "m1",
+      "linked_tasks": [],
+      "loose": false,
+      "modified": "[redacted]",
+      "preview": "Prefer explicit imports in split modules",
+      "provisional": false,
+      "ref_kind": "item_memory",
+      "semantic": false,
+      "strength": 1.0,
+      "superseded_by": [],
+      "text": "Prefer explicit imports in split modules"
+    }
+  ],
+  "patterns": [],
+  "project": [],
+  "query": "imports",
+  "spread": "auto",
+  "tag": []
+}

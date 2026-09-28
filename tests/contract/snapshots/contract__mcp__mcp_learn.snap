@@ -1,0 +1,16 @@
+---
+source: tests/contract/mcp.rs
+expression: redact(learn)
+---
+{
+  "auto_derived_from": [],
+  "derived_from": [],
+  "files": [],
+  "label": "m1",
+  "linked_tasks": [],
+  "similar_to": [],
+  "superseded": [],
+  "tags": [],
+  "text": "The payments client takes amounts in minor units",
+  "uuid": "[redacted]"
+}

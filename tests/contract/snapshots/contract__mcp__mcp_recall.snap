@@ -1,0 +1,39 @@
+---
+source: tests/contract/mcp.rs
+expression: redact(recall)
+---
+{
+  "associative": [],
+  "caveat": "Keyword-match only (literal FTS). Paraphrased or conceptually similar content with different wording may not appear.",
+  "confidence": "medium",
+  "files": [],
+  "keyword": [
+    {
+      "canonical": false,
+      "cluster": null,
+      "cosine": null,
+      "derived_children": [],
+      "derived_count": 0,
+      "derived_from": [],
+      "description": "The payments client takes amounts in minor units",
+      "exact_match": false,
+      "files": [],
+      "label": "m1",
+      "linked_tasks": [],
+      "loose": false,
+      "modified": "[redacted]",
+      "preview": "The payments client takes amounts in minor units",
+      "provisional": false,
+      "ref_kind": "item_memory",
+      "semantic": false,
+      "strength": 1.0,
+      "superseded_by": [],
+      "text": "The payments client takes amounts in minor units"
+    }
+  ],
+  "patterns": [],
+  "project": [],
+  "query": "payments minor units",
+  "spread": "auto",
+  "tag": []
+}
