@@ -317,10 +317,7 @@ fn is_already_consolidated(
 /// All memory→projects associations, loaded once for the project-boundary guard.
 fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, HashSet<String>>> {
     let mut map: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut stmt = conn.prepare("SELECT item_uuid, project FROM item_projects")?;
-    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    for row in rows {
-        let (uuid, project) = row?;
+    for (uuid, project) in db::all_item_projects(conn)? {
         map.entry(uuid).or_default().insert(project);
     }
     Ok(map)

@@ -3294,6 +3294,19 @@ pub fn get_item_projects(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<Stri
     Ok(out)
 }
 
+/// Every memory→project association in the store as `(item_uuid, project)`
+/// pairs, loaded once for whole-corpus scans (e.g. reflect's project-boundary
+/// guard) instead of a per-item query.
+pub fn all_item_projects(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT item_uuid, project FROM item_projects")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut out = vec![];
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// Replace an item's file associations (a memory can be tied to multiple files).
 /// Paths should be absolute before calling; no normalisation is done here.
 pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {
