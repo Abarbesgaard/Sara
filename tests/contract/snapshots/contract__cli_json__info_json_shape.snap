@@ -1,0 +1,37 @@
+---
+source: tests/contract/cli_json.rs
+expression: "redact(s.json(&[\"info\", \"1\", \"--json\"]))"
+---
+{
+  "ai_runs": [],
+  "assignment": null,
+  "blocked_by": [],
+  "description": "First task",
+  "due": null,
+  "entry": "[redacted]",
+  "files": [],
+  "freshness": {
+    "head": null,
+    "stale": false,
+    "validated_commit": null
+  },
+  "id": 1,
+  "links": [],
+  "meta": null,
+  "modified": "[redacted]",
+  "needs_revision": false,
+  "notes": [],
+  "open_feedback": [],
+  "priority": "H",
+  "project": "Demo",
+  "rationale": null,
+  "status": "pending",
+  "steps": [],
+  "tags": [
+    "demo"
+  ],
+  "urgency": "[redacted]",
+  "uuid": "[redacted]",
+  "validated_at": null,
+  "validated_commit": null
+}

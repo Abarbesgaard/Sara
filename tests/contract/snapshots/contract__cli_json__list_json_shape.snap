@@ -1,0 +1,21 @@
+---
+source: tests/contract/cli_json.rs
+expression: "redact(s.json(&[\"list\", \"--json\"]))"
+---
+{
+  "tasks": [
+    {
+      "description": "First task",
+      "due": null,
+      "id": 1,
+      "priority": "H",
+      "project": "Demo",
+      "status": "pending",
+      "tags": [
+        "demo"
+      ],
+      "urgency": "[redacted]",
+      "uuid": "[redacted]"
+    }
+  ]
+}
