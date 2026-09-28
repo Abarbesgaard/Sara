@@ -31,4 +31,5 @@ mod read;
 pub use server::run;
 
 #[cfg(test)]
+#[path = "../../../tests/unit/commands/mcp/tests.rs"]
 mod tests;
