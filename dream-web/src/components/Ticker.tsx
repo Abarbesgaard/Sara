@@ -5,7 +5,7 @@ import type { StreamEntry } from "../usePulses.ts";
 // as a running commentary of what the brain is doing.
 const ACTION_META: Record<ActivityAction, { color: string; verb: string }> = {
   recall: { color: "#ffffff", verb: "recall" },
-  surface: { color: "#cfe0ff", verb: "surface" },
+  surface: { color: "#9b6bff", verb: "surface" },
   learn: { color: "#5cff8d", verb: "learn" },
   link: { color: "#5cd8ff", verb: "link" },
   task: { color: "#ffb84d", verb: "task" },
@@ -20,9 +20,10 @@ function clock(t: number): string {
 interface Props {
   stream: StreamEntry[];
   onPick: (label: string) => void;
+  onHover: (entry: StreamEntry | null) => void;
 }
 
-export function Ticker({ stream, onPick }: Props) {
+export function Ticker({ stream, onPick, onHover }: Props) {
   return (
     <div className="ticker" aria-label="Live cognition feed">
       <div className="ticker-head">
@@ -46,6 +47,10 @@ export function Ticker({ stream, onPick }: Props) {
               className="ticker-row"
               title={`${e.action} · ${e.label}`}
               onClick={() => onPick(e.label)}
+              onMouseEnter={() => onHover(e)}
+              onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(e)}
+              onBlur={() => onHover(null)}
             >
               <span className="tk-time">{clock(e.t)}</span>
               <span className="tk-verb" style={{ color: meta.color }}>

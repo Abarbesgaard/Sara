@@ -57,7 +57,7 @@ export interface PulseFeed {
 // A single "neural event": a memory node firing because some MCP call touched
 // it. `action` drives the colour/animation in the viewer.
 //   recall  — memory_recalled           (white)
-//   surface — memory_surfaced           (white, softer)
+//   surface — memory_surfaced           (violet — associative echo)
 //   learn   — a memory was just created (green — encoded)
 //   link    — a bond was just formed    (cyan — synapse)
 //   task    — a linked task changed     (amber — intention/motor)

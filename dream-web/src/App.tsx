@@ -13,6 +13,8 @@ export function App() {
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [search, setSearch] = useState("");
   const [focusLabel, setFocusLabel] = useState<string | null>(null);
+  const [hoverLabel, setHoverLabel] = useState<string | null>(null);
+  const [hoverGroup, setHoverGroup] = useState<string[] | null>(null);
   const [view, setView] = useState<ViewSettings>(DEFAULT_VIEW);
   const toggleView = (key: keyof ViewSettings) =>
     setView((v) => ({ ...v, [key]: !v[key] }));
@@ -103,8 +105,19 @@ export function App() {
             focusLabel={focusLabel}
             pulses={pulses}
             view={view}
+            highlightLabel={hoverLabel}
+            highlightGroup={hoverGroup}
           />
-          <Ticker stream={stream} onPick={(label) => runSearch(label)} />
+          <Ticker
+            stream={stream}
+            onPick={(label) => runSearch(label)}
+            onHover={(e) => {
+              setHoverLabel(e?.label ?? null);
+              // Only a recall row summons the nebula (its main memory + every
+              // memory that recall activated); surface rows just spotlight.
+              setHoverGroup(e && e.action === "recall" ? (e.group ?? null) : null);
+            }}
+          />
         </main>
 
         <SidePanel node={selected} onClose={() => setSelected(null)} />
