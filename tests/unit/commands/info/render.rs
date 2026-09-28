@@ -1,0 +1,409 @@
+use super::super::types::TaskTree;
+use super::*;
+use crate::infrastructure::model::{Status, Task};
+use chrono::Utc;
+use ratatui::{Terminal, backend::TestBackend};
+
+fn task() -> Task {
+    Task::new("root task".into(), "tk".into())
+}
+
+fn node(id: i64, status: Status) -> GraphNode {
+    GraphNode {
+        uuid: uuid::Uuid::new_v4(),
+        id: Some(id),
+        status,
+        badge: None,
+        description: format!("task {id}"),
+        children: vec![],
+        hidden_children: 0,
+    }
+}
+
+fn node_with_children(id: i64, children: Vec<GraphNode>) -> GraphNode {
+    GraphNode {
+        children,
+        ..node(id, Status::Pending)
+    }
+}
+
+fn typed_note(id: i64, kind: &str, text: &str) -> crate::infrastructure::db::Annotation {
+    crate::infrastructure::db::Annotation {
+        id,
+        text: text.into(),
+        entry: Utc::now(),
+        kind: kind.into(),
+        author: "ai".into(),
+        target_kind: None,
+        target_id: None,
+        status: "open".into(),
+        request_revision: false,
+        resolved_by_run: None,
+    }
+}
+
+fn base_detail(task: Task) -> Detail {
+    Detail {
+        task,
+        blocked_by: vec![],
+        blocking: vec![],
+        depends_on_ids: vec![],
+        manual_files: vec![],
+        suggested_files: vec![],
+        links: vec![],
+        annotations: vec![],
+        history: vec![],
+        project_root: None,
+        branch: None,
+        overlaps: vec![],
+        similar: vec![],
+        checklist: vec![],
+        urgency_breakdown: None,
+        activity: std::collections::HashMap::new(),
+        stats: None,
+        guide: crate::infrastructure::db::TaskGuideFields::default(),
+        anchors: vec![],
+        ai_runs: vec![],
+        head_commit: None,
+        project_commands: crate::infrastructure::db::ProjectCommands::default(),
+        tree: TaskTree::default(),
+    }
+}
+
+fn base_state(detail: Detail) -> EditState {
+    EditState {
+        detail,
+        selected: 0,
+        editing: false,
+        commenting: false,
+        adding_step: false,
+        editor: ratatui_textarea::TextArea::default(),
+        due_error: false,
+        dep_error: None,
+        scroll: 0,
+        last_selected: None,
+        tree_expanded: false,
+        show_urgency_breakdown: false,
+        verbose: false,
+        show_notes: false,
+    }
+}
+
+fn draw(st: &mut EditState) -> String {
+    // Wide enough that render()'s `chunks[0].width >= 96` gate shows the
+    // side panel at all, and tall enough that the panel's own stacked
+    // constraints (task tree + Git(Min 4)) don't get starved and
+    // silently truncated by Layout::split.
+    draw_at(st, 140, 60)
+}
+
+fn draw_at(st: &mut EditState, w: u16, h: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| render(f, st)).unwrap();
+    let buf = terminal.backend().buffer();
+    let area = *buf.area();
+    let mut out = String::new();
+    for y in 0..area.height {
+        let mut line = String::new();
+        for x in 0..area.width {
+            line.push_str(buf[(x, y)].symbol());
+        }
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+    out
+}
+
+#[test]
+fn task_tree_does_not_panic_when_empty() {
+    let d = base_detail(task());
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("Task tree"));
+    assert!(out.contains("none"));
+}
+
+#[test]
+fn task_tree_shows_branching_blockers_and_dependents() {
+    let mut d = base_detail(task());
+    d.tree = TaskTree {
+        blockers: vec![node(1, Status::Pending), node(2, Status::Completed)],
+        blockers_hidden: 0,
+        dependents: vec![node(3, Status::Pending)],
+        dependents_hidden: 0,
+    };
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    // Both blockers (one completed, one pending) and the dependent render
+    // as distinct rows — this is exactly what the old linear feature
+    // chain couldn't do for a task with neighbors in different features.
+    assert!(out.contains("blocked by (2)"));
+    assert!(out.contains("blocks"));
+    assert!(out.contains("task 1"));
+    assert!(out.contains("task 2"));
+    assert!(out.contains("task 3"));
+}
+
+#[test]
+fn task_tree_collapses_overflow_to_a_summary_row_by_default() {
+    let mut d = base_detail(task());
+    d.tree = TaskTree {
+        blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+        blockers_hidden: 0,
+        dependents: vec![],
+        dependents_hidden: 0,
+    };
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("more"));
+}
+
+#[test]
+fn task_tree_expanded_shows_everything_and_drops_the_summary_row() {
+    let mut d = base_detail(task());
+    d.tree = TaskTree {
+        blockers: (1..=8).map(|i| node(i, Status::Pending)).collect(),
+        blockers_hidden: 0,
+        dependents: vec![],
+        dependents_hidden: 0,
+    };
+    let mut st = base_state(d);
+    st.tree_expanded = true;
+    let out = draw(&mut st);
+    assert!(!out.contains("more"));
+    for i in 1..=8 {
+        assert!(
+            out.contains(&format!("task {i}")),
+            "expected task {i} to be visible"
+        );
+    }
+}
+
+#[test]
+fn task_tree_nests_grandchildren_with_tree_connectors() {
+    let mut d = base_detail(task());
+    let grandchild = node(100, Status::Pending);
+    let child = node_with_children(2, vec![grandchild]);
+    d.tree = TaskTree {
+        blockers: vec![node(1, Status::Pending), child],
+        blockers_hidden: 0,
+        dependents: vec![],
+        dependents_hidden: 0,
+    };
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("task 100"));
+    assert!(out.contains("└─") || out.contains("├─"));
+}
+
+#[test]
+fn task_tree_hides_beyond_compact_depth_until_expanded() {
+    // blocker(10) -> blocker(100) -> blocker(1000): three hops up.
+    // Compact depth is 2, so task 1000 (the third hop) stays hidden
+    // behind the expand hint until 'd' is toggled.
+    let great_grandchild = node(1000, Status::Pending);
+    let grandchild = node_with_children(100, vec![great_grandchild]);
+    let child = node_with_children(10, vec![grandchild]);
+    let mut d = base_detail(task());
+    d.tree = TaskTree {
+        blockers: vec![child],
+        blockers_hidden: 0,
+        dependents: vec![],
+        dependents_hidden: 0,
+    };
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("task 10"));
+    assert!(out.contains("task 100"));
+    assert!(!out.contains("task 1000"));
+
+    st.tree_expanded = true;
+    let out2 = draw(&mut st);
+    assert!(out2.contains("task 1000"));
+}
+
+#[test]
+fn status_row_hidden_when_pending_shown_otherwise() {
+    let d = base_detail(task());
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(!out.lines().any(|l| l.trim_start().starts_with("Status")));
+
+    let mut completed_task = task();
+    completed_task.status = Status::Completed;
+    let d2 = base_detail(completed_task);
+    let mut st2 = base_state(d2);
+    let out2 = draw(&mut st2);
+    assert!(out2.contains("Status"));
+    assert!(out2.contains("completed"));
+}
+
+#[test]
+fn urgency_breakdown_hidden_by_default_and_shown_when_toggled() {
+    let mut d = base_detail(task());
+    d.task.urgency = 5.0;
+    d.urgency_breakdown = Some(crate::infrastructure::db::UrgencyBreakdown {
+        priority: 3.0,
+        due: 0.0,
+        blocking: 0.0,
+        blocked: 0.0,
+        active: 0.0,
+        tags: 0.0,
+        project: 0.0,
+        age: 0.0,
+    });
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("u for breakdown"));
+    assert!(!out.contains("pri 3.0"));
+
+    st.show_urgency_breakdown = true;
+    let out2 = draw(&mut st);
+    assert!(out2.contains("pri 3.0"));
+}
+
+#[test]
+fn risk_notes_always_show_but_other_notes_collapse_until_toggled() {
+    let mut d = base_detail(task());
+    d.annotations = vec![
+        typed_note(1, "risk", "touches the shared urgency formula"),
+        typed_note(2, "finding", "existing tests cover this path"),
+        typed_note(3, "decision", "kept the old signature"),
+    ];
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    // Risk is the human-relevant one — always visible.
+    assert!(out.contains("Risks"));
+    assert!(out.contains("touches the shared urgency formula"));
+    // The AI's own process notes collapse to a counted summary instead
+    // of dumping their text — that's the whole point of the toggle.
+    assert!(!out.contains("existing tests cover this path"));
+    assert!(!out.contains("kept the old signature"));
+    assert!(out.contains("n to view"));
+
+    let mut st2 = st;
+    st2.show_notes = true;
+    let out2 = draw(&mut st2);
+    assert!(out2.contains("existing tests cover this path"));
+    assert!(out2.contains("kept the old signature"));
+}
+
+#[test]
+fn long_assignment_is_collapsed_until_verbose() {
+    let mut d = base_detail(task());
+    let long = "x".repeat(200);
+    d.guide.assignment = Some(long.clone());
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("v to expand"));
+    assert!(!out.contains(&long));
+
+    st.verbose = true;
+    let out2 = draw(&mut st);
+    assert!(!out2.contains("v to expand"));
+}
+
+#[test]
+fn checklist_detail_only_shows_for_selected_row_unless_verbose() {
+    let mut d = base_detail(task());
+    d.checklist = vec![
+        crate::infrastructure::db::ChecklistItem {
+            id: 1,
+            text: "first step".into(),
+            done: false,
+            position: 0,
+            intent: Some("do the first thing".into()),
+            kind: "step".into(),
+            source: "human".into(),
+            verify_cmd: None,
+            result: None,
+            done_commit: None,
+            done_at: None,
+        },
+        crate::infrastructure::db::ChecklistItem {
+            id: 2,
+            text: "second step".into(),
+            done: false,
+            position: 1,
+            intent: Some("do the second thing".into()),
+            kind: "step".into(),
+            source: "human".into(),
+            verify_cmd: None,
+            result: None,
+            done_commit: None,
+            done_at: None,
+        },
+    ];
+    let mut st = base_state(d);
+    st.selected = 0; // metadata field, not a checklist row: nothing selected below
+    let out = draw(&mut st);
+    assert!(!out.contains("do the first thing"));
+    assert!(!out.contains("do the second thing"));
+
+    // Select the first checklist row explicitly.
+    let idx = focusables(&st.detail, st.show_notes)
+        .iter()
+        .position(|f| matches!(f, Focusable::Checklist(0)))
+        .unwrap();
+    st.selected = idx;
+    let out2 = draw(&mut st);
+    assert!(out2.contains("do the first thing"));
+    assert!(!out2.contains("do the second thing"));
+
+    st.verbose = true;
+    let out3 = draw(&mut st);
+    assert!(out3.contains("do the first thing"));
+    assert!(out3.contains("do the second thing"));
+}
+
+fn many_steps(n: i64) -> Vec<crate::infrastructure::db::ChecklistItem> {
+    (0..n)
+        .map(|i| crate::infrastructure::db::ChecklistItem {
+            id: i + 1,
+            text: format!("step number {i}"),
+            done: false,
+            position: i,
+            intent: None,
+            kind: "step".into(),
+            source: "human".into(),
+            verify_cmd: None,
+            result: None,
+            done_commit: None,
+            done_at: None,
+        })
+        .collect()
+}
+
+#[test]
+fn selection_follow_scrolls_highlighted_row_into_view() {
+    let mut d = base_detail(task());
+    d.checklist = many_steps(40);
+    let mut st = base_state(d);
+    st.selected = focusables(&st.detail, st.show_notes)
+        .iter()
+        .position(|f| matches!(f, Focusable::Checklist(39)))
+        .unwrap();
+
+    // On a short terminal the last checklist row sits far below the fold;
+    // navigating to it must pull the viewport down so the highlight
+    // stays visible.
+    let out = draw_at(&mut st, 100, 20);
+    assert!(st.scroll > 0, "viewport should have scrolled down");
+    assert!(out.contains("step number 39"));
+}
+
+#[test]
+fn manual_scroll_is_clamped_but_not_snapped_back() {
+    let mut d = base_detail(task());
+    d.checklist = many_steps(40);
+    let mut st = base_state(d);
+    // Selection unchanged since the last frame (no navigation) …
+    st.last_selected = Some(st.selected);
+    // … then a manual scroll far past the end of the content.
+    st.scroll = 500;
+    draw_at(&mut st, 100, 20);
+    // Clamped to the end of the content, but NOT snapped back up to the
+    // still-selected first row — free scrolling stays free.
+    assert!(st.scroll < 500, "scroll should be clamped to content");
+    assert!(st.scroll > 0, "scroll must not snap back to the selection");
+}

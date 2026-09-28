@@ -222,4 +222,5 @@ pub fn dependency_closure(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uui
 }
 
 #[cfg(test)]
+#[path = "../../tests/unit/infrastructure/db/tests/mod.rs"]
 mod tests;
