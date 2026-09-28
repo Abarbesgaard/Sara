@@ -9,6 +9,8 @@ use crate::infrastructure::db;
 use crate::infrastructure::model::{Item, Task};
 use crate::infrastructure::project;
 
+mod scoring;
+
 /// `sara recall <query>` — cross-task memory. Uses the FTS5 index over task
 /// descriptions/rationale/assignment, annotations (findings/decisions/…), and
 /// code-anchor reasons so an agent can pull prior context from the whole history.
@@ -911,30 +913,7 @@ fn collect_hits(
         )?;
     }
 
-    hits.sort_by(|a, b| {
-        // Exact tag/file matches lead; then linkage-derived strength; then bm25
-        // relevance (lower fts_rank = better match, `None` sorts last so exact
-        // hits fall through to recency); finally most-recently-modified.
-        b.exact_match
-            .cmp(&a.exact_match)
-            .then(
-                b.strength
-                    .partial_cmp(&a.strength)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-            .then(
-                a.fts_rank
-                    .unwrap_or(usize::MAX)
-                    .cmp(&b.fts_rank.unwrap_or(usize::MAX)),
-            )
-            .then(
-                b.cosine
-                    .unwrap_or(f32::MIN)
-                    .partial_cmp(&a.cosine.unwrap_or(f32::MIN))
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-            .then(b.modified.cmp(&a.modified))
-    });
+    let hits = scoring::rank(hits);
 
     // Collapse canonical families: a pattern memory plus its per-application
     // derived children are near-duplicates; returning every one floods the
