@@ -17,6 +17,7 @@ mod memory;
 mod memory_links;
 mod memory_maintenance;
 mod memory_strength;
+mod meta;
 mod migrations;
 mod projects;
 mod tasks;
@@ -31,6 +32,7 @@ pub use memory::*;
 pub use memory_links::*;
 pub use memory_maintenance::*;
 pub use memory_strength::*;
+pub use meta::*;
 pub use projects::*;
 pub use tasks::*;
 

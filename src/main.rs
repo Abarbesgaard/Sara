@@ -63,6 +63,11 @@ fn run() -> Result<()> {
     let cfg = config::load()?;
     let mut conn = db::open()?;
 
+    // Self-heal the semantic index if the embedding scheme changed since the
+    // vectors were last written (bundled model swapped, or embed-text scheme
+    // bumped). Best-effort: a reindex failure must never block the command.
+    let _ = infrastructure::embedding::ensure_index_current(&conn);
+
     if !matches!(cli.command, Command::Undo) {
         db::begin_undo_batch(&command_label);
     }
