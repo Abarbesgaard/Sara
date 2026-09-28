@@ -262,6 +262,8 @@ fn find_tasks_by_file_prefix_returns_all_completed_under_dir() {
     assert!(uuids.contains(&b.uuid));
 }
 
+/// Two agents adding a task at the same time must not both receive the
+/// same display id — `sara done <id>` would then be ambiguous.
 #[test]
 fn concurrent_task_inserts_get_distinct_display_ids() {
     let dir = std::env::temp_dir().join(format!("sara-race-{}", uuid::Uuid::new_v4()));

@@ -573,9 +573,6 @@ fn set_helpers_work_inside_an_existing_transaction() {
     );
 }
 
-/// Two agents adding a task at the same time must not both receive the
-/// same display id — `sara done <id>` would then be ambiguous.
-
 /// Same allocation race for memory labels (m1, m2, …): two agents running
 /// `sara learn` concurrently must not both be handed `m1`.
 #[test]

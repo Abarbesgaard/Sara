@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::infrastructure::model::Task;
-use chrono::{TimeZone as _, Utc};
+use chrono::Utc;
 
 #[test]
 fn project_last_activity_returns_latest_modified() {

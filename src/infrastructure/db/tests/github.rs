@@ -1,7 +1,7 @@
 //! Unit tests for db::github.
 
 use super::*;
-use chrono::{TimeZone as _, Utc};
+use chrono::Utc;
 
 #[test]
 fn project_commands_round_trip_and_partial_update_preserves_others() {
