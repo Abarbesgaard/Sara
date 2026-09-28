@@ -88,14 +88,34 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
         .map(|(i, n)| (n.uuid.to_string(), i))
         .collect();
 
-    // Cluster via union-find over strong-enough edges.
+    // Per-memory project set — the boundary Hebbian clustering must respect.
+    // Near-identical text across repos (e.g. dependabot "restore PR to green"
+    // notes) otherwise co-activates and merges into cross-project mega-clusters
+    // whose canonical swamps every member project's recall.
+    let projects_by_uuid = projects_by_uuid(conn)?;
+
+    // Deliberately-authored associations (any explicit `memory_links` relation
+    // except the machine-learned `co_activated`). These are the ONLY signal
+    // allowed to cross a project boundary: a shared lesson you intentionally
+    // link with `sara link-memory` still consolidates across repos, but
+    // incidental co-firing or a shared tag never drags two repos together.
+    let deliberate = deliberate_links(conn)?;
+
+    // Cluster via union-find over strong-enough edges. Within a project (or the
+    // null scope) any edge above `min_weight` joins; across projects only a
+    // deliberate explicit link does.
     let mut uf = UnionFind::new(graph.nodes.len());
     let mut eligible: Vec<(usize, usize, f64)> = Vec::new();
     for (a, b, w) in graph.edges() {
         if w < min_weight {
             continue;
         }
-        if let (Some(&ia), Some(&ib)) = (index.get(&a.to_string()), index.get(&b.to_string())) {
+        let (ua, ub) = (a.to_string(), b.to_string());
+        if !shares_project(&ua, &ub, &projects_by_uuid) && !deliberate.contains(&pair_key(&ua, &ub))
+        {
+            continue;
+        }
+        if let (Some(&ia), Some(&ib)) = (index.get(&ua), index.get(&ub)) {
             uf.union(ia, ib);
             eligible.push((ia, ib, w));
         }
@@ -292,6 +312,54 @@ fn is_already_consolidated(
                     .is_some_and(|parents| parents.contains(p))
         })
     })
+}
+
+/// All memory→projects associations, loaded once for the project-boundary guard.
+fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, HashSet<String>>> {
+    let mut map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut stmt = conn.prepare("SELECT item_uuid, project FROM item_projects")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    for row in rows {
+        let (uuid, project) = row?;
+        map.entry(uuid).or_default().insert(project);
+    }
+    Ok(map)
+}
+
+/// An order-independent key for a pair of memory uuids.
+fn pair_key(a: &str, b: &str) -> (String, String) {
+    if a <= b {
+        (a.to_string(), b.to_string())
+    } else {
+        (b.to_string(), a.to_string())
+    }
+}
+
+/// Pairs joined by a deliberately-authored `memory_links` edge — every explicit
+/// relation except the machine-learned `co_activated`. These are the only edges
+/// permitted to cross a project boundary, so intentional cross-repo sharing
+/// survives while incidental co-firing does not.
+fn deliberate_links(conn: &Connection) -> Result<HashSet<(String, String)>> {
+    let mut set = HashSet::new();
+    for link in db::all_memory_links(conn).unwrap_or_default() {
+        if link.relation == "co_activated" {
+            continue;
+        }
+        set.insert(pair_key(&link.from_uuid, &link.to_uuid));
+    }
+    Ok(set)
+}
+
+/// True when two memories belong to the same scope: they share a project, or
+/// both have no project at all (the null scope). A memory scoped to one repo is
+/// never dragged into another repo's cluster, but same-repo (and project-less)
+/// memories cluster as before.
+fn shares_project(a: &str, b: &str, projects_by_uuid: &HashMap<String, HashSet<String>>) -> bool {
+    match (projects_by_uuid.get(a), projects_by_uuid.get(b)) {
+        (Some(pa), Some(pb)) => pa.intersection(pb).next().is_some(),
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 /// Tags present on every member of the cluster.
@@ -622,6 +690,67 @@ mod tests {
             v["count"].as_u64().unwrap(),
             0,
             "no shared anchors -> no cluster"
+        );
+    }
+
+    #[test]
+    fn cross_project_memories_do_not_cluster() {
+        let conn = db::open_in_memory_for_test();
+        // Two near-identical dependabot memories that would normally cluster on
+        // their shared tag — but each lives in a different repo.
+        let a = insert_memory(
+            &conn,
+            "dependabot bump broke restore in repo a",
+            "dependabot",
+        );
+        let b = insert_memory(
+            &conn,
+            "dependabot bump broke restore in repo b",
+            "dependabot",
+        );
+        db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
+        db::set_item_projects(&conn, &b, &["repo-b".to_string()]).unwrap();
+        // Incidental machine signals only: a shared tag plus strong co-activation
+        // (the exact shape of the accidental cross-repo mega-merge). This clears
+        // the weight threshold but is NOT deliberate, so it must not cross.
+        db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "co_activated", 2.0).unwrap();
+
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
+        assert_eq!(
+            v["count"].as_u64().unwrap(),
+            0,
+            "incidental co-firing must never merge memories across projects"
+        );
+
+        // Sanity: put them in the SAME project and they cluster as expected.
+        db::set_item_projects(&conn, &b, &["repo-a".to_string()]).unwrap();
+        let v2 = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
+        assert_eq!(
+            v2["count"].as_u64().unwrap(),
+            1,
+            "same-project related memories still cluster"
+        );
+    }
+
+    #[test]
+    fn deliberate_link_clusters_across_projects() {
+        let conn = db::open_in_memory_for_test();
+        // A genuinely shared lesson, deliberately linked across two repos.
+        let a = insert_memory(&conn, "NU1608 NSubstitute fix pattern", "nsubstitute");
+        let b = insert_memory(&conn, "applied NU1608 fix in other repo", "nsubstitute");
+        db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
+        db::set_item_projects(&conn, &b, &["repo-b".to_string()]).unwrap();
+        // An explicit, author-created association is allowed to cross projects.
+        link(&conn, &a, &b, "similar_to");
+
+        let v = super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER)
+            .unwrap();
+        assert_eq!(
+            v["count"].as_u64().unwrap(),
+            1,
+            "a deliberately-linked shared lesson still consolidates across repos"
         );
     }
 

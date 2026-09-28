@@ -5,7 +5,51 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Status;
+use crate::infrastructure::model::{Status, Task};
+
+/// Verdict of the fail-closed validation gate that guards `done`. A task should
+/// not close on prose: if it declares a definition of done (acceptance
+/// criteria), those must have been proven green by `validate` against the
+/// project's current HEAD before it can be completed.
+enum DoneGate {
+    /// Validated and fresh (or no git HEAD to compare against) — close cleanly.
+    Ok,
+    /// The task has acceptance criteria that were never proven, or were proven
+    /// at an earlier commit and HEAD has moved since. Block unless `force`.
+    Refuse(String),
+    /// The task has no acceptance criteria at all — nothing to prove. Allowed,
+    /// but surfaced as an advisory so the missing definition of done is visible.
+    Warn(String),
+}
+
+/// Decide whether a task is provably done. Compares its stored `validated_commit`
+/// against the project's current HEAD, and treats a task with no acceptance
+/// criteria as an advisory (there is nothing to validate) rather than a block.
+fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
+    let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
+    if acceptance.is_empty() {
+        return Ok(DoneGate::Warn(
+            "no acceptance criteria — closed without a proven definition of done".to_string(),
+        ));
+    }
+
+    let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
+    let head = db::get_project(conn, &task.project)
+        .ok()
+        .flatten()
+        .and_then(|p| p.path)
+        .and_then(|path| crate::infrastructure::git::head_commit(std::path::Path::new(&path)));
+
+    match (validated, head) {
+        (None, _) => Ok(DoneGate::Refuse(
+            "its acceptance criteria were never validated".to_string(),
+        )),
+        (Some(v), Some(h)) if v != h => Ok(DoneGate::Refuse(
+            "it was validated at an earlier commit and HEAD has moved since".to_string(),
+        )),
+        _ => Ok(DoneGate::Ok),
+    }
+}
 
 /// Complete a task and return a structured record of what happened (including any
 /// spawned recurrence). Print-free core shared by the CLI `done` command and the
@@ -33,6 +77,33 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
             task.id.unwrap_or(0),
             blocker_ids.join(", ")
         );
+    }
+
+    // Fail-closed validation gate: a task that declares a definition of done
+    // (acceptance criteria) must have those proven green by `validate` before it
+    // can close. `force` overrides. A task with no acceptance criteria passes
+    // with an advisory. Runs after the blocker check and before any mutation, so
+    // a refusal leaves the task untouched.
+    let mut validation_note = Value::Null;
+    match done_gate(conn, &task)? {
+        DoneGate::Refuse(reason) => {
+            let target = task
+                .id
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| task.uuid.to_string()[..8].to_string());
+            if !force {
+                anyhow::bail!(
+                    "Task {} is not validated: {}. Run `validate {}` to prove its acceptance \
+                     criteria green, or `done --force` to close without proof.",
+                    task.id.unwrap_or(0),
+                    reason,
+                    target
+                );
+            }
+            validation_note = json!(format!("forced despite unproven work: {reason}"));
+        }
+        DoneGate::Warn(reason) => validation_note = json!(reason),
+        DoneGate::Ok => {}
     }
 
     // Finalize any running timer
@@ -82,6 +153,7 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         "description": task.description,
         "status": "completed",
         "recurrence": recurrence,
+        "validation": validation_note,
         "auto_memory": db::synthesize_done_memory(conn, &task.uuid, &task.project)
             .unwrap_or(None),
         "hygiene": db::hygiene_pass(conn).map(|h| json!({
@@ -105,6 +177,9 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
             rec.get("id").and_then(|i| i.as_i64()).unwrap_or(0),
             rec.get("due").and_then(|d| d.as_str()).unwrap_or_default()
         );
+    }
+    if let Some(note) = v.get("validation").and_then(|n| n.as_str()) {
+        println!("⚠️  {note}");
     }
     if let Some(label) = v.get("auto_memory").and_then(|m| m.as_str()) {
         println!("🧠 Auto-memory saved: {label} (provisional — review with `sara memories`)");
@@ -202,6 +277,88 @@ mod hygiene_tests {
         assert!(
             db::get_item_by_handle(&conn, &label(&new)).is_ok(),
             "superseding memory stays active"
+        );
+    }
+}
+
+#[cfg(test)]
+mod validation_gate_tests {
+    use super::*;
+    use crate::infrastructure::model::Task;
+
+    fn task_with_criterion(conn: &Connection) -> Task {
+        let mut task = Task::new("prove me".into(), "proj".into());
+        db::insert_task(conn, &mut task).unwrap();
+        db::add_step(
+            conn,
+            &task.uuid,
+            "build is green",
+            None,
+            db::STEP_KIND_ACCEPTANCE,
+            "human",
+            Some("true"),
+        )
+        .unwrap();
+        task
+    }
+
+    #[test]
+    fn done_refuses_unvalidated_task_with_acceptance_criteria() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_criterion(&conn);
+        let err = done_value(&conn, &Config::default(), &task.uuid.to_string(), false)
+            .expect_err("unvalidated task with criteria must be refused");
+        assert!(
+            err.to_string().contains("not validated"),
+            "error should name the missing validation: {err}"
+        );
+        // The task must be untouched by the refusal.
+        let still = db::resolve_task(&conn, &task.uuid.to_string()).unwrap();
+        assert_ne!(still.status, Status::Completed, "refused task stays open");
+    }
+
+    #[test]
+    fn force_closes_unvalidated_task_with_a_note() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_criterion(&conn);
+        let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), true).unwrap();
+        assert_eq!(v["status"], "completed");
+        assert!(
+            v["validation"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("forced"),
+            "forced close records an advisory: {}",
+            v["validation"]
+        );
+    }
+
+    #[test]
+    fn validated_task_closes_cleanly() {
+        let conn = db::open_in_memory_for_test();
+        let task = task_with_criterion(&conn);
+        // No git HEAD for the ad-hoc "proj" project, so a stamped commit is
+        // treated as validated-fresh (nothing to compare against).
+        db::set_validated(&conn, &task.uuid, "deadbeef").unwrap();
+        let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
+        assert_eq!(v["status"], "completed");
+        assert_eq!(v["validation"], Value::Null, "clean close has no advisory");
+    }
+
+    #[test]
+    fn task_without_criteria_closes_with_advisory() {
+        let conn = db::open_in_memory_for_test();
+        let mut task = Task::new("no dod".into(), "proj".into());
+        db::insert_task(&conn, &mut task).unwrap();
+        let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
+        assert_eq!(v["status"], "completed");
+        assert!(
+            v["validation"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("no acceptance criteria"),
+            "missing definition of done is surfaced: {}",
+            v["validation"]
         );
     }
 }

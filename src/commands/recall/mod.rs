@@ -1008,41 +1008,51 @@ fn family_size(conn: &Connection, rep: &Hit, canonical_label: &str) -> usize {
 /// "one of a cluster of N" and can jump to the canonical for the full family.
 fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
     let mut kept: Vec<Hit> = Vec::with_capacity(hits.len());
-    // family label -> index of its representative in `kept`.
-    let mut rep_of: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    // family label -> how many members were folded out of this result.
-    let mut collapsed: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    // (family label, project signature) -> index of its representative in `kept`.
+    // Keying on the project signature as well as the canonical family means a
+    // member is only folded under a representative it actually shares a project
+    // with — a foreign-project sibling (e.g. a legacy cross-repo canonical) is
+    // never allowed to stand in for, or hide, a local memory.
+    let mut rep_of: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+    // (family, project signature) -> how many members were folded out here.
+    let mut collapsed: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
 
     for h in hits {
         match family_key(&h) {
             None => kept.push(h),
-            Some(fam) => match rep_of.get(&fam).copied() {
-                None => {
-                    rep_of.insert(fam.clone(), kept.len());
-                    kept.push(h);
-                }
-                Some(idx) => {
-                    *collapsed.entry(fam.clone()).or_insert(0) += 1;
-                    // Promote the canonical to representative if it is the one
-                    // arriving now and the current rep is merely a child.
-                    if h.label == fam && kept[idx].label != fam {
-                        kept[idx] = h;
+            Some(fam) => {
+                let key = (fam.clone(), hit_project_sig(conn, &h));
+                match rep_of.get(&key).copied() {
+                    None => {
+                        rep_of.insert(key, kept.len());
+                        kept.push(h);
                     }
-                    // Otherwise the incoming member is dropped (folded in).
+                    Some(idx) => {
+                        *collapsed.entry(key).or_insert(0) += 1;
+                        // Promote the canonical to representative if it is the one
+                        // arriving now and the current rep is merely a child.
+                        if h.label == fam && kept[idx].label != fam {
+                            kept[idx] = h;
+                        }
+                        // Otherwise the incoming member is dropped (folded in).
+                    }
                 }
-            },
+            }
         }
     }
 
     // Tag each family representative with its cluster metadata.
     for h in kept.iter_mut() {
         if let Some(fam) = family_key(h) {
+            let key = (fam.clone(), hit_project_sig(conn, h));
             let size = family_size(conn, h, &fam);
             if size > 1 {
                 h.cluster = Some(ClusterInfo {
                     canonical_label: fam.clone(),
                     size,
-                    collapsed_here: collapsed.get(&fam).copied().unwrap_or(0),
+                    collapsed_here: collapsed.get(&key).copied().unwrap_or(0),
                 });
             }
         }
@@ -1177,6 +1187,20 @@ fn detect_patterns(conn: &Connection, hits: &[Hit]) -> Vec<serde_json::Value> {
     // pattern claimed (more matched = more central to the query).
     patterns.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     patterns.into_iter().map(|(_, _, v)| v).collect()
+}
+
+/// A stable signature of the projects a memory hit belongs to, used to keep
+/// canonical-family collapsing within a project boundary. Task hits and
+/// project-less memories yield an empty signature.
+fn hit_project_sig(conn: &Connection, h: &Hit) -> String {
+    match h.item_uuid {
+        Some(u) => {
+            let mut ps = db::get_item_projects(conn, &u).unwrap_or_default();
+            ps.sort();
+            ps.join("\u{1f}")
+        }
+        None => String::new(),
+    }
 }
 
 /// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
@@ -2893,7 +2917,7 @@ mod tests {
     }
 
     #[test]
-    fn recall_by_project_surfaces_cross_project_canonical_via_derived_child() {
+    fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
         let conn = db::open_in_memory_for_test();
 
         // Canonical lives only under "sara-repo".
@@ -2921,10 +2945,10 @@ mod tests {
         )
         .unwrap();
 
-        // A --project other-repo recall (no tags) surfaces the family. The
-        // derived memory (directly scoped here) and its canonical (pulled in as
-        // a cross-project canonical) collapse into a single representative — the
-        // canonical, promoted — tagged with the family it stands for.
+        // A --project other-repo recall must NOT fold the local child under the
+        // foreign-project canonical: collapsing is now project-scoped, so a
+        // canonical from another repo can never stand in for (and hide) a memory
+        // that actually belongs to the queried project.
         let hits = collect_hits(
             &conn,
             "",
@@ -2935,22 +2959,19 @@ mod tests {
             &SemanticOpts::off(),
         )
         .unwrap();
-        assert_eq!(
-            hits.len(),
-            1,
-            "the cross-project family collapses to one representative, got: {:?}",
+        assert!(
+            hits.iter()
+                .any(|h| h.description == "applied CodeQL config to other-repo"),
+            "the local child stays visible, got: {:?}",
             hits.iter().map(|h| &h.description).collect::<Vec<_>>()
         );
-        assert_eq!(
-            hits[0].description, "CodeQL config pattern",
-            "the canonical is the surviving representative"
+        // The foreign canonical and the local child do not collapse together —
+        // different project signatures keep them as distinct representatives.
+        assert!(
+            hits.len() >= 2,
+            "local child and foreign canonical are not merged, got: {:?}",
+            hits.iter().map(|h| &h.description).collect::<Vec<_>>()
         );
-        let cluster = hits[0]
-            .cluster
-            .as_ref()
-            .expect("the representative carries cluster metadata");
-        assert_eq!(cluster.size, 2, "family size = canonical + 1 derived child");
-        assert_eq!(cluster.collapsed_here, 1, "the derived child folded out");
 
         // A project with no derived children anywhere must not pull the
         // canonical in.
