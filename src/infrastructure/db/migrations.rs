@@ -588,6 +588,15 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 Ok(())
             },
         ),
+        M::up(
+            // Key/value store for small singleton facts about this database.
+            // First use: the embedding scheme version, so recall can self-heal
+            // stale vectors when the bundled model or embed-text scheme changes.
+            "CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+        ),
     ]);
     migrations
         .to_latest(conn)

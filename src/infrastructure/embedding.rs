@@ -48,6 +48,10 @@ pub struct StaticEmbedder {
     scale: f32,
     dim: usize,
     vocab_n: usize,
+    /// The matrix blob's format version (`SEMB` header). Part of the embedding
+    /// scheme fingerprint, so a re-quantized/swapped model that bumps this (or
+    /// changes shape/scale) invalidates every stored vector.
+    model_version: u32,
 }
 
 impl StaticEmbedder {
@@ -101,6 +105,7 @@ impl StaticEmbedder {
             scale,
             dim,
             vocab_n,
+            model_version: version,
         })
     }
 
@@ -196,6 +201,71 @@ impl Embedder for StaticEmbedder {
     fn dim(&self) -> usize {
         self.dim
     }
+}
+
+impl StaticEmbedder {
+    /// A compact fingerprint of the model that produced a vector: format
+    /// version, vocabulary size, dimensionality, and the dequantization scale.
+    /// A re-quantized or swapped model changes at least one of these, so the
+    /// fingerprint changes and every vector produced under the old model is
+    /// recognised as stale. Pure — derived only from the loaded model.
+    pub fn fingerprint(&self) -> String {
+        format!(
+            "m2v/v{}/n{}/d{}/s{:08x}",
+            self.model_version,
+            self.vocab_n,
+            self.dim,
+            self.scale.to_bits()
+        )
+    }
+}
+
+/// Version of `memory_embed_text`'s field-composition scheme. Bump this whenever
+/// the text assembled below changes (different fields, order, or separators), so
+/// vectors computed under the old text scheme are recognised as stale.
+const MEMORY_EMBED_TEXT_VERSION: u32 = 1;
+
+/// DB meta key under which the active embedding scheme version is recorded.
+const SCHEME_VERSION_KEY: &str = "embedding_scheme_version";
+
+/// Compose the embedding scheme version from the two things that invalidate
+/// stored vectors: the model fingerprint and the `memory_embed_text` version.
+/// Pure, so tests can prove that bumping either input changes the version.
+fn compose_scheme_version(model_fingerprint: &str, text_version: u32) -> String {
+    format!("{model_fingerprint}|text{text_version}")
+}
+
+/// The embedding scheme version for the *currently compiled* binary: the
+/// bundled model's fingerprint blended with the `memory_embed_text` version.
+pub fn scheme_version() -> String {
+    compose_scheme_version(&bundled().fingerprint(), MEMORY_EMBED_TEXT_VERSION)
+}
+
+/// Whether the stored scheme version requires a reindex to become current.
+/// A `None` stored version (fresh DB, or pre-versioning) counts as a mismatch.
+/// Pure, so the trigger condition is unit-testable without a database.
+fn needs_reindex(stored: Option<&str>, current: &str) -> bool {
+    stored != Some(current)
+}
+
+/// Self-heal the semantic index: if the stored embedding scheme version differs
+/// from the compiled-in one (bundled model swapped, or `memory_embed_text`
+/// changed), every stored vector lives in a different vector space, so
+/// transparently reindex the whole corpus once and record the new version.
+///
+/// Returns `Ok(true)` when a reindex was performed, `Ok(false)` when the index
+/// was already current. Uses only the bundled model — no network, no download.
+/// Called once per process at startup; the recorded version makes it a no-op on
+/// every subsequent run until the scheme changes again.
+pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool> {
+    let current = scheme_version();
+    let stored = crate::infrastructure::db::meta_get(conn, SCHEME_VERSION_KEY)?;
+    if !needs_reindex(stored.as_deref(), &current) {
+        return Ok(false);
+    }
+    reindex_all(conn)?;
+    crate::infrastructure::db::meta_set(conn, SCHEME_VERSION_KEY, &current)?;
+    Ok(true)
 }
 
 /// The process-wide bundled embedder, loaded once on first use. The model is

@@ -42,3 +42,95 @@ fn cosine_of_identical_is_one() {
     let v = e.embed("reciprocal rank fusion merges lexical and semantic hits");
     assert!((cosine(&v, &v) - 1.0).abs() < 1e-4);
 }
+
+#[test]
+fn scheme_version_changes_when_model_fingerprint_changes() {
+    // A swapped/re-quantized model yields a different fingerprint, which must
+    // change the composed scheme version so stored vectors are seen as stale.
+    let a = compose_scheme_version("m2v/v1/n100/d256/s3dcccccd", MEMORY_EMBED_TEXT_VERSION);
+    let b = compose_scheme_version("m2v/v2/n100/d256/s3dcccccd", MEMORY_EMBED_TEXT_VERSION);
+    assert_ne!(a, b);
+}
+
+#[test]
+fn scheme_version_changes_when_embed_text_version_changes() {
+    // Changing which fields memory_embed_text concatenates (bump the version)
+    // must also change the scheme, independent of the model.
+    let fp = "m2v/v1/n100/d256/s3dcccccd";
+    assert_ne!(compose_scheme_version(fp, 1), compose_scheme_version(fp, 2));
+}
+
+#[test]
+fn needs_reindex_only_on_missing_or_mismatched_version() {
+    let current = "m2v/v1|text1";
+    assert!(needs_reindex(None, current), "fresh DB must reindex");
+    assert!(
+        needs_reindex(Some("m2v/v1|text0"), current),
+        "stale scheme must reindex"
+    );
+    assert!(
+        !needs_reindex(Some(current), current),
+        "matching scheme must NOT reindex"
+    );
+}
+
+#[test]
+fn fingerprint_is_stable_for_the_bundled_model() {
+    // The compiled-in model has a fixed fingerprint, so scheme_version is
+    // stable across calls in the same build (no spurious reindexes).
+    assert_eq!(bundled().fingerprint(), bundled().fingerprint());
+    assert_eq!(scheme_version(), scheme_version());
+}
+
+#[test]
+fn ensure_index_current_reindexes_once_then_noops() {
+    use crate::infrastructure::db;
+    use crate::infrastructure::model::Item;
+
+    let conn = db::open_in_memory_for_test();
+    let mut mem = Item::new_memory(
+        "lockfile pin".into(),
+        "pin the dependency lockfile to stop dependabot breaking restore".into(),
+        None,
+    );
+    mem.path = Some("memory/lockfile-pin.md".into());
+    db::insert_item(&conn, &mut mem).unwrap();
+
+    // Fresh DB: no recorded scheme version → a reindex is performed once.
+    assert!(ensure_index_current(&conn).unwrap(), "first run must heal");
+    assert_eq!(
+        db::meta_get(&conn, SCHEME_VERSION_KEY).unwrap().as_deref(),
+        Some(scheme_version().as_str()),
+        "scheme version must be recorded after reindex"
+    );
+    assert!(
+        db::get_embedding(&conn, &mem.uuid.to_string())
+            .unwrap()
+            .is_some(),
+        "the seeded memory must have a vector after reindex"
+    );
+
+    // Version now matches → subsequent runs are no-ops.
+    assert!(
+        !ensure_index_current(&conn).unwrap(),
+        "second run must not reindex"
+    );
+}
+
+#[test]
+fn ensure_index_current_reindexes_after_a_scheme_bump() {
+    use crate::infrastructure::db;
+
+    let conn = db::open_in_memory_for_test();
+    // Simulate vectors written under an older scheme (bumped model/embed-text).
+    db::meta_set(&conn, SCHEME_VERSION_KEY, "stale-old-scheme").unwrap();
+
+    assert!(
+        ensure_index_current(&conn).unwrap(),
+        "a scheme mismatch must force a reindex"
+    );
+    assert_eq!(
+        db::meta_get(&conn, SCHEME_VERSION_KEY).unwrap().as_deref(),
+        Some(scheme_version().as_str()),
+    );
+}
