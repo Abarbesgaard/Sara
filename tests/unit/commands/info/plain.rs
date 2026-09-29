@@ -122,7 +122,6 @@ fn detail(
         history: hist,
         project_root: None,
         branch: None,
-        overlaps: vec![],
         similar: vec![],
         checklist,
         urgency_breakdown: None,

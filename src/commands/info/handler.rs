@@ -5,9 +5,7 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
-use super::types::{
-    BranchOverlap, Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, NOTE_KINDS, TaskTree,
-};
+use super::types::{Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, NOTE_KINDS, TaskTree};
 
 const TREE_FETCH_MAX_DEPTH: usize = 6;
 const TREE_FETCH_MAX_NODES: usize = 40;
@@ -45,7 +43,6 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         .map(std::path::PathBuf::from);
 
     let branch = db::get_task_branch(conn, &task.uuid);
-    let overlaps = compute_overlaps(conn, &task, &branch);
 
     let similar =
         db::similar_tasks(conn, &task.uuid, &task.project, &task.tags).unwrap_or_default();
@@ -85,7 +82,6 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         history: db::get_history(conn, &task.uuid)?,
         project_root,
         branch,
-        overlaps,
         similar,
         checklist,
         urgency_breakdown,
@@ -341,45 +337,6 @@ pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut De
     ));
     detail.history = db::get_history(conn, &uuid).unwrap_or_default();
     detail.tree = build_task_tree(conn, uuid);
-}
-
-pub(super) fn compute_overlaps(
-    conn: &Connection,
-    task: &Task,
-    branch_rec: &Option<db::BranchRecord>,
-) -> Vec<BranchOverlap> {
-    let my_files: std::collections::HashSet<String> = branch_rec
-        .as_ref()
-        .and_then(|b| b.files.as_ref())
-        .map(|fs| fs.iter().cloned().collect())
-        .unwrap_or_default();
-
-    if my_files.is_empty() {
-        return vec![];
-    }
-
-    let others =
-        db::branched_pending_in_project(conn, &task.project, &task.uuid).unwrap_or_default();
-
-    let mut result = vec![];
-    for (id, desc, other_rec) in others {
-        let other_files: std::collections::HashSet<String> = other_rec
-            .files
-            .as_ref()
-            .map(|fs| fs.iter().cloned().collect())
-            .unwrap_or_default();
-        let mut shared: Vec<String> = my_files.intersection(&other_files).cloned().collect();
-        if !shared.is_empty() {
-            shared.sort();
-            result.push(BranchOverlap {
-                id,
-                description: desc,
-                branch: other_rec.branch,
-                shared_files: shared,
-            });
-        }
-    }
-    result
 }
 
 pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {

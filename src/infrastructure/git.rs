@@ -123,29 +123,6 @@ pub fn github_repo_from_remote(repo_root: &Path) -> Result<(String, String)> {
     })
 }
 
-pub fn changed_files(repo: &Path, branch: &str) -> Result<(String, Vec<String>)> {
-    git_output(repo, &["rev-parse", "--verify", branch])
-        .with_context(|| format!("branch '{}' not found", branch))?;
-
-    let base = default_base(repo);
-
-    if branch == base {
-        return Ok((base, vec![]));
-    }
-
-    let diff_range = format!("{}...{}", base, branch);
-    let raw = git_output(repo, &["diff", "--name-only", &diff_range])
-        .with_context(|| format!("git diff failed for range {}", diff_range))?;
-
-    let files = raw
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
-
-    Ok((base, files))
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/infrastructure/git.rs"]
 mod tests;
