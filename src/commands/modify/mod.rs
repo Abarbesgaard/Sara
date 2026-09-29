@@ -59,7 +59,6 @@ pub fn run(
         );
     }
 
-    // Build form context from existing task
     let pending = db::list_tasks(conn, None)?;
     let available_deps: Vec<(String, String)> = pending
         .iter()
@@ -107,7 +106,6 @@ pub fn run(
         return Ok(());
     };
 
-    // Apply changes
     let mut updated = task.clone();
     updated.description = form.description;
     updated.project = form.project.clone();
@@ -129,7 +127,6 @@ pub fn run(
     updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
     db::update_task(conn, &updated)?;
 
-    // Update files (paths come directly from the form).
     db::set_task_files(conn, &updated.uuid, &form.selected_files)?;
 
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;

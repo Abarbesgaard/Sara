@@ -33,7 +33,6 @@ pub fn detect_stack(path: &str) -> String {
             stacks.push(*label);
         }
     }
-    // Check for Swift files manually
     if let Ok(rd) = std::fs::read_dir(root) {
         for entry in rd.flatten() {
             if entry
@@ -84,7 +83,6 @@ pub fn run(
         render::note_not_in_git(&project_name);
     }
 
-    // Detect stack (auto-detection can be overridden via --stack)
     let detected_stack = project_path
         .as_deref()
         .map(detect_stack)
@@ -92,7 +90,6 @@ pub fn run(
 
     render::print_intro(&project_name, &detected_stack);
 
-    // Load existing profile if any
     let existing = crate::infrastructure::db::get_project(conn, &project_name)?;
 
     // Stack: explicit --stack wins, else preserve an existing value, else use detection.

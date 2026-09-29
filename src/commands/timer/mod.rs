@@ -66,7 +66,6 @@ pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<V
     db::update_task(conn, &task)?;
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
 
-    // If this task has a tied branch, snapshot its changed files.
     let mut branch_log = Value::Null;
     if let Some(branch_rec) = db::get_task_branch(conn, &task.uuid) {
         let project_path = db::get_project(conn, &task.project)
