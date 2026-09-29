@@ -1584,10 +1584,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
             "  Run: sara <id> addbranch",
             Style::default().fg(Color::Gray),
         )));
-        lines.push(Line::from(Span::styled(
-            "  Then: sara stop <id> to snapshot.",
-            Style::default().fg(Color::Gray),
-        )));
         return lines;
     };
 
@@ -1600,110 +1596,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
-    if let Some(base) = &rec.base {
-        lines.push(Line::from(vec![
-            Span::styled("  Base    ", Style::default().fg(Color::DarkGray)),
-            Span::styled(base.clone(), Style::default().fg(Color::Gray)),
-        ]));
-    }
-    if let Some(logged_at) = rec.logged_at {
-        let ts = logged_at
-            .with_timezone(&Local)
-            .format("%Y-%m-%d %H:%M")
-            .to_string();
-        lines.push(Line::from(vec![
-            Span::styled("  Logged  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(ts, Style::default().fg(Color::Gray)),
-        ]));
-    }
-    lines.push(Line::from(""));
-
-    match &rec.files {
-        None => {
-            lines.push(Line::from(Span::styled(
-                "  No snapshot yet.",
-                Style::default().fg(Color::DarkGray),
-            )));
-            lines.push(Line::from(Span::styled(
-                "  Run: sara stop <id>",
-                Style::default().fg(Color::Gray),
-            )));
-        }
-        Some(files) if files.is_empty() => {
-            lines.push(Line::from(Span::styled(
-                "  No changes vs base.",
-                Style::default().fg(Color::Green),
-            )));
-        }
-        Some(files) => {
-            const MAX_FILES: usize = 20;
-            lines.push(Line::from(Span::styled(
-                format!(
-                    "  {} file{} changed",
-                    files.len(),
-                    if files.len() == 1 { "" } else { "s" }
-                ),
-                Style::default().fg(Color::Yellow),
-            )));
-            for f in files.iter().take(MAX_FILES) {
-                let name = std::path::Path::new(f)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(f.as_str());
-                lines.push(Line::from(vec![
-                    Span::styled("    ", Style::default()),
-                    Span::styled(name.to_string(), Style::default().fg(Color::Cyan)),
-                    if name != f.as_str() {
-                        Span::styled(format!("  {}", f), Style::default().fg(Color::DarkGray))
-                    } else {
-                        Span::raw("")
-                    },
-                ]));
-            }
-            if files.len() > MAX_FILES {
-                lines.push(Line::from(Span::styled(
-                    format!("    +{} more", files.len() - MAX_FILES),
-                    Style::default().fg(Color::DarkGray),
-                )));
-            }
-        }
-    }
-
-    if !d.overlaps.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  ⚠  Potential overlaps",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )));
-        for ov in &d.overlaps {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  [{:>2}] ", ov.id),
-                    Style::default().fg(Color::Gray),
-                ),
-                Span::styled(
-                    truncate_str(&ov.description, 20),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::styled(
-                    format!(" ({})", ov.branch),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
-            for sf in &ov.shared_files {
-                let name = std::path::Path::new(sf)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(sf.as_str());
-                lines.push(Line::from(Span::styled(
-                    format!("    ↳ {name}"),
-                    Style::default().fg(Color::Red),
-                )));
-            }
-        }
-    }
 
     lines
 }

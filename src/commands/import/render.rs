@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::infrastructure::db;
-use crate::infrastructure::portable::Bundle;
+use crate::infrastructure::util::portable::Bundle;
 
 pub(super) fn report(
     conn: &Connection,

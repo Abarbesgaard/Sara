@@ -67,7 +67,7 @@ fn relearn_requires_at_least_one_change() {
 
 #[test]
 fn relearn_refreshes_a_stale_semantic_embedding() {
-    use crate::infrastructure::embedding;
+    use crate::infrastructure::memory::embedding;
 
     let conn = db::open_in_memory_for_test();
     let item = seed(&conn);

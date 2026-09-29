@@ -69,7 +69,9 @@ pub fn run(
 
     let project_files: Vec<String> = db::get_project(conn, &task.project)?
         .and_then(|p| p.path)
-        .map(|p| crate::infrastructure::files::collect_project_entries(std::path::Path::new(&p)))
+        .map(|p| {
+            crate::infrastructure::util::files::collect_project_entries(std::path::Path::new(&p))
+        })
         .unwrap_or_default();
 
     let current_files = db::get_task_files(conn, &task.uuid)?;

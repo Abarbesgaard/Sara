@@ -3,7 +3,8 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
-use crate::infrastructure::{db, embedding};
+use crate::infrastructure::db;
+use crate::infrastructure::memory::embedding;
 
 mod types;
 use types::ConflictCandidate;

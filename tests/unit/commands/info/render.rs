@@ -55,7 +55,6 @@ fn base_detail(task: Task) -> Detail {
         history: vec![],
         project_root: None,
         branch: None,
-        overlaps: vec![],
         similar: vec![],
         checklist: vec![],
         urgency_breakdown: None,

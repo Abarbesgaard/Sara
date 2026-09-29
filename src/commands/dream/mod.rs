@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::infrastructure::db;
-use crate::infrastructure::memory_graph::MemoryGraph;
+use crate::infrastructure::memory::graph::MemoryGraph;
 use crate::infrastructure::model::Item;
 use crate::infrastructure::tui;
 

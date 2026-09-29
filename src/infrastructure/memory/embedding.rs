@@ -297,5 +297,5 @@ fn is_punct(ch: char) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/infrastructure/embedding.rs"]
+#[path = "../../../tests/unit/infrastructure/embedding.rs"]
 mod tests;

@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 use crate::infrastructure::model::Item;
 use anyhow::Result;
 use chrono::Utc;
@@ -200,7 +200,7 @@ pub fn synthesize_done_memory(
     task_uuid: &Uuid,
     project_name: &str,
 ) -> Result<Option<String>> {
-    use crate::infrastructure::safety;
+    use crate::infrastructure::util::safety;
 
     let task = match get_task_by_uuid_prefix(conn, &task_uuid.to_string()[..8])? {
         Some(t) => t,

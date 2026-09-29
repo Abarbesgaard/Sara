@@ -12,7 +12,7 @@ use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::handler::{
-    build_task_tree, checklist_focus_index, comment_target, compute_overlaps, depends_on_display,
+    build_task_tree, checklist_focus_index, comment_target, depends_on_display,
     edit_text_via_external_editor, feedback_for_focus, find_pr_url, focusables, open_in_editor,
     open_url, reconcile_dependencies, reorder_focused_step,
 };
@@ -161,7 +161,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                     }
                     if field == EditField::Due
                         && !value.trim().is_empty()
-                        && !crate::infrastructure::dates::is_valid_due(&value)
+                        && !crate::infrastructure::util::dates::is_valid_due(&value)
                     {
                         st.due_error = true;
                         continue;
@@ -180,8 +180,8 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                     st.editor.input(k);
                     if field == EditField::Due {
                         let v = st.editor.lines().join("");
-                        st.due_error =
-                            !v.trim().is_empty() && !crate::infrastructure::dates::is_valid_due(&v);
+                        st.due_error = !v.trim().is_empty()
+                            && !crate::infrastructure::util::dates::is_valid_due(&v);
                     }
                 }
                 _ => {}
@@ -559,7 +559,6 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
         .and_then(|p| p.path)
         .map(std::path::PathBuf::from);
     detail.branch = db::get_task_branch(conn, &detail.task.uuid);
-    detail.overlaps = compute_overlaps(conn, &detail.task, &detail.branch);
     detail.similar = db::similar_tasks(
         conn,
         &detail.task.uuid,

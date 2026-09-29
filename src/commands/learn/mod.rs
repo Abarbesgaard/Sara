@@ -61,8 +61,8 @@ pub fn learn_value(
     let resolved_files = collect_files(files, auto_files)?;
     let mut auto_canonical: Vec<uuid::Uuid> = Vec::new();
     if !force {
-        crate::infrastructure::safety::check_size(text)?;
-        crate::infrastructure::safety::check_secrets(text)?;
+        crate::infrastructure::util::safety::check_size(text)?;
+        crate::infrastructure::util::safety::check_secrets(text)?;
         let primary_project = projects.first().cloned().or_else(|| {
             crate::infrastructure::project::detect_current_project(conn, cfg)
                 .ok()
@@ -533,7 +533,7 @@ fn save(
     db::insert_item(conn, &mut item)?;
     db::set_item_projects(conn, &item.uuid, &projects)?;
 
-    crate::infrastructure::embedding::index_memory(conn, &item);
+    crate::infrastructure::memory::embedding::index_memory(conn, &item);
 
     if !files.is_empty() {
         db::set_item_files(conn, &item.uuid, files)?;

@@ -110,5 +110,5 @@ pub fn build_tree_summary(root: &Path, files: &[String]) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/infrastructure/files.rs"]
+#[path = "../../../tests/unit/infrastructure/files.rs"]
 mod tests;

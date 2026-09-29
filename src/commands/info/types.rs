@@ -40,7 +40,6 @@ pub(super) struct Detail {
     pub(super) history: Vec<crate::infrastructure::db::HistoryEntry>,
     pub(super) project_root: Option<std::path::PathBuf>,
     pub(super) branch: Option<crate::infrastructure::db::BranchRecord>,
-    pub(super) overlaps: Vec<BranchOverlap>,
     pub(super) similar: Vec<(i64, String, f64)>,
     pub(super) checklist: Vec<crate::infrastructure::db::ChecklistItem>,
     pub(super) urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
@@ -52,13 +51,6 @@ pub(super) struct Detail {
     pub(super) head_commit: Option<String>,
     pub(super) project_commands: crate::infrastructure::db::ProjectCommands,
     pub(super) tree: TaskTree,
-}
-
-pub(super) struct BranchOverlap {
-    pub(super) id: i64,
-    pub(super) description: String,
-    pub(super) branch: String,
-    pub(super) shared_files: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]

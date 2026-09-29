@@ -428,7 +428,7 @@ fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
     if seeds.is_empty() {
         return Ok(vec![]);
     }
-    let graph = crate::infrastructure::memory_graph::MemoryGraph::build(conn)?;
+    let graph = crate::infrastructure::memory::graph::MemoryGraph::build(conn)?;
     if graph.is_empty() {
         return Ok(vec![]);
     }
@@ -512,7 +512,7 @@ fn merge_semantic_hits(
     allowlist: Option<&HashSet<uuid::Uuid>>,
     hits: &mut Vec<Hit>,
 ) -> Result<()> {
-    use crate::infrastructure::embedding::{self, Embedder};
+    use crate::infrastructure::memory::embedding::{self, Embedder};
 
     let qv = embedding::bundled().embed(query);
     if qv.iter().all(|&x| x == 0.0) {

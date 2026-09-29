@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
-use crate::infrastructure::portable::Bundle;
+use crate::infrastructure::util::portable::Bundle;
 
 mod render;
 

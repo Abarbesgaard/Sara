@@ -493,6 +493,26 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 value TEXT NOT NULL
             );",
         ),
+        M::up_with_hook(
+            "",
+            |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
+                let has_table: bool = tx
+                    .query_row(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_branches'",
+                        [],
+                        |_| Ok(()),
+                    )
+                    .is_ok();
+                if has_table {
+                    tx.execute_batch(
+                        "ALTER TABLE task_branches DROP COLUMN changed_files_json;
+                         ALTER TABLE task_branches DROP COLUMN base;
+                         ALTER TABLE task_branches DROP COLUMN logged_at;",
+                    )?;
+                }
+                Ok(())
+            },
+        ),
     ]);
     migrations
         .to_latest(conn)

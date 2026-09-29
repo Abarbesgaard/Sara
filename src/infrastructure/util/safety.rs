@@ -127,5 +127,5 @@ fn is_uuid(s: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/infrastructure/safety.rs"]
+#[path = "../../../tests/unit/infrastructure/safety.rs"]
 mod tests;

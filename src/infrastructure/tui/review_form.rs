@@ -273,7 +273,7 @@ impl<'a> FormState<'a> {
 
     fn validate_due(&mut self) {
         let text = self.due_area.lines().join("");
-        self.due_error = !crate::infrastructure::dates::is_valid_due(&text);
+        self.due_error = !crate::infrastructure::util::dates::is_valid_due(&text);
     }
 
     fn set_due_text(&mut self, value: &str) {
@@ -284,7 +284,7 @@ impl<'a> FormState<'a> {
     }
 
     fn cycle_due(&mut self, forward: bool) {
-        let presets = crate::infrastructure::dates::DUE_PRESETS;
+        let presets = crate::infrastructure::util::dates::DUE_PRESETS;
         let current = self.due_area.lines().join("");
         let cur_idx = presets
             .iter()

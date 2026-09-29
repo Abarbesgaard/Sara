@@ -458,5 +458,5 @@ pub fn consolidate(
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/infrastructure/memory_graph.rs"]
+#[path = "../../../tests/unit/infrastructure/memory_graph.rs"]
 mod tests;
