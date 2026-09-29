@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::embedding::{self, Embedder};
+use crate::infrastructure::memory::embedding::{self, Embedder};
 use crate::infrastructure::model::Item;
 
 const STOP_WORDS: &[&str] = &[

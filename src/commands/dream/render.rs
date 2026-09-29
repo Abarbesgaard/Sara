@@ -6,7 +6,7 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline, Wrap};
 
 use std::collections::HashMap;
 
-use crate::infrastructure::memory_graph::MemoryGraph;
+use crate::infrastructure::memory::graph::MemoryGraph;
 use crate::infrastructure::tui;
 
 use super::PULSE_TICKS;

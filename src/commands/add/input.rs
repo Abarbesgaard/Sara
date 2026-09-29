@@ -87,7 +87,9 @@ pub(super) fn resolve(
         let project_files: Vec<String> = project_profile
             .path
             .as_deref()
-            .map(|p| crate::infrastructure::files::collect_project_entries(std::path::Path::new(p)))
+            .map(|p| {
+                crate::infrastructure::util::files::collect_project_entries(std::path::Path::new(p))
+            })
             .unwrap_or_default();
 
         let priority_init = parsed

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 use crate::infrastructure::db;
-use crate::infrastructure::portable::{
+use crate::infrastructure::util::portable::{
     AnnotationDto, BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, ChecklistDto, FileDto, LinkDto,
     TaskEnvelope,
 };

@@ -174,7 +174,7 @@ fn auto_tie_branch(conn: &Connection, task: &Task) -> Option<String> {
 }
 
 pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>> {
-    crate::infrastructure::dates::parse_due(s, &cfg.date_dialect)
+    crate::infrastructure::util::dates::parse_due(s, &cfg.date_dialect)
 }
 
 fn split_tags(tags: &str) -> Vec<String> {

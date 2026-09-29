@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::infrastructure::db;
-use crate::infrastructure::embedding::{self, Embedder};
+use crate::infrastructure::memory::embedding::{self, Embedder};
 
 mod render;
 mod types;

@@ -283,7 +283,7 @@ impl SaraServer {
                 p.project_path.as_deref(),
                 "mcp consolidate",
                 |conn, _cfg| {
-                    let reinforced = crate::infrastructure::memory_graph::consolidate(
+                    let reinforced = crate::infrastructure::memory::graph::consolidate(
                         conn,
                         p.window_days.unwrap_or(30),
                         chrono::Duration::seconds(p.bucket_secs.unwrap_or(5)),
@@ -368,7 +368,7 @@ impl SaraServer {
                 p.project_path.as_deref(),
                 "mcp reindex_embeddings",
                 |conn, _cfg| {
-                    let embedded = crate::infrastructure::embedding::reindex_all(conn)?;
+                    let embedded = crate::infrastructure::memory::embedding::reindex_all(conn)?;
                     Ok(serde_json::json!({ "embedded": embedded }))
                 },
             )

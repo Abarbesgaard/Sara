@@ -3,7 +3,8 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
-use crate::infrastructure::{db, memory_graph::MemoryGraph};
+use crate::infrastructure::db;
+use crate::infrastructure::memory::graph::MemoryGraph;
 
 mod types;
 use types::{Cluster, UnionFind};

@@ -31,7 +31,7 @@ pub fn relearn_value(
 
     if let Some(body) = text {
         if !force {
-            crate::infrastructure::safety::check_memory_body(body)?;
+            crate::infrastructure::util::safety::check_memory_body(body)?;
         }
         item.body = body.to_string();
         item.title = summarize(body);
@@ -48,7 +48,7 @@ pub fn relearn_value(
     db::update_item(conn, &item)?;
 
     if text.is_some() && matches!(db::get_embedding(conn, &item.uuid.to_string()), Ok(Some(_))) {
-        crate::infrastructure::embedding::index_memory(conn, &item);
+        crate::infrastructure::memory::embedding::index_memory(conn, &item);
     }
 
     if !files.is_empty() {
