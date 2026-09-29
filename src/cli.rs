@@ -177,16 +177,6 @@ pub enum Command {
         by_issue: bool,
     },
 
-    Start {
-        #[arg(add = ArgValueCandidates::new(task_ids))]
-        id: String,
-    },
-
-    Stop {
-        #[arg(add = ArgValueCandidates::new(task_ids))]
-        id: String,
-    },
-
     Done {
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,

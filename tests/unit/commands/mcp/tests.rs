@@ -28,7 +28,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 45, "expected 45 tools, got {names:?}");
+    assert_eq!(names.len(), 43, "expected 43 tools, got {names:?}");
     for expected in [
         "list",
         "info",
@@ -64,8 +64,6 @@ fn exposes_the_agent_loop_tools() {
         "modify",
         "resolve",
         "record_run",
-        "start",
-        "stop",
         "move_task",
         "consolidate",
         "reflect",
@@ -462,25 +460,6 @@ fn attach_value_tags_a_url_as_link() {
         .expect("attach url");
     assert_eq!(v["kind"], "link");
     assert_eq!(v["url"], "https://example.com/pr/1");
-}
-
-#[test]
-fn start_then_stop_tracks_a_session() {
-    let server = server_with(db::open_in_memory_for_test());
-    let uuid = seed_returning(&server, "p", "task");
-    let started = server
-        .with_project(None, "start", |conn, cfg| {
-            commands::timer::start_value(conn, cfg, &uuid)
-        })
-        .expect("start");
-    assert_eq!(started["started"], true);
-    let stopped = server
-        .with_project(None, "stop", |conn, cfg| {
-            commands::timer::stop_value(conn, cfg, &uuid)
-        })
-        .expect("stop");
-    assert_eq!(stopped["stopped"], true);
-    assert!(stopped["session_seconds"].as_i64().is_some());
 }
 
 #[test]

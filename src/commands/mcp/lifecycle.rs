@@ -146,28 +146,6 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Start the time tracker for a task (no-op if it is already active).")]
-    fn start(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp start", |conn, cfg| {
-                commands::timer::start_value(conn, cfg, &p.id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Stop the time tracker for a task, recording the session; snapshots a tied branch's changed files if one is set."
-    )]
-    fn stop(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp stop", |conn, cfg| {
-                commands::timer::stop_value(conn, cfg, &p.id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
     #[tool(
         description = "Remove a link from a task by its sequential link id (shown in `sara info`)."
     )]

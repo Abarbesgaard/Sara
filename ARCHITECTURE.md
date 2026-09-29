@@ -77,8 +77,6 @@ src/
       mod.rs                # `sara sync` — entry point + token resolution
       github.rs             # GitHub REST API types and fetch functions
       import.rs             # Task creation / update / comment reconciliation
-    timer/
-      mod.rs                # `sara start` / `sara stop` — time tracking
     undo/
       mod.rs                # `sara undo` — revert the last write command
 ```
