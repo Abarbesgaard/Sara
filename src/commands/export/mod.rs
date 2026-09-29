@@ -9,6 +9,8 @@ use crate::infrastructure::portable::{
     TaskEnvelope,
 };
 
+mod render;
+
 /// Export a task (and its full dependency closure) to a portable copy-paste blob.
 ///
 /// The root is resolved by display id or uuid prefix; its dependency closure
@@ -100,41 +102,5 @@ pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
     let blob = bundle.encode()?;
     let extra = bundle.tasks.len().saturating_sub(1);
 
-    match output {
-        Some(path) => {
-            std::fs::write(path, format!("{blob}\n"))
-                .with_context(|| format!("writing blob to {}", path.display()))?;
-            let dep_note = if extra > 0 {
-                format!(
-                    " (+{extra} dependency task{})",
-                    if extra == 1 { "" } else { "s" }
-                )
-            } else {
-                String::new()
-            };
-            eprintln!(
-                "Exported task {}{dep_note} to {}",
-                root.id.unwrap_or(0),
-                path.display()
-            );
-        }
-        None => {
-            // The blob alone goes to stdout so it can be piped/redirected cleanly;
-            // the human-readable hint goes to stderr.
-            println!("{blob}");
-            if extra > 0 {
-                eprintln!(
-                    "Exported task {} with {extra} dependency task{}. Import with `sara import`.",
-                    root.id.unwrap_or(0),
-                    if extra == 1 { "" } else { "s" }
-                );
-            } else {
-                eprintln!(
-                    "Exported task {}. Import with `sara import`.",
-                    root.id.unwrap_or(0)
-                );
-            }
-        }
-    }
-    Ok(())
+    render::emit(output, &blob, root.id.unwrap_or(0), extra)
 }

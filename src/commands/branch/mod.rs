@@ -4,12 +4,14 @@ use rusqlite::Connection;
 use crate::infrastructure::db;
 use crate::infrastructure::git;
 
+mod render;
+
 pub fn run(conn: &Connection, id_or_uuid: &str, clear: bool) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
 
     if clear {
         db::clear_task_branch(conn, &task.uuid)?;
-        println!("Removed branch tie from task {}.", task.id.unwrap_or(0));
+        render::print_cleared(task.id.unwrap_or(0));
         return Ok(());
     }
 
@@ -30,10 +32,6 @@ pub fn run(conn: &Connection, id_or_uuid: &str, clear: bool) -> Result<()> {
     })?;
 
     db::set_task_branch(conn, &task.uuid, &branch)?;
-    println!("Tied task {} to branch '{}'.", task.id.unwrap_or(0), branch);
-    println!(
-        "Run `sara stop {}` to snapshot changed files.",
-        task.id.unwrap_or(0)
-    );
+    render::print_tied(task.id.unwrap_or(0), &branch);
     Ok(())
 }
