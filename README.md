@@ -69,8 +69,8 @@ is ever written into your repositories.**
 - **Transparent urgency** — a Taskwarrior-style scoring model decides ordering; `sara info` shows the exact breakdown.
 - **Interactive TUI** — a ratatui review form for adding/editing, and a rich detail view for everything else.
 - **Dependencies** — block tasks on each other, with cycle detection and an at-a-glance `DEPS` column.
-- **Time tracking** — `sara start` / `sara stop` accumulate active time, with optional estimates.
-- **Git integration** — tie a task to a branch and snapshot the files it touched.
+- **Time tracking** — a task's clock starts automatically the first time you act on it and accumulates into time spent, with optional estimates.
+- **Git integration** — tie a task to a branch.
 - **Full history** — every change (field edits, deps, files, checklist, links, comments, timer) is recorded.
 - **Single SQLite file** — easy to back up, and nothing is written into your repos.
 
@@ -363,10 +363,6 @@ sara list
 # Inspect / edit a task interactively
 sara info 1
 
-# Start the clock, do the work, stop it
-sara start 1
-sara stop 1
-
 # Complete it
 sara done 1
 ```
@@ -536,7 +532,6 @@ from reading and planning a task through to completing it:
 | `validate` | Stamp the guide as validated against the project's current git HEAD |
 | `feedback` | List a task's open human feedback |
 | `resolve` | Resolve a feedback item by its id |
-| `start` / `stop` | Time tracking (`stop` snapshots a tied branch's changed files) |
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
 | `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
@@ -669,14 +664,13 @@ gutter markers and the `DEPS` column. Cycles are prevented automatically.
 
 ### Time tracking
 
-```bash
-sara start 1     # begin working — marks the task active (●) and starts the clock
-sara stop 1      # stop — accumulates elapsed time into "time spent"
-```
+A task's clock starts automatically the first time you act on it — the first
+`sara step done` (or `sara verify --run`) on an idle task marks it active (●)
+and starts the clock. Elapsed time accumulates into "time spent" when you
+`sara done` it.
 
 Set an estimate (in the `Estimate` field of `sara info`) to see a progress
-percentage against time spent. If a task is tied to a git branch, `sara stop`
-snapshots the files changed on that branch.
+percentage against time spent.
 
 ### Recurring tasks
 
@@ -705,8 +699,7 @@ Add `--kind acceptance` to any `sara step …` command to act on the task's
 acceptance criteria instead of its steps. Toggle items with `Space` in `sara info`.
 
 The first `sara step done` (or `sara verify --run`/`--tick-on-pass`) on an idle
-task **auto-starts its timer**, so its active state reflects reality without a
-separate `sara start`. Add `--json` to `sara step done|undone|remove` for a
+task **auto-starts its timer**, so its active state reflects reality. Add `--json` to `sara step done|undone|remove` for a
 structured record (the `activated` field reports whether that call started the task).
 
 ```bash
@@ -744,7 +737,7 @@ sara addbranch 1 --clear    # remove the tie
 
 > Note: `addbranch` takes the **task ID**, not a branch name — the branch is read
 > from the repo you're standing in. The task's project must have been `sara init`'d
-> inside that repo. Run `sara stop` afterwards to snapshot the changed files.
+> inside that repo.
 
 ### Sharing tasks
 
@@ -954,7 +947,6 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
 | `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |
-| `sara start <id>` / `sara stop <id>`| Start / stop the timer                                  |
 | `sara dep <id> on\|off\|list` / `sara dep chain <id>...` | Manage dependencies, or wire a linear chain in one command |
 | `sara check <id> <text>`           | Add a checklist item                                     |
 | `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`, `--json`)|

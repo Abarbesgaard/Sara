@@ -1,0 +1,3 @@
+pub(super) const RECALL_STEP_TEXT: &str = "Recall prior art before doing anything else";
+
+pub(super) const RECALL_STEP_INTENT: &str = "Before investigating or editing, decide what prior knowledge bears on this task — the patterns, prior fixes, gotchas, and conventions it might repeat — then call `recall` with a query aimed at exactly that. Record which memories apply (or are deliberately rejected, and why) when you close this step. Do this first so prior art shapes the work rather than being consulted after the fact.";

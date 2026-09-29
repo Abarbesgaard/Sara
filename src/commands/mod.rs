@@ -33,5 +33,4 @@ pub mod relearn;
 pub mod reset;
 pub mod sync;
 pub mod tags;
-pub mod timer;
 pub mod undo;

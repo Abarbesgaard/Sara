@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use super::RECALL_STEP_TEXT;
+use super::types::RECALL_STEP_TEXT;
 
 pub(super) fn print_begin(v: &Value) {
     let task = v["task"].as_i64().unwrap_or_default();

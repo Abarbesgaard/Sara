@@ -264,14 +264,6 @@ fn run() -> Result<()> {
                 commands::list::run(&conn, &cfg, all, project.as_deref(), json, by_issue)?;
             }
 
-            Command::Start { id } => {
-                commands::timer::start(&conn, &cfg, &id)?;
-            }
-
-            Command::Stop { id } => {
-                commands::timer::stop(&conn, &cfg, &id)?;
-            }
-
             Command::Done { id, force } => {
                 commands::done::run(&conn, &cfg, &id, force)?;
             }
