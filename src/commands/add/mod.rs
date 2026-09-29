@@ -2,8 +2,6 @@ mod input;
 mod persist;
 mod similar;
 
-/// How many prior tasks/notes to surface as "similar past work" before creating
-/// a new task. Kept small since these are informational, not a hard gate.
 const SIMILAR_LIMIT: i64 = 5;
 
 use anyhow::Result;
@@ -61,8 +59,6 @@ pub fn run(
         Err(e) => eprintln!("Warning: recall check failed: {e}"),
     }
 
-    // p4: flag a same-project OPEN task with the same description before creating
-    // a silent duplicate. Non-blocking — the task is still created.
     if let Some(dup) = find_duplicate_open_task(conn, &form.project, &form.description) {
         println!(
             "⚠ An open task in this project already matches — reuse it instead of duplicating:\n  task {} ({}): {}\n",
@@ -100,8 +96,6 @@ pub fn run(
     Ok(())
 }
 
-/// Create a task and return it — the print-free core for the MCP `add` tool.
-/// Always forces `yes = true` so the TUI review form never opens.
 #[allow(clippy::too_many_arguments)]
 pub fn run_value(
     conn: &Connection,
@@ -140,7 +134,6 @@ pub fn run_value(
     )
     .unwrap_or_default();
 
-    // p4: same-project open-task duplicate (non-blocking), surfaced structurally.
     let duplicate = find_duplicate_open_task(conn, &form.project, &form.description).map(|t| {
         serde_json::json!({
             "id": t.id,
@@ -173,11 +166,6 @@ pub fn run_value(
     }))
 }
 
-/// Best-effort tie the new task to the project repo's current git branch, so
-/// downstream commands can detect a wrong-branch mutation by a recycled display
-/// id (see `guide::guard_branch_mutation`). Silent no-op when the project has no
-/// path, isn't a repo, or is in detached HEAD — the tie is a safety hint, never
-/// a hard requirement. Returns the branch it tied, if any.
 fn auto_tie_branch(conn: &Connection, task: &Task) -> Option<String> {
     let path = db::get_project(conn, &task.project).ok().flatten()?.path?;
     let branch = crate::infrastructure::git::current_branch(std::path::Path::new(&path))?;
@@ -189,8 +177,6 @@ pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>>
     crate::infrastructure::dates::parse_due(s, &cfg.date_dialect)
 }
 
-/// Split a comma-joined tag string into trimmed, non-empty tags — matching how
-/// `persist::save` stores them, so tag-exact recall keys on the same values.
 fn split_tags(tags: &str) -> Vec<String> {
     tags.split(',')
         .map(|s| s.trim().to_string())
@@ -198,9 +184,6 @@ fn split_tags(tags: &str) -> Vec<String> {
         .collect()
 }
 
-/// p4: a same-project OPEN (pending) task whose description matches the new one
-/// (case-insensitive, trimmed). Surfaced as a warning so identical tasks aren't
-/// silently duplicated. Non-blocking — the caller still creates the task.
 fn find_duplicate_open_task(conn: &Connection, project: &str, description: &str) -> Option<Task> {
     let want = description.trim().to_lowercase();
     db::list_tasks(conn, Some(project))
@@ -209,10 +192,6 @@ fn find_duplicate_open_task(conn: &Connection, project: &str, description: &str)
         .find(|t| t.description.trim().to_lowercase() == want)
 }
 
-/// p2: full-body only for the stronger bands (canonical/high/medium — the whole
-/// point of surfacing them is to prevent re-derivation); the weakest `semantic`
-/// band gets an indented snippet so low-relevance paraphrase matches don't flood
-/// the founding output. Returns the indented, newline-terminated block to print.
 fn render_similar_body(confidence: &str, body: &str) -> String {
     if confidence == "semantic" {
         let snippet: String = body.chars().take(200).collect();
@@ -227,14 +206,6 @@ fn render_similar_body(confidence: &str, body: &str) -> String {
     }
 }
 
-/// Render one `find_similar` hit for the human terminal. Memory hits print their
-/// **full body** (the actionable knowledge); task hits print a snippet + ref.
-/// Two refinements keep the founding output signal-dense:
-///   * cross-province memory hits are surfaced but clearly labeled, so a common
-///     tag doesn't masquerade as local prior art (they also rank after
-///     same-project hits — see `find_similar`);
-///   * the weakest `semantic` band prints a snippet, not a full body, so
-///     low-relevance paraphrase matches don't flood the terminal.
 fn print_similar_hit(hit: &serde_json::Value) {
     let confidence = hit["confidence"].as_str().unwrap_or("medium");
     if hit["ref_kind"].as_str() == Some("memory") {

@@ -1,6 +1,5 @@
 use serde_json::Value;
 
-/// Report a pruning run — the (would-be) archived memories with their reasons.
 pub(super) fn print_pruned(v: &Value, dry_run: bool) {
     let count = v["archived"].as_u64().unwrap_or(0);
     let mode = if dry_run { "Would archive" } else { "Archived" };

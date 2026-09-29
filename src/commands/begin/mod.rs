@@ -1,19 +1,3 @@
-//! `sara begin` — the single entry point for starting a task.
-//!
-//! One call founds the task AND seeds the first step of the flow: an explicit,
-//! agent-run recall. `begin` does NOT recall itself — instead it appends a first
-//! checklist step directing the agent to decide what prior art bears on the task
-//! and call `recall` with a purposeful query. This keeps prior art early in
-//! context (it is the very first step `next` surfaces) while making the recall
-//! the agent's own deliberate act — it must state WHAT it is trying to remember
-//! for — rather than a mechanical, description-derived query it skims past.
-//!
-//! It is a THIN composition of the existing value functions (`add`,
-//! `assignment`, `rationale`, `check`, `next`) plus one seeded step — it
-//! introduces no new storage and stays deliberately skill/tooling-agnostic: it
-//! speaks only of tasks, acceptance criteria, steps and memories, never of any
-//! particular workflow, rite, or agent methodology.
-
 use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::{Value, json};
@@ -24,19 +8,10 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// The text of the first step `begin` seeds on every task: an explicit,
-/// agent-run recall. `begin` no longer recalls itself — this step makes prior
-/// art the agent's own first deliberate act, surfaced by `next` before any
-/// other work so it shapes the task instead of being skimmed after the fact.
 pub(super) const RECALL_STEP_TEXT: &str = "Recall prior art before doing anything else";
 
-/// The intent bound to the seeded recall step — it forces the agent to decide
-/// WHAT to remember for, not merely to fire a query.
 const RECALL_STEP_INTENT: &str = "Before investigating or editing, decide what prior knowledge bears on this task — the patterns, prior fixes, gotchas, and conventions it might repeat — then call `recall` with a query aimed at exactly that. Record which memories apply (or are deliberately rejected, and why) when you close this step. Do this first so prior art shapes the work rather than being consulted after the fact.";
 
-/// Compose the full "start a task" flow and return a structured result. Every
-/// sub-step reuses the same value function the standalone command calls, so
-/// `begin` can never drift from `add`/`recall`/`check`/… behaviour.
 #[allow(clippy::too_many_arguments)]
 pub fn begin_value(
     conn: &Connection,
@@ -73,10 +48,6 @@ pub fn begin_value(
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
 
-    // Attach any declared files as task anchors. begin no longer folds them into
-    // a recall query (it does not recall); it records them as the task's code
-    // anchors so the agent's recall step, `next`'s relevant-memory block, and
-    // later work all have the touched files as first-class context.
     let anchor_files: Vec<&str> = files
         .iter()
         .map(|f| f.trim())
@@ -102,8 +73,6 @@ pub fn begin_value(
         }
     }
 
-    // Assignment defaults to the description so the task always records what was
-    // actually asked for.
     let assignment_text = assignment
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -115,8 +84,6 @@ pub fn begin_value(
         commands::guide::rationale_value(conn, &id, why)?;
     }
 
-    // Acceptance is OPTIONAL — proceed without it, but warn so the gap is a
-    // deliberate choice.
     let acceptance = match check.map(str::trim).filter(|s| !s.is_empty()) {
         Some(text) => {
             let c = commands::guide::check_value(
@@ -143,9 +110,6 @@ pub fn begin_value(
         }
     };
 
-    // Seed the recall step FIRST — before any workflow steps a skill may later
-    // add — so it is the cursor `next` returns and prior art is recalled early
-    // yet purposefully. begin does not recall here; the agent runs `recall`.
     let recall_step = commands::guide::check_value(
         conn,
         &id,
@@ -172,9 +136,6 @@ pub fn begin_value(
     }))
 }
 
-/// `sara begin` — CLI entry: found the task, seed the recall step, print a
-/// summary (or the raw JSON with `--json`). It does NOT recall — the seeded
-/// first step directs the agent to run `recall` itself.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     conn: &Connection,

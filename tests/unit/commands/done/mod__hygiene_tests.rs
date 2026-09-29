@@ -1,7 +1,6 @@
 use super::*;
 use crate::infrastructure::model::{Item, Task};
 
-/// Create an active memory via db primitives (no cross-slice learn import).
 fn mem(conn: &Connection, title: &str) -> Item {
     let mut item = Item::new_memory(title.to_string(), format!("body of {title}"), None);
     item.path = Some(String::new());
@@ -18,7 +17,6 @@ fn done_auto_archives_superseded() {
     let conn = db::open_in_memory_for_test();
     let old = mem(&conn, "old finding");
     let new = mem(&conn, "new finding replaces old");
-    // new supersedes old (new is active).
     db::insert_memory_link(
         &conn,
         &new.uuid.to_string(),
@@ -43,7 +41,6 @@ fn done_auto_archives_superseded() {
         "superseded old memory is auto-archived"
     );
 
-    // Archived memories drop out of the active read path; the superseder stays.
     assert!(
         db::get_item_by_handle(&conn, &label(&old)).is_err(),
         "old memory is no longer active"

@@ -8,21 +8,12 @@ use crate::infrastructure::db;
 mod types;
 pub use types::{AcceptanceGate, GateOutput, GateRun};
 
-/// Resolve the git HEAD for the task's project, if it lives in a repo.
 fn project_head(conn: &Connection, project: &str) -> Option<String> {
     let proj = db::get_project(conn, project).ok().flatten()?;
     let path = proj.path?;
     crate::infrastructure::git::head_commit(std::path::Path::new(&path))
 }
 
-/// Refuse a finalizing mutation targeted by a **recyclable numeric display id**
-/// when the resolved task is tied to a git branch other than the one currently
-/// checked out in its project — the signature of "display-id recompaction moved
-/// id N onto a different task than you meant" (the concurrent-agent hazard).
-///
-/// Positive-evidence only: stays silent when the input was a uuid (stable), the
-/// task has no branch tie, the branch can't be determined (detached HEAD / no
-/// repo), or `force` is set — so legitimate single-branch flows never trip.
 pub fn guard_branch_mutation(
     conn: &Connection,
     id_input: &str,
@@ -30,7 +21,7 @@ pub fn guard_branch_mutation(
     force: bool,
 ) -> Result<()> {
     if force || id_input.parse::<i64>().is_err() {
-        return Ok(()); // uuid inputs are stable; --force opts out.
+        return Ok(());
     }
     let Some(rec) = db::get_task_branch(conn, &task.uuid) else {
         return Ok(());
@@ -67,15 +58,8 @@ fn kind_arg(kind: Option<&str>) -> &str {
     }
 }
 
-/// Max memories surfaced on the execution cursor. Tighter than the task-start
-/// guide (5): `sara next` is hit on every step, so it must stay a glance, not a
-/// wall.
 const NEXT_MEMORY_LIMIT: usize = 3;
 
-/// Strong memories relevant to a task's description + tags, as `(label, snippet)`
-/// pairs — the same signal `sara info`/`guide` surfaces at task-start, brought
-/// into the per-step execution cursor so the agent never works memory-blind.
-/// Empty when nothing Strong matches (the caller then omits the block entirely).
 fn relevant_memories(
     conn: &Connection,
     task: &crate::infrastructure::model::Task,
@@ -98,8 +82,6 @@ fn relevant_memories(
         .collect()
 }
 
-/// Structured form of the execution cursor (first not-done step). Shared by the
-/// `--json` CLI path and the MCP `next` tool so there is a single serializer.
 pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
@@ -131,7 +113,6 @@ pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     Ok(value)
 }
 
-/// `sara next` — the execution cursor: first not-done step.
 pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result<()> {
     if as_json {
         println!("{}", serde_json::to_string_pretty(&next_value(conn, id)?)?);
@@ -169,8 +150,6 @@ pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result
     Ok(())
 }
 
-/// Structured form of the ordered steps. Shared by the `--json` CLI path and the
-/// MCP `steps` tool.
 pub fn steps_value(conn: &Connection, id: &str, until: Option<usize>) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let mut steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
@@ -195,7 +174,6 @@ pub fn steps_value(conn: &Connection, id: &str, until: Option<usize>) -> Result<
     Ok(json!({ "task": task.id, "steps": arr }))
 }
 
-/// `sara steps [--until N]` — ordered steps for incremental execution.
 pub fn steps(
     conn: &Connection,
     _cfg: &Config,
@@ -235,10 +213,6 @@ pub fn steps(
         }
     }
 
-    // Acceptance criteria live in a SEPARATE 1-based namespace from steps, and
-    // were previously invisible here (only `verify`/`info` showed them) — which
-    // makes `step done <id> N` easy to mis-target. Surface them under a labeled
-    // section that names the disambiguating `--kind acceptance` flag.
     if !acceptance.is_empty() {
         println!("Acceptance criteria (tick with `step done <id> N --kind acceptance`):");
         for (i, a) in acceptance.iter().enumerate() {
@@ -253,8 +227,6 @@ pub fn steps(
     Ok(())
 }
 
-/// Mark step `n` done and return a structured record of the change. Shared by the
-/// CLI `step done` command and the MCP `step_done` tool (which cannot print).
 pub fn step_done_value(
     conn: &Connection,
     id: &str,
@@ -267,11 +239,7 @@ pub fn step_done_value(
     let step_id = db::step_id_by_index(conn, &task.uuid, kind, n)?;
     let commit = project_head(conn, &task.project);
     db::set_step_done(conn, step_id, true, result, commit.as_deref())?;
-    // First recorded work auto-transitions the task to active (Feature: status
-    // should reflect reality without a separate `sara start`).
     let activated = db::ensure_started(conn, &task.uuid)?;
-    // Resurface prior findings semantically close to this result — reconnect the
-    // agent to what it already concluded before it moves on.
     let related = match result {
         Some(r) if !r.trim().is_empty() => {
             crate::commands::insight::related_findings(conn, &task.uuid, r, None)
@@ -290,10 +258,6 @@ pub fn step_done_value(
     }))
 }
 
-/// Complete the *execution cursor* — the first not-done item of `kind` (default
-/// "step") — without the caller having to know its 1-based `n`. This mirrors what
-/// `next` surfaces, so a `next` → `step_done` round-trip needs no bookkeeping.
-/// Errors only when no incomplete item of that kind remains.
 pub fn step_done_current_value(
     conn: &Connection,
     id: &str,
@@ -311,9 +275,6 @@ pub fn step_done_current_value(
     step_done_value(conn, id, n, result, kind)
 }
 
-/// Tick a checklist item addressed by its row id (the `step_id` that `check`
-/// returns), resolving its task/kind/position first. Lets MCP callers round-trip
-/// the `step_id` they were handed rather than having to know the 1-based `n`.
 pub fn step_done_by_id_value(
     conn: &Connection,
     step_id: i64,
@@ -323,7 +284,6 @@ pub fn step_done_by_id_value(
     step_done_value(conn, &uuid.to_string(), index, result, Some(&kind))
 }
 
-/// `sara step done <id> <n>` — record completion of a step.
 pub fn step_done(
     conn: &Connection,
     _cfg: &Config,
@@ -366,8 +326,6 @@ pub fn step_done(
     Ok(())
 }
 
-/// Reopen step `n` and return a structured record. Print-free core shared by the
-/// CLI `step undone` command and the MCP `step_undone` tool.
 pub fn step_undone_value(
     conn: &Connection,
     id: &str,
@@ -387,13 +345,11 @@ pub fn step_undone_value(
     }))
 }
 
-/// Reopen a checklist item addressed by its row id (see `step_done_by_id_value`).
 pub fn step_undone_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
     let (uuid, kind, index) = db::locate_step(conn, step_id)?;
     step_undone_value(conn, &uuid.to_string(), index, Some(&kind))
 }
 
-/// `sara step undone <id> <n>` — reopen a step.
 pub fn step_undone(
     conn: &Connection,
     _cfg: &Config,
@@ -416,8 +372,6 @@ pub fn step_undone(
     Ok(())
 }
 
-/// Delete checklist item `n` and return a structured record. Print-free core
-/// shared by the CLI `step remove` command and the MCP `step_remove` tool.
 pub fn step_remove_value(
     conn: &Connection,
     id: &str,
@@ -427,7 +381,6 @@ pub fn step_remove_value(
     let task = db::resolve_task(conn, id)?;
     let kind = kind_arg(kind);
     let steps = db::get_steps(conn, &task.uuid, kind)?;
-    // Indices are 1-based: reject 0 rather than letting it fall through to item 1.
     let idx = n
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("{kind} index is 1-based; got 0"))?;
@@ -445,13 +398,11 @@ pub fn step_remove_value(
     }))
 }
 
-/// Delete a checklist item addressed by its row id (see `step_done_by_id_value`).
 pub fn step_remove_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
     let (uuid, kind, index) = db::locate_step(conn, step_id)?;
     step_remove_value(conn, &uuid.to_string(), index, Some(&kind))
 }
 
-/// `sara step remove <id> <N> [--kind acceptance]` — delete a checklist item.
 pub fn step_remove(
     conn: &Connection,
     _cfg: &Config,
@@ -475,9 +426,6 @@ pub fn step_remove(
     Ok(())
 }
 
-/// Add a checklist step (or acceptance criterion) to a task's guide, returning a
-/// structured record. Print-free core shared by the CLI `check` command and the
-/// MCP `check` tool.
 pub fn check_value(
     conn: &Connection,
     id: &str,
@@ -491,9 +439,6 @@ pub fn check_value(
     let kind = kind_arg(kind);
     let source = source.unwrap_or("human");
     let step_id = db::add_step(conn, &task.uuid, text, intent, kind, source, verify)?;
-    // Position of the item just appended within its kind — the 1-based `n` a
-    // caller feeds to step_done/step_remove. Returned so agents can round-trip it
-    // instead of guessing (or misusing the raw step_id rowid).
     let index = db::get_steps(conn, &task.uuid, kind)?.len();
     let mut out = json!({
         "task": task.id,
@@ -503,10 +448,6 @@ pub fn check_value(
         "step_id": step_id,
         "index": index,
     });
-    // An acceptance criterion with no verify command is unprovable: the closing
-    // `validate` gate has nothing to run against it and fails ("no verify
-    // command"). Surface that footgun the moment the criterion is born, not six
-    // phases later at the gate, so the caller can add `--verify "<cmd>"` now.
     if kind == db::STEP_KIND_ACCEPTANCE && verify.map(str::trim).filter(|v| !v.is_empty()).is_none()
     {
         out["warning"] = json!(
@@ -517,11 +458,6 @@ pub fn check_value(
     Ok(out)
 }
 
-/// `sara verify [--step N] [--run] [--tick-on-pass]` — surface/run verification
-/// commands. With `--tick-on-pass`, each step / acceptance criterion that carries
-/// a stored verify command is executed and marked done **only** when it exits 0,
-/// and the pass/fail outcome is recorded as that item's execution result —
-/// collapsing "run the check" and "tick the box" into a single call.
 pub fn verify(
     conn: &Connection,
     _cfg: &Config,
@@ -540,7 +476,6 @@ pub fn verify(
         .flatten()
         .and_then(|p| p.path);
 
-    // ── tick-on-pass: run each criterion's own verify_cmd, tick on exit 0 ──
     if tick_on_pass {
         let commit = project_head(conn, &task.project);
         let targets: Vec<&_> = if let Some(n) = step {
@@ -560,7 +495,6 @@ pub fn verify(
         for s in targets {
             let Some(cmd) = &s.verify_cmd else { continue };
             ran += 1;
-            // First executed check auto-transitions the task to active.
             if !started_noted {
                 if db::ensure_started(conn, &task.uuid)? {
                     println!("Task {} is now active.", task.id.unwrap_or(0));
@@ -613,10 +547,6 @@ pub fn verify(
             anyhow::bail!("No step #{n}");
         }
     } else {
-        // Project-level setup/test/lint commands (from `sara init`), same
-        // ones shown in `sara info`'s Verification section. `run_cmd` is
-        // deliberately excluded here — it's typically a long-lived server
-        // process, not something safe to execute as a verification step.
         let pc = db::get_project_commands(conn, &task.project)?;
         for c in [&pc.setup_cmd, &pc.test_cmd, &pc.lint_cmd]
             .into_iter()
@@ -629,7 +559,6 @@ pub fn verify(
                 cmds.push(v.clone());
             }
         }
-        // Task-level test + lint command overrides from meta_json.
         if let Some(meta) = meta
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -655,7 +584,6 @@ pub fn verify(
         return Ok(());
     }
 
-    // Actually running a verification transitions the task to active.
     if run && db::ensure_started(conn, &task.uuid)? {
         println!("Task {} is now active.", task.id.unwrap_or(0));
     }
@@ -681,10 +609,6 @@ pub fn verify(
     Ok(())
 }
 
-/// Read-only structured verification view for the MCP `verify` tool: the
-/// verification commands (step + acceptance `verify_cmd`s and project-level
-/// test/lint commands) plus the acceptance criteria. Unlike the CLI `verify`,
-/// this NEVER executes anything — the agent runs the returned commands itself.
 pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?;
@@ -693,7 +617,6 @@ pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<
 
     let mut cmds: Vec<String> = vec![];
     if let Some(n) = step {
-        // Indices are 1-based: reject 0 rather than silently returning step 1.
         let idx = n
             .checked_sub(1)
             .ok_or_else(|| anyhow::anyhow!("step index is 1-based; got 0"))?;
@@ -744,14 +667,12 @@ pub fn verify_value(conn: &Connection, id: &str, step: Option<usize>) -> Result<
     Ok(json!({ "task": task.id, "commands": cmds, "acceptance": acc }))
 }
 
-/// Set a task's assignment text; print-free core shared by the CLI and MCP tool.
 pub fn assignment_value(conn: &Connection, id: &str, text: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     db::set_assignment(conn, &task.uuid, text)?;
     Ok(json!({ "task": task.id, "uuid": task.uuid.to_string(), "assignment": text }))
 }
 
-/// `sara assignment <id> <text>`
 pub fn assignment(conn: &Connection, id: &str, text: &str) -> Result<()> {
     let v = assignment_value(conn, id, text)?;
     println!(
@@ -761,14 +682,12 @@ pub fn assignment(conn: &Connection, id: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Set a task's rationale text; print-free core shared by the CLI and MCP tool.
 pub fn rationale_value(conn: &Connection, id: &str, text: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     db::set_rationale(conn, &task.uuid, text)?;
     Ok(json!({ "task": task.id, "uuid": task.uuid.to_string(), "rationale": text }))
 }
 
-/// `sara rationale <id> <text>`
 pub fn rationale(conn: &Connection, id: &str, text: &str) -> Result<()> {
     let v = rationale_value(conn, id, text)?;
     println!(
@@ -778,9 +697,6 @@ pub fn rationale(conn: &Connection, id: &str, text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Keep captured command output bounded so a chatty test suite can't blow up a
-/// JSON-RPC response. Truncates on a char boundary, keeping the tail — where
-/// assertion failures and stack traces live.
 fn tail_limited(s: &str, max_chars: usize) -> String {
     let total = s.chars().count();
     if total <= max_chars {
@@ -795,14 +711,6 @@ fn tail_limited(s: &str, max_chars: usize) -> String {
     format!("…[{skip} chars truncated]\n{}", &s[start..])
 }
 
-/// Run every acceptance criterion's `verify_cmd`, ticking those that exit 0, and
-/// report the aggregate outcome. This is the engine behind the fail-closed
-/// `validate`: "green" can only be recorded when a real command proved it, never
-/// asserted in prose. Criteria with no verify command are reported as blocking
-/// (`missing_verify`) rather than silently passed.
-///
-/// Under [`GateOutput::Capture`] this function writes nothing to stdout or
-/// stderr, which is what makes it safe to call from the MCP server.
 pub fn run_acceptance_gate(
     conn: &Connection,
     task_id_or_uuid: &str,
@@ -817,9 +725,6 @@ pub fn run_acceptance_gate(
         .and_then(|p| p.path);
     let commit = project_head(conn, &task.project);
 
-    // Cache eligibility: only trust a stored pass when the caller didn't ask for
-    // a fresh run, we know the current commit, and the working tree is clean
-    // (otherwise HEAD no longer describes what's on disk).
     let tree_clean = !fresh
         && working_dir
             .as_deref()
@@ -837,9 +742,6 @@ pub fn run_acceptance_gate(
         transcript: Vec::new(),
     };
 
-    // Within a single gate run, identical verify commands are executed once and
-    // their outcome reused — attaching the same suite to several criteria costs
-    // one run, not N. Keyed on the exact command string.
     let mut ran_cmds: std::collections::HashMap<String, (bool, Option<i32>, String)> =
         std::collections::HashMap::new();
 
@@ -849,7 +751,6 @@ pub fn run_acceptance_gate(
             continue;
         };
 
-        // 1. Cache: already proven green at this exact commit with a clean tree.
         if cache_ok && s.done && s.done_commit.as_deref() == commit.as_deref() {
             gate.cached += 1;
             mode.say(format!("$ {cmd}"));
@@ -868,7 +769,6 @@ pub fn run_acceptance_gate(
             continue;
         }
 
-        // 2. Dedup: this command already ran earlier in the gate — reuse it.
         if let Some((passed, code, out)) = ran_cmds.get(cmd).cloned() {
             if passed {
                 let note = format!("verify passed: {cmd}");
@@ -895,7 +795,6 @@ pub fn run_acceptance_gate(
             continue;
         }
 
-        // 3. Execute.
         gate.ran += 1;
         mode.say(format!("$ {cmd}"));
         let mut command = std::process::Command::new("sh");
@@ -904,8 +803,6 @@ pub fn run_acceptance_gate(
             command.current_dir(dir);
         }
 
-        // `status()` lets the child inherit our stdio (live output, CLI only);
-        // `output()` captures it so nothing reaches the JSON-RPC stream.
         let outcome = match mode {
             GateOutput::Stream => command.status().map(|st| (st, String::new())),
             GateOutput::Capture => command.output().map(|o| {
@@ -967,13 +864,6 @@ pub fn run_acceptance_gate(
     Ok(gate)
 }
 
-/// structured record. Print-free core shared by the CLI `validate` command and
-/// the MCP `validate` tool.
-///
-/// Fail-closed: unless `skip_gate` is set, every acceptance criterion's
-/// `verify_cmd` is executed and must exit 0 (and every criterion must carry a
-/// command) before the guide is stamped. This makes "validated" mean *proven
-/// green by a command*, never merely asserted.
 pub fn validate_value(
     conn: &Connection,
     id: &str,
@@ -1004,9 +894,6 @@ pub fn validate_value(
 
     db::set_validated(conn, &task.uuid, &head)?;
 
-    // p7: acceptance is the definition-of-done gate (intentional), but silently
-    // stamping over unfinished checklist steps hides work the author meant to
-    // track. Surface the count as an advisory — never a block.
     let open_steps = db::get_steps(conn, &task.uuid, db::STEP_KIND_STEP)?
         .iter()
         .filter(|s| !s.done)
@@ -1023,11 +910,6 @@ pub fn validate_value(
     }))
 }
 
-/// `sara validate <id>` — prove every acceptance criterion green, then stamp the
-/// guide as fresh against current HEAD. With `no_run`, stamps without running
-/// the gate (escape hatch for environments where the checks cannot run locally).
-/// With `fresh`, ignores the "already proven at this commit" cache and re-runs
-/// every verify command.
 pub fn validate(conn: &Connection, id: &str, no_run: bool, fresh: bool) -> Result<()> {
     if no_run {
         eprintln!(
@@ -1059,8 +941,6 @@ pub fn validate(conn: &Connection, id: &str, no_run: bool, fresh: bool) -> Resul
     Ok(())
 }
 
-/// Structured form of a task's open feedback. Shared by the `--json` CLI path and
-/// the MCP `feedback` tool.
 pub fn feedback_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let fb = db::get_open_feedback(conn, &task.uuid)?;
@@ -1079,7 +959,6 @@ pub fn feedback_value(conn: &Connection, id: &str) -> Result<serde_json::Value> 
     Ok(json!({ "task": task.id, "open_feedback": arr }))
 }
 
-/// `sara feedback <id>` — list open human feedback.
 pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
     if as_json {
         println!(
@@ -1107,10 +986,6 @@ pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Resolve a feedback (annotation) item by its id; print-free core shared by the
-/// CLI `resolve` command and the MCP `resolve` tool. Errors if no such feedback.
-/// `run_id` optionally links the resolution to the AI run (see `record_run_value`)
-/// that addressed it, so the provenance is traceable later.
 pub fn resolve_value(
     conn: &Connection,
     feedback_id: i64,
@@ -1122,17 +997,12 @@ pub fn resolve_value(
     Ok(json!({ "feedback_id": feedback_id, "resolved": true, "run_id": run_id }))
 }
 
-/// `sara resolve <feedback-id> [--run <run-id>]`
 pub fn resolve(conn: &Connection, feedback_id: i64, run_id: Option<i64>) -> Result<()> {
     resolve_value(conn, feedback_id, run_id)?;
     println!("Resolved feedback #{feedback_id}.");
     Ok(())
 }
 
-/// Record one AI/LLM interaction against a task (an audit-trail entry shown in
-/// `sara info`'s "AI activity" section); print-free core shared by the CLI
-/// `record-run` command and the MCP `record_run` tool. Returns the new run id
-/// so it can be cited later via `resolve --run <run-id>`.
 #[allow(clippy::too_many_arguments)]
 pub fn record_run_value(
     conn: &Connection,
@@ -1172,7 +1042,6 @@ pub fn record_run_value(
     }))
 }
 
-/// `sara record-run <id> --kind <KIND> [--model] [--provider] [--prompt] [--response]`
 #[allow(clippy::too_many_arguments)]
 pub fn record_run(
     conn: &Connection,

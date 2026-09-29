@@ -1,14 +1,8 @@
-//! Memory link graph: typed edges, cycle guard, coactivation weights, recall events.
-//!
-//! Part of the db memory subsystem (issue #168); re-exported by `super`.
-
 use super::*;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
-
-// ── memory_links ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct MemoryLink {
@@ -19,23 +13,14 @@ pub struct MemoryLink {
     pub weight: f64,
 }
 
-/// Valid relation types for `memory_links`.
 pub const MEMORY_LINK_RELATIONS: &[&str] = &[
     "supersedes",
     "similar_to",
     "derived_from",
     "used_in",
-    // Hebbian, machine-learned: two memories that fired together in the same
-    // recall. Undirected in spirit; stored canonically (smaller uuid first).
     "co_activated",
 ];
 
-/// Insert a typed directed edge between two memories/tasks.
-/// Enforces:
-///   - Relation must be one of the known types.
-///   - Dedup: (from, to, relation) is unique at DB level; duplicate inserts are ignored.
-///   - Cycle guard for directed hierarchies (`supersedes`, `derived_from`):
-///     refuses if a path from `to_uuid` back to `from_uuid` already exists.
 pub fn insert_memory_link(
     conn: &Connection,
     from_uuid: &str,
@@ -53,7 +38,6 @@ pub fn insert_memory_link(
     if from_uuid == to_uuid {
         anyhow::bail!("A memory cannot link to itself.");
     }
-    // Cycle guard for hierarchical relations.
     if matches!(relation, "supersedes" | "derived_from")
         && memory_link_path_exists(conn, to_uuid, from_uuid)?
     {
@@ -72,12 +56,6 @@ pub fn insert_memory_link(
     Ok(())
 }
 
-/// BFS to check whether a *hierarchical* path exists from `start` to `target`
-/// through `memory_links`. Only hierarchical relations (`supersedes`,
-/// `derived_from`) are traversed: symmetric associations like `similar_to`
-/// and usage edges like `used_in` cannot form a hierarchical cycle, and
-/// counting them would wrongly block consolidating a `similar_to` cluster
-/// into `derived_from` links.
 fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Result<bool> {
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
@@ -106,8 +84,6 @@ fn memory_link_path_exists(conn: &Connection, start: &str, target: &str) -> Resu
     Ok(false)
 }
 
-/// All outgoing links from a memory/task UUID.
-/// Every memory link in the store — powers the whole-brain web view.
 pub fn all_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
     let mut stmt = conn.prepare(
         "SELECT id, from_uuid, to_uuid, relation, weight FROM memory_links ORDER BY id ASC",
@@ -147,7 +123,6 @@ pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<M
     Ok(rows)
 }
 
-/// All incoming links to a memory/task UUID.
 pub fn get_memory_links_to(conn: &Connection, to_uuid: &str) -> Result<Vec<MemoryLink>> {
     let mut stmt = conn.prepare(
         "SELECT id, from_uuid, to_uuid, relation, weight
@@ -168,7 +143,6 @@ pub fn get_memory_links_to(conn: &Connection, to_uuid: &str) -> Result<Vec<Memor
     Ok(rows)
 }
 
-/// Delete a specific directed edge by its three-part key.
 pub fn delete_memory_link(
     conn: &Connection,
     from_uuid: &str,
@@ -182,11 +156,6 @@ pub fn delete_memory_link(
     Ok(changed > 0)
 }
 
-/// Atomically replace every `co_activated` edge with `edges` (`(a, b, weight)`).
-/// Each undirected pair is stored canonically with the lexicographically smaller
-/// uuid as `from_uuid`; self-pairs are skipped. Deliberate relations are
-/// untouched. This makes Hebbian consolidation a pure function of the recall
-/// window: re-running it is idempotent, and pairs that stopped co-firing drop out.
 pub fn replace_coactivations(conn: &Connection, edges: &[(String, String, f64)]) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
@@ -213,9 +182,6 @@ pub fn replace_coactivations(conn: &Connection, edges: &[(String, String, f64)])
     Ok(())
 }
 
-/// Read `memory_recalled` events at or after `cutoff`, oldest first, as
-/// `(memory uuid, when)` pairs. Powers Hebbian consolidation: memories whose
-/// recall events cluster in time fired together (see `memory_graph`).
 pub fn memory_recall_events_since(
     conn: &Connection,
     cutoff: &DateTime<Utc>,

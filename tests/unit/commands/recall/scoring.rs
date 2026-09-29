@@ -3,8 +3,6 @@ use super::{compare, rank};
 use chrono::{DateTime, TimeZone, Utc};
 use std::cmp::Ordering;
 
-/// Build a `Hit` carrying only the signals the ranker reads; everything else is
-/// a neutral default so tests state exactly what drives each assertion.
 fn hit(
     label: &str,
     exact_match: bool,
@@ -47,7 +45,6 @@ fn order(hits: Vec<Hit>) -> Vec<String> {
 
 #[test]
 fn exact_match_beats_stronger_fts_hit() {
-    // A tag/project/file (exact) hit leads even a much stronger plain FTS hit.
     let exact = hit("exact", true, 1.0, None, None, at(100));
     let fts = hit("fts", false, 9.0, Some(0), None, at(100));
     assert_eq!(order(vec![fts, exact]), vec!["exact", "fts"]);
@@ -55,7 +52,6 @@ fn exact_match_beats_stronger_fts_hit() {
 
 #[test]
 fn file_prefix_match_leads_via_exact_flag() {
-    // File-prefix matches arrive as exact_match hits, so they lead lexical hits.
     let file = hit("file", true, 1.0, None, None, at(100));
     let lexical = hit("lexical", false, 5.0, Some(0), None, at(200));
     assert_eq!(order(vec![lexical, file]), vec!["file", "lexical"]);
@@ -70,8 +66,6 @@ fn stronger_hit_wins_among_equal_exactness() {
 
 #[test]
 fn lexical_beats_semantic_on_equal_strength() {
-    // Same strength: the lexical hit (has an fts_rank) leads the semantic one
-    // (fts_rank None sorts last), so a literal match outranks a paraphrase.
     let lexical = hit("lexical", false, 1.0, Some(0), None, at(100));
     let semantic = hit("semantic", false, 1.0, None, Some(0.95), at(100));
     assert_eq!(order(vec![semantic, lexical]), vec!["lexical", "semantic"]);
@@ -102,5 +96,5 @@ fn recency_is_the_final_tie_break() {
 fn compare_is_consistent_with_rank() {
     let a = hit("a", true, 1.0, None, None, at(100));
     let b = hit("b", false, 9.0, Some(0), None, at(100));
-    assert_eq!(compare(&a, &b), Ordering::Less); // `a` sorts before `b`
+    assert_eq!(compare(&a, &b), Ordering::Less);
 }

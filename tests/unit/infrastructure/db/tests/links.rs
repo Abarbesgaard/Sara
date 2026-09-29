@@ -1,5 +1,3 @@
-//! Unit tests for db::links.
-
 use super::*;
 
 #[test]
@@ -85,7 +83,6 @@ fn group_tasks_by_issue_groups_shared_issues_and_buckets_the_rest() {
     let t3 = seed_task(&conn);
     let unlinked = seed_task(&conn);
 
-    // t1 and t2 both trace back to the same issue; t3 to a different one.
     add_link(
         &conn,
         &t1.uuid,
@@ -152,7 +149,6 @@ fn add_and_get_links_with_history() {
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].display(), "PR #42 · acme/widgets");
 
-    // History event recorded for the added link.
     let history = get_history(&conn, &task.uuid).unwrap();
     assert!(
         history

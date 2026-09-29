@@ -32,7 +32,6 @@ fn relearn_replaces_body_and_reindexes_fts() {
     let loaded = db::get_item_by_uuid(&conn, &item.uuid.to_string()).unwrap();
     assert_eq!(loaded.body, "new body about widgets");
     assert_eq!(loaded.title, "new body about widgets");
-    // FTS reflects the new body, not the old one.
     assert_eq!(db::search_fts(&conn, "widgets", 10).unwrap().len(), 1);
     assert!(
         db::search_fts(&conn, "frobnicators", 10)
@@ -74,13 +73,11 @@ fn relearn_refreshes_a_stale_semantic_embedding() {
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
-    // Index the memory as `learn` would, then capture the stored vector.
     embedding::index_memory(&conn, &item);
     let before = db::get_embedding(&conn, &item.uuid.to_string())
         .unwrap()
         .expect("memory should be indexed");
 
-    // Edit the body to something semantically unrelated.
     relearn_value(
         &conn,
         &label,
@@ -98,7 +95,6 @@ fn relearn_refreshes_a_stale_semantic_embedding() {
         before, after,
         "relearn must refresh the embedding so semantic recall matches the new body"
     );
-    // And it must equal a fresh embedding of the new text.
     let loaded = db::get_item_by_uuid(&conn, &item.uuid.to_string()).unwrap();
     let recomputed = {
         embedding::index_memory(&conn, &loaded);
@@ -118,8 +114,6 @@ fn relearn_does_not_index_an_unembedded_memory() {
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
-    // Never indexed (semantic recall was off at learn time) → relearn must
-    // not fabricate an embedding.
     relearn_value(&conn, &label, Some("a brand new body"), &[], &[], false).unwrap();
     assert!(
         db::get_embedding(&conn, &item.uuid.to_string())
@@ -136,13 +130,9 @@ fn relearn_enforces_safety_guardrails_on_new_body() {
     let label = format!("m{}", item.display_id.unwrap());
 
     assert!(relearn_value(&conn, &label, Some("api_key=verysecret"), &[], &[], false).is_err());
-    // --force bypasses
     assert!(relearn_value(&conn, &label, Some("api_key=verysecret"), &[], &[], true).is_ok());
 }
 
-/// `recall --file` resolves its argument to an absolute path before
-/// matching, so `relearn` must store absolute paths too — otherwise a
-/// corrected memory silently drops off file-scoped recall.
 #[test]
 fn relearn_stores_file_paths_as_absolute() {
     let conn = db::open_in_memory_for_test();

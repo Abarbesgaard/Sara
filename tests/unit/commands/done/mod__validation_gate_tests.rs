@@ -27,7 +27,6 @@ fn done_refuses_unvalidated_task_with_acceptance_criteria() {
         err.to_string().contains("not validated"),
         "error should name the missing validation: {err}"
     );
-    // The task must be untouched by the refusal.
     let still = db::resolve_task(&conn, &task.uuid.to_string()).unwrap();
     assert_ne!(still.status, Status::Completed, "refused task stays open");
 }
@@ -52,8 +51,6 @@ fn force_closes_unvalidated_task_with_a_note() {
 fn validated_task_closes_cleanly() {
     let conn = db::open_in_memory_for_test();
     let task = task_with_criterion(&conn);
-    // No git HEAD for the ad-hoc "proj" project, so a stamped commit is
-    // treated as validated-fresh (nothing to compare against).
     db::set_validated(&conn, &task.uuid, "deadbeef").unwrap();
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
     assert_eq!(v["status"], "completed");

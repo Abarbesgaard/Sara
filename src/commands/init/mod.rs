@@ -7,7 +7,6 @@ use crate::infrastructure::project::find_git_root;
 
 mod render;
 
-/// Detect which tech stacks are present in the project root.
 pub fn detect_stack(path: &str) -> String {
     let root = std::path::Path::new(path);
     let mut stacks = vec![];
@@ -28,7 +27,6 @@ pub fn detect_stack(path: &str) -> String {
     ];
     for (file, label) in &markers {
         if file.contains('*') {
-            // glob-ish: skip for simplicity, just check extension presence
         } else if root.join(file).exists() {
             stacks.push(*label);
         }
@@ -72,8 +70,6 @@ pub fn run(
     let cwd = std::env::current_dir()?;
     let git_root = find_git_root(&cwd);
 
-    // Resolve the project from the current folder: a git repo is its own
-    // project; otherwise the folder itself is initialized as the project.
     let (resolved_name, resolved_path) =
         crate::infrastructure::project::project_identity_for_dir(&cwd, cfg);
     let project_name = name_override.map(str::to_string).unwrap_or(resolved_name);
@@ -92,7 +88,6 @@ pub fn run(
 
     let existing = crate::infrastructure::db::get_project(conn, &project_name)?;
 
-    // Stack: explicit --stack wins, else preserve an existing value, else use detection.
     let resolved_stack = stack_override
         .map(str::to_string)
         .or_else(|| existing.as_ref().and_then(|p| p.stack.clone()))
@@ -122,7 +117,6 @@ pub fn run(
         render::prompt("Any conventions or notes? (optional)", current_notes)?
     };
 
-    // Conventions: set via flag, otherwise preserve any existing value.
     let conventions = conventions_override
         .map(str::to_string)
         .or_else(|| existing.as_ref().and_then(|p| p.conventions.clone()));

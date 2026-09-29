@@ -6,8 +6,6 @@ use crate::infrastructure::project::project_identity_for_dir;
 
 mod render;
 
-/// Resolve the project name for the current directory *without* registering it
-/// (unlike `detect_current_project`, which upserts a `last_seen` row).
 fn resolve_name(cfg: &Config, override_name: Option<&str>) -> Result<String> {
     if let Some(name) = override_name {
         return Ok(name.to_string());

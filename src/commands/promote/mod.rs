@@ -6,10 +6,6 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Print-free core shared by the CLI `promote` command and the MCP `promote`
-/// tool. Marks a provisional (auto-synthesised) memory as reviewed by setting
-/// status='active' in place — created date, tags, files, and task links are
-/// all preserved (unlike the forget + re-learn workaround).
 pub fn promote_value(conn: &Connection, handle: &str) -> Result<Value> {
     let item = db::get_item_by_handle(conn, handle)?;
     let promoted = db::promote_item(conn, &item.uuid)?;
@@ -26,7 +22,6 @@ pub fn promote_value(conn: &Connection, handle: &str) -> Result<Value> {
     }))
 }
 
-/// `sara promote <label>` — promote a provisional auto-memory to active.
 pub fn run(conn: &Connection, handle: &str) -> Result<()> {
     let v = promote_value(conn, handle)?;
     render::print_promoted(&v, handle);

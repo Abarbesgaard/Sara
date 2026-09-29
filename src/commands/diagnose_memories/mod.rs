@@ -8,31 +8,8 @@ use crate::infrastructure::{db, embedding};
 mod types;
 use types::ConflictCandidate;
 
-/// Cosine floor for calling two memories a genuine conflict candidate.
-///
-/// Sharing a file or a tag proves *co-occurrence*, not contradiction: on a real
-/// store 84% of file-overlap pairs share exactly one path, and the pass is
-/// quadratic in memories-per-file, so a single hub file drags in hundreds of
-/// unrelated pairs. Scoring those pairs by embedding cosine gives a median of
-/// ~0.55 — the median "conflict" is barely on topic. A 0.75 floor removes ~94%
-/// of them while keeping every hand-verified duplicate.
-///
-/// Deliberately higher than `recall`'s general threshold (0.30) and than
-/// `insight`'s `RELATED_THRESHOLD` (0.55) for the same reason those were
-/// chosen: a false candidate is noise a human or agent must burn attention on,
-/// so this pass buys precision with recall.
 pub const DEFAULT_CONFLICT_THRESHOLD: f32 = 0.75;
 
-/// Core shared by CLI and MCP. Scans active memories and returns conflict
-/// candidates: pairs sharing file-path links OR full tag sets, with no
-/// `memory_links` edge between them in either direction, **and** whose bodies
-/// are semantically close enough (`cosine >= threshold`) to be worth review.
-///
-/// `project` scopes the scan to memories linked to that project (both sides of
-/// a pair must belong to it), so a scan run in one province does not report
-/// another's. `limit` caps the returned list — candidates are always sorted by
-/// cosine descending, so the worst offender is first and a cap is a clean
-/// truncation rather than an arbitrary sample.
 pub fn diagnose_value(
     conn: &Connection,
     threshold: f32,
@@ -41,12 +18,10 @@ pub fn diagnose_value(
 ) -> Result<Value> {
     let memories = db::list_memories(conn)?;
 
-    // Build a set of (uuid, uuid) pairs that already have a link edge.
     let all_links = db::all_memory_links(conn)?;
     let linked_pairs: HashSet<(String, String)> = all_links
         .iter()
         .flat_map(|l| {
-            // Treat edges as undirected for conflict-suppression purposes.
             [
                 (l.from_uuid.clone(), l.to_uuid.clone()),
                 (l.to_uuid.clone(), l.from_uuid.clone()),
@@ -54,11 +29,8 @@ pub fn diagnose_value(
         })
         .collect();
 
-    // Embeddings, keyed by uuid — the topical signal that separates a real
-    // conflict from two memories that merely touched the same file.
     let vectors: HashMap<String, Vec<f32>> = db::active_embeddings(conn)?.into_iter().collect();
 
-    // For each memory, collect its files and normalised tags.
     struct MemInfo {
         uuid: String,
         label: String,
@@ -91,7 +63,6 @@ pub fn diagnose_value(
         });
     }
 
-    // Index memories by file path.
     let mut by_file: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, info) in infos.iter().enumerate() {
         for f in &info.files {
@@ -99,18 +70,15 @@ pub fn diagnose_value(
         }
     }
 
-    // Cosine between two memories, or None when either lacks an embedding.
     let score = |a: &MemInfo, b: &MemInfo| -> Option<f32> {
         let va = vectors.get(&a.uuid)?;
         let vb = vectors.get(&b.uuid)?;
         Some(embedding::cosine(va, vb))
     };
 
-    // Collect conflict candidates — deduplicate with a seen set.
     let mut seen: HashSet<(usize, usize)> = HashSet::new();
     let mut candidates: Vec<ConflictCandidate> = Vec::new();
 
-    // 1. File-path overlap.
     for indices in by_file.values() {
         for &i in indices {
             for &j in indices {
@@ -127,7 +95,6 @@ pub fn diagnose_value(
                     seen.insert(key);
                     continue;
                 }
-                // Fail-open: an unscorable pair (missing embedding) is kept.
                 let cosine = score(a, b);
                 if cosine.is_some_and(|c| c < threshold) {
                     seen.insert(key);
@@ -153,7 +120,6 @@ pub fn diagnose_value(
         }
     }
 
-    // 2. Full tag-set overlap (all tags identical, no link).
     for i in 0..infos.len() {
         for j in (i + 1)..infos.len() {
             let key = (i, j);
@@ -192,9 +158,6 @@ pub fn diagnose_value(
         }
     }
 
-    // Worst offender first. Unscorable pairs (no embedding) sort last rather
-    // than masquerading as top hits. The previous order was `HashMap`
-    // iteration order, i.e. reshuffled between runs.
     candidates.sort_by(|a, b| {
         let ka = a.cosine.unwrap_or(f32::NEG_INFINITY);
         let kb = b.cosine.unwrap_or(f32::NEG_INFINITY);
@@ -233,7 +196,6 @@ pub fn diagnose_value(
     }))
 }
 
-/// `sara diagnose-memories` (alias: `sara conflicts`)
 pub fn run(
     conn: &Connection,
     json_output: bool,

@@ -2,9 +2,6 @@ use serde_json::Value;
 
 use super::RECALL_STEP_TEXT;
 
-/// Print the human-readable summary of a `begin` — the started task, its
-/// acceptance criterion (or lack of one), the seeded recall step, the next
-/// cursor, and any warnings.
 pub(super) fn print_begin(v: &Value) {
     let task = v["task"].as_i64().unwrap_or_default();
     let project = v["project"].as_str().unwrap_or("");

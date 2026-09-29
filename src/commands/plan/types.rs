@@ -13,7 +13,6 @@ pub(super) struct PlanInput {
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 pub(super) struct PlanTask {
-    /// Local key used to wire dependencies within this plan.
     pub key: Option<String>,
     pub description: String,
     pub assignment: Option<String>,
@@ -25,6 +24,5 @@ pub(super) struct PlanTask {
     pub findings: Vec<String>,
     pub constraints: Vec<String>,
     pub files: Vec<RelevantFile>,
-    /// Local keys (or existing task ids/uuids) this task depends on.
     pub depends_on: Vec<String>,
 }

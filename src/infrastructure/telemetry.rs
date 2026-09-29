@@ -24,10 +24,6 @@ pub struct TelemetryRecord {
     pub ts: String,
     pub source: &'static str,
     pub name: String,
-    /// Flag NAMES supplied on the CLI (e.g. `["--json","--tag","-p"]`), sorted and
-    /// deduped. Stored as a JSON array so VictoriaLogs `unroll by (flags)` can
-    /// expand it for per-flag aggregation. Flag *values* are never recorded, and
-    /// the field is omitted entirely when empty (all MCP calls, flagless CLI calls).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
     pub duration_ms: u64,
@@ -58,13 +54,6 @@ pub fn err_code(err: &anyhow::Error) -> &'static str {
     "other"
 }
 
-/// Extract flag NAMES (never values) from CLI argv, for telemetry.
-///
-/// Keeps only tokens that begin with `-` (short or long), strips any `=value`
-/// suffix, drops the bare `--` end-of-options marker and negative-number
-/// operands, then returns a sorted, deduplicated list. Value tokens
-/// (`--tag foo`, `-p proj`) are naturally excluded because they do not start
-/// with `-`, so free-text and secrets never reach the collector.
 pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
     let mut flags: Vec<String> = args
         .iter()
@@ -223,14 +212,6 @@ pub fn capture<T>(
     let _ = append(&path, &rec);
 }
 
-// ── Auto-flush (nightly) ─────────────────────────────────────────────────────
-// Capture writes records to the local queue; the flush ships them to a collector
-// and removes exactly the records it sent. It runs in a DETACHED child so the
-// short-lived CLI never blocks, is serialised by a single-sender lock, and is
-// throttled so it does not POST on every invocation.
-
-/// Compiled-in default collector (the nightly self-hosted VictoriaLogs). Overridable
-/// by `SARA_TELEMETRY_ENDPOINT` or `config.telemetry.endpoint`.
 pub const DEFAULT_ENDPOINT: Option<&str> = Some(
     "http://100.72.1.121:9428/insert/jsonline\
      ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version",
@@ -238,7 +219,6 @@ pub const DEFAULT_ENDPOINT: Option<&str> = Some(
 
 const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
 
-/// Resolve the collector endpoint: env > config > compiled default.
 pub fn resolve_endpoint(cfg: &Config) -> Option<String> {
     if let Ok(e) = std::env::var("SARA_TELEMETRY_ENDPOINT")
         && !e.is_empty()
@@ -270,16 +250,12 @@ fn flush_interval() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
-/// A file living beside the queue so `SARA_TELEMETRY_QUEUE` redirects it too
-/// (keeping tests off the real data dir).
 fn queue_sibling(name: &str) -> anyhow::Result<PathBuf> {
     let q = queue_path()?;
     let parent = q.parent().unwrap_or_else(|| Path::new("."));
     Ok(parent.join(name))
 }
 
-/// Exclusive single-sender lock. `create_new` is atomic; a lingering lock from a
-/// crashed flush older than the flush interval is treated as stale and stolen.
 struct FlushLock(PathBuf);
 
 impl FlushLock {
@@ -359,9 +335,6 @@ fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     }
 }
 
-/// Drop the first `n` lines, keeping any lines appended after they were read.
-/// Append-only + the single-sender lock guarantee the first `n` lines are exactly
-/// what was sent. Rewrites atomically via temp-file + rename.
 fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
     let remaining = read_lines(path)?;
     let kept = if n >= remaining.len() {
@@ -380,8 +353,6 @@ fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// POST the JSONL body. Ok(true) on HTTP 2xx, Ok(false) on any other status,
-/// Err on a transport failure. Non-2xx and transport failures both leave the queue.
 fn post_jsonl(endpoint: &str, token: Option<&str>, body: &str) -> anyhow::Result<bool> {
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(10))
@@ -407,8 +378,6 @@ pub enum FlushOutcome {
     Failed,
 }
 
-/// Ship the queued records to the collector and remove exactly those sent.
-/// Never panics; every failure mode leaves the queue intact.
 pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
     if !enabled(cfg) {
         return Ok(FlushOutcome::Skipped);
@@ -439,7 +408,6 @@ pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
     Ok(FlushOutcome::Sent(n))
 }
 
-/// Spawn the flush as a fully-detached child so the caller never blocks.
 pub fn spawn_flush(cfg: &Config) {
     if !enabled(cfg) || resolve_endpoint(cfg).is_none() {
         return;

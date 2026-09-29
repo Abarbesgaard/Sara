@@ -1,16 +1,8 @@
-//! Project env commands and GitHub sync settings / provenance / comments.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super` so
-//! `db::*` call sites are unchanged. Shared low-level helpers live in the
-//! parent `db` module, reached here via `use super::*`.
-
 use super::*;
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
-
-// ── project env commands ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
 pub struct ProjectCommands {
@@ -59,24 +51,13 @@ pub fn set_project_commands(conn: &Connection, name: &str, cmds: &ProjectCommand
     Ok(())
 }
 
-// ── GitHub sync settings ─────────────────────────────────────────────────────
-
-/// Non-secret GitHub sync identity for a project.
-/// Contains a repo full_name, the authenticated login, and the sync scope.
-/// No PAT or credential is stored — authentication is always resolved at
-/// runtime (e.g. from `gh auth status` or the environment).
 #[derive(Debug, Clone, Default)]
 pub struct GithubSyncSettings {
-    /// GitHub full repository name (owner/repo).
     pub repo: Option<String>,
-    /// GitHub username (login) associated with the sync, not a token.
     pub login: Option<String>,
-    /// Comma-separated sync scopes, e.g. "issues" or "issues,prs".
     pub scope: Option<String>,
 }
 
-/// Persist GitHub sync identity for a project.  Only the three non-secret
-/// fields (repo, login, scope) are written; no token is accepted.
 pub fn set_github_sync(conn: &Connection, project: &str, s: &GithubSyncSettings) -> Result<()> {
     conn.execute(
         "INSERT INTO projects (name, github_repo, github_login, github_sync_scope, last_seen)
@@ -91,7 +72,6 @@ pub fn set_github_sync(conn: &Connection, project: &str, s: &GithubSyncSettings)
     Ok(())
 }
 
-/// Load GitHub sync identity for a project from the projects table.
 pub fn get_github_sync(conn: &Connection, project: &str) -> Result<GithubSyncSettings> {
     conn.query_row(
         "SELECT github_repo, github_login, github_sync_scope FROM projects WHERE name=?1",
@@ -109,9 +89,6 @@ pub fn get_github_sync(conn: &Connection, project: &str) -> Result<GithubSyncSet
     .map_err(Into::into)
 }
 
-// ── GitHub issue provenance (stored in tasks.meta_json["github"]) ─────────────
-
-/// Read the GitHub provenance embedded in a task's `meta_json`, if any.
 pub fn get_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -127,7 +104,6 @@ pub fn get_github_provenance(
     Ok(prov)
 }
 
-/// Find the existing task imported from a GitHub issue/PR by stable identity.
 pub fn find_github_task_uuid(
     conn: &Connection,
     repo: &str,
@@ -161,10 +137,6 @@ pub fn find_github_task_uuid(
     Ok(row.and_then(|s| Uuid::parse_str(&s).ok()))
 }
 
-/// Write (or replace) the GitHub provenance inside a task's `meta_json`.
-/// Merges with any existing keys so other meta_json entries are preserved.
-/// No token or secret is accepted by the type — `GithubProvenance` contains
-/// only stable remote identity and sync metadata.
 pub fn set_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -184,18 +156,8 @@ pub fn set_github_provenance(
     set_meta_json(conn, task_uuid, &json)
 }
 
-// ── GitHub issue comments ─────────────────────────────────────────────────────
-
-/// Annotation `kind` used for comments imported from GitHub issues.
 pub const NOTE_KIND_GITHUB_COMMENT: &str = "github_comment";
 
-/// Insert a GitHub issue comment as an annotation if one with the same
-/// stable identity does not already exist.
-///
-/// Deduplication key: `target_kind = NOTE_KIND_GITHUB_COMMENT` AND
-/// `target_id = <comment_id>`.  The annotation is stored with the comment's
-/// `created_at` as its `entry` timestamp so ordering is chronologically
-/// faithful.  Returns `true` when a new annotation was inserted.
 pub fn upsert_github_comment_annotation(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -229,10 +191,6 @@ pub fn upsert_github_comment_annotation(
     Ok(true)
 }
 
-/// Replace the `"github_comments"` array inside a task's `meta_json`.
-/// Merges with any existing meta_json keys so other entries are preserved.
-/// Stores the full comment record (including `url` and `updated_at`) for
-/// complete round-trip fidelity.
 pub fn set_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -252,7 +210,6 @@ pub fn set_github_comments(
     set_meta_json(conn, task_uuid, &json)
 }
 
-/// Read the `"github_comments"` array from a task's `meta_json`.
 pub fn get_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,

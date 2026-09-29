@@ -18,8 +18,6 @@ fn shared_tag_creates_a_weighted_edge() {
 
     let g = MemoryGraph::build(&conn).unwrap();
     assert_eq!(g.nodes.len(), 3);
-    // IDF-weighted: 'auth' is on 2 of 3 memories, so the edge is the base
-    // tag weight scaled by idf(df=2, n=3) — positive but below the raw base.
     let idf = (3.0_f64 / 2.0).ln() / 3.0_f64.ln();
     let expected = W_SHARED_TAG * idf;
     assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
@@ -27,11 +25,6 @@ fn shared_tag_creates_a_weighted_edge() {
     assert_eq!(g.edge_weight(&a, &c), None);
 }
 
-/// Seeds a store from `tags_by_node`, builds the graph, and asserts every
-/// implicit edge matches the naive O(n²) all-pairs form the optimisation
-/// replaced — weights included, to 1e-12. `expect_inverted` pins which
-/// strategy `build` should have chosen for this fixture, so a change that
-/// silently stops exercising one of the two branches fails loudly.
 fn assert_matches_naive_reference(tags_by_node: &[Vec<String>], expect_inverted: bool) {
     let conn = db::open_in_memory_for_test();
     let n = tags_by_node.len();
@@ -50,7 +43,6 @@ fn assert_matches_naive_reference(tags_by_node: &[Vec<String>], expect_inverted:
         }
     }
 
-    // Confirm the fixture really drives the branch it claims to.
     let inverted: u128 = df
         .values()
         .map(|&d| {
@@ -113,7 +105,6 @@ fn assert_matches_naive_reference(tags_by_node: &[Vec<String>], expect_inverted:
     }
 }
 
-/// Deterministic xorshift, so both fixtures below are reproducible.
 fn rng() -> impl FnMut() -> u64 {
     let mut state: u64 = 0x2545_F491_4F6C_DD1D;
     move || {
@@ -126,9 +117,6 @@ fn rng() -> impl FnMut() -> u64 {
 
 #[test]
 fn sparse_anchors_take_the_inverted_path_and_match_the_naive_reference() {
-    // Rare anchors only: Σ C(df, 2) sits far below C(n, 2), so `build`
-    // inverts the postings. A tag on every memory (idf 0) is included to
-    // prove `collect_pairs` may drop it without changing the graph.
     const N: usize = 120;
     let mut next = rng();
     let tags_by_node: Vec<Vec<String>> = (0..N)
@@ -145,9 +133,6 @@ fn sparse_anchors_take_the_inverted_path_and_match_the_naive_reference() {
 
 #[test]
 fn a_near_ubiquitous_anchor_takes_the_dense_path_and_match_the_naive_reference() {
-    // A tag on two thirds of the store has a tiny but non-zero idf, so it
-    // cannot be skipped and alone yields ~C(n, 2) candidate pairs. `build`
-    // must fall back to the dense walk — and still produce the same graph.
     const N: usize = 120;
     let mut next = rng();
     let tags_by_node: Vec<Vec<String>> = (0..N)
@@ -168,16 +153,13 @@ fn a_near_ubiquitous_anchor_takes_the_dense_path_and_match_the_naive_reference()
 #[test]
 fn duplicate_anchor_within_a_memory_does_not_inflate_edge() {
     let conn = db::open_in_memory_for_test();
-    // `a` carries the same tag twice; `c` keeps df(auth)=2 over n=3 so the
-    // IDF matches `shared_tag_creates_a_weighted_edge`. The duplicated tag
-    // must not double the edge weight.
     let a = seed(&conn, &["auth", "auth"]);
     let b = seed(&conn, &["auth"]);
     let _c = seed(&conn, &["billing"]);
 
     let g = MemoryGraph::build(&conn).unwrap();
     let idf = (3.0_f64 / 2.0).ln() / 3.0_f64.ln();
-    let expected = W_SHARED_TAG * idf; // single contribution, not doubled
+    let expected = W_SHARED_TAG * idf;
     assert!((g.edge_weight(&a, &b).unwrap() - expected).abs() < 1e-9);
 }
 
@@ -189,16 +171,12 @@ fn explicit_link_and_shared_anchor_sum() {
     db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "similar_to", 1.0).unwrap();
 
     let g = MemoryGraph::build(&conn).unwrap();
-    // Both memories carry 'auth' (df == n), so the tag is ubiquitous and
-    // idf → 0: the shared anchor adds nothing and only the explicit
-    // similar_to (0.7) remains.
     assert!((g.edge_weight(&a, &b).unwrap() - 0.7).abs() < 1e-9);
 }
 
 #[test]
 fn activation_spreads_to_two_hop_neighbour_and_decays() {
     let conn = db::open_in_memory_for_test();
-    // Chain a — b — c via shared tags (a,b share "x"; b,c share "y").
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["x", "y"]);
     let c = seed(&conn, &["y"]);
@@ -207,7 +185,6 @@ fn activation_spreads_to_two_hop_neighbour_and_decays() {
     let ranked = g.spread_activation(&[a], 2, 0.6, 1e-6);
     let act: HashMap<Uuid, f64> = ranked.into_iter().collect();
 
-    // Seed strongest, direct neighbour next, 2-hop weakest but present.
     assert!(act[&a] > act[&b]);
     assert!(act[&b] > act[&c]);
     assert!(act[&c] > 0.0, "two-hop neighbour must be activated");
@@ -216,7 +193,6 @@ fn activation_spreads_to_two_hop_neighbour_and_decays() {
 #[test]
 fn explained_spread_reconstructs_the_synaptic_path() {
     let conn = db::open_in_memory_for_test();
-    // Chain a — b — c via shared tags (a,b share "x"; b,c share "y").
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["x", "y"]);
     let c = seed(&conn, &["y"]);
@@ -228,11 +204,9 @@ fn explained_spread_reconstructs_the_synaptic_path() {
     let mid_label = g.nodes[g.index[&b]].label.clone();
     let far_label = g.nodes[g.index[&c]].label.clone();
 
-    // The seed's path is just itself.
     let seed_act = explained.iter().find(|e| e.uuid == a).unwrap();
     assert_eq!(seed_act.path, vec![seed_label.clone()]);
 
-    // The two-hop neighbour's dominant path is a → b → c.
     let far = explained.iter().find(|e| e.uuid == c).unwrap();
     assert_eq!(far.path, vec![seed_label, mid_label, far_label]);
 }
@@ -255,12 +229,11 @@ fn unconnected_memory_is_not_activated() {
 #[test]
 fn rare_shared_anchor_binds_tighter_than_a_ubiquitous_one() {
     let conn = db::open_in_memory_for_test();
-    // 'common' tag is on many memories; 'rare' tag only on the a–b pair.
     let a = seed(&conn, &["common", "rare"]);
-    let b = seed(&conn, &["rare"]); // shares only the rare tag with a
+    let b = seed(&conn, &["rare"]);
     let mut hubs = vec![];
     for _ in 0..8 {
-        hubs.push(seed(&conn, &["common"])); // share only the ubiquitous tag with a
+        hubs.push(seed(&conn, &["common"]));
     }
 
     let g = MemoryGraph::build(&conn).unwrap();
@@ -275,8 +248,6 @@ fn rare_shared_anchor_binds_tighter_than_a_ubiquitous_one() {
 #[test]
 fn bulk_recall_bucket_is_ignored_as_noise() {
     let t0 = Utc::now();
-    // A bulk listing: 6 memories all recalled at the same instant — a
-    // `recall --tag` dump, not genuine co-firing.
     let ids: Vec<Uuid> = (0..6).map(|_| Uuid::new_v4()).collect();
     let events: Vec<_> = ids.iter().map(|u| (*u, t0)).collect();
 
@@ -290,20 +261,14 @@ fn bulk_recall_bucket_is_ignored_as_noise() {
 
 #[test]
 fn coactivation_pairs_group_within_bucket() {
-    // A FIXED instant chosen to straddle a 2s epoch-aligned boundary:
-    // 1_700_000_001_900 ms has remainder 1900 mod 2000, so `a` at t0 and
-    // `b` at t0+100ms fall in *different* fixed slots. The old
-    // `timestamp_millis() / bucket_ms` bucketing therefore missed this
-    // co-firing (~5% of runs under `Utc::now()`, hence a flaky test).
-    // Windows are now cut relative to the events, so this is deterministic.
     let t0 = DateTime::from_timestamp_millis(1_700_000_001_900).unwrap();
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
     let events = vec![
         (a, t0),
-        (b, t0 + Duration::milliseconds(100)), // same window as a
-        (c, t0 + Duration::seconds(60)),       // far away — own window
+        (b, t0 + Duration::milliseconds(100)),
+        (c, t0 + Duration::seconds(60)),
     ];
     let pairs = coactivation_pairs(&events, Duration::seconds(2), 5);
     assert_eq!(pairs.len(), 1);
@@ -316,9 +281,6 @@ fn coactivation_pairs_group_within_bucket() {
 
 #[test]
 fn coactivation_is_translation_invariant() {
-    // Whether two recalls co-fire must depend only on the gap between them,
-    // never on where they happen to land on the epoch grid. Sweep a full
-    // bucket's worth of start offsets: every one must find the pair.
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     for offset_ms in 0..2000 {
@@ -335,12 +297,6 @@ fn coactivation_is_translation_invariant() {
 
 #[test]
 fn coactivation_survives_an_unrelated_preceding_recall() {
-    // Two recalls 100ms apart co-fire. An *earlier, unrelated* recall must
-    // not be able to break that: partitioning into windows anchored on the
-    // first event merely swaps the epoch grid for an event-derived one, and
-    // still loses the pair whenever the preceding event lands in the last
-    // `gap`-wide sliver of the bucket. Co-firing is a property of the gap
-    // between two events, so sweep every placement of the preceding recall.
     let x = Uuid::new_v4();
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
@@ -363,9 +319,6 @@ fn coactivation_survives_an_unrelated_preceding_recall() {
 
 #[test]
 fn coactivation_guard_discards_a_long_chained_burst() {
-    // Single linkage can chain a train of closely-spaced events into one
-    // wide burst. That must not become O(k²) spurious synapses: the
-    // max_bucket guard has to discard it.
     let t = DateTime::from_timestamp_millis(1_700_000_000_000).unwrap();
     let events: Vec<(Uuid, DateTime<Utc>)> = (0..40)
         .map(|i| (Uuid::new_v4(), t + Duration::milliseconds(i * 10)))
@@ -376,16 +329,12 @@ fn coactivation_guard_discards_a_long_chained_burst() {
         "a 40-memory chained burst is a bulk listing, not co-firing; got {} pairs",
         pairs.len()
     );
-    // With the guard disabled the same burst does pair up, proving the
-    // events really did chain into one window rather than being dropped.
     let unguarded = coactivation_pairs(&events, Duration::seconds(2), 0);
     assert_eq!(unguarded.len(), 40 * 39 / 2);
 }
 
 #[test]
 fn coactivation_splits_events_beyond_the_window() {
-    // The converse: a gap wider than the bucket must never co-fire, no
-    // matter how the pair sits relative to the epoch grid.
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     for offset_ms in 0..500 {
@@ -403,9 +352,8 @@ fn coactivation_splits_events_beyond_the_window() {
 fn consolidate_reinforces_a_co_activated_edge_from_recall_events() {
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
-    let b = seed(&conn, &["y"]); // no shared anchor — only co-firing links them
+    let b = seed(&conn, &["y"]);
 
-    // Two recalls in which a and b both surfaced.
     for _ in 0..2 {
         db::record_memory_recall(&conn, &a).unwrap();
         db::record_memory_recall(&conn, &b).unwrap();
@@ -414,7 +362,6 @@ fn consolidate_reinforces_a_co_activated_edge_from_recall_events() {
     let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
     assert_eq!(reinforced, 1);
 
-    // The learned edge now exists in the graph despite no shared anchor.
     let g = MemoryGraph::build(&conn).unwrap();
     assert!(
         g.edge_weight(&a, &b).is_some(),
@@ -434,8 +381,6 @@ fn co_activated_weight(conn: &Connection, a: &Uuid, b: &Uuid) -> Option<f64> {
 
 #[test]
 fn consolidate_is_idempotent_over_the_same_events() {
-    // Re-running over an unchanged event log must not re-count the same
-    // co-firings: the weight reflects the evidence, not how often it ran.
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
@@ -456,8 +401,6 @@ fn consolidate_is_idempotent_over_the_same_events() {
 
 #[test]
 fn consolidate_drops_synapses_whose_cofirings_left_the_window() {
-    // Hebbian decay: once every co-firing behind an edge is older than the
-    // window, the next pass removes the edge instead of keeping it forever.
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
@@ -487,16 +430,13 @@ fn consolidate_leaves_deliberate_links_untouched() {
 
 #[test]
 fn consolidate_still_sees_a_spread_surfaced_memory() {
-    // A memory that only ever *surfaced* via spreading activation (never a
-    // deliberate recall) must still participate in Hebbian co-activation —
-    // separating it from strength must not blind consolidation to it.
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
 
     for _ in 0..2 {
-        db::record_memory_recall(&conn, &a).unwrap(); // deliberate seed hit
-        db::record_memory_surfaced(&conn, &b).unwrap(); // uninvited spread hit
+        db::record_memory_recall(&conn, &a).unwrap();
+        db::record_memory_surfaced(&conn, &b).unwrap();
     }
 
     let reinforced = consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();

@@ -2,8 +2,6 @@ use super::*;
 
 #[test]
 fn embedding_related_closer_than_unrelated() {
-    // The whole point of semantic recall: a paraphrase must be closer than
-    // an unrelated sentence, even with different surface wording.
     let e = bundled();
     let anchor = e.embed("dependabot bump broke the restore step; pin the lockfile version");
     let related = e.embed("dependency update caused a CI build failure");
@@ -45,8 +43,6 @@ fn cosine_of_identical_is_one() {
 
 #[test]
 fn scheme_version_changes_when_model_fingerprint_changes() {
-    // A swapped/re-quantized model yields a different fingerprint, which must
-    // change the composed scheme version so stored vectors are seen as stale.
     let a = compose_scheme_version("m2v/v1/n100/d256/s3dcccccd", MEMORY_EMBED_TEXT_VERSION);
     let b = compose_scheme_version("m2v/v2/n100/d256/s3dcccccd", MEMORY_EMBED_TEXT_VERSION);
     assert_ne!(a, b);
@@ -54,8 +50,6 @@ fn scheme_version_changes_when_model_fingerprint_changes() {
 
 #[test]
 fn scheme_version_changes_when_embed_text_version_changes() {
-    // Changing which fields memory_embed_text concatenates (bump the version)
-    // must also change the scheme, independent of the model.
     let fp = "m2v/v1/n100/d256/s3dcccccd";
     assert_ne!(compose_scheme_version(fp, 1), compose_scheme_version(fp, 2));
 }
@@ -76,8 +70,6 @@ fn needs_reindex_only_on_missing_or_mismatched_version() {
 
 #[test]
 fn fingerprint_is_stable_for_the_bundled_model() {
-    // The compiled-in model has a fixed fingerprint, so scheme_version is
-    // stable across calls in the same build (no spurious reindexes).
     assert_eq!(bundled().fingerprint(), bundled().fingerprint());
     assert_eq!(scheme_version(), scheme_version());
 }
@@ -96,7 +88,6 @@ fn ensure_index_current_reindexes_once_then_noops() {
     mem.path = Some("memory/lockfile-pin.md".into());
     db::insert_item(&conn, &mut mem).unwrap();
 
-    // Fresh DB: no recorded scheme version → a reindex is performed once.
     assert!(ensure_index_current(&conn).unwrap(), "first run must heal");
     assert_eq!(
         db::meta_get(&conn, SCHEME_VERSION_KEY).unwrap().as_deref(),
@@ -110,7 +101,6 @@ fn ensure_index_current_reindexes_once_then_noops() {
         "the seeded memory must have a vector after reindex"
     );
 
-    // Version now matches → subsequent runs are no-ops.
     assert!(
         !ensure_index_current(&conn).unwrap(),
         "second run must not reindex"
@@ -122,7 +112,6 @@ fn ensure_index_current_reindexes_after_a_scheme_bump() {
     use crate::infrastructure::db;
 
     let conn = db::open_in_memory_for_test();
-    // Simulate vectors written under an older scheme (bumped model/embed-text).
     db::meta_set(&conn, SCHEME_VERSION_KEY, "stale-old-scheme").unwrap();
 
     assert!(

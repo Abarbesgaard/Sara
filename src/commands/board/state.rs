@@ -6,15 +6,6 @@ use crate::infrastructure::model::Status;
 
 use super::types::{BoardState, IssueNode};
 
-/// Load tasks for the project and group them by the GitHub issue they trace
-/// back to. `prev` (the state before a reload, e.g. after returning from a
-/// task's detail view) carries over each issue's expand/collapse state so
-/// drilling into a task doesn't collapse the tree the user just opened.
-///
-/// Unless `show_finished`, completed tasks are dropped from the rows shown —
-/// an issue whose tasks are all completed disappears entirely, and completed
-/// standalone tasks are omitted too. Per-issue done/total counts still reflect
-/// every task, so a partially-done issue's header stays accurate.
 pub(super) fn build_state(
     conn: &Connection,
     project: String,

@@ -23,7 +23,6 @@ pub(super) fn strength_label(s: f64) -> &'static str {
     }
 }
 
-/// Deterministic pseudo-noise (xorshift-style hash) — no rand dependency.
 pub(super) fn noise(seed: u64) -> u64 {
     let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(1);
     x ^= x >> 33;
@@ -59,10 +58,8 @@ pub(super) fn accent(provisional: bool) -> Color {
     }
 }
 
-/// Materialisation: how much of the body has resolved at this frame.
-/// Weak memories surface slowly from the noise; strong ones snap into focus.
 pub(super) fn resolve_progress(frame: u64, strength: f64) -> f64 {
-    let total_ticks = (100.0 - 25.0 * strength).max(30.0); // strong ≈ 50, weak ≈ 75
+    let total_ticks = (100.0 - 25.0 * strength).max(30.0);
     (frame as f64 / total_ticks).min(1.0)
 }
 
@@ -73,8 +70,6 @@ pub(super) fn materialized_body(body: &str, frame: u64, strength: f64) -> Vec<(c
         .iter()
         .enumerate()
         .map(|(i, &c)| {
-            // Each char resolves at its own jittered threshold, so the text
-            // condenses patchily rather than as a scanline.
             let jitter = (noise(i as u64) % 1000) as f64 / 1000.0;
             let threshold = 0.15 + 0.85 * jitter;
             if progress >= threshold || c == '\n' {
@@ -106,7 +101,6 @@ pub(super) fn ui(
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(area);
 
-    // Breadcrumb / dream-path header.
     let mut path: Vec<Span> = vec![Span::styled(" ✦ ", Style::default().fg(ac))];
     for b in breadcrumb {
         path.push(Span::styled(
@@ -179,7 +173,6 @@ pub(super) fn render_neuron(
         .x_bounds([-100.0, 100.0])
         .y_bounds([-75.0, 75.0])
         .paint(move |ctx| {
-            // Recall pulse: expanding ripples for the first PULSE_TICKS.
             if frame < PULSE_TICKS {
                 let t = frame as f64 / PULSE_TICKS as f64;
                 for lag in 0..3 {
@@ -197,7 +190,6 @@ pub(super) fn render_neuron(
                         });
                     }
                 }
-                // The observer effect: peeking reinforces.
                 let float_y = 8.0 + t * 30.0;
                 ctx.print(
                     6.0,
@@ -211,11 +203,10 @@ pub(super) fn render_neuron(
                 );
             }
 
-            // Dendrites + neighbor nodes on a circle around the cell body.
             for (i, nb) in data.neighbors.iter().enumerate() {
                 let angle = std::f64::consts::TAU * (i as f64 / n.max(1) as f64)
                     + 0.35
-                    + (frame as f64 * 0.004); // the whole web drifts, dreamlike
+                    + (frame as f64 * 0.004);
                 let (r_x, r_y) = (72.0, 52.0);
                 let x = angle.cos() * r_x;
                 let y = angle.sin() * r_y;
@@ -255,7 +246,6 @@ pub(super) fn render_neuron(
                 );
             }
 
-            // Cell body breathes: slow sine over luminosity + glyph.
             let breath = ((frame as f64 * 0.06).sin() + 1.0) / 2.0;
             let glyphs = ["◌", "○", "◎", "◉"];
             let gi = (breath * (glyphs.len() - 1) as f64).round() as usize;
@@ -294,14 +284,13 @@ pub(super) fn render_detail(
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // strength gauge
-            Constraint::Length(4), // recall pulse sparkline
-            Constraint::Min(5),    // body
-            Constraint::Length(4), // tags/files/selected
+            Constraint::Length(3),
+            Constraint::Length(4),
+            Constraint::Min(5),
+            Constraint::Length(4),
         ])
         .split(area);
 
-    // Strength = how vividly this memory burns.
     let ratio = (data.strength / 2.5).min(1.0);
     let gauge_color = if data.strength >= 2.0 {
         Color::White
@@ -344,7 +333,6 @@ pub(super) fn render_detail(
         rows[1],
     );
 
-    // The memory itself, condensing out of noise.
     let resolved = materialized_body(&data.item.body, frame, data.strength);
     let real_style = body_style(data.strength, data.provisional);
     let noise_style = Style::default().fg(Color::Rgb(60, 60, 80));
@@ -379,7 +367,6 @@ pub(super) fn render_detail(
         rows[2],
     );
 
-    // Footer: tags + what the selected dendrite is.
     let mut foot: Vec<Line> = vec![Line::from(vec![
         Span::styled("tags ", Style::default().fg(Color::DarkGray)),
         Span::styled(
@@ -414,18 +401,12 @@ pub(super) fn render_detail(
     );
 }
 
-/// True if an explicit authored bond already connects stars `a` and `b` (either
-/// direction) — used to avoid drawing a faint association thread under a bond.
 pub(super) fn bond_exists(bonds: &[Bond], a: usize, b: usize) -> bool {
     bonds
         .iter()
         .any(|bd| (bd.a == a && bd.b == b) || (bd.a == b && bd.b == a))
 }
 
-/// The star nearest to `from` in screen-direction `dir`. Only stars that lie
-/// genuinely that way are eligible; among them the closest wins, with sideways
-/// drift penalised so `→` favours a star to the right over one far above. Falls
-/// back to the current star if nothing lies in that direction (edge of the web).
 pub(super) fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usize {
     let (ox, oy) = (stars[from].x, stars[from].y);
     let mut best = from;
@@ -435,7 +416,6 @@ pub(super) fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usi
             continue;
         }
         let (dx, dy) = (s.x - ox, s.y - oy);
-        // Component along the travel axis (must be forward) and perpendicular.
         let (along, perp) = match dir {
             Dir::Right => (dx, dy.abs()),
             Dir::Left => (-dx, dy.abs()),
@@ -445,8 +425,6 @@ pub(super) fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usi
         if along <= 0.0 {
             continue;
         }
-        // Prefer straight-ahead: distance along the axis plus a heavy sideways
-        // penalty so the cone stays narrow.
         let score = along + 2.0 * perp;
         if score < best_score {
             best_score = score;
@@ -456,39 +434,16 @@ pub(super) fn nearest_in_direction(stars: &[Star], from: usize, dir: Dir) -> usi
     best
 }
 
-/// Force-layout tuning for the constellation. The memory graph hands us
-/// synapse weights in `0..=1`; these turn them into spring stiffnesses that
-/// separate the web into visible clusters instead of one uniform ball:
-///
-/// * `MIN_EDGE` — drop synapses below this weight. A tag shared across a third
-///   of the store carries almost no associative signal (IDF → ~0); keeping its
-///   spring just re-clumps everything. Cutting it lets real associations shape
-///   the layout.
-/// * `CONTRAST` — raise weights to this power before scaling. Strong, specific
-///   links stay near their value while weak ones collapse toward zero, so a
-///   rare shared anchor binds *dramatically* tighter than a common one.
-/// * `AFFINITY_SCALE` — final stiffness of a full-strength synapse. Enough to
-///   snap a tightly-bound pair together against the layout's repulsion.
 pub(super) const MIN_EDGE: f64 = 0.15;
 
 pub(super) const CONTRAST: f64 = 3.0;
 
 pub(super) const AFFINITY_SCALE: f64 = 0.12;
 
-/// Per-pair repulsion strength (`REPULSION / distance²`) and centre-seeking
-/// gravity. Tuned together so ~150 stars settle into an evenly-spread island
-/// that floats clear of the canvas walls instead of jamming against them.
 pub(super) const REPULSION: f64 = 190.0;
 
 pub(super) const GRAVITY: f64 = 0.14;
 
-/// The calibrated associations between memories: each `(star_i, star_j,
-/// weight)` is a synapse from the memory graph — IDF-weighted shared anchors
-/// (tags/files/tasks) plus relation-weighted `memory_links` — filtered to those
-/// carrying real signal ([`MIN_EDGE`]). This is the single source of
-/// associative truth (the same graph recall spreads activation over); the web
-/// both *lays out* stars by these weights and *draws* them as faint threads, so
-/// what pulls two memories together is also what you see connecting them.
 pub(super) fn graph_edges(
     graph: &MemoryGraph,
     index: &HashMap<String, usize>,
@@ -505,23 +460,10 @@ pub(super) fn graph_edges(
         .collect()
 }
 
-/// Turn a synapse weight (0..=1) into a force-layout spring stiffness. Strong,
-/// specific links stay near their value while weak ones collapse toward zero
-/// ([`CONTRAST`]), so a rare shared anchor binds dramatically tighter than a
-/// common one; [`AFFINITY_SCALE`] sets the absolute pull.
 pub(super) fn spring_stiffness(weight: f64) -> f64 {
     weight.powf(CONTRAST) * AFFINITY_SCALE
 }
 
-/// Force-directed layout: golden-angle spiral seed, then a few hundred
-/// relaxation steps. Repulsion pushes every star apart; the affinity springs
-/// (from the memory graph's calibrated synapses) pull associated memories
-/// together into clusters; gravity pulls the whole web toward the centre.
-///
-/// [`REPULSION`] and [`GRAVITY`] are balanced so the graph settles into an
-/// evenly-spread island that floats clear of the canvas edges — like an
-/// Obsidian graph view — rather than a ball that flies outward and jams
-/// against the boundary walls.
 pub(super) fn force_layout(
     stars: &mut [Star],
     affinity: &[(usize, usize, f64)],
@@ -531,10 +473,9 @@ pub(super) fn force_layout(
     if n < 2 {
         return;
     }
-    // Golden-angle spiral seed for an even initial spread.
     for (i, s) in stars.iter_mut().enumerate() {
         let r = 70.0 * ((i + 1) as f64 / n as f64).sqrt();
-        let a = i as f64 * 2.399_963; // golden angle
+        let a = i as f64 * 2.399_963;
         s.x = a.cos() * r * 1.3;
         s.y = a.sin() * r;
     }
@@ -554,7 +495,6 @@ pub(super) fn force_layout(
                 fx[j] -= dx / d * rep;
                 fy[j] -= dy / d * rep;
             }
-            // Gravity toward centre — strong enough to keep the web off the walls.
             fx[i] -= stars[i].x * GRAVITY;
             fy[i] -= stars[i].y * GRAVITY;
         }
@@ -652,8 +592,6 @@ pub(super) fn ui_web(
     ));
     f.render_widget(Paragraph::new(Line::from(header)), outer[0]);
 
-    // Zoom transform: the view drifts toward the selected star as zoom grows
-    // (at 1x the centre stays at the origin, so the whole web is visible).
     let sel_star = &web.stars[selected];
     let (cx, cy) = (
         sel_star.x * (1.0 - 1.0 / zoom),
@@ -672,10 +610,6 @@ pub(super) fn ui_web(
         .x_bounds([-100.0, 100.0])
         .y_bounds([-75.0, 75.0])
         .paint(move |ctx| {
-            // Faint association threads underneath everything: the shared-anchor
-            // synapses that actually pull the layout together. Skip pairs that
-            // also have an explicit bond (drawn brighter, just below). Brightness
-            // tracks synapse weight; the selected star's threads warm up.
             for l in &web.links {
                 if bond_exists(&web.bonds, l.a, l.b) {
                     continue;
@@ -683,7 +617,6 @@ pub(super) fn ui_web(
                 let (sa, sb) = (&web.stars[l.a], &web.stars[l.b]);
                 let touches_sel = l.a == selected || l.b == selected;
                 let faded = searching && !(sa.matches(query) || sb.matches(query));
-                // weight 0.15..1.0 → dim..less-dim grey; selected neighbourhood tints teal.
                 let t = ((l.weight - MIN_EDGE) / (1.0 - MIN_EDGE)).clamp(0.0, 1.0);
                 let color = if faded {
                     Color::Rgb(18, 19, 23)
@@ -702,7 +635,6 @@ pub(super) fn ui_web(
                     color,
                 });
             }
-            // Explicit authored bonds on top of the threads, stars on top of all.
             for b in &web.bonds {
                 let (sa, sb) = (&web.stars[b.a], &web.stars[b.b]);
                 let touches_sel = b.a == selected || b.b == selected;
@@ -726,7 +658,6 @@ pub(super) fn ui_web(
             for (i, s) in web.stars.iter().enumerate() {
                 let is_sel = i == selected;
                 let is_match = s.matches(query);
-                // Strength → glyph + luminosity; recent recalls pulse.
                 let pulse = if s.recently_recalled { breath } else { 0.35 };
                 let lum =
                     (70.0 + 150.0 * (s.strength / 2.5).min(1.0) * (0.55 + 0.45 * pulse)) as u8;
@@ -751,7 +682,6 @@ pub(super) fn ui_web(
                         .fg(Color::LightYellow)
                         .add_modifier(Modifier::BOLD)
                 } else if searching {
-                    // Non-matching stars sink into the fog.
                     Style::default().fg(Color::Rgb(45, 45, 52))
                 } else {
                     Style::default().fg(color)
@@ -766,7 +696,6 @@ pub(super) fn ui_web(
         });
     f.render_widget(canvas, outer[1]);
 
-    // Footer: the selected star.
     let s = &web.stars[selected];
     let bonds_of: Vec<String> = web
         .bonds

@@ -25,13 +25,11 @@ fn secret_aws_key_detected() {
 
 #[test]
 fn secret_high_entropy_detected() {
-    // 40-char hex string — well above threshold
     assert!(detect_secret("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2").is_some());
 }
 
 #[test]
 fn uuid_not_flagged_as_high_entropy() {
-    // UUIDs look hex-heavy but should NOT trigger the entropy check
     assert!(detect_secret("ref: 831c4d6e-8fcc-4ca5-b516-21bc8236acb0").is_none());
 }
 

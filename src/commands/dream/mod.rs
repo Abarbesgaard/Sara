@@ -1,15 +1,3 @@
-//! `sara dream <label>` — immersive TUI for peeking into a single memory.
-//!
-//! The memory is rendered as a neuron: a breathing cell body at the centre of
-//! a canvas, with dendrites radiating out to linked memories, tasks and files.
-//! On entry the body text materialises out of noise (weak memories take longer
-//! to resolve), a recall pulse ripples outward, and — because peeking at a
-//! memory *is* a recall — a `memory_recalled` event is recorded and a `+0.1`
-//! floats up from the cell body. Frequently-viewed memories literally stay
-//! alive: the observer effect as a feature.
-//!
-//! Non-TTY stdout falls back to a plain single-memory digest.
-
 use anyhow::Result;
 use rusqlite::Connection;
 
@@ -35,11 +23,6 @@ fn item_label(item: &Item) -> String {
     )
 }
 
-/// Pop the breadcrumb back toward the previous memory, skipping any crumbs that
-/// no longer load (the memory was forgotten/renamed since it was visited).
-/// Returns the loaded view, or `None` when the trail is exhausted. Only a crumb
-/// that actually loads is consumed on success; dead crumbs are discarded so a
-/// stale entry can never wedge back-navigation.
 fn navigate_back(conn: &Connection, breadcrumb: &mut Vec<String>) -> Option<DreamData> {
     while let Some(prev) = breadcrumb.pop() {
         if let Ok(d) = load(conn, &prev) {
@@ -120,7 +103,6 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
     }
 
     let mut data = load(conn, handle)?;
-    // Peeking is a recall: reinforce. Fire-and-forget.
     let _ = db::record_memory_recall(conn, &data.item.uuid);
 
     let mut terminal = tui::init_terminal()?;
@@ -155,7 +137,6 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
                             frame = 0;
                             selected = 0;
                         } else {
-                            // Every crumb behind us is gone — nothing to return to.
                             break Ok(());
                         }
                     }
@@ -177,7 +158,6 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
                         }
                     }
                     KeyCode::Enter => {
-                        // Drift along the selected dendrite — only memories are enterable.
                         if let Some(Neighbor {
                             kind: NodeKind::Memory { label, .. },
                         }) = data.neighbors.get(selected)
@@ -202,17 +182,9 @@ pub fn run(conn: &Connection, handle: &str) -> Result<()> {
     res
 }
 
-// ── rendering ────────────────────────────────────────────────────────────────
-
-// ── the web: whole-brain constellation view ──────────────────────────────────
-
 fn load_web(conn: &Connection) -> Result<WebData> {
     let memories = db::list_memories(conn)?;
-    // Batched: `item_strength` scans the recall-event log per call, so scoring
-    // every star individually made loading the web O(memories x recall events).
     let strengths = db::item_strengths(conn, &memories);
-    // Same batching for the 7-day recall pulse, which was likewise one event
-    // scan per memory.
     let recent_counts = db::memory_recall_daily_counts_all(conn, 7);
     let mut index = HashMap::new();
     let mut stars: Vec<Star> = memories
@@ -253,11 +225,6 @@ fn load_web(conn: &Connection) -> Result<WebData> {
             })
         })
         .collect();
-    // Drive the layout from the calibrated nervous-system graph rather than a
-    // flat shared-tag/uniform-bond heuristic, so the constellation reflects the
-    // same associations recall spreads over. The same edges are kept as faint
-    // threads (`links`) so what pulls stars together is also what's drawn.
-    // Falls back to no springs/threads if the graph can't be built.
     let edges = MemoryGraph::build(conn)
         .map(|g| render::graph_edges(&g, &index))
         .unwrap_or_default();
@@ -277,8 +244,6 @@ fn load_web(conn: &Connection) -> Result<WebData> {
     })
 }
 
-/// `sara dream` with no label: the whole brain at once. Enter dives into the
-/// neuron view for the selected star; Esc zooms back out to the web.
 pub fn run_web(conn: &Connection) -> Result<()> {
     use std::io::IsTerminal;
     if !std::io::stdout().is_terminal() {
@@ -294,13 +259,10 @@ pub fn run_web(conn: &Connection) -> Result<()> {
     let mut frame: u64 = 0;
     let mut selected: usize = 0;
     let mut show_help = false;
-    // When Some, we've dived into a single neuron.
     let mut dream: Option<DreamData> = None;
     let mut dream_frame: u64 = 0;
     let mut dream_selected: usize = 0;
-    // Zoom factor for the web canvas; view drifts toward the selected star.
     let mut zoom: f64 = 1.0;
-    // Some(buffer) while typing a search; `query` is the committed filter.
     let mut search_input: Option<String> = None;
     let mut query = String::new();
 
@@ -358,7 +320,6 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                // Search-typing mode swallows most keys.
                 if dream.is_none()
                     && let Some(buf) = &mut search_input
                 {
@@ -405,7 +366,7 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                         if show_help {
                             show_help = false;
                         } else if dream.is_some() {
-                            dream = None; // zoom back out to the web
+                            dream = None;
                         } else if !query.is_empty() {
                             query.clear();
                         } else if zoom > 1.0 {
@@ -433,9 +394,6 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                             selected = (selected + web.stars.len() - 1) % web.stars.len();
                         }
                     }
-                    // Arrows: in the neuron view, cycle dendrites; in the web,
-                    // glide the selection (and camera) to the nearest star that
-                    // way, so navigation feels spatial rather than by index.
                     KeyCode::Right => {
                         if let Some(d) = &dream {
                             if !d.neighbors.is_empty() {
@@ -479,7 +437,6 @@ pub fn run_web(conn: &Connection) -> Result<()> {
                     }
                     KeyCode::Enter => {
                         let target = if let Some(d) = &dream {
-                            // Drift within the neuron view along a memory dendrite.
                             match d.neighbors.get(dream_selected) {
                                 Some(Neighbor {
                                     kind: NodeKind::Memory { label, .. },
@@ -520,13 +477,8 @@ fn run_web_plain(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-// ── plain fallback (non-TTY) ─────────────────────────────────────────────────
-
 fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
     let data = load(conn, handle)?;
-    // Peeking is a recall: reinforce, exactly as the TTY path does. Scripted /
-    // piped reads must strengthen a memory too, or automation silently starves
-    // the usage signal that lifts a Weak memory to Linked. Fire-and-forget.
     let _ = db::record_memory_recall(conn, &data.item.uuid);
     let (derived_labels, derived_from_labels) =
         crate::commands::memories::canonical_labels(conn, &data.item);

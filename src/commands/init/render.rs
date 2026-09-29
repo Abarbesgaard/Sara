@@ -5,8 +5,6 @@ use anyhow::Result;
 use crate::infrastructure::db::ProjectCommands;
 use crate::infrastructure::model::Project;
 
-/// Prompt for a value, showing `default` in brackets and returning it on empty
-/// input.
 pub(super) fn prompt(msg: &str, default: Option<&str>) -> Result<String> {
     let prompt_str = if let Some(d) = default {
         format!("{msg} [{d}]: ")
@@ -34,8 +32,6 @@ pub(super) fn print_intro(name: &str, stack: &str) {
     println!("Detected stack: {stack}");
 }
 
-/// Print the saved-profile summary: goal, resolved stack, and any configured
-/// setup/test/lint/run commands.
 pub(super) fn print_saved(project: &Project, resolved_stack: &str, commands: &ProjectCommands) {
     println!("✔ Project '{}' profile saved.", project.name);
     if let Some(g) = &project.goal {

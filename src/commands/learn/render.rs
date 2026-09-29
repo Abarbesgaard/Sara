@@ -1,7 +1,5 @@
 use serde_json::Value;
 
-/// Print the outcome of a `learn` — the saved memory, its file/task suffixes,
-/// and any typed links (supersedes / derived-from / auto-derived / similar-to).
 pub(super) fn print_learned(v: &Value) {
     let label = v["label"].as_str().unwrap_or("m?");
     let uuid = v["uuid"].as_str().unwrap_or("");

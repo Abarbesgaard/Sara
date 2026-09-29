@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 
 #[test]
 fn home_dotfiles_repo_does_not_capture_subfolder() {
-    // $HOME is itself a git repo (dotfiles); a non-git subfolder must
-    // resolve to the subfolder, not to $HOME.
     let home = Path::new("/home/u");
     let dir = Path::new("/home/u/workspace");
     assert_eq!(
@@ -35,7 +33,6 @@ fn no_git_root_falls_back_to_dir() {
 
 #[test]
 fn git_root_above_home_is_rejected() {
-    // A repo at the filesystem root (or any ancestor of $HOME) is too broad.
     let dir = Path::new("/home/u/workspace");
     assert_eq!(
         project_root_for(dir, Some(Path::new("/")), Some(Path::new("/home/u"))),
@@ -55,10 +52,6 @@ fn git_root_equal_to_dir_is_used() {
 
 #[test]
 fn file_link_relative_anchors_to_git_root_not_cwd() {
-    // From a nested subdirectory, a repo-relative path must resolve against
-    // the REPO ROOT, so learn-time storage and recall-time lookup agree no
-    // matter which folder either was run from. (CWD-anchoring — the old
-    // behaviour — would have produced "/repo/components/lib/server/game.ts".)
     let root = Path::new("/repo");
     let cwd = Path::new("/repo/components");
     assert_eq!(

@@ -1,6 +1,5 @@
 use serde_json::Value;
 
-/// Confirm a typed memory link was created.
 pub(super) fn print_linked(v: &Value, from: &str, relation: &str, to: &str, weight: f64) {
     println!(
         "Linked: {} {} {} (weight: {})",
@@ -11,7 +10,6 @@ pub(super) fn print_linked(v: &Value, from: &str, relation: &str, to: &str, weig
     );
 }
 
-/// Report whether an unlink removed an existing edge.
 pub(super) fn print_unlinked(v: &Value, from: &str, relation: &str, to: &str) {
     if v["removed"].as_bool().unwrap_or(false) {
         println!("Unlinked: {from} {relation} {to}");

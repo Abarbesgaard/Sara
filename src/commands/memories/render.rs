@@ -9,9 +9,6 @@ use super::canonical_labels;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
 
-/// Render the memory listing — newest first, with derived strength — or the
-/// structured `--json` form. `strengths` is the per-memory strength map already
-/// computed by the caller with one grouped query.
 pub(super) fn print_memories(
     conn: &Connection,
     memories: &[Item],

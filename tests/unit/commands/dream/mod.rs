@@ -16,11 +16,8 @@ fn navigate_back_skips_dead_crumbs_and_lands_on_a_live_one() {
     let live_label = item_label(&live);
     let dead_label = item_label(&dead);
 
-    // Forget the middle crumb, so its handle no longer loads.
     db::archive_item(&conn, &dead.uuid).unwrap();
 
-    // Trail: [live, dead]. Back-nav must skip the dead crumb (consuming it)
-    // and return the live memory, leaving an empty trail behind.
     let mut breadcrumb = vec![live_label.clone(), dead_label];
     let landed = navigate_back(&conn, &mut breadcrumb)
         .expect("should skip the dead crumb and reach the live one");
@@ -30,7 +27,6 @@ fn navigate_back_skips_dead_crumbs_and_lands_on_a_live_one() {
         "both crumbs consumed: the dead one skipped, the live one landed on"
     );
 
-    // Exhausted trail returns None (caller quits) rather than wedging.
     assert!(navigate_back(&conn, &mut breadcrumb).is_none());
 }
 
@@ -81,7 +77,6 @@ fn force_layout_pulls_bonded_stars_closer_than_strangers() {
         recently_recalled: false,
     };
     let mut stars = vec![mk(&["a"]), mk(&["a"]), mk(&["b"]), mk(&["c"])];
-    // A firm spring between stars 0 and 1; strangers (2,3) share nothing.
     let affinity = vec![(0usize, 1usize, 0.02f64)];
     force_layout(&mut stars, &affinity, 250);
     let d = |i: usize, j: usize| {
@@ -92,7 +87,6 @@ fn force_layout_pulls_bonded_stars_closer_than_strangers() {
         d(0, 1) < d(2, 3),
         "sprung pair should sit closer than strangers"
     );
-    // Everything stays inside the canvas.
     assert!(stars.iter().all(|s| s.x.abs() <= 95.0 && s.y.abs() <= 68.0));
 }
 
@@ -107,8 +101,6 @@ fn affinity_springs_derive_from_calibrated_graph_weights() {
         db::insert_item(&conn, &mut item).unwrap();
         item.uuid.to_string()
     };
-    // 'common' is on many memories (ubiquitous → low IDF); 'rare' is only on
-    // the a–b pair (high IDF → binds tighter).
     let a = seed(&["common", "rare"]);
     let b = seed(&["rare"]);
     let c = seed(&["common"]);
@@ -154,8 +146,6 @@ fn shared_anchor_pairs_become_association_threads() {
         item.path = Some(String::new());
         db::insert_item(&conn, &mut item).unwrap();
     };
-    // Two memories share a rare tag but have NO explicit memory_link;
-    // padding memories make the tag genuinely rare (df < n, so idf > 0).
     seed(&["rare"]);
     seed(&["rare"]);
     for _ in 0..6 {
@@ -199,7 +189,6 @@ fn nearest_in_direction_picks_the_star_that_way() {
         y,
         recently_recalled: false,
     };
-    // 0 at origin; 1 right, 2 left, 3 up, 4 down.
     let stars = vec![
         mk(0.0, 0.0),
         mk(10.0, 0.0),
@@ -211,9 +200,7 @@ fn nearest_in_direction_picks_the_star_that_way() {
     assert_eq!(nearest_in_direction(&stars, 0, Dir::Left), 2);
     assert_eq!(nearest_in_direction(&stars, 0, Dir::Up), 3);
     assert_eq!(nearest_in_direction(&stars, 0, Dir::Down), 4);
-    // Nothing to the right of the right-most star → stays put.
     assert_eq!(nearest_in_direction(&stars, 1, Dir::Right), 1);
-    // A near star straight ahead beats a far one off to the side.
     let stars2 = vec![mk(0.0, 0.0), mk(5.0, 1.0), mk(6.0, 40.0)];
     assert_eq!(nearest_in_direction(&stars2, 0, Dir::Right), 1);
 }

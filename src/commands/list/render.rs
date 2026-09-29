@@ -17,11 +17,8 @@ const CYAN: &str = "\x1b[36m";
 const GRAY: &str = "\x1b[90m";
 const MAGENTA: &str = "\x1b[35m";
 
-/// Width of the DEPS column in the task list.
 const DEP_COL_W: usize = 16;
 
-/// Which link badge a task should show at a glance, in priority order.
-/// PR outranks Issue, which outranks a plain/generic link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LinkBadge {
     Pr,
@@ -31,9 +28,6 @@ pub(super) enum LinkBadge {
 }
 
 impl LinkBadge {
-    /// `synced` means the task itself was imported by `sara sync` (has GitHub
-    /// provenance) — not merely that it links back to an issue for
-    /// traceability, which every task in a broken-down issue does.
     pub(super) fn from_flags(flags: db::LinkFlags, synced: bool) -> Self {
         if flags.pr {
             LinkBadge::Pr
@@ -47,7 +41,6 @@ impl LinkBadge {
     }
 }
 
-/// Print the coloured task table (header, one row per task, summary footer).
 pub(super) fn print_table(
     tasks: &[Task],
     link_flags: &HashMap<String, db::LinkFlags>,
@@ -56,7 +49,6 @@ pub(super) fn print_table(
     filter: Option<&str>,
     no_color: bool,
 ) {
-    // Header
     let header = format!(
         "    {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {dep:<16}  {desc}",
         id = "ID",
@@ -91,21 +83,17 @@ pub(super) fn print_table(
             .unwrap_or_else(|| "-".to_string());
         let urg_str = format!("{:.1}", task.urgency);
 
-        // Truncate project and description for display
         let proj_display = truncate(&task.project, 16);
         let desc_display = truncate(&task.description, 60);
 
         let active_marker = if task.is_active() { "●" } else { " " };
 
-        // PR / link / recur indicators for an at-a-glance scan.
         let flags = link_flags
             .get(&task.uuid.to_string())
             .copied()
             .unwrap_or_default();
         let recur_mark = if task.recur.is_some() { "♺" } else { " " };
 
-        // Dependency state: ⊘ = blocked by an unfinished task, ⛓ = blocks others.
-        // The glyph is a quick-scan gutter marker; the DEPS column spells it out.
         let dep = dep_info.get(&task.uuid.to_string());
         let dep_mark = match dep {
             Some(d) if d.is_blocked() => "⊘",
@@ -122,7 +110,6 @@ pub(super) fn print_table(
             LinkBadge::None => "",
         };
 
-        // Colorize
         if no_color {
             println!(
                 "{active}{recur}{dep} {id:>3}  {pri:<4}  {proj:<16}  {due:<12}  {urg:>6}  {deptext:<width$}  {pr}{desc}",
@@ -207,8 +194,6 @@ pub(super) fn print_table(
     }
 }
 
-/// `sara list --by-issue`: trace tasks back to the GitHub issue they link to,
-/// so a broken-down issue and its concrete tasks read together at a glance.
 pub(super) fn print_by_issue(conn: &Connection, tasks: &[Task], no_color: bool) -> Result<()> {
     let (groups, ungrouped) = db::group_tasks_by_issue(conn, tasks)?;
 
@@ -258,7 +243,6 @@ fn fmt_id_list(ids: &[i64]) -> String {
         .join(",")
 }
 
-/// Plain text for the DEPS column: what the task is waiting on or blocking.
 fn dep_column_text(dep: Option<&db::DepInfo>) -> String {
     match dep {
         Some(d) if d.is_blocked() => format!("blocked by {}", fmt_id_list(&d.blocked_by)),

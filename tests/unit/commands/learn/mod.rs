@@ -59,19 +59,15 @@ fn learn_task_prefers_display_id_over_uuid_collision() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Task A: the intended target. Its UUID deliberately does NOT start with "1".
     let mut task_a = Task::new("intended target".into(), "proj".into());
     task_a.uuid = Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap();
     db::insert_task(&conn, &mut task_a).unwrap();
-    let a_id = task_a.id.unwrap(); // display id 1
+    let a_id = task_a.id.unwrap();
 
-    // Task B: an unrelated task whose UUID starts with the same digit as A's
-    // display id. A raw uuid-prefix lookup on "1" would wrongly match this.
     let mut task_b = Task::new("unrelated task".into(), "proj".into());
     task_b.uuid = Uuid::parse_str("1bbbbbbb-0000-0000-0000-000000000002").unwrap();
     db::insert_task(&conn, &mut task_b).unwrap();
 
-    // Learn a memory with --task <A's display id>.
     let v = super::learn_value(
         &conn,
         &cfg,
@@ -88,7 +84,6 @@ fn learn_task_prefers_display_id_over_uuid_collision() {
     )
     .unwrap();
 
-    // The memory must be linked to task A (by display id), never task B.
     let item = db::get_item_by_handle(&conn, v["label"].as_str().unwrap()).unwrap();
     let linked = db::get_item_task_links(&conn, &item.uuid).unwrap();
     assert_eq!(linked.len(), 1, "expected exactly one task link");
@@ -106,8 +101,6 @@ fn file_overlaps_detects_tagless_memory_sharing_a_file() {
     let cfg = Config::default();
     let path = "/repo/src/auth.rs".to_string();
 
-    // A memory saved with a file but NO tags — the exact case the overlap
-    // check used to skip via an early return, hiding the file collision.
     super::learn_value(
         &conn,
         &cfg,
@@ -140,7 +133,6 @@ fn learn_value_supersedes_inserts_link() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Learn a first memory to supersede.
     let old = super::learn_value(
         &conn,
         &cfg,
@@ -158,7 +150,6 @@ fn learn_value_supersedes_inserts_link() {
     .unwrap();
     let old_label = old["label"].as_str().unwrap().to_string();
 
-    // Learn a new memory that supersedes the old one.
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -175,7 +166,6 @@ fn learn_value_supersedes_inserts_link() {
     )
     .unwrap();
 
-    // The superseded array should contain the old label.
     let superseded = new_v["superseded"].as_array().unwrap();
     assert_eq!(superseded.len(), 1);
     assert_eq!(superseded[0].as_str().unwrap(), old_label);
@@ -187,7 +177,6 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Canonical memory.
     let canonical = super::learn_value(
         &conn,
         &cfg,
@@ -205,7 +194,6 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     .unwrap();
     let canonical_label = canonical["label"].as_str().unwrap().to_string();
 
-    // A derived child, linked via --derived-from.
     super::learn_value(
         &conn,
         &cfg,
@@ -232,8 +220,6 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
         "canonical must have exactly one derived child before superseding"
     );
 
-    // Superseding the canonical must succeed and must not touch the
-    // derived child's status — it stays active (never auto-archived).
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -288,7 +274,6 @@ fn check_overlap_warns_on_file_overlap() {
 
     let file_path = "/tmp/test_sara_overlap_check.rs".to_string();
 
-    // Learn first memory tied to the file.
     super::learn_value(
         &conn,
         &cfg,
@@ -298,16 +283,13 @@ fn check_overlap_warns_on_file_overlap() {
         &[],
         std::slice::from_ref(&file_path),
         false,
-        true, // force — skip safety guardrails
+        true,
         &[],
         &[],
         &[],
     )
     .unwrap();
 
-    // Learning a second memory on the same file with DIFFERENT tags should
-    // still succeed (file-overlap is advisory, not blocking). The test just
-    // verifies check_overlap() itself doesn't error out.
     let result = super::check_overlap(
         &conn,
         &["tag-y".to_string()],
@@ -326,7 +308,6 @@ fn learn_creates_typed_links() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // A canonical memory and a lateral one to link against.
     let canon = super::learn_value(
         &conn,
         &cfg,
@@ -361,7 +342,6 @@ fn learn_creates_typed_links() {
     .unwrap();
     let sibling_label = sibling["label"].as_str().unwrap().to_string();
 
-    // Learn a new memory that is derived_from the canonical AND similar_to the sibling.
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -386,7 +366,6 @@ fn learn_creates_typed_links() {
     assert_eq!(similar.len(), 1);
     assert_eq!(similar[0].as_str().unwrap(), sibling_label);
 
-    // The typed edges must actually exist in the graph.
     let new_uuid = db::get_item_by_handle(&conn, new_v["label"].as_str().unwrap())
         .unwrap()
         .uuid
@@ -408,7 +387,6 @@ fn learn_unresolvable_link_warns_not_aborts() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Reference a memory label that does not exist — learn must still succeed.
     let v = super::learn_value(
         &conn,
         &cfg,
@@ -428,13 +406,11 @@ fn learn_unresolvable_link_warns_not_aborts() {
         "unresolvable --derived-from must not abort the learn"
     );
     let v = v.unwrap();
-    // The link was skipped, so the reported array is empty.
     assert_eq!(v["derived_from"].as_array().unwrap().len(), 0);
 }
 
 #[test]
 fn overlap_suggests_typed_link() {
-    // Near-duplicate → derived-from / supersedes; partial → similar-to.
     let near = super::near_dupe_suggestion("m26");
     assert!(
         near.contains("--derived-from m26"),
@@ -450,7 +426,6 @@ fn overlap_suggests_typed_link() {
         partial.contains("--similar-to m30"),
         "partial offers --similar-to: {partial}"
     );
-    // No longer the vague untyped "possible contradiction" wording.
     assert!(!partial.to_lowercase().contains("possible contradiction"));
 }
 
@@ -469,7 +444,6 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Canonical memory with two tags.
     let canonical = super::learn_value(
         &conn,
         &cfg,
@@ -490,10 +464,8 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
         .unwrap()
         .uuid;
 
-    // Before any derived child exists, it isn't canonical yet.
     assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 0);
 
-    // A derived application, linked via --derived-from.
     super::learn_value(
         &conn,
         &cfg,
@@ -510,13 +482,8 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
     )
     .unwrap();
 
-    // Now the canonical has one derived child — the detection
-    // `check_overlap` relies on to upgrade a partial-tag match into the
-    // near-dupe band with a `--derived-from`/`relearn` hint.
     assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 1);
 
-    // A new memory sharing only one of the canonical's two tags (partial
-    // overlap) must not error when check_overlap runs against it.
     super::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
 }
 
@@ -526,7 +493,6 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Canonical pattern memory with two tags.
     let canonical = super::learn_value(
         &conn,
         &cfg,
@@ -545,7 +511,6 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     let canon_label = canonical["label"].as_str().unwrap().to_string();
     let canon_uuid = db::get_item_by_handle(&conn, &canon_label).unwrap().uuid;
 
-    // One explicit derived application turns it into a canonical.
     super::learn_value(
         &conn,
         &cfg,
@@ -563,9 +528,6 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     .unwrap();
     assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 1);
 
-    // A NEW instance sharing all the canonical's tags, learned WITHOUT an
-    // explicit --derived-from (force=false so overlap detection runs): it
-    // must auto-attach to the canonical pattern.
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -638,8 +600,6 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
     )
     .unwrap();
 
-    // Author explicitly names the canonical: the explicit link wins, and the
-    // auto-attach must NOT create a second, duplicate derived_from edge.
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -666,7 +626,6 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
         new_v["auto_derived_from"].as_array().unwrap().is_empty(),
         "explicit derived_from must suppress the auto-link for the same canonical"
     );
-    // Exactly two applications (seed + this one), not three.
     assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 2);
 }
 
@@ -676,7 +635,6 @@ fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // A plain memory (no derived children) — not a pattern.
     super::learn_value(
         &conn,
         &cfg,
@@ -693,7 +651,6 @@ fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
     )
     .unwrap();
 
-    // A near-duplicate by tag, but the overlap target is not canonical.
     let new_v = super::learn_value(
         &conn,
         &cfg,
@@ -719,10 +676,6 @@ fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
 fn learn_always_embeds_even_with_default_config() {
     use crate::infrastructure::{config::Config, db};
     let conn = db::open_in_memory_for_test();
-    // The default config leaves the legacy `recall.semantic` toggle OFF.
-    // Semantic *querying* is always enabled (SemanticOpts::from_cfg), so the
-    // write side must ALWAYS embed too — otherwise recall silently degrades
-    // to keyword-only in every project that never flipped the deprecated flag.
     let cfg = Config::default();
     assert!(
         !cfg.recall.semantic,

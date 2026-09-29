@@ -9,8 +9,6 @@ use crate::infrastructure::git;
 
 mod render;
 
-/// Start the timer for a task, returning a structured record (no-op if already
-/// active). Print-free core shared by the CLI `start` command and MCP `start`.
 pub fn start_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
@@ -43,10 +41,6 @@ pub fn start(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     Ok(())
 }
 
-/// Stop the timer for a task (and snapshot a tied branch's changed files, if any),
-/// returning a structured record. Print-free core shared by the CLI `stop` command
-/// and the MCP `stop` tool. Branch-snapshot warnings still go to stderr (safe on
-/// the stdio transport, which uses stdout as the JSON-RPC channel).
 pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 

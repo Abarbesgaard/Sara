@@ -1,5 +1,3 @@
-//! Unit tests for db::projects.
-
 use super::*;
 use crate::infrastructure::model::Task;
 use chrono::Utc;
@@ -54,7 +52,6 @@ fn get_project_by_path_prefers_most_recently_seen_on_collision() {
     let conn = mem();
     upsert_project_seen(&conn, "stale", Some("/home/u/workspace")).unwrap();
     upsert_project_seen(&conn, "current", Some("/home/u/workspace")).unwrap();
-    // Force deterministic ordering regardless of timestamp resolution.
     conn.execute(
         "UPDATE projects SET last_seen='2020-01-01T00:00:00Z' WHERE name='stale'",
         [],
@@ -73,7 +70,6 @@ fn get_project_by_path_prefers_most_recently_seen_on_collision() {
 fn reset_project_nukes_tasks_children_and_profile() {
     let mut conn = mem();
     let task = seed_task(&conn);
-    // Attach children that should cascade away.
     set_task_files(&conn, &task.uuid, &["src/main.rs".into()]).unwrap();
     add_link(&conn, &task.uuid, "https://example.com", None).unwrap();
     add_annotation(&conn, &task.uuid, "a note").unwrap();

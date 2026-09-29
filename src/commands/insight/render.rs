@@ -1,6 +1,5 @@
 use super::types::Related;
 
-/// Print a reconsider prompt for related prior findings, if any. No-op on empty.
 pub fn print_related_findings(related: &[Related]) {
     if related.is_empty() {
         return;

@@ -1,20 +1,12 @@
-//! Task file associations and annotations/feedback.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use super::*;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
-// ── task files ───────────────────────────────────────────────────────────────
-
-/// Source of a task file: manually attached by the user, or suggested by the LLM.
 pub const SOURCE_MANUAL: &str = "manual";
 pub const SOURCE_SUGGESTED: &str = "suggested";
 
-/// Replace all files for a task. Every path is stored with `source`.
 pub fn set_task_files(conn: &Connection, task_uuid: &Uuid, paths: &[String]) -> Result<()> {
     let sourced: Vec<(String, String)> = paths
         .iter()
@@ -23,7 +15,6 @@ pub fn set_task_files(conn: &Connection, task_uuid: &Uuid, paths: &[String]) -> 
     set_task_files_sourced(conn, task_uuid, &sourced)
 }
 
-/// Replace all files for a task, recording each file's source.
 pub fn set_task_files_sourced(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -46,7 +37,6 @@ pub fn set_task_files_sourced(
             )?;
         }
 
-        // Log each added / removed path so the change shows up in task history.
         let after: std::collections::HashSet<String> =
             files.iter().map(|(p, _)| p.clone()).collect();
         for path in after.difference(&before) {
@@ -67,7 +57,6 @@ pub fn get_task_files(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<String>
     Ok(paths)
 }
 
-/// Return `(path, source)` pairs for a task.
 pub fn get_task_files_sourced(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -84,24 +73,16 @@ pub fn get_task_files_sourced(
     Ok(rows)
 }
 
-// ── annotations ──────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct Annotation {
     pub id: i64,
     pub text: String,
     pub entry: DateTime<Utc>,
-    /// comment | finding | thought | constraint | assumption | open_question |
-    /// non_goal | decision | risk | pattern
     pub kind: String,
-    /// "human" or "ai".
     pub author: String,
-    /// What this note anchors to: e.g. "step", "acceptance", "anchor", "note", or NULL (task-level).
     pub target_kind: Option<String>,
     pub target_id: Option<String>,
-    /// "open" or "resolved".
     pub status: String,
-    /// The "reconsider this" flag.
     pub request_revision: bool,
     pub resolved_by_run: Option<i64>,
 }
@@ -140,7 +121,6 @@ pub fn add_annotation(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result
     .map(|_| ())
 }
 
-/// Insert a typed, attributed note (or anchored feedback); returns its id.
 #[allow(clippy::too_many_arguments)]
 pub fn add_annotation_full(
     conn: &Connection,
@@ -167,8 +147,6 @@ pub fn add_annotation_full(
             request_revision as i64,
         ],
     )?;
-    // Capture the annotation id *before* record_history inserts into task_history,
-    // otherwise last_insert_rowid() would return the history row's id instead.
     let id = conn.last_insert_rowid();
     record_history(conn, task_uuid, "annotation", None, Some(text))?;
     Ok(id)
@@ -185,7 +163,6 @@ pub fn get_annotations(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annota
     Ok(anns)
 }
 
-/// Open human feedback (comments) for a task, flagged-for-revision first.
 pub fn get_open_feedback(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Annotation>> {
     let sql = format!(
         "SELECT {ANN_COLUMNS} FROM annotations
@@ -200,7 +177,6 @@ pub fn get_open_feedback(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Anno
     Ok(anns)
 }
 
-/// Mark a piece of feedback resolved, optionally linking the run that addressed it.
 pub fn resolve_annotation(conn: &Connection, ann_id: i64, run_id: Option<i64>) -> Result<bool> {
     let n = conn.execute(
         "UPDATE annotations SET status='resolved', resolved_by_run=?2 WHERE id=?1",
@@ -209,7 +185,6 @@ pub fn resolve_annotation(conn: &Connection, ann_id: i64, run_id: Option<i64>) -
     Ok(n > 0)
 }
 
-/// Toggle the "reconsider this" flag on a note.
 pub fn set_request_revision(conn: &Connection, ann_id: i64, flag: bool) -> Result<bool> {
     let n = conn.execute(
         "UPDATE annotations SET request_revision=?2, status=CASE WHEN ?2=1 THEN 'open' ELSE status END WHERE id=?1",
@@ -219,7 +194,6 @@ pub fn set_request_revision(conn: &Connection, ann_id: i64, flag: bool) -> Resul
 }
 
 pub fn delete_annotation(conn: &Connection, ann_id: i64) -> Result<bool> {
-    // Capture the text + owning task before deletion so we can log the event.
     let existing: Option<(String, String)> = conn
         .query_row(
             "SELECT task_uuid, text FROM annotations WHERE id=?1",

@@ -87,7 +87,6 @@ fn round_trips_through_blob() {
 fn decode_tolerates_whitespace_and_missing_prefix() {
     let blob = sample().encode().unwrap();
     let raw = blob.strip_prefix(BLOB_PREFIX).unwrap();
-    // Re-wrap with newlines and leading spaces, drop the prefix.
     let wrapped: String = raw
         .as_bytes()
         .chunks(20)

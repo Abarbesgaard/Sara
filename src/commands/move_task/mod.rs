@@ -7,11 +7,6 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Move a task to another project (non-interactive reassignment).
-///
-/// Resolves the task by display id or uuid prefix, sets its project, records the
-/// change in history (via `update_task`), and refreshes its urgency since the
-/// `project` component may change.
 pub fn move_value(conn: &Connection, cfg: &Config, id: &str, project: &str) -> Result<Value> {
     let target = project.trim();
     if target.is_empty() {

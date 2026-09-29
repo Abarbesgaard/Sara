@@ -9,12 +9,6 @@ use crate::infrastructure::project::find_git_root;
 mod github;
 mod import;
 
-/// Resolve a GitHub token for the sync API calls.
-///
-/// Precedence: `GH_TOKEN` env > `GITHUB_TOKEN` env > the gh CLI's stored token
-/// (`gh auth token`). The last step means a user who has run `gh auth login`
-/// does not have to export a token by hand — and `gh` is already a hard
-/// dependency of sync. The error explains both paths when nothing is found.
 pub fn resolve_github_token() -> Result<String> {
     resolve_github_token_from(|key| std::env::var(key).ok(), github::gh_auth_token)
 }
@@ -42,7 +36,6 @@ where
     )
 }
 
-/// Sync open GitHub issues assigned to the authenticated user for the current repo.
 pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let git_root =

@@ -59,8 +59,6 @@ fn excludes_the_just_inserted_finding() {
         &task,
         "restore broke after the dependabot version bump",
     );
-    // Querying with the same text but excluding that id yields nothing —
-    // a finding must never match itself.
     let related = related_findings(
         &conn,
         &task.uuid,

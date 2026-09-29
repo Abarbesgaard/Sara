@@ -1,20 +1,13 @@
-//! Per-task git branch snapshots.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use super::*;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
-// ── branch snapshots ─────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct BranchRecord {
     pub branch: String,
     pub base: Option<String>,
-    /// Files changed on `branch` since merge-base with `base`; None until first snapshot.
     pub files: Option<Vec<String>>,
     pub logged_at: Option<DateTime<Utc>>,
 }
@@ -24,7 +17,6 @@ fn parse_files_json(s: Option<String>) -> Option<Vec<String>> {
 }
 
 pub fn set_task_branch(conn: &Connection, task_uuid: &Uuid, branch: &str) -> Result<()> {
-    // Get previous branch for history.
     let prev = get_task_branch(conn, task_uuid).map(|r| r.branch);
     conn.execute(
         "INSERT INTO task_branches (task_uuid, branch)
@@ -90,8 +82,6 @@ pub fn clear_task_branch(conn: &Connection, task_uuid: &Uuid) -> Result<()> {
     Ok(())
 }
 
-/// All pending tasks in `project` (excluding `exclude_uuid`) that have a branch record.
-/// Returns `(task_id, description, BranchRecord)`.
 pub fn branched_pending_in_project(
     conn: &Connection,
     project: &str,

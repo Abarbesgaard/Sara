@@ -44,8 +44,6 @@ fn normal_mode_gg_is_top_but_lone_g_is_not() {
 fn normal_mode_stray_g_does_not_swallow_the_next_key() {
     let mut d = KeyDispatcher::new();
     let _ = d.dispatch(key(KeyCode::Char('g')), Mode::Normal);
-    // Second key isn't 'g' — pending prefix drops, and this key still
-    // gets its normal meaning (not silently eaten).
     assert_eq!(
         d.dispatch(key(KeyCode::Char('j')), Mode::Normal),
         Action::Down
@@ -129,7 +127,6 @@ fn ctrl_e_is_external_edit_in_either_mode_and_does_not_leak_g_state() {
         d.dispatch(ctrl(KeyCode::Char('e')), Mode::Normal),
         Action::ExternalEdit
     );
-    // The pending 'g' from before Ctrl+E must not survive into this gg check.
     assert_eq!(
         d.dispatch(key(KeyCode::Char('g')), Mode::Normal),
         Action::Raw(key(KeyCode::Char('g')))
@@ -165,8 +162,6 @@ fn insert_mode_only_intercepts_control_keys() {
         d.dispatch(key(KeyCode::BackTab), Mode::Insert),
         Action::PrevFocus
     );
-    // Letters that mean something in Normal mode (g/q/j/k) must pass
-    // through untouched here — they're being typed into a field.
     for c in ['g', 'q', 'j', 'k', ' '] {
         assert_eq!(
             d.dispatch(key(KeyCode::Char(c)), Mode::Insert),
@@ -177,8 +172,6 @@ fn insert_mode_only_intercepts_control_keys() {
 
 #[test]
 fn insert_mode_does_not_accumulate_g_state() {
-    // A stray 'g' in Insert mode must never leak into a later Normal-mode
-    // gg sequence (e.g. user types "g" into a field, then Esc, then gg).
     let mut d = KeyDispatcher::new();
     let _ = d.dispatch(key(KeyCode::Char('g')), Mode::Insert);
     assert_eq!(

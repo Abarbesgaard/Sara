@@ -37,23 +37,11 @@ impl Default for UrgencyConfig {
     }
 }
 
-/// Semantic (embedding-based) recall tuning. Semantic recall is now ALWAYS on;
-/// `semantic_threshold` and `semantic_top_k` tune it, while the legacy `semantic`
-/// toggle is retained only for backward compatibility and no longer gates recall.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecallConfig {
-    /// Deprecated / ignored: semantic recall is always enabled. Kept so existing
-    /// config files that set it still parse.
     pub semantic: bool,
-    /// Minimum cosine similarity for a semantic hit to be surfaced. Guards
-    /// against flooding recall with weakly-related noise. Kept at 0.30 so
-    /// legitimate paraphrases still surface in `recall`; the noise reduction on
-    /// `sara add` is done at the presentation layer instead (weak `semantic`
-    /// hits render as a snippet, not a full body, and rank after same-project
-    /// prior art) so recall quality is never sacrificed for a quieter founding.
     pub semantic_threshold: f32,
-    /// Upper bound on semantic hits merged into a single recall.
     pub semantic_top_k: usize,
 }
 
@@ -91,9 +79,7 @@ pub struct Config {
     pub default_project: String,
     pub date_dialect: String,
     pub urgency: UrgencyConfig,
-    /// Absolute path to Sara's private knowledge store (markdown notes/links).
     pub vault_path: Option<PathBuf>,
-    /// Semantic-recall settings (default OFF — recall stays lexical).
     pub recall: RecallConfig,
     pub telemetry: TelemetryConfig,
 }
@@ -150,7 +136,6 @@ fn legacy_tk_db_path() -> Option<PathBuf> {
     legacy_tk_project_dirs().map(|d| d.data_dir().join("tasks.db"))
 }
 
-/// Copy legacy tk config/data into sara locations on first run.
 pub fn migrate_from_tk_if_needed() -> Result<bool> {
     let sara_cfg = config_path()?;
     let sara_db = db_path()?;

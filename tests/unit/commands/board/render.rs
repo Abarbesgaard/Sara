@@ -41,7 +41,6 @@ fn issue_node(number: u64, tasks: Vec<Task>, expanded: bool) -> IssueNode {
     }
 }
 
-/// Character (not byte) column of the first occurrence of `needle` in `line`.
 fn char_col_of(line: &str, needle: &str) -> usize {
     let chars: Vec<char> = line.chars().collect();
     let needle_chars: Vec<char> = needle.chars().collect();
@@ -51,13 +50,10 @@ fn char_col_of(line: &str, needle: &str) -> usize {
         .unwrap()
 }
 
-/// Character column of the first occurrence of any char in `candidates`.
 fn char_col_of_any(line: &str, candidates: &[char]) -> usize {
     line.chars().position(|c| candidates.contains(&c)).unwrap()
 }
 
-/// A generously sized terminal so the bordered box + header/footer chrome
-/// all have room to render (the real board needs a real terminal size too).
 fn draw(st: &BoardState) -> String {
     let rows = visible_rows(st);
     let (lines, _) = build_lines(st, &rows);
@@ -171,9 +167,6 @@ fn nested_tasks_indent_further_than_their_issue_header() {
         .lines()
         .find(|l| l.starts_with('│') && l.contains("alpha"))
         .unwrap();
-    // Compare the column of the tree-connector glyph itself, not raw
-    // leading spaces — the selection marker on the header row otherwise
-    // throws off a naive whitespace count.
     let header_tree_col = char_col_of_any(header_line, &['▸', '▾']);
     let task_tree_col = char_col_of_any(task_line, &['├', '└']);
     assert_eq!(
@@ -212,9 +205,6 @@ fn priority_legend_shows_swatches_not_proportional_bars() {
 
 #[test]
 fn description_columns_align_regardless_of_badges() {
-    // Two standalone tasks, one with a PR badge and one without — both
-    // descriptions must start at the same column since the badge slot
-    // is always reserved.
     let a = Task::new("has badge".into(), "tk".into());
     let b = Task::new("no badge".into(), "tk".into());
     let uuid_a = a.uuid.to_string();
@@ -228,8 +218,6 @@ fn description_columns_align_regardless_of_badges() {
         },
     );
     let out = draw(&st);
-    // Restrict to rows inside the bordered box — the stats row's "[ Next: ... ]"
-    // label can otherwise coincidentally contain the same description text.
     let line_a = out
         .lines()
         .find(|l| l.starts_with('│') && l.contains("has badge"))

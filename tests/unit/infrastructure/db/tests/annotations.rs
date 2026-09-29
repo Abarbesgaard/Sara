@@ -1,5 +1,3 @@
-//! Unit tests for db::annotations.
-
 use super::*;
 
 #[test]

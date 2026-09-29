@@ -1,8 +1,6 @@
 use anyhow::Result;
 use serde_json::json;
 
-/// `sara tags` output — the memory tag vocabulary with usage counts, most-used
-/// first, or a hint when none exist yet. `--json` emits the structured form.
 pub(super) fn print_tags(tags: &[(String, i64)], as_json: bool) -> Result<()> {
     if as_json {
         let v: Vec<_> = tags

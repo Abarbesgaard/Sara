@@ -2,10 +2,6 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-/// Emit an encoded bundle: write it to `output` when given (blob to the file,
-/// a human hint to stderr), otherwise print the blob to stdout and the hint to
-/// stderr so the blob can be piped/redirected cleanly. `extra` is the number of
-/// dependency tasks bundled alongside the root.
 pub(super) fn emit(output: Option<&Path>, blob: &str, root_id: i64, extra: usize) -> Result<()> {
     match output {
         Some(path) => {

@@ -4,8 +4,6 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
-/// Attach a URL to a task and return a structured record. Print-free core shared
-/// by the CLI `link` command and the MCP `link` tool.
 pub fn link_value(
     conn: &Connection,
     id_or_uuid: &str,

@@ -30,11 +30,11 @@ pub(super) fn render(f: &mut Frame, data: &ActivityData) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // stats bar
-            Constraint::Length(2), // month labels
-            Constraint::Length(7), // heatmap (7 rows = Sun–Sat)
-            Constraint::Length(2), // legend
-            Constraint::Min(1),    // spacer
+            Constraint::Length(3),
+            Constraint::Length(2),
+            Constraint::Length(7),
+            Constraint::Length(2),
+            Constraint::Min(1),
         ])
         .split(inner);
 

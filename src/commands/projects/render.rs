@@ -17,8 +17,6 @@ pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     st: &mut ProjectListState,
 ) -> Result<ProjectAction> {
     loop {
-        // Keep the selected row inside the viewport (content height = total -
-        // borders - footer). One project per line, so line == selected index.
         let size = terminal.size()?;
         let viewport = size.height.saturating_sub(3);
         let line = st.selected as u16;

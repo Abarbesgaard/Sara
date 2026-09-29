@@ -43,7 +43,6 @@ pub fn run(
             BoardAction::Quit => break,
             BoardAction::OpenTask(uuid) => {
                 crate::commands::info::run(conn, cfg, &uuid, false, false, false)?;
-                // Reload — status/dependencies may have changed in the detail view.
                 let project = st.project.clone();
                 let sel = st.selected;
                 st = state::build_state(conn, project, st.show_finished, Some(&st))?;

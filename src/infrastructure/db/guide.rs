@@ -1,9 +1,3 @@
-//! Task guide fields, code anchors, AI-run audit trail, events, FTS search.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super` so
-//! `db::*` call sites are unchanged. Shared low-level helpers live in the
-//! parent `db` module, reached here via `use super::*`.
-
 use super::*;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -63,9 +57,6 @@ pub fn recent_search_queries(conn: &Connection, limit: i64) -> Result<Vec<String
     Ok(queries)
 }
 
-/// Retention policy: delete events older than `days` days. Called at MCP
-/// server startup to bound the table size without requiring a separate job.
-/// Errors are non-fatal — a failed prune doesn't affect functionality.
 pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
     let cutoff = (Utc::now() - chrono::Duration::days(days))
         .format("%Y-%m-%dT%H:%M:%S%.3fZ")
@@ -73,8 +64,6 @@ pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
     let n = conn.execute("DELETE FROM events WHERE at < ?1", [&cutoff])?;
     Ok(n)
 }
-
-// ── code anchors (task_files with reason + symbol/lines) ─────────────────────
 
 #[derive(Debug, Clone)]
 pub struct Anchor {
@@ -87,7 +76,6 @@ pub struct Anchor {
 }
 
 impl Anchor {
-    /// Human-friendly location suffix, e.g. " :: enrich_task (10-57)".
     pub fn location(&self) -> String {
         let mut s = String::new();
         if let Some(sym) = &self.symbol {
@@ -124,7 +112,6 @@ pub fn get_task_anchors(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Ancho
     Ok(rows)
 }
 
-/// Additively attach (or update) one code anchor with provenance + reason.
 #[allow(clippy::too_many_arguments)]
 pub fn add_task_file(
     conn: &Connection,
@@ -165,8 +152,6 @@ pub fn add_task_file(
     }
     Ok(())
 }
-
-// ── task-level guide fields (assignment / rationale / freshness / meta) ───────
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskGuideFields {
@@ -213,7 +198,6 @@ pub fn set_rationale(conn: &Connection, task_uuid: &Uuid, text: &str) -> Result<
     Ok(())
 }
 
-/// Stamp the commit the guide was validated against (freshness guard).
 pub fn set_validated(conn: &Connection, task_uuid: &Uuid, commit: &str) -> Result<()> {
     conn.execute(
         "UPDATE tasks SET validated_commit=?2, validated_at=?3 WHERE uuid=?1",
@@ -230,12 +214,6 @@ pub fn set_meta_json(conn: &Connection, task_uuid: &Uuid, json: &str) -> Result<
     Ok(())
 }
 
-/// Mark a task active (start its timer) if it is not already running. Sets
-/// `started_at`/`modified` to now and returns `true` when the task transitioned
-/// from idle to active, `false` if it was already active. Used to auto-transition
-/// a task to "in progress" the first time work is recorded against it (a
-/// step marked done or a verification run), so status reflects reality without
-/// the caller remembering a separate `sara start`.
 pub fn ensure_started(conn: &Connection, task_uuid: &Uuid) -> Result<bool> {
     let now = dt_to_str(&Utc::now());
     let changed = conn.execute(
@@ -244,8 +222,6 @@ pub fn ensure_started(conn: &Connection, task_uuid: &Uuid) -> Result<bool> {
     )?;
     Ok(changed > 0)
 }
-
-// ── AI run audit trail ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct AiRun {
@@ -259,7 +235,6 @@ pub struct AiRun {
     pub total_tokens: Option<i64>,
 }
 
-/// Record one LLM interaction against a task; returns the run id.
 pub fn record_ai_run(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -315,9 +290,6 @@ pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
     Ok(rows)
 }
 
-// ── full guide JSON (single-query, via the task_guide view) ───────────────────
-
-/// Assemble the entire guide for a task as a JSON value in one query.
 pub fn guide_json(conn: &Connection, task_uuid: &Uuid) -> Result<serde_json::Value> {
     let raw: String = conn.query_row(
         "SELECT guide_json FROM task_guide WHERE uuid=?1",
@@ -327,8 +299,6 @@ pub fn guide_json(conn: &Connection, task_uuid: &Uuid) -> Result<serde_json::Val
     Ok(serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null))
 }
 
-// ── cross-task memory (FTS5 keyword search) ──────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct SearchHit {
     pub ref_kind: String,
@@ -336,9 +306,7 @@ pub struct SearchHit {
     pub text: String,
 }
 
-/// Keyword search across tasks/notes/anchors via the FTS5 index.
 pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
-    // Quote the query as an FTS5 string literal to tolerate arbitrary input.
     let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
     let mut stmt = conn.prepare(
         "SELECT ref_kind, task_uuid, text FROM search_index
@@ -357,11 +325,6 @@ pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<Sear
     Ok(rows)
 }
 
-/// Token-based AND search: each token is quoted individually and joined with
-/// spaces (FTS5 AND semantics). Unlike `search_fts`, this tolerates different
-/// word ordering and paraphrases — any row containing ALL the given tokens
-/// (in any order) is returned. Callers should strip stop words and cap the
-/// token list before calling to avoid over-constraining the query.
 pub fn search_fts_tokens(
     conn: &Connection,
     tokens: &[String],
@@ -370,7 +333,6 @@ pub fn search_fts_tokens(
     if tokens.is_empty() {
         return Ok(vec![]);
     }
-    // Each token quoted as an FTS5 string literal; space-join = AND.
     let fts_query = tokens
         .iter()
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
@@ -393,12 +355,6 @@ pub fn search_fts_tokens(
     Ok(rows)
 }
 
-/// Token-based OR search: like [`search_fts_tokens`] but tokens are joined with
-/// the FTS5 `OR` operator, so a row matching ANY meaningful token surfaces.
-/// Used as the loose Tier-3 fallback in recall — only when the phrase and the
-/// token-AND search both miss — so partial-vocabulary / paraphrased queries
-/// still return candidates instead of nothing. `ORDER BY rank` (bm25) floats
-/// the higher-coverage hits (more / rarer matching tokens) to the top.
 pub fn search_fts_tokens_or(
     conn: &Connection,
     tokens: &[String],
@@ -407,7 +363,6 @@ pub fn search_fts_tokens_or(
     if tokens.is_empty() {
         return Ok(vec![]);
     }
-    // Each token quoted as an FTS5 string literal; joined with OR.
     let fts_query = tokens
         .iter()
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))

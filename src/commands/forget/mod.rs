@@ -6,11 +6,6 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Print-free core shared by the CLI `forget` command and the MCP `forget` tool.
-/// If the memory being forgotten is canonical (has incoming `derived_from`
-/// links), its derived children are listed in the result so the caller can
-/// review/archive them — never auto-archived unless `cascade` is set, in
-/// which case they're archived too (one level: direct derived children only).
 pub fn forget_value(conn: &Connection, handle: &str, cascade: bool) -> Result<Value> {
     let item = db::get_item_by_handle(conn, handle)?;
     let derived: Vec<(String, uuid::Uuid)> = db::get_memory_links_to(conn, &item.uuid.to_string())
@@ -25,8 +20,6 @@ pub fn forget_value(conn: &Connection, handle: &str, cascade: bool) -> Result<Va
         .collect();
 
     db::archive_item(conn, &item.uuid)?;
-    // Drop any semantic-index entry too, so a forgotten memory can never
-    // resurface via `recall --semantic`.
     let _ = db::delete_embedding(conn, &item.uuid.to_string());
 
     let mut cascaded: Vec<String> = Vec::new();
@@ -48,8 +41,6 @@ pub fn forget_value(conn: &Connection, handle: &str, cascade: bool) -> Result<Va
     }))
 }
 
-/// `sara forget <label>` — archive a memory by its label (e.g. m3).
-/// `--cascade` also archives any memories `derived_from` it.
 pub fn run(conn: &Connection, handle: &str, cascade: bool) -> Result<()> {
     let v = forget_value(conn, handle, cascade)?;
     render::print_forgotten(&v, handle, cascade);

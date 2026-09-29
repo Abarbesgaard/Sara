@@ -2,8 +2,6 @@ use serde_json::Value;
 
 use crate::infrastructure::model::format_duration;
 
-/// Report the outcome of starting a timer — the started task, or that it was
-/// already running.
 pub(super) fn print_started(v: &Value) {
     if v["already_active"].as_bool().unwrap_or(false) {
         println!(
@@ -20,8 +18,6 @@ pub(super) fn print_started(v: &Value) {
     }
 }
 
-/// Report the outcome of stopping a timer — the session/total time and any
-/// branch-file snapshot, or that the task was not active.
 pub(super) fn print_stopped(v: &Value) {
     if !v["stopped"].as_bool().unwrap_or(false) {
         println!("Task {} is not active.", v["task"].as_i64().unwrap_or(0));

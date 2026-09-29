@@ -24,18 +24,15 @@ fn begin_founds_a_task_with_assignment_and_next_cursor() {
     .expect("begin succeeds");
 
     assert!(v["task"].as_i64().unwrap() > 0, "a task id is minted");
-    // Assignment defaults to the description when not given explicitly.
     assert_eq!(v["assignment"].as_str().unwrap(), "Fix the failing build");
     assert_eq!(
         v["rationale"].as_str().unwrap(),
         "the restore is red on NU1608"
     );
-    // The acceptance criterion is registered and carries its verify command.
     assert_eq!(
         v["acceptance"]["kind"].as_str().unwrap(),
         db::STEP_KIND_ACCEPTANCE
     );
-    // begin does NOT recall — it seeds a first recall STEP instead.
     assert!(
         v.get("recall").is_none() && v.get("finding").is_none(),
         "begin no longer auto-recalls: no recall/finding keys, got {v}"
@@ -45,8 +42,6 @@ fn begin_founds_a_task_with_assignment_and_next_cursor() {
         db::STEP_KIND_STEP,
         "a checklist step is seeded"
     );
-    // The seeded recall step is the execution cursor `next` returns, so
-    // prior art is the first thing the agent is directed to do.
     assert_eq!(
         v["next"]["text"].as_str().unwrap(),
         RECALL_STEP_TEXT,

@@ -4,9 +4,6 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
-/// Attach a file / code anchor (or a URL, which becomes a link) to a task,
-/// returning a structured record. Print-free core shared by the CLI `attach`
-/// command and the MCP `attach` tool.
 pub fn attach_value(
     conn: &Connection,
     id_or_uuid: &str,
@@ -17,8 +14,6 @@ pub fn attach_value(
     source: Option<&str>,
 ) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
-    // URLs become navigable/openable links; everything else is a file. Tag the
-    // link result with `kind` so every `attach` shape carries one (file/anchor/link).
     if db::is_url(path) {
         let mut v = super::link_value(conn, id_or_uuid, path, None)?;
         if let Some(obj) = v.as_object_mut() {
@@ -27,7 +22,6 @@ pub fn attach_value(
         return Ok(v);
     }
 
-    // A plain attach with no anchor metadata keeps the simple file-list behavior.
     let is_anchor = reason.is_some() || symbol.is_some() || lines.is_some() || source.is_some();
     if !is_anchor {
         let mut files = db::get_task_files(conn, &task.uuid)?;
@@ -83,7 +77,6 @@ pub fn attach(
     let v = attach_value(conn, id_or_uuid, path, reason, symbol, lines, source)?;
     let id = v["task"].as_i64().unwrap_or(0);
     if let Some(url) = v.get("url").and_then(|u| u.as_str()) {
-        // Delegated to link_value (URL path).
         println!("Linked task {id}: {url}");
     } else if v["kind"] == "anchor" {
         println!(

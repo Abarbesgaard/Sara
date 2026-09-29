@@ -6,8 +6,6 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Core shared by CLI and MCP. Resolves memory labels (e.g. "m7") to UUIDs,
-/// inserts the typed link, and returns structured output.
 pub fn link_memory_value(
     conn: &Connection,
     from_handle: &str,
@@ -36,11 +34,6 @@ pub fn link_memory_value(
     }))
 }
 
-/// `sara link-memory <from> <relation> <to> [--weight N]`
-///
-/// Examples:
-///   sara link-memory m12 supersedes m7
-///   sara link-memory m3 similar_to m8
 pub fn run(
     conn: &Connection,
     from_handle: &str,
@@ -53,14 +46,12 @@ pub fn run(
     Ok(())
 }
 
-/// `sara unlink-memory <from> <relation> <to>` — remove a specific typed edge.
 pub fn unlink(conn: &Connection, from_handle: &str, relation: &str, to_handle: &str) -> Result<()> {
     let v = unlink_value(conn, from_handle, relation, to_handle)?;
     render::print_unlinked(&v, from_handle, relation, to_handle);
     Ok(())
 }
 
-/// Core shared by CLI and MCP for unlink.
 pub fn unlink_value(
     conn: &Connection,
     from_handle: &str,

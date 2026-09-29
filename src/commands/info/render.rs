@@ -24,7 +24,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     let history_height: u16 = if d.history.is_empty() {
         0
     } else {
-        (d.history.len() as u16 + 2).min(6) // border (2) + up to 4 most-recent entries
+        (d.history.len() as u16 + 2).min(6)
     };
 
     let constraints = if st.editing || st.commenting || st.adding_step {
@@ -64,17 +64,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         if active { "  ● ACTIVE" } else { "" }
     );
 
-    // Wide enough to show the task-tree side panel — when it's shown, the
-    // plain "Blocked by"/"Blocking" text lists below are redundant (the tree
-    // already covers direct neighbors) and are skipped.
     let show_panel = chunks[0].width >= 96;
 
     let mut lines: Vec<Line> = vec![];
-    // Display-line range (start..=end, pre-wrap indices into `lines`) of the
-    // focused row, captured while building so the viewport can follow it.
     let mut sel_range: Option<(usize, usize)> = None;
 
-    // ── Editable fields
     for (i, field) in EDIT_FIELDS.iter().enumerate() {
         let selected = !st.editing && i == st.selected;
         let editing_this = st.editing && i == st.selected;
@@ -93,9 +87,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
-    // ── Read-only fields
-    // Status is only worth a row when it's not the boring default — a task
-    // open in this view is pending the overwhelming majority of the time.
     if t.status != crate::infrastructure::model::Status::Pending {
         lines.push(field_line("Status", &t.status.to_string()));
     }
@@ -111,7 +102,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     } else {
         "-".to_string()
     };
-    // Time spent / estimate on the same conceptual row
     {
         let estimate_str = t
             .estimate_mins
@@ -148,8 +138,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         ]));
     }
 
-    // Urgency: bare number by default, additive breakdown behind 'u' — the
-    // formula is only interesting when the score looks surprising.
     {
         let breakdown_str = if st.show_urgency_breakdown {
             urgency_breakdown_str(d)
@@ -171,7 +159,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         ]));
     }
 
-    // Entered, with the task's age folded in rather than its own row.
     {
         let age_days = (Utc::now() - t.entry).num_days();
         let age_str = if age_days == 0 {
@@ -203,9 +190,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             .to_string(),
     ));
 
-    // ── Guide: assignment / rationale / freshness banner ────────────
-    // Collapsed to ~2 lines by default (the full text is what most guides
-    // need at a glance); 'v' expands to the full text.
     if let Some(a) = &d.guide.assignment {
         lines.push(Line::from(vec![
             key_span("Assignment"),
@@ -242,8 +226,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         ]));
     }
 
-    // Compute selection once here so typed notes, anchors, comments and
-    // checklist can all reference it below.
     let items = focusables(d, st.show_notes);
     let sel: Option<Focusable> = if st.editing {
         None
@@ -252,13 +234,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     };
     let file_selected = |path: &str| sel == Some(Focusable::File(path.to_string()));
 
-    // ── Typed notes (findings, constraints, …) ───────────────────────────────
-    // Build a flat note list once so indices match Focusable::Note(i).
     let all_typed = typed_notes(d);
-    // One combined legend for every navigable section below, instead of
-    // repeating "↑/↓ select · c comment · r reconsider · x resolve" in each
-    // section's own header. Shown whenever there's a focusable item beyond
-    // the always-present editable metadata fields.
     if items.len() > EDIT_FIELDS.len() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -268,12 +244,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 .add_modifier(Modifier::ITALIC),
         )));
     }
-    // "Risks" always renders in full — it's the one typed-note kind that
-    // answers what a human reviewer actually wants (impact/what could go
-    // wrong), not the AI's own execution workpaper. Every other kind
-    // (findings, constraints, assumptions, decisions, …) collapses to a
-    // single counted summary line unless `show_notes` is toggled on.
-    let mut note_cursor: usize = 0; // tracks position in all_typed across kinds
+    let mut note_cursor: usize = 0;
     let mut hidden_note_counts: Vec<(&str, usize)> = Vec::new();
     for (label, kind) in [
         ("Risks", "risk"),
@@ -303,7 +274,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             let row_bg = if is_sel { Color::Blue } else { Color::Reset };
             let row_fg = if is_sel { Color::White } else { Color::Reset };
 
-            // Open comments targeting this note.
             let note_id_str = n.id.to_string();
             let note_fb: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
@@ -367,7 +337,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             }
             lines.push(Line::from(spans));
 
-            // Thread: show open comments indented beneath this note.
             for a in &note_fb {
                 let date = a.entry.with_timezone(&Local).format("%H:%M");
                 let flag = if a.request_revision { " ⟳" } else { "" };
@@ -381,10 +350,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 ]));
             }
         }
-        // note_cursor already advanced per-note above.
     }
-    // Sanity: note_cursor should equal all_typed.len() — unused but kept for
-    // clarity; the compiler will optimise it away.
     let _ = all_typed.len();
     if !hidden_note_counts.is_empty() {
         let total: usize = hidden_note_counts.iter().map(|(_, c)| c).sum();
@@ -405,9 +371,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         )));
     }
 
-    // On narrow terminals there's no room for the task-tree panel, so these
-    // stay as the only view of blockers/dependents; on wide terminals the
-    // tree already shows them (with more structure), so skip the duplicate.
     if !show_panel {
         if !d.blocked_by.is_empty() {
             lines.push(Line::from(""));
@@ -424,7 +387,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             }
         }
     }
-    // (sel / items / file_selected already computed above — before typed notes)
 
     if !d.links.is_empty() {
         lines.push(Line::from(""));
@@ -472,7 +434,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             lines.push(nav_line(file, Color::Cyan, false, selected));
         }
     }
-    // ── Code anchors: each is focusable, shows 💬/⟳ markers + threaded comments ──
     if !d.anchors.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("Possible relevant files"));
@@ -485,7 +446,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 ""
             };
 
-            // Threaded comments anchored to this file.
             let anchor_fb: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
@@ -556,7 +516,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             }
             lines.push(Line::from(spans));
 
-            // Thread: show comments anchored to this file, indented beneath it.
             for a in &anchor_fb {
                 let date = a.entry.with_timezone(&Local).format("%H:%M");
                 let resolved = a.status == "resolved";
@@ -584,9 +543,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
-    // ── Checklist (steps + acceptance criteria with intent + provenance)
     if !d.checklist.is_empty() {
-        // At-a-glance progress: steps done / total, acceptance done / total.
         let (mut steps_done, mut steps_total, mut acc_done, mut acc_total) = (0, 0, 0, 0);
         for it in &d.checklist {
             if it.kind == db::STEP_KIND_ACCEPTANCE {
@@ -632,7 +589,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             } else {
                 ("[ ]", Style::default())
             };
-            // Feedback markers for this step: comment count + reconsider flag.
             let target_k = if item.kind == db::STEP_KIND_ACCEPTANCE {
                 "acceptance"
             } else {
@@ -677,9 +633,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 sel_range = Some((lines.len(), lines.len()));
             }
             lines.push(Line::from(spans));
-            // Intent/verify/result/provenance detail is only shown for the
-            // selected row (or in verbose mode) — with many AI-authored steps
-            // this metadata otherwise buries the checklist itself.
             let show_detail = is_sel || st.verbose;
             if show_detail {
                 if let Some(intent) = &item.intent {
@@ -688,7 +641,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                         Style::default().fg(Color::DarkGray),
                     )));
                 }
-                // Verify command — how this step/criterion is checked.
                 if let Some(v) = &item.verify_cmd {
                     lines.push(Line::from(vec![
                         Span::styled(
@@ -698,14 +650,12 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                         Span::styled(v.clone(), Style::default().fg(Color::Blue)),
                     ]));
                 }
-                // Execution outcome recorded when the step was marked done.
                 if let Some(r) = &item.result {
                     lines.push(Line::from(vec![
                         Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
                         Span::styled(r.clone(), Style::default().fg(Color::Green)),
                     ]));
                 }
-                // Completion provenance: which commit / when the step was finished.
                 if item.done && (item.done_commit.is_some() || item.done_at.is_some()) {
                     let commit = item
                         .done_commit
@@ -726,7 +676,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     )));
                 }
             }
-            // Thread: show comments anchored to this step/acceptance, indented.
             for a in &fb {
                 let date = a.entry.with_timezone(&Local).format("%H:%M");
                 let flag = if a.request_revision { " ⟳" } else { "" };
@@ -742,15 +691,12 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
                 ]));
             }
-            // The selected step reveals its intent/verify/result detail and
-            // comment thread below the row — keep that block in view too.
             if is_sel && let Some((start, _)) = sel_range {
                 sel_range = Some((start, lines.len() - 1));
             }
         }
     }
 
-    // ── Verification: how to test/lint/run this task (project + task commands)
     let verif = verification_rows(d);
     if !verif.is_empty() {
         lines.push(Line::from(""));
@@ -769,7 +715,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
-    // ── AI activity (provenance footer)
     if !d.ai_runs.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("AI activity"));
@@ -786,8 +731,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             )));
         }
     }
-    // ── Similar tasks (shared tags, same project) — low-signal, so only the
-    // top few by urgency are shown; the rest collapse into a count.
     if !d.similar.is_empty() {
         const RELATED_SHOWN: usize = 3;
         let mut similar: Vec<&(i64, String, f64)> = d.similar.iter().collect();
@@ -813,7 +756,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             )));
         }
     }
-    // ── Comments section: task-level + replies only (anchored ones shown inline above) ─
     let all_comments: Vec<&crate::infrastructure::db::Annotation> = d
         .annotations
         .iter()
@@ -827,10 +769,8 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     if !unthreaded.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("Comments"));
-        // Build an index: comment-id -> annotation, for resolving note: replies.
         let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =
             all_comments.iter().map(|a| (a.id, *a)).collect();
-        // Build an index: checklist-item-id -> text, for resolving step/acceptance replies.
         let checklist_map: std::collections::HashMap<i64, &str> = d
             .checklist
             .iter()
@@ -918,12 +858,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
-    // History is rendered in its own box at the bottom — not in the main lines.
-
-    // Split the main content area horizontally when wide enough for the
-    // panel — the task tree goes first (leftmost): it's the "how does this
-    // fit together" orientation a reviewer wants before the task's own
-    // details, not an afterthought tucked off to the side.
     let (main_area, panel_area) = if show_panel {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -934,11 +868,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         (chunks[0], None)
     };
 
-    // ── Scroll-follow: keep the highlighted row in view ─────────────────
-    // Only when the selection actually moved (arrow keys / j/k / g/G) — a
-    // manual PageUp/PageDown scroll is left alone so the user can still
-    // peek around freely. `Paragraph::scroll` counts wrapped (visual) rows,
-    // so logical lines are measured at the pane's inner width.
     let inner_w = main_area.width.saturating_sub(2).max(1);
     let viewport = main_area.height.saturating_sub(2) as usize;
     let selection_moved = st.last_selected != Some(st.selected);
@@ -958,13 +887,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             if bottom > scroll + viewport {
                 scroll = bottom - viewport;
             }
-            // Applied second so the top of a taller-than-viewport block wins.
             if top < scroll {
                 scroll = top;
             }
             st.scroll = scroll.min(u16::MAX as usize) as u16;
         }
-        // Never leave the viewport scrolled past the end of the content.
         let total: usize = lines.iter().map(|l| wrapped_rows(l, inner_w)).sum();
         st.scroll = st
             .scroll
@@ -982,21 +909,10 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         .scroll((st.scroll, 0));
     f.render_widget(para, main_area);
 
-    // ── Task tree (top) + Git
     if let Some(panel) = panel_area {
-        // The task tree is always shown — it's the primary answer to "how is
-        // this task tied to others" — compact by default, 'd' expands it.
         let tree_lines = task_tree_lines(d, st);
-        // +2 for the panel's own border.
         let top_h: u16 = ((tree_lines.len() + 2) as u16).clamp(7, 24);
 
-        // The GitHub-style activity heatmap panel and the per-task project
-        // stats panel are both deprecated for now — kept out of the layout,
-        // not deleted (`render_mini_heatmap`/`render_project_stats` and
-        // `d.activity`/`d.stats` are still populated in case a project-wide
-        // command resurfaces them later). Project-wide stats aren't
-        // task-specific, so they didn't earn a permanent slot on a screen
-        // about *this* task.
         let panel_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(top_h), Constraint::Min(4)])
@@ -1027,9 +943,8 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         f.render_widget(git_para, panel_chunks[1]);
     }
 
-    // ── History box (pinned to bottom, above edit bar and footer)
     if history_height > 0 {
-        let hist_chunk = chunks[1]; // always chunk[1] when history is shown
+        let hist_chunk = chunks[1];
         let hist_lines = history_lines(&d.history);
         let hist_para = Paragraph::new(hist_lines)
             .block(
@@ -1042,7 +957,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         f.render_widget(hist_para, hist_chunk);
     }
 
-    // ── Add-step bar ────────────────────────────────────────────────────────
     if st.adding_step {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
         let block = Block::default()
@@ -1054,7 +968,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         f.render_widget(&st.editor, inner);
     }
 
-    // ── Comment bar (anchored to the focused element)
     if st.commenting {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
         let items = focusables(d, st.show_notes);
@@ -1073,7 +986,6 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         f.render_widget(&st.editor, inner);
     }
 
-    // ── Edit bar (chunk index depends on whether history box is present)
     if st.editing {
         let edit_chunk_idx = if history_height > 0 { 2 } else { 1 };
         let field = EDIT_FIELDS
@@ -1127,18 +1039,8 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     );
 }
 
-/// Inner width the task tree panel is laid out for (panel is a fixed
-/// `Constraint::Length(42)` column, minus 2 for the left/right border).
 const TREE_PANEL_WIDTH: usize = 40;
 
-/// Right-hand panel showing how this task is tied to others: every blocker
-/// recursively above (nearest hop first), the current task highlighted in
-/// the middle, every dependent recursively below — the primary answer to
-/// "how did earlier work lead here, and what does finishing this unblock".
-/// Replaces the old flat "feature chain" list, which flattened a branching
-/// DAG into a single line and lost that structure. Compact by default (2
-/// levels, a few siblings per node); 'd' expands to the tree's full fetched
-/// depth/fan-out.
 fn task_tree_lines(d: &Detail, st: &EditState) -> Vec<Line<'static>> {
     let (max_depth, max_children) = if st.tree_expanded {
         (usize::MAX, usize::MAX)
@@ -1226,11 +1128,6 @@ fn current_task_tree_line(task: &Task) -> Line<'static> {
     ])
 }
 
-/// Recursively append one line per node (`tree`-command style: `├─`/`└─`
-/// connectors, `│ `/`  ` continuation prefixes), capped per level at
-/// `max_children` siblings and `max_depth` levels — whatever's cut off by
-/// either cap collapses into a trailing "+N more" / "… (d to expand)" line
-/// rather than being silently dropped.
 fn push_tree_node_lines(
     lines: &mut Vec<Line<'static>>,
     nodes: &[GraphNode],
@@ -1311,10 +1208,6 @@ fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'stat
     Line::from(spans)
 }
 
-/// Badge label for a task's PR/issue links, mirroring `sara list`'s badge
-/// precedence (PR > issue > generic link). Kept local rather than reusing
-/// `commands::list`'s private `LinkBadge` type — command slices don't import
-/// each other; only the underlying data (`link_flags_by_task`) is shared.
 fn link_badge_label(flags: Option<&db::LinkFlags>) -> Option<&'static str> {
     let f = flags?;
     if f.pr {
@@ -1328,8 +1221,6 @@ fn link_badge_label(flags: Option<&db::LinkFlags>) -> Option<&'static str> {
     }
 }
 
-/// Project-wide stats panel — no longer wired into the layout (it isn't
-/// task-specific), kept for a possible future project-level command.
 #[allow(dead_code)]
 fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) {
     let block = Block::default()
@@ -1343,7 +1234,6 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
         return;
     };
 
-    // Mini bar: fill `width` chars proportionally
     let bar = |count: u32, total: u32, width: usize| -> String {
         if total == 0 {
             return " ".repeat(width);
@@ -1367,7 +1257,6 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
 
     let mut lines: Vec<Line> = vec![];
 
-    // Status counts
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<10}", "Pending"),
@@ -1406,7 +1295,6 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
         Style::default().fg(Color::DarkGray),
     )));
 
-    // Priority mini bars
     let pri_total = s.pending.max(1);
     lines.push(Line::from(vec![
         Span::styled(
@@ -1458,7 +1346,6 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
         Style::default().fg(Color::DarkGray),
     )));
 
-    // Due status
     if s.overdue > 0 {
         lines.push(Line::from(vec![
             Span::styled(
@@ -1516,17 +1403,14 @@ fn render_mini_heatmap(
     let max = counts.values().copied().max().unwrap_or(1).max(1);
     let today = Local::now().date_naive();
 
-    // Align to most recent Sunday
     let days_since_sunday = today.weekday().num_days_from_sunday();
     let grid_end = today - Duration::days(days_since_sunday as i64);
 
-    // Fit weeks into available inner width: label(4) + weeks * 3
-    let cell_w: u16 = 3; // "██ "
+    let cell_w: u16 = 3;
     let label_w: u16 = 4;
     let num_weeks = ((inner.width.saturating_sub(label_w)) / cell_w).clamp(4, 16) as i64;
     let grid_start = grid_end - Duration::weeks(num_weeks) + Duration::days(1);
 
-    // Month label row (row 0 of inner)
     {
         let mut spans: Vec<Span> = vec![Span::raw(format!(
             "{:<width$}",
@@ -1562,7 +1446,6 @@ fn render_mini_heatmap(
         f.render_widget(Paragraph::new(Line::from(spans)), month_area);
     }
 
-    // 7 day rows (1..=7 of inner)
     const DAY_LABELS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const SHOW_LABEL: [bool; 7] = [false, true, false, true, false, true, false];
 
@@ -1608,7 +1491,6 @@ fn render_mini_heatmap(
         f.render_widget(Paragraph::new(Line::from(spans)), row_area);
     }
 
-    // Stats line at the bottom
     let total: u32 = counts.values().sum();
     let stats_area = ratatui::layout::Rect {
         x: inner.x,
@@ -1662,8 +1544,6 @@ pub(super) fn history_lines(
             Span::styled(format!("  {date}  "), Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{:<11} ", label), Style::default().fg(Color::Cyan)),
         ];
-        // Additive fields render as +/− when exactly one side is set; a
-        // checklist toggle (both sides set) falls through to the arrow form.
         let additive = matches!(
             h.field.as_str(),
             "annotation" | "link" | "dependency" | "checklist" | "file"
@@ -1691,7 +1571,6 @@ pub(super) fn history_lines(
     lines
 }
 
-/// Build the content lines for the Git branch panel.
 fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = vec![];
 
@@ -1712,7 +1591,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
         return lines;
     };
 
-    // Branch name line
     lines.push(Line::from(vec![
         Span::styled("  Branch  ", Style::default().fg(Color::DarkGray)),
         Span::styled(
@@ -1768,7 +1646,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
                 Style::default().fg(Color::Yellow),
             )));
             for f in files.iter().take(MAX_FILES) {
-                // Show only filename for brevity; full path on hover isn't feasible in TUI
                 let name = std::path::Path::new(f)
                     .file_name()
                     .and_then(|n| n.to_str())
@@ -1792,7 +1669,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
         }
     }
 
-    // Overlap section
     if !d.overlaps.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -1832,10 +1708,6 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
     lines
 }
 
-/// Number of terminal rows a logical line occupies in the main paragraph
-/// once word-wrapped to `width` columns. A greedy estimate that mirrors
-/// ratatui's `WordWrapper` closely enough for scroll-follow — an off-by-one
-/// in a pathological wrap case only shifts the follow point by a row.
 fn wrapped_rows(line: &Line, width: u16) -> usize {
     let width = width.max(1) as usize;
     if line.width() <= width {
@@ -1850,7 +1722,6 @@ fn wrapped_rows(line: &Line, width: u16) -> usize {
         if used + sep + w <= width {
             used += sep + w;
         } else if w > width {
-            // A word wider than the pane hard-wraps mid-word.
             if used > 0 {
                 rows += 1;
             }
@@ -1877,7 +1748,6 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
-/// A selectable file/link row with a `›` marker when focused.
 fn nav_line<'a>(text: &str, color: Color, italic: bool, selected: bool) -> Line<'a> {
     let mut style = Style::default().fg(color);
     if italic {
@@ -1896,13 +1766,11 @@ fn nav_line<'a>(text: &str, color: Color, italic: bool, selected: bool) -> Line<
     ])
 }
 
-/// A single rendered row with optional selection highlight (blue bg).
 #[allow(dead_code)]
 fn sel_line<'a>(spans: Vec<Span<'a>>, selected: bool) -> Line<'a> {
     if !selected {
         return Line::from(spans);
     }
-    // Paint the entire row blue so it's unmissable.
     let highlighted: Vec<Span> = spans
         .into_iter()
         .map(|s| Span::styled(s.content, s.style.bg(Color::Blue).fg(Color::White)))
@@ -1914,7 +1782,6 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
     let (bg, fg) = if selected {
         (Color::Blue, Color::White)
     } else {
-        // Dim keys so they recede and the value (default color) stands out.
         (Color::Reset, Color::DarkGray)
     };
     let key_style = if selected {
@@ -1923,7 +1790,6 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
         Style::default().fg(fg)
     };
 
-    // Priority gets a colored value.
     let value_span = if field == EditField::Priority {
         match &task.priority {
             Some(Priority::H) => Span::styled("High", Style::default().fg(Color::Red)),
@@ -1974,7 +1840,6 @@ fn due_value_span<'a>(task: &Task, fallback: &str) -> Span<'a> {
     }
 }
 
-/// Human countdown text for a due date ("overdue by N days", "due today", …).
 fn due_countdown_str(days: i64) -> String {
     if days < 0 {
         format!(
@@ -1991,8 +1856,6 @@ fn due_countdown_str(days: i64) -> String {
     }
 }
 
-/// Additive urgency breakdown as "(pri 1.0 + due 2.0 + …)", empty when every
-/// component is zero.
 fn urgency_breakdown_str(d: &Detail) -> String {
     let Some(ref bd) = d.urgency_breakdown else {
         return String::new();
@@ -2029,11 +1892,6 @@ fn urgency_breakdown_str(d: &Detail) -> String {
     }
 }
 
-/// Collapse long free text to ~2 lines worth of characters with an ellipsis
-/// and an expand hint, unless `verbose` is set (then the full text passes
-/// through unchanged). Char-based rather than word-wrap-aware since the
-/// caller's `Paragraph` already wraps — this just bounds how much of a very
-/// long field shows before the reader has to opt in to more.
 fn collapsed_text(s: &str, verbose: bool) -> String {
     const COLLAPSED_CHARS: usize = 160;
     if verbose || s.chars().count() <= COLLAPSED_CHARS {
@@ -2044,7 +1902,6 @@ fn collapsed_text(s: &str, verbose: bool) -> String {
 }
 
 fn key_span(k: &str) -> Span<'static> {
-    // DarkGray keeps keys visually distinct from the (default-colored) value.
     Span::styled(format!("  {:<12}", k), Style::default().fg(Color::DarkGray))
 }
 

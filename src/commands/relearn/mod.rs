@@ -6,11 +6,6 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Print-free core shared by the CLI `relearn` command and the MCP `relearn`
-/// tool. Edits a memory in place — body, tags, and/or file associations —
-/// preserving its uuid, label, created date, status, task links, and memory
-/// links. This replaces the lossy `forget` + `learn` cycle for fixing a stale
-/// sentence or retagging.
 pub fn relearn_value(
     conn: &Connection,
     handle: &str,
@@ -52,20 +47,11 @@ pub fn relearn_value(
     item.modified = chrono::Utc::now();
     db::update_item(conn, &item)?;
 
-    // The body/title drives the semantic embedding. `update_item` re-indexes FTS
-    // via its trigger, but embeddings are only written explicitly — so an edited
-    // body would otherwise leave a stale vector and `recall --semantic` would
-    // keep matching the OLD text. Refresh it here whenever the body changed, but
-    // only for memories that were already indexed (preserving the learn-time
-    // decision to embed or not, without needing the Config).
     if text.is_some() && matches!(db::get_embedding(conn, &item.uuid.to_string()), Ok(Some(_))) {
         crate::infrastructure::embedding::index_memory(conn, &item);
     }
 
     if !files.is_empty() {
-        // Resolve to absolute exactly as `learn` and `recall` do. Storing the
-        // raw relative path here would make the memory invisible to
-        // `recall --file`, which resolves its argument before matching.
         let resolved: Vec<String> = files
             .iter()
             .map(|p| crate::infrastructure::project::resolve_file_link_here(p))
@@ -83,7 +69,6 @@ pub fn relearn_value(
     }))
 }
 
-/// `sara relearn <label> [--tag <t>]… [--file <f>]… [<new body text>]`
 pub fn run(
     conn: &Connection,
     handle: &str,
@@ -97,9 +82,6 @@ pub fn run(
     Ok(())
 }
 
-/// A short title for display, taken from the start of the memory text.
-/// Duplicated from the `learn` slice to keep the vertical-slice boundary
-/// the architecture tests enforce.
 fn summarize(text: &str) -> String {
     const MAX: usize = 80;
     let trimmed = text.trim();

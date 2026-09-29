@@ -11,12 +11,6 @@ use crate::infrastructure::portable::{
 
 mod render;
 
-/// Export a task (and its full dependency closure) to a portable copy-paste blob.
-///
-/// The root is resolved by display id or uuid prefix; its dependency closure
-/// (the task plus every transitive blocker) is serialized together so the bundle
-/// is self-contained and dependency edges survive the trip. When `output` is set
-/// the blob is written there; otherwise it is printed to stdout.
 pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
     let root = db::resolve_task(conn, id)?;
 
@@ -65,8 +59,6 @@ pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
             .map(|(path, source)| FileDto { path, source })
             .collect();
 
-        // Only keep dependency edges whose target is also in the closure (it
-        // always is, by construction) so the bundle is internally consistent.
         let blocked_by = db::get_dependency_uuids(conn, &task.uuid)?
             .into_iter()
             .filter(|d| closure.contains(d))

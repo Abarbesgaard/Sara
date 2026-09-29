@@ -5,17 +5,11 @@ use crate::infrastructure::db;
 use super::handler::{guide_is_stale, notes_of_kind, verification_rows};
 use super::types::Detail;
 
-/// Options controlling the readable digest renderers (`render_plain` /
-/// `render_markdown`). Defaults to the agent-friendly view: History collapsed.
 #[derive(Clone, Copy, Default)]
 pub(super) struct RenderOpts {
-    /// Include the full History log (collapsed to a one-line summary otherwise).
     pub(super) history: bool,
 }
 
-/// Best-effort terminal column width for wrapping long comment bodies; falls
-/// back to a readable default when stdout isn't a real terminal (the common
-/// case for this renderer — piped into an agent or `--plain`).
 fn terminal_width() -> usize {
     crossterm::terminal::size()
         .map(|(cols, _)| cols as usize)
@@ -23,9 +17,6 @@ fn terminal_width() -> usize {
         .clamp(60, 100)
 }
 
-/// Word-wrap `text` into lines prefixed with `indent`, so a long comment body
-/// reads as a short paragraph instead of one unbroken line. Preserves blank
-/// lines already present in the source as paragraph breaks.
 fn wrap_body(text: &str, indent: &str, width: usize) -> Vec<String> {
     let avail = width.saturating_sub(indent.len()).max(20);
     let mut lines = Vec::new();
@@ -53,9 +44,6 @@ fn wrap_body(text: &str, indent: &str, width: usize) -> Vec<String> {
     lines
 }
 
-/// Render the readable plain-text digest of a task — the single source of truth
-/// shared by the non-TTY fallback, `sara info --plain`, and (later) the MCP
-/// server. History is collapsed by default to keep agent token usage low.
 pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -101,7 +89,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     w!("{:<14}{:.1}", "Urgency", t.urgency);
     w!("{:<14}{}", "UUID", t.uuid);
 
-    // ── Guide ───────────────────────────────────────────────────────
     if let Some(a) = &d.guide.assignment {
         w!("{:<14}{}", "Assignment", a);
     }
@@ -119,7 +106,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         w!("{:<14}validated @ {}", "Freshness", v);
     }
 
-    // Steps (with intent + result).
     let steps: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
@@ -155,7 +141,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Acceptance criteria.
     let acceptance: Vec<&crate::infrastructure::db::ChecklistItem> = d
         .checklist
         .iter()
@@ -169,7 +154,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Verification commands (project + task-level).
     let verif = verification_rows(d);
     if !verif.is_empty() {
         w!("\nVerification:");
@@ -178,7 +162,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Typed AI/human notes grouped by kind.
     for (label, kind) in [
         ("Findings", "finding"),
         ("Constraints", "constraint"),
@@ -199,7 +182,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Code anchors (relevant files with reasons).
     let suggested: Vec<&crate::infrastructure::db::Anchor> = d
         .anchors
         .iter()
@@ -233,9 +215,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     for file in &d.manual_files {
         w!("{:<14}{}", "File", file);
     }
-    // Comments (human feedback), with anchor + reconsider markers. Each
-    // comment gets its own header line (id/target/flags/date) followed by
-    // the wrapped body on indented lines, so long text stays scannable.
     let comments = notes_of_kind(d, "comment");
     if !comments.is_empty() {
         w!("\nComments:");
@@ -265,7 +244,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
             }
         }
     }
-    // AI activity footer.
     if !d.ai_runs.is_empty() {
         w!("\nAI activity:");
         for r in &d.ai_runs {
@@ -279,7 +257,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
             );
         }
     }
-    // History — collapsed to a one-line summary unless explicitly requested.
     if opts.history {
         for h in &d.history {
             w!(
@@ -299,7 +276,6 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     out
 }
 
-/// Format a single history entry's timestamp for the readable digest.
 pub(super) fn history_changed_at(h: &crate::infrastructure::db::HistoryEntry) -> String {
     h.changed_at
         .with_timezone(&Local)
@@ -307,7 +283,6 @@ pub(super) fn history_changed_at(h: &crate::infrastructure::db::HistoryEntry) ->
         .to_string()
 }
 
-/// Describe a single history entry as a one-line change summary.
 pub(super) fn history_change(h: &crate::infrastructure::db::HistoryEntry) -> String {
     if h.field == "created" {
         h.new_value.clone().unwrap_or_default()
@@ -327,9 +302,6 @@ pub(super) fn history_change(h: &crate::infrastructure::db::HistoryEntry) -> Str
     }
 }
 
-/// Render a Markdown digest of a task — description, steps and acceptance
-/// criteria as checkboxes, plus the key context sections. Suitable for embedding
-/// in agent context or a PR body. Shares `RenderOpts` with `render_plain`.
 pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -415,7 +387,6 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Typed AI/human notes grouped by kind.
     for (label, kind) in [
         ("Findings", "finding"),
         ("Constraints", "constraint"),
@@ -480,7 +451,6 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    // Human comments — high-signal direction for an agent; flag reconsider/open.
     let comments = notes_of_kind(d, "comment");
     if !comments.is_empty() {
         w!();

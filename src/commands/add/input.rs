@@ -8,9 +8,6 @@ use crate::infrastructure::project::{detect_current_project, parse_add_tokens};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
-/// Parse and resolve all add-command inputs, run the interactive form if needed,
-/// and return the completed `FormInput` plus the recur interval (if any).
-/// Returns `None` when the user cancels the form.
 pub(super) fn resolve(
     conn: &Connection,
     cfg: &Config,
@@ -27,7 +24,6 @@ pub(super) fn resolve(
         anyhow::bail!("Task description cannot be empty");
     }
 
-    // Flags override inline tokens
     if let Some(p) = project_override {
         parsed.project = Some(p.to_string());
     }
@@ -39,7 +35,6 @@ pub(super) fn resolve(
         parsed.recur = Some(r.to_string());
     }
 
-    // Resolve project
     let (project_name, _path) = if let Some(ref p) = parsed.project {
         let path_opt = db::get_project(conn, p)?.and_then(|pr| pr.path);
         db::upsert_project_seen(conn, p, path_opt.as_deref())?;

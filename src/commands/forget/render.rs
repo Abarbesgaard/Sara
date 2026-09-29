@@ -1,7 +1,5 @@
 use serde_json::Value;
 
-/// Print the outcome of a `forget` — the archived memory plus any derived
-/// children that were cascaded or that remain and need review.
 pub(super) fn print_forgotten(v: &Value, handle: &str, cascade: bool) {
     println!(
         "Forgot {}: archived.",

@@ -1,5 +1,3 @@
-//! Unit tests for db::memory.
-
 use super::*;
 use crate::infrastructure::db::*;
 use crate::infrastructure::model::{Item, Status, Task};
@@ -13,7 +11,6 @@ fn embedding_upsert_roundtrip() {
     upsert_embedding(&conn, &uuid, &v).unwrap();
     assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v.clone()));
 
-    // Upsert replaces (does not duplicate).
     let v2 = vec![1.0_f32, 2.0, 3.0, 4.0];
     upsert_embedding(&conn, &uuid, &v2).unwrap();
     assert_eq!(get_embedding(&conn, &uuid).unwrap(), Some(v2.clone()));
@@ -39,9 +36,7 @@ fn active_embeddings_excludes_archived_memories() {
     upsert_embedding(&conn, &dead.uuid.to_string(), &[0.4_f32, 0.5, 0.6]).unwrap();
     archive_item(&conn, &dead.uuid).unwrap();
 
-    // The whole table still holds both vectors...
     assert_eq!(all_embeddings(&conn).unwrap().len(), 2);
-    // ...but the active-only scan (what recall ranks) sees only the live one.
     let active = active_embeddings(&conn).unwrap();
     assert_eq!(active.len(), 1);
     assert_eq!(active[0].0, live.uuid.to_string());
@@ -51,12 +46,10 @@ fn active_embeddings_excludes_archived_memories() {
 fn find_items_by_file_prefix_escapes_underscore_wildcard() {
     let conn = mem();
 
-    // A memory attached under a directory containing an underscore.
     let mut hit = make_memory("in the underscore dir", &[]);
     insert_item(&conn, &mut hit).unwrap();
     set_item_files(&conn, &hit.uuid, &["/repo/foo_bar/x.rs".into()]).unwrap();
 
-    // A memory under a sibling dir that only matches if `_` is a wildcard.
     let mut miss = make_memory("in the wildcard-collision dir", &[]);
     insert_item(&conn, &mut miss).unwrap();
     set_item_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
@@ -192,7 +185,6 @@ fn promote_item_activates_only_provisional() {
         .unwrap();
     assert_eq!(status, "active");
 
-    // Second promote is a no-op
     assert!(!promote_item(&conn, &item.uuid).unwrap());
 }
 
@@ -313,19 +305,15 @@ fn get_item_by_handle_resolves_display_handle_and_uuid_prefix() {
     item.uuid = uuid::Uuid::parse_str("abcd1234-0000-0000-0000-00000000000a").unwrap();
     insert_item(&conn, &mut item).unwrap();
 
-    // Display handle still works.
     let by_handle = get_item_by_handle(&conn, &format!("m{}", item.display_id.unwrap())).unwrap();
     assert_eq!(by_handle.uuid, item.uuid);
 
-    // Full uuid works.
     let by_uuid = get_item_by_handle(&conn, &item.uuid.to_string()).unwrap();
     assert_eq!(by_uuid.uuid, item.uuid);
 
-    // 8-char uuid prefix (as the MCP link-memory docs advertise) works.
     let by_prefix = get_item_by_handle(&conn, "abcd1234").unwrap();
     assert_eq!(by_prefix.uuid, item.uuid);
 
-    // A non-matching prefix is a clean error.
     assert!(get_item_by_handle(&conn, "ffffffff").is_err());
 }
 
@@ -339,7 +327,6 @@ fn get_item_by_handle_errors_on_ambiguous_uuid_prefix() {
     b.uuid = uuid::Uuid::parse_str("dead1111-0000-0000-0000-00000000000b").unwrap();
     insert_item(&conn, &mut b).unwrap();
 
-    // "dead" matches both — must error, not silently pick one.
     assert!(
         get_item_by_handle(&conn, "dead").is_err(),
         "ambiguous uuid prefix must error instead of arbitrarily returning one item"
@@ -498,7 +485,6 @@ fn set_item_files_rolls_back_when_an_insert_fails() {
     )
     .unwrap();
 
-    // Stand in for a real mid-loop failure (SQLITE_BUSY, disk-full, I/O).
     conn.execute_batch(
         "CREATE TRIGGER boom BEFORE INSERT ON item_files
              WHEN NEW.file_path = '/a/BOOM.rs'
@@ -550,10 +536,6 @@ fn set_item_tags_rolls_back_when_an_insert_fails() {
     assert_eq!(tags, vec!["keep".to_string()]);
 }
 
-/// `import` calls `set_task_files_sourced` with an already-open
-/// transaction. The atomicity guard must nest (SAVEPOINT), not issue a
-/// nested BEGIN, which SQLite rejects.
-
 #[test]
 fn set_helpers_work_inside_an_existing_transaction() {
     let mut conn = open_in_memory_for_test();
@@ -573,8 +555,6 @@ fn set_helpers_work_inside_an_existing_transaction() {
     );
 }
 
-/// Same allocation race for memory labels (m1, m2, …): two agents running
-/// `sara learn` concurrently must not both be handed `m1`.
 #[test]
 fn concurrent_memory_inserts_get_distinct_labels() {
     let dir = std::env::temp_dir().join(format!("sara-race-{}", uuid::Uuid::new_v4()));

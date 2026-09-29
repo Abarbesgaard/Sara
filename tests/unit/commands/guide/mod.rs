@@ -6,11 +6,6 @@ fn cfg() -> Config {
     Config::default()
 }
 
-/// Render a path for embedding in an `sh` command line. On Windows,
-/// `Path::display` yields backslashes, which the shell (Git-bash `sh`)
-/// strips as escapes — so a marker written by the command lands at the wrong
-/// place and the test cannot read it back. Forward slashes are accepted by
-/// `sh` on every platform and keep the path intact.
 fn sh_arg(p: &std::path::Path) -> String {
     p.display().to_string().replace('\\', "/")
 }
@@ -20,12 +15,10 @@ fn next_surfaces_a_strong_relevant_memory() {
     use crate::infrastructure::model::Item;
     let conn = db::open_in_memory_for_test();
 
-    // A completed source task lifts memories derived from it to Strong (2.0).
     let mut src = Task::new("source work".into(), "proj".into());
     src.status = crate::infrastructure::model::Status::Completed;
     db::insert_task(&conn, &mut src).unwrap();
 
-    // A Strong memory tagged `dependabot`, derived from the completed task.
     let mut mem = Item::new_memory(
         "dependabot bump restore pattern".into(),
         "dependabot bump broke restore; align versions".into(),
@@ -36,7 +29,6 @@ fn next_surfaces_a_strong_relevant_memory() {
     db::insert_item(&conn, &mut mem).unwrap();
     db::set_item_tags(&conn, &mem.uuid, &["dependabot".into()]).unwrap();
 
-    // The current task shares the tag, so the memory is relevant to it.
     let mut task = Task::new("do the dependabot bump".into(), "proj".into());
     task.tags = vec!["dependabot".into()];
     db::insert_task(&conn, &mut task).unwrap();
@@ -89,7 +81,6 @@ fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
     let conn = db::open_in_memory_for_test();
     let mut task = Task::new("demo".into(), "proj".into());
     db::insert_task(&conn, &mut task).unwrap();
-    // Two acceptance criteria: one whose verify passes, one that fails.
     db::add_step(
         &conn,
         &task.uuid,
@@ -122,7 +113,6 @@ fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
         "criterion whose verify_cmd fails stays unticked"
     );
 
-    // Running a check auto-transitions the task to active.
     let reloaded = db::get_task_by_uuid_prefix(&conn, &id).unwrap().unwrap();
     assert!(reloaded.started_at.is_some());
 }
@@ -186,10 +176,6 @@ fn gate_red_when_no_acceptance_criteria_exist() {
 
 #[test]
 fn capture_mode_collects_command_output_instead_of_printing_it() {
-    // The MCP stdio transport carries JSON-RPC only, so a verify command's
-    // own output must never reach stdout. Under Capture it lands in the
-    // transcript instead — this is the regression guard for the bug where
-    // `cargo test` output corrupted the JSON-RPC stream.
     let conn = db::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, Some("echo MARKER_ON_STDOUT; exit 1"));
     let gate =
@@ -219,7 +205,6 @@ fn capture_mode_records_stderr_too() {
     assert!(gate.transcript[0].output.contains("OOPS"));
 }
 
-/// Init a throwaway git repo with a single commit; return (repo dir, short HEAD).
 fn init_git_repo() -> (std::path::PathBuf, String) {
     let dir = std::env::temp_dir().join(format!("sara-gate-git-{}", uuid::Uuid::new_v4()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -243,8 +228,6 @@ fn init_git_repo() -> (std::path::PathBuf, String) {
 
 #[test]
 fn gate_deduplicates_identical_verify_commands() {
-    // Three criteria sharing one verify command should run it once and apply
-    // the result to all three.
     let conn = db::open_in_memory_for_test();
     let marker = std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
     let _ = std::fs::remove_file(&marker);
@@ -277,8 +260,6 @@ fn gate_deduplicates_identical_verify_commands() {
 
 #[test]
 fn gate_caches_criteria_already_proven_at_head() {
-    // A criterion already done at the current HEAD, with a clean tree, is
-    // reused from cache: its verify command must NOT run again.
     let conn = db::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
     let marker = std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
@@ -298,7 +279,6 @@ fn gate_caches_criteria_already_proven_at_head() {
         Some(&cmd),
     )
     .unwrap();
-    // Pre-prove it at the current HEAD.
     db::set_step_done(&conn, sid, true, Some("pre"), Some(&head)).unwrap();
 
     let gate =
@@ -308,7 +288,6 @@ fn gate_caches_criteria_already_proven_at_head() {
     assert_eq!(gate.ran, 0, "cached criterion is not executed");
     assert!(!marker.exists(), "verify command must not run when cached");
 
-    // --fresh forces a real re-run.
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, true).unwrap();
     assert_eq!(gate.cached, 0, "--fresh ignores the cache");
@@ -321,8 +300,6 @@ fn gate_caches_criteria_already_proven_at_head() {
 
 #[test]
 fn gate_bypasses_cache_when_tree_is_dirty() {
-    // Same setup, but an uncommitted change means HEAD no longer describes
-    // what's on disk — the cache must be bypassed and the command re-run.
     let conn = db::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
     let marker = std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
@@ -344,7 +321,6 @@ fn gate_bypasses_cache_when_tree_is_dirty() {
     .unwrap();
     db::set_step_done(&conn, sid, true, Some("pre"), Some(&head)).unwrap();
 
-    // Dirty the working tree (uncommitted file).
     std::fs::write(repo.join("dirty.txt"), "x").unwrap();
 
     let gate =
@@ -362,7 +338,6 @@ fn gate_bypasses_cache_when_tree_is_dirty() {
 
 #[test]
 fn captured_output_is_truncated_on_a_char_boundary() {
-    // Multibyte output must not panic the truncation, and must stay bounded.
     let long = "é".repeat(5000);
     let out = tail_limited(&long, 4000);
     assert!(out.contains("truncated"));
@@ -393,7 +368,6 @@ fn step_done_value_reports_activation_on_first_work() {
         "first recorded work activates the task"
     );
 
-    // A second step-done on an already-active task does not re-activate.
     db::add_step(
         &conn,
         &task.uuid,

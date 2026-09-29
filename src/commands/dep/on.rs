@@ -5,8 +5,6 @@ use serde_json::{Value, json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
-/// Add a dependency (task `id` becomes blocked by `other`), returning a structured
-/// record. Print-free core shared by the CLI `dep on` and the MCP `dep` tool.
 pub fn dep_on_value(conn: &Connection, cfg: &Config, id: &str, other: &str) -> Result<Value> {
     let task = db::resolve_task(conn, id)?;
     let dep = db::resolve_task(conn, other)?;

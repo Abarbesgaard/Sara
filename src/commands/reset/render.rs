@@ -6,8 +6,6 @@ pub(super) fn print_nothing_to_reset(name: &str) {
     println!("Nothing to reset: project '{name}' has no tasks or profile.");
 }
 
-/// Show what a reset will delete and require the user to type the project name.
-/// Returns true only when the typed name matches exactly.
 pub(super) fn confirm(name: &str, task_count: usize) -> Result<bool> {
     println!(
         "This will permanently delete project '{name}':\n  \

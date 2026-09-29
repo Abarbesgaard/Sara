@@ -17,12 +17,8 @@ use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::{BoardAction, BoardState, IssueNode};
 
-/// Fixed rows consumed outside the scrollable task list: 6 header lines
-/// (stats, progress, blank, priority label, priority legend, blank) + 2
-/// box borders + 1 in-box column header + 1 footer line.
 const FIXED_OVERHEAD: u16 = 10;
 
-/// One selectable row in the flattened, expansion-aware tree.
 #[derive(Clone, Copy)]
 pub(super) enum Row {
     Issue(usize),
@@ -30,7 +26,6 @@ pub(super) enum Row {
     Standalone(usize),
 }
 
-/// Flatten the tree into the rows currently on screen.
 pub(super) fn visible_rows(st: &BoardState) -> Vec<Row> {
     let mut rows = Vec::new();
     for (gi, issue) in st.issues.iter().enumerate() {
@@ -211,8 +206,6 @@ fn badge_for(st: &BoardState, task: &Task) -> Span<'static> {
     board_badge_span(flags, synced)
 }
 
-/// Always returns a fixed-`BADGE_W`-wide span (blank when there's nothing to
-/// show) so the description column starts at the same x on every row.
 fn board_badge_span(flags: LinkFlags, synced: bool) -> Span<'static> {
     let (label, color) = if flags.pr {
         ("PR", Color::Magenta)
@@ -234,36 +227,15 @@ fn board_badge_span(flags: LinkFlags, synced: bool) -> Span<'static> {
     }
 }
 
-// ── Column layout ────────────────────────────────────────────────────────────
-//
-// Fixed-width columns shared by every row (issue header, nested task,
-// standalone task) and the header line, so the eye can scan straight down
-// each column instead of hunting for it on every row:
-//
-//  col 0          : selection marker (1)   ▶ or space
-//  col 1..1+TREE_W: tree connector          ▾/▸ / ├─ / └─ / blank
-//  ID_W            right-aligned task id
-//  2-space separator
-//  PRI_W            colored priority chip (background fill, not just text)
-//  1-space separator
-//  AGE_W            age since creation, left-aligned
-//  2-space separator
-//  BADGE_W          PR/ISS/link badge, always reserved so it never shifts
-//                   the description column
-//  DESCRIPTION      remaining width
-
 const TREE_W: usize = 3;
 const ID_W: usize = 3;
 const PRI_W: usize = 3;
 const AGE_W: usize = 7;
 const BADGE_W: usize = 5;
 
-/// Column header line, built from the exact same widths as the data rows so
-/// the labels always land directly above their column, however the widths
-/// above are tuned.
 fn col_header_line() -> Line<'static> {
     let mut s = String::new();
-    s.push(' '); // selection marker column
+    s.push(' ');
     s.push_str(&" ".repeat(TREE_W));
     s.push_str(&format!("{:>w$}", "ID", w = ID_W));
     s.push_str("  ");
@@ -296,10 +268,6 @@ fn age_str(entry: DateTime<Utc>) -> String {
     }
 }
 
-/// A `PRI_W`-wide priority chip with a solid background fill — a color you
-/// can scan for down the column, rather than dim foreground text that's easy
-/// to miss at a glance. Selection always wins (flat white-on-blue) so the
-/// chip doesn't fight the row highlight.
 fn priority_chip(pri: Option<&Priority>, is_sel: bool, row_bg: Color) -> Span<'static> {
     let label = match pri {
         Some(Priority::H) => "H",
@@ -343,13 +311,7 @@ fn priority_chip(pri: Option<&Priority>, is_sel: bool, row_bg: Color) -> Span<'s
     }
 }
 
-/// Issue-group header row, tinted with a subtle full-row background so groups
-/// read as section dividers at a glance instead of blending into their child
-/// rows. Fills PRI with the highest priority across visible tasks, AGE with
-/// the oldest entry timestamp, so every column stays populated.
 fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
-    // Subtle indigo tint distinguishes a group header from its plain-background
-    // child task rows without competing with the blue selection highlight.
     let bg = if is_sel {
         Color::Blue
     } else {
@@ -425,10 +387,6 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
     ])
 }
 
-/// `connector`: `Some("├─")` / `Some("└─")` for nested tasks, `None` for
-/// standalone. Nested tasks get one extra leading space beyond the tree
-/// connector so they visibly indent past their issue header instead of
-/// lining up flush with it.
 fn task_line_for(
     task: &Task,
     is_sel: bool,
@@ -438,8 +396,8 @@ fn task_line_for(
     let bg = if is_sel { Color::Blue } else { Color::Reset };
     let sel_ch = if is_sel { "▶" } else { " " };
     let tree = match connector {
-        Some(c) => format!(" {c}"), // nested: extra indent + connector (3 wide)
-        None => " ".repeat(TREE_W), // standalone: blank (3 wide)
+        Some(c) => format!(" {c}"),
+        None => " ".repeat(TREE_W),
     };
     let id_str = task
         .id
@@ -493,8 +451,6 @@ fn task_line_for(
     Line::from(spans)
 }
 
-// ── Header widgets ────────────────────────────────────────────────────────────
-
 fn active_count(st: &BoardState) -> usize {
     st.issues
         .iter()
@@ -525,7 +481,6 @@ fn next_task_label(st: &BoardState) -> String {
     }
 }
 
-/// Stats row: cyan brackets, dimmed labels, bold-white values.
 fn render_stats(f: &mut Frame, st: &BoardState, area: Rect) {
     let total = st.pending + st.done;
     let active = active_count(st);
@@ -576,7 +531,6 @@ fn render_stats(f: &mut Frame, st: &BoardState, area: Rect) {
     f.render_widget(Paragraph::new(Line::from(right_spans)), chunks[1]);
 }
 
-/// Full-width progress bar: filled/empty blocks with a trailing percentage.
 fn render_progress_bar(f: &mut Frame, st: &BoardState, area: Rect) {
     let total = st.pending + st.done;
     let pct = st.done.saturating_mul(100).checked_div(total).unwrap_or(0);
@@ -605,9 +559,6 @@ fn render_progress_bar(f: &mut Frame, st: &BoardState, area: Rect) {
     f.render_widget(Paragraph::new(line), area);
 }
 
-/// Priority legend, mirroring htop's "Languages:" line: a label line followed
-/// by a row of `NAME [swatch] NN%` entries. Each swatch is a small fixed-width
-/// color block (a legend key, not a proportional bar) — matching htop's style.
 fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
     let label_area = Rect { height: 1, ..area };
     let legend_area = Rect {
@@ -684,13 +635,13 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // stats
-            Constraint::Length(1), // progress bar
-            Constraint::Length(1), // blank
-            Constraint::Length(2), // priority legend (label + swatch row)
-            Constraint::Length(1), // blank
-            Constraint::Min(3),    // bordered task list box
-            Constraint::Length(1), // navigation footer
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(3),
+            Constraint::Length(1),
         ])
         .split(area);
 

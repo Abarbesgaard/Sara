@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-/// Run `git -C <repo>` with the given args. Returns trimmed stdout or an error.
 fn git_output(repo: &Path, args: &[&str]) -> Result<String> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -24,7 +23,6 @@ fn git_output(repo: &Path, args: &[&str]) -> Result<String> {
     }
 }
 
-/// Return the currently checked-out branch name, or None if detached HEAD / not a repo.
 pub fn current_branch(repo: &Path) -> Option<String> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -36,14 +34,9 @@ pub fn current_branch(repo: &Path) -> Option<String> {
         return None;
     }
     let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if branch == "HEAD" {
-        None // detached HEAD
-    } else {
-        Some(branch)
-    }
+    if branch == "HEAD" { None } else { Some(branch) }
 }
 
-/// Return the current HEAD commit SHA (short), or None if not a repo.
 pub fn head_commit(repo: &Path) -> Option<String> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -58,14 +51,6 @@ pub fn head_commit(repo: &Path) -> Option<String> {
     if sha.is_empty() { None } else { Some(sha) }
 }
 
-/// Return `Some(true)` if the working tree is clean (no staged, unstaged, or
-/// untracked changes), `Some(false)` if it is dirty, or `None` if git status
-/// cannot be determined (not a repo, git missing, command failed).
-///
-/// Used by the acceptance gate: a verify result may only be trusted from cache
-/// when the tree exactly matches the commit the criterion was proven at. Any
-/// uncommitted change means HEAD no longer describes what's on disk, so the
-/// cache must be bypassed and the command re-run.
 pub fn is_clean(repo: &Path) -> Option<bool> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -79,18 +64,14 @@ pub fn is_clean(repo: &Path) -> Option<bool> {
     Some(String::from_utf8_lossy(&out.stdout).trim().is_empty())
 }
 
-/// Heuristic: find the most likely base branch for comparison.
-/// Prefers the default remote branch, then falls back to main/master.
 pub fn default_base(repo: &Path) -> String {
-    // Try remote HEAD symbolic ref
     if let Ok(out) = git_output(
         repo,
         &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
     ) && !out.is_empty()
     {
-        return out; // e.g. "origin/main"
+        return out;
     }
-    // Fall back to first existing of main / master (local)
     for candidate in ["main", "master"] {
         if git_output(repo, &["rev-parse", "--verify", candidate]).is_ok() {
             return candidate.to_string();
@@ -99,12 +80,6 @@ pub fn default_base(repo: &Path) -> String {
     "main".to_string()
 }
 
-/// Parse "owner" and "repo" from a GitHub remote URL.
-///
-/// Supports:
-///   - SSH:   `git@github.com:owner/repo.git`
-///   - HTTPS: `https://github.com/owner/repo[.git]`
-///   - HTTP:  `http://github.com/owner/repo[.git]`
 pub fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
     let url = url.trim();
     let stripped = url
@@ -122,12 +97,6 @@ pub fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
     Some((owner, repo))
 }
 
-/// Resolve the GitHub `owner/repo` by reading the `origin` remote URL from the
-/// given git repository root.
-///
-/// Errors with a message explaining what Sara expected when:
-/// - The repository has no `origin` remote.
-/// - The `origin` URL is not a recognised GitHub remote form.
 pub fn github_repo_from_remote(repo_root: &Path) -> Result<(String, String)> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -154,10 +123,7 @@ pub fn github_repo_from_remote(repo_root: &Path) -> Result<(String, String)> {
     })
 }
 
-/// Return `(base_ref, changed_file_paths)` for the given branch relative to
-/// the auto-detected base. Uses three-dot diff (since merge-base).
 pub fn changed_files(repo: &Path, branch: &str) -> Result<(String, Vec<String>)> {
-    // Verify branch exists
     git_output(repo, &["rev-parse", "--verify", branch])
         .with_context(|| format!("branch '{}' not found", branch))?;
 

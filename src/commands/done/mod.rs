@@ -10,9 +10,6 @@ use crate::infrastructure::model::{Status, Task};
 mod types;
 use types::DoneGate;
 
-/// Decide whether a task is provably done. Compares its stored `validated_commit`
-/// against the project's current HEAD, and treats a task with no acceptance
-/// criteria as an advisory (there is nothing to validate) rather than a block.
 fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
     let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
     if acceptance.is_empty() {
@@ -39,14 +36,10 @@ fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
     }
 }
 
-/// Complete a task and return a structured record of what happened (including any
-/// spawned recurrence). Print-free core shared by the CLI `done` command and the
-/// MCP `done` tool. Errors if the task is blocked and `force` is false.
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
     crate::commands::guide::guard_branch_mutation(conn, id_or_uuid, &task, force)?;
 
-    // Check blockers
     let blockers = db::get_blockers(conn, &task.uuid)?;
     if !blockers.is_empty() && !force {
         let blocker_ids: Vec<String> = blockers
@@ -67,11 +60,6 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         );
     }
 
-    // Fail-closed validation gate: a task that declares a definition of done
-    // (acceptance criteria) must have those proven green by `validate` before it
-    // can close. `force` overrides. A task with no acceptance criteria passes
-    // with an advisory. Runs after the blocker check and before any mutation, so
-    // a refusal leaves the task untouched.
     let mut validation_note = Value::Null;
     match done_gate(conn, &task)? {
         DoneGate::Refuse(reason) => {
@@ -94,7 +82,6 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         DoneGate::Ok => {}
     }
 
-    // Finalize any running timer
     if let Some(started) = task.started_at {
         task.time_spent += (Utc::now() - started).num_seconds().max(0);
         task.started_at = None;
@@ -105,16 +92,13 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     task.modified = Utc::now();
     db::update_task(conn, &task)?;
 
-    // Repack display IDs
     db::repack_ids(conn)?;
 
-    // Refresh urgency for tasks that were blocking on this one
     let was_blocking = db::get_blocking(conn, &task.uuid)?;
     for dep_uuid in was_blocking {
         let _ = db::refresh_urgency(conn, &cfg.urgency, &dep_uuid);
     }
 
-    // Spawn next occurrence for recurring tasks
     let mut recurrence = Value::Null;
     if let Some(ref interval) = task.recur.clone() {
         let base = task.due.unwrap_or_else(Utc::now);

@@ -7,8 +7,6 @@ use uuid::Uuid;
 use crate::infrastructure::db;
 use crate::infrastructure::portable::Bundle;
 
-/// Print a short summary of what was imported: the root task, any remapped
-/// dependency tasks, and a note if every task was reassigned to a project.
 pub(super) fn report(
     conn: &Connection,
     bundle: &Bundle,

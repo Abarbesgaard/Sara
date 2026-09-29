@@ -1,36 +1,23 @@
-//! Task checklist / steps / acceptance criteria.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use super::*;
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 use uuid::Uuid;
 
-// ── checklist ─────────────────────────────────────────────────────────────────
-
 pub struct ChecklistItem {
     pub id: i64,
     pub text: String,
     pub done: bool,
     pub position: i64,
-    /// Fuller "what this step does" written by the LLM (None for legacy items).
     pub intent: Option<String>,
-    /// "step" (default) or "acceptance" (a definition-of-done criterion).
     pub kind: String,
-    /// "human" or "ai".
     pub source: String,
-    /// Command that verifies this step / criterion.
     pub verify_cmd: Option<String>,
-    /// Execution outcome recorded when the step is marked done.
     pub result: Option<String>,
-    /// Git commit the step was completed at.
     pub done_commit: Option<String>,
     pub done_at: Option<String>,
 }
 
-/// Step kinds.
 pub const STEP_KIND_STEP: &str = "step";
 pub const STEP_KIND_ACCEPTANCE: &str = "acceptance";
 
@@ -65,7 +52,6 @@ pub fn get_checklist(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Checklis
     Ok(items)
 }
 
-/// Steps (or acceptance criteria) for a task, filtered by kind, ordered.
 pub fn get_steps(conn: &Connection, task_uuid: &Uuid, kind: &str) -> Result<Vec<ChecklistItem>> {
     let sql = format!(
         "SELECT {STEP_COLUMNS} FROM task_checklist WHERE task_uuid=?1 AND kind=?2 ORDER BY position, id"
@@ -82,7 +68,6 @@ pub fn add_checklist_item(conn: &Connection, task_uuid: &Uuid, text: &str) -> Re
     add_step(conn, task_uuid, text, None, STEP_KIND_STEP, "human", None).map(|_| ())
 }
 
-/// Insert a step / acceptance criterion with full metadata; returns its id.
 pub fn add_step(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -92,14 +77,7 @@ pub fn add_step(
     source: &str,
     verify_cmd: Option<&str>,
 ) -> Result<i64> {
-    // Position allocation is read-then-write, so it needs the write lock for
-    // the same reason `next_display_id` does — two concurrent `check` calls
-    // would otherwise both claim the same position.
     with_write_lock(conn, || {
-        // A DB error here must propagate: COALESCE guarantees a row, so the only
-        // way this fails is a real error (SQLITE_BUSY, I/O). Falling back to
-        // position 1 would silently insert the step at the *front*, duplicating an
-        // existing position and scrambling the guide's step order.
         let pos: i64 = conn.query_row(
             "SELECT COALESCE(MAX(position),0)+1 FROM task_checklist WHERE task_uuid=?1",
             [task_uuid.to_string()],
@@ -121,7 +99,6 @@ pub fn add_step(
     })
 }
 
-/// Mark a step done/undone, recording the execution result and git commit.
 pub fn set_step_done(
     conn: &Connection,
     item_id: i64,
@@ -157,7 +134,6 @@ pub fn set_step_done(
     Ok(())
 }
 
-/// Find a step id by its 1-based position among the task's steps of a kind.
 pub fn step_id_by_index(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -171,10 +147,6 @@ pub fn step_id_by_index(
         .ok_or_else(|| anyhow::anyhow!("No {kind} #{index} on this task"))
 }
 
-/// Reverse of `step_id_by_index`: given a checklist row id, return the task it
-/// belongs to, its kind, and its 1-based position within that kind. Lets MCP
-/// callers address an item by the `step_id` that `check` handed back, instead of
-/// having to know its position.
 pub fn locate_step(conn: &Connection, step_id: i64) -> Result<(Uuid, String, usize)> {
     let (task_uuid_str, kind): (String, String) = conn
         .query_row(
@@ -193,13 +165,6 @@ pub fn locate_step(conn: &Connection, step_id: i64) -> Result<(Uuid, String, usi
     Ok((uuid, kind, index))
 }
 
-/// Move a checklist item one slot up (`up=true`) or down within its own kind
-/// (steps reorder among steps, acceptance among acceptance). Returns `true` if
-/// the order changed, `false` when the item is already at the section boundary.
-///
-/// The set of `position` slots occupied by the kind is preserved and the rows
-/// are reassigned to them in the new order, so items of the other kind are never
-/// disturbed or interleaved.
 pub fn move_step(conn: &Connection, item_id: i64, up: bool) -> Result<bool> {
     let (task_uuid_str, kind): (String, String) = conn.query_row(
         "SELECT task_uuid, kind FROM task_checklist WHERE id=?1",
@@ -224,7 +189,6 @@ pub fn move_step(conn: &Connection, item_id: i64, up: bool) -> Result<bool> {
         idx + 1
     };
 
-    // Reassign the kind's rows to their existing position slots in the new order.
     let slots: Vec<i64> = items.iter().map(|s| s.position).collect();
     items.swap(idx, target);
     for (slot, it) in slots.iter().zip(items.iter()) {
@@ -237,9 +201,6 @@ pub fn move_step(conn: &Connection, item_id: i64, up: bool) -> Result<bool> {
     Ok(true)
 }
 
-/// Remove a step / acceptance criterion by its stable row id, recording history.
-/// Remaining items keep their `position`, so the 1-based display order stays
-/// consistent (later items simply shift up by one).
 pub fn delete_step(conn: &Connection, item_id: i64) -> Result<()> {
     let (task_uuid_str, text, kind): (String, String, String) = conn.query_row(
         "SELECT task_uuid, text, kind FROM task_checklist WHERE id=?1",

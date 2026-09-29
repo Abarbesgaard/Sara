@@ -1,6 +1,5 @@
 use serde_json::Value;
 
-/// Report the outcome of a move — the reassignment, or that it was a no-op.
 pub(super) fn print_moved(v: &Value, project: &str) {
     let display_id = v["task"].as_i64().unwrap_or(0);
     let to = v["to"].as_str().unwrap_or(project);

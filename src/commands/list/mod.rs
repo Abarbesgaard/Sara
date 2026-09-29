@@ -8,8 +8,6 @@ use crate::infrastructure::project::detect_current_project;
 
 mod render;
 
-/// Resolve the project filter for a list request: `None` when `all`, an explicit
-/// override when given, else the current git project.
 fn resolve_filter(
     conn: &Connection,
     cfg: &Config,
@@ -26,8 +24,6 @@ fn resolve_filter(
     }
 }
 
-/// Serialize a slice of tasks into the `{ "tasks": [...] }` shape. Single source
-/// of truth for the `--json` CLI path and the MCP `list` tool.
 fn tasks_to_value(tasks: &[Task]) -> serde_json::Value {
     let arr: Vec<_> = tasks
         .iter()
@@ -48,7 +44,6 @@ fn tasks_to_value(tasks: &[Task]) -> serde_json::Value {
     serde_json::json!({ "tasks": arr })
 }
 
-/// Structured task list for the MCP `list` tool.
 pub fn list_value(
     conn: &Connection,
     cfg: &Config,

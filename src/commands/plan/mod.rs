@@ -9,7 +9,6 @@ use crate::infrastructure::model::Task;
 mod types;
 use types::PlanInput;
 
-/// `sara plan import <source>` — atomically ingest a whole task graph.
 pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
     let raw = if source == "-" {
         use std::io::Read;
@@ -30,10 +29,6 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
     Ok(())
 }
 
-/// Ingest a task graph from a raw JSON string and return a structured summary.
-/// The print-free core shared by the CLI `plan import` command and the MCP
-/// `plan_import` tool — the latter passes JSON inline (never via stdin, which is
-/// the MCP transport's channel).
 pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_json::Value> {
     let plan: PlanInput = serde_json::from_str(raw).context("plan JSON was invalid")?;
     if plan.tasks.is_empty() {
@@ -126,7 +121,6 @@ pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_js
         }
     }
 
-    // Wire dependencies (resolve plan-local keys first, then existing tasks).
     for pt in &plan.tasks {
         let Some(key) = &pt.key else { continue };
         let Some(from) = key_to_uuid.get(key) else {
@@ -145,9 +139,6 @@ pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_js
     Ok(json!({ "created": created, "project": project }))
 }
 
-/// `sara plan show <id>` — dependency-ordered briefing for a task + its blockers.
-/// Dependency-ordered briefing as structured JSON (each task's full guide, in
-/// dependency order). Shared by the `--json` CLI path and the MCP `plan_show` tool.
 pub fn show_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let order = db::dependency_closure(conn, &task.uuid)?;

@@ -6,13 +6,9 @@ use crate::infrastructure::db;
 
 mod render;
 
-/// Default age in days before a Weak (no task link) memory is eligible for pruning.
 pub const DEFAULT_WEAK_DAYS: i64 = 90;
-/// Default age in days before a Provisional (auto-generated) memory is eligible
-/// for pruning if never reviewed (promoted to active).
 pub const DEFAULT_PROVISIONAL_DAYS: i64 = 30;
 
-/// Core shared by CLI and MCP. Returns structured pruning report.
 pub fn prune_value(
     conn: &Connection,
     weak_days: i64,
@@ -40,7 +36,6 @@ pub fn prune_value(
     }))
 }
 
-/// `sara prune-memories [--dry-run] [--weak-days N] [--provisional-days N]`
 pub fn run(conn: &Connection, weak_days: i64, provisional_days: i64, dry_run: bool) -> Result<()> {
     let v = prune_value(conn, weak_days, provisional_days, dry_run)?;
     render::print_pruned(&v, dry_run);

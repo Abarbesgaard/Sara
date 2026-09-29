@@ -14,8 +14,6 @@ use crate::infrastructure::model::Priority;
 use crate::infrastructure::tui::fzf;
 use crate::infrastructure::tui::keymap::{self, Action};
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct FormInput {
     pub description: String,
@@ -24,19 +22,14 @@ pub struct FormInput {
     pub due: String,
     pub tags: String,
     pub selected_deps: Vec<usize>,
-    /// Selected file paths (may include paths typed by the user that are not
-    /// in `available_files`).
     pub selected_files: Vec<String>,
 }
 
-/// Input to the form: existing data + available choices.
 pub struct FormContext {
     pub initial: FormInput,
-    pub available_deps: Vec<(String, String)>, // (display_id, description)
+    pub available_deps: Vec<(String, String)>,
     pub available_files: Vec<String>,
-    /// Pre-selected dependency indices to highlight in the picker.
     pub suggested_dep_indices: Vec<usize>,
-    /// File paths to highlight in the file picker.
     pub suggested_files: Vec<String>,
 }
 
@@ -75,29 +68,22 @@ struct FormState<'a> {
     dep_state: ListState,
     file_state: ListState,
     selected_deps: Vec<bool>,
-    /// Selected file paths (set semantics, ordered for stable display).
     selected_file_paths: std::collections::BTreeSet<String>,
-    /// Current filter query typed into the Files field.
     file_filter: String,
     ctx: FormContext,
     submitted: bool,
     cancelled: bool,
     due_error: bool,
     due_preset_idx: usize,
-    /// Whether the `fzf` binary is available (set by `run_form`).
     fzf_available: bool,
-    /// Set by `handle_key` to ask `run_form` to launch fzf for file picking.
     fzf_requested: bool,
-    /// True while the `?` keybinding overlay is shown.
     showing_help: bool,
 }
 
-/// A row shown in the (filtered) Files list.
 struct FileRow {
     path: String,
     selected: bool,
     suggested: bool,
-    /// True for the synthetic "add this typed path" row.
     add_custom: bool,
 }
 
@@ -131,7 +117,6 @@ impl<'a> FormState<'a> {
             dep_state.select(Some(0));
         }
         let mut file_state = ListState::default();
-        // There's always at least an empty list; start at the top.
         if !ctx.available_files.is_empty() || !selected_file_paths.is_empty() {
             file_state.select(Some(0));
         }
@@ -159,8 +144,6 @@ impl<'a> FormState<'a> {
         }
     }
 
-    /// Candidate paths offered to fzf: project files plus any already-selected
-    /// custom paths, de-duplicated.
     fn fzf_candidates(&self) -> Vec<String> {
         let mut seen = std::collections::HashSet::new();
         let mut out = vec![];
@@ -177,9 +160,6 @@ impl<'a> FormState<'a> {
         out
     }
 
-    /// Build the rows currently visible in the Files field, honoring the filter.
-    /// Includes a synthetic "add custom path" row when the typed filter doesn't
-    /// already match an available or selected file.
     fn file_rows(&self) -> Vec<FileRow> {
         let q = self.file_filter.trim().to_lowercase();
         let suggested: std::collections::HashSet<&String> =
@@ -188,7 +168,6 @@ impl<'a> FormState<'a> {
         let mut rows: Vec<FileRow> = vec![];
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        // Available project files matching the filter.
         for path in &self.ctx.available_files {
             if q.is_empty() || path.to_lowercase().contains(&q) {
                 seen.insert(path.clone());
@@ -200,7 +179,6 @@ impl<'a> FormState<'a> {
                 });
             }
         }
-        // Selected custom paths (typed by the user, not in available_files).
         for path in &self.selected_file_paths {
             if seen.contains(path) {
                 continue;
@@ -215,7 +193,6 @@ impl<'a> FormState<'a> {
                 });
             }
         }
-        // If the typed path matches nothing, offer to add it verbatim.
         let typed = self.file_filter.trim();
         if !typed.is_empty() && rows.is_empty() {
             rows.push(FileRow {
@@ -261,7 +238,6 @@ impl<'a> FormState<'a> {
             return;
         };
         if row.add_custom {
-            // Commit the typed path and clear the filter so the list resets.
             self.selected_file_paths.insert(row.path.clone());
             self.file_filter.clear();
             self.file_state.select(Some(0));
@@ -272,7 +248,6 @@ impl<'a> FormState<'a> {
         }
     }
 
-    /// Clamp the Files list selection to the number of visible rows.
     fn clamp_file_selection(&mut self) {
         let n = self.file_rows().len();
         if n == 0 {
@@ -310,7 +285,6 @@ impl<'a> FormState<'a> {
 
     fn cycle_due(&mut self, forward: bool) {
         let presets = crate::infrastructure::dates::DUE_PRESETS;
-        // Find the current preset index if the text matches one, else start fresh
         let current = self.due_area.lines().join("");
         let cur_idx = presets
             .iter()
@@ -331,9 +305,6 @@ impl<'a> FormState<'a> {
         !self.desc_area.lines().join("").trim().is_empty() && !self.due_error
     }
 
-    /// If focus is on one of the four text fields, feed the key to it (and
-    /// re-validate Due), returning `true`. Otherwise leave state untouched and
-    /// return `false` so the caller can handle non-text focuses.
     fn input_to_focused_text_field(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match self.focus {
             Focus::Description => {
@@ -354,18 +325,11 @@ impl<'a> FormState<'a> {
         true
     }
 
-    /// Apply a single key event to the form. Returns nothing; mutates state.
-    /// Extracted from the event loop so it can be exercised in unit tests
-    /// without a live terminal.
     fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
-        // Any key dismisses the overlay without otherwise acting on it.
         if self.showing_help {
             self.showing_help = false;
             return;
         }
-        // '?' opens the overlay, but only when it isn't valid input for the
-        // focused field — Description/Project/Due/Tags must keep it as a
-        // literal character (e.g. a description ending in a question mark).
         if key.code == KeyCode::Char('?')
             && !matches!(
                 self.focus,
@@ -375,11 +339,6 @@ impl<'a> FormState<'a> {
             self.showing_help = true;
             return;
         }
-        // Esc/Ctrl+S/Tab/BackTab behave the same regardless of focus, via the
-        // shared keymap module. Everything else must still reach whichever
-        // text field is focused verbatim (h/j/k/l/g/q/space are all valid
-        // characters to type into Description etc.), so this form can't use
-        // the full Normal/Insert vocabulary — see keymap.rs's module docs.
         match keymap::control_action(key) {
             Some(Action::Cancel) => {
                 self.cancelled = true;
@@ -424,8 +383,6 @@ impl<'a> FormState<'a> {
             (KeyCode::Char(' '), _) => match self.focus {
                 Focus::Dependencies => self.toggle_dep(),
                 Focus::Files => self.toggle_file(),
-                // In text fields, a space is just a character; other focuses
-                // (Priority/Submit/Cancel) ignore it.
                 _ => {
                     self.input_to_focused_text_field(key);
                 }
@@ -443,8 +400,6 @@ impl<'a> FormState<'a> {
                 self.cycle_due(true);
             }
             (KeyCode::Up, _) => match self.focus {
-                // Move up within the list; if already at the top (or the list is
-                // empty), fall through to the previous field so arrows can leave.
                 Focus::Dependencies => {
                     let len = self.ctx.available_deps.len();
                     let cur = self.dep_state.selected().unwrap_or(0);
@@ -466,8 +421,6 @@ impl<'a> FormState<'a> {
                 _ => self.prev_focus(),
             },
             (KeyCode::Down, _) => match self.focus {
-                // Move down within the list; if already at the bottom (or the
-                // list is empty), fall through to the next field.
                 Focus::Dependencies => {
                     let len = self.ctx.available_deps.len();
                     let cur = self.dep_state.selected().unwrap_or(0);
@@ -494,7 +447,6 @@ impl<'a> FormState<'a> {
                 self.clamp_file_selection();
             }
             _ => match self.focus {
-                // In the Files field, plain characters build a filter query.
                 Focus::Files => {
                     if let KeyCode::Char(c) = key.code {
                         self.file_filter.push(c);
@@ -502,8 +454,6 @@ impl<'a> FormState<'a> {
                         self.clamp_file_selection();
                     }
                 }
-                // Text fields route the key (incl. Due validation); other
-                // focuses (Priority/Dependencies/Submit/Cancel) ignore it.
                 _ => {
                     self.input_to_focused_text_field(key);
                 }
@@ -532,9 +482,6 @@ impl<'a> FormState<'a> {
     }
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
-
-/// Run the form. Returns Some(FormInput) on submit, None on cancel.
 pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     ctx: FormContext,
@@ -545,14 +492,10 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
     loop {
         terminal.draw(|f| render(f, &mut state))?;
 
-        // Poll instead of a bare blocking read so a stray/odd event can never
-        // leave the UI looking wedged: we always loop back and redraw.
         if !event::poll(std::time::Duration::from_millis(100))? {
             continue;
         }
         if let Event::Key(key) = event::read()? {
-            // Many terminals emit both Press and Release events; only act on Press
-            // (and Repeat) to avoid every interaction firing twice.
             if key.kind == KeyEventKind::Release {
                 continue;
             }
@@ -562,7 +505,6 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
         if state.fzf_requested {
             state.fzf_requested = false;
             let candidates = state.fzf_candidates();
-            // Hand the terminal back to fzf, then reclaim and force a redraw.
             crate::infrastructure::tui::suspend()?;
             let picked = fzf::run_fzf(&candidates, &state.file_filter);
             crate::infrastructure::tui::resume()?;
@@ -584,8 +526,6 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
         }
     }
 }
-
-// ── Rendering ─────────────────────────────────────────────────────────────────
 
 fn render(f: &mut Frame, state: &mut FormState) {
     let area = f.area();
@@ -613,11 +553,6 @@ fn render(f: &mut Frame, state: &mut FormState) {
     }
 }
 
-/// Review form's help overlay. Unlike board/info, this screen can't use the
-/// full shared Normal-mode vocabulary at all (its text fields need every key
-/// as literal input), so only the four `control_action` bindings come from
-/// the shared module; everything else (Enter/Space/arrows/Left-Right) is
-/// inherently per-focus behavior with no equivalent in the generic keymap.
 fn help_bindings() -> Vec<(&'static str, &'static str)> {
     let mut v = keymap::help::CONTROL_ACTION_BINDINGS.to_vec();
     v.extend([
@@ -708,7 +643,6 @@ fn render_tags(f: &mut Frame, state: &mut FormState, area: Rect) {
 }
 
 fn render_fields(f: &mut Frame, state: &mut FormState, area: Rect) {
-    // Heights: desc=3, proj=3, pri=3, due=3, tags=3, deps=5, files=7, buttons=3
     let heights = [3u16, 3, 3, 3, 3, 5, 7, 3];
     if area.height < 4 {
         return;
@@ -786,7 +720,6 @@ fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Split: optional filter line + the list.
     let show_filter = focused && !state.fzf_available;
     let (filter_area, list_area) = if show_filter {
         let parts = Layout::default()
