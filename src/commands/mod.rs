@@ -19,7 +19,6 @@ pub mod insight;
 pub mod learn;
 pub mod link_memory;
 pub mod list;
-pub mod mcp;
 pub mod memories;
 pub mod modify;
 pub mod move_task;
