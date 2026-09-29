@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod completion;
 mod infrastructure;
+mod mcp;
 
 use anyhow::Result;
 use clap::CommandFactory;
@@ -659,7 +660,7 @@ fn run() -> Result<()> {
             }
 
             Command::Mcp => {
-                commands::mcp::run(conn, &cfg)?;
+                mcp::run(conn, &cfg)?;
             }
 
             Command::Paths => {

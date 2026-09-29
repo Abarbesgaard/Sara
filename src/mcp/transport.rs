@@ -79,5 +79,5 @@ impl<T: Transport<RoleServer>> Transport<RoleServer> for TolerantInit<T> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/unit/commands/mcp/transport.rs"]
+#[path = "../../tests/unit/mcp/transport.rs"]
 mod tests;
