@@ -15,7 +15,6 @@ pub fn run(conn: &Connection, id_or_uuid: &str, clear: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Resolve the project's git root.
     let project_path = db::get_project(conn, &task.project)?
         .and_then(|p| p.path)
         .with_context(|| {

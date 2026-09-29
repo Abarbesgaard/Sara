@@ -13,13 +13,6 @@
 //! introduces no new storage and stays deliberately skill/tooling-agnostic: it
 //! speaks only of tasks, acceptance criteria, steps and memories, never of any
 //! particular workflow, rite, or agent methodology.
-//!
-//! Sequence:
-//!   1. create the task from the description (tags / files / priority),
-//!   2. set its assignment (the originating request) and, if given, its why,
-//!   3. register an acceptance criterion — OPTIONAL: warn but proceed if none,
-//!   4. seed the first step — recall prior art (the agent runs `recall` itself),
-//!   5. print the task, its criteria, the seeded recall step, and the next cursor.
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -64,7 +57,6 @@ pub fn begin_value(
 
     let mut warnings: Vec<String> = Vec::new();
 
-    // 1. Create the task.
     let created = commands::add::run_value(
         conn,
         cfg,
@@ -81,11 +73,10 @@ pub fn begin_value(
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
 
-    // 1b. Attach any declared files as task anchors. begin no longer folds them
-    //     into a recall query (it does not recall); instead it records them as
-    //     the task's code anchors so the agent's own recall step, `next`'s
-    //     relevant-memory block, and later work all have the touched files as
-    //     first-class context.
+    // Attach any declared files as task anchors. begin no longer folds them into
+    // a recall query (it does not recall); it records them as the task's code
+    // anchors so the agent's recall step, `next`'s relevant-memory block, and
+    // later work all have the touched files as first-class context.
     let anchor_files: Vec<&str> = files
         .iter()
         .map(|f| f.trim())
@@ -111,23 +102,21 @@ pub fn begin_value(
         }
     }
 
-    // 2. Assignment — the originating request. Defaults to the description so
-    //    the task always records what was actually asked for.
+    // Assignment defaults to the description so the task always records what was
+    // actually asked for.
     let assignment_text = assignment
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| description.trim());
     commands::guide::assignment_value(conn, &id, assignment_text)?;
 
-    // 3. Rationale (why this task exists), when supplied.
     let rationale_text = rationale.map(str::trim).filter(|s| !s.is_empty());
     if let Some(why) = rationale_text {
         commands::guide::rationale_value(conn, &id, why)?;
     }
 
-    // 4. Acceptance criterion — OPTIONAL. A task without a definition of done is
-    //    allowed to proceed, but we warn so it is a deliberate choice, not a
-    //    silent gap.
+    // Acceptance is OPTIONAL — proceed without it, but warn so the gap is a
+    // deliberate choice.
     let acceptance = match check.map(str::trim).filter(|s| !s.is_empty()) {
         Some(text) => {
             let c = commands::guide::check_value(
@@ -154,12 +143,9 @@ pub fn begin_value(
         }
     };
 
-    // 5. Seed the first step: an explicit, agent-run recall. begin does NOT
-    //    recall here — it appends a checklist step directing the agent to decide
-    //    what prior art matters and call `recall` itself. Seeded first (before
-    //    any workflow steps a skill may later add), it is the cursor `next`
-    //    returns, so prior art is recalled early yet purposefully — the agent's
-    //    own act, not a mechanical description-derived query.
+    // Seed the recall step FIRST — before any workflow steps a skill may later
+    // add — so it is the cursor `next` returns and prior art is recalled early
+    // yet purposefully. begin does not recall here; the agent runs `recall`.
     let recall_step = commands::guide::check_value(
         conn,
         &id,
@@ -170,7 +156,6 @@ pub fn begin_value(
         None,
     )?;
 
-    // 7. The execution cursor — where the work goes next.
     let next = commands::guide::next_value(conn, &id)?;
 
     Ok(json!({

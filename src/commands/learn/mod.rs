@@ -553,7 +553,6 @@ fn collect_files(explicit: &[String], auto_files: bool) -> Result<Vec<String>> {
         }
     }
 
-    // Deduplicate while preserving order.
     let mut seen = std::collections::HashSet::new();
     paths.retain(|p| seen.insert(p.clone()));
     Ok(paths)
@@ -634,7 +633,6 @@ fn save(
     // learning.
     crate::infrastructure::embedding::index_memory(conn, &item);
 
-    // Store file associations.
     if !files.is_empty() {
         db::set_item_files(conn, &item.uuid, files)?;
     }
@@ -665,7 +663,6 @@ fn save(
     }
 
     if !task_links.is_empty() {
-        // Convert &'static str slice to owned for set_item_task_links.
         let owned: Vec<(Uuid, &str)> = task_links.iter().map(|(u, s)| (*u, *s)).collect();
         db::set_item_task_links(conn, &item.uuid, &owned)?;
 

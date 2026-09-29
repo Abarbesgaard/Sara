@@ -22,8 +22,6 @@ pub(super) fn emit(output: Option<&Path>, blob: &str, root_id: i64, extra: usize
             eprintln!("Exported task {root_id}{dep_note} to {}", path.display());
         }
         None => {
-            // The blob alone goes to stdout so it can be piped/redirected cleanly;
-            // the human-readable hint goes to stderr.
             println!("{blob}");
             if extra > 0 {
                 eprintln!(

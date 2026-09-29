@@ -20,7 +20,6 @@ mod render;
 pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
     let root = db::resolve_task(conn, id)?;
 
-    // The closure includes the root itself (depth 0) plus all transitive blockers.
     let closure = db::dependency_closure(conn, &root.uuid)?;
 
     let mut tasks = Vec::with_capacity(closure.len());

@@ -18,8 +18,6 @@ pub(super) fn print_begin(v: &Value) {
         None => println!("  acceptance: (none — add one with `sara check`)"),
     }
 
-    // begin seeds an explicit recall step (it does NOT recall itself); `next`
-    // below points at it. Surface it plainly so the agent recalls before acting.
     println!("  step 1: {RECALL_STEP_TEXT} — run `sara recall` before you act");
 
     if let Some(next) = v["next"].as_object() {
