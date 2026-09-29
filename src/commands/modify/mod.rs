@@ -9,6 +9,8 @@ use crate::infrastructure::model::Task;
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
+mod render;
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     conn: &Connection,
@@ -101,7 +103,7 @@ pub fn run(
     tui::restore_terminal()?;
 
     let Some(form) = result? else {
-        println!("Cancelled.");
+        render::print_cancelled();
         return Ok(());
     };
 
@@ -132,11 +134,7 @@ pub fn run(
 
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
 
-    println!(
-        "Updated task {}: {}",
-        updated.id.unwrap_or(0),
-        updated.description
-    );
+    render::print_updated(updated.id.unwrap_or(0), &updated.description);
     Ok(())
 }
 
@@ -239,10 +237,9 @@ fn apply_fields(
         every,
         clear_recur,
     )?;
-    println!(
-        "Updated task {}: {}",
+    render::print_updated(
         v["task"].as_i64().unwrap_or(0),
-        v["description"].as_str().unwrap_or_default()
+        v["description"].as_str().unwrap_or_default(),
     );
     Ok(())
 }

@@ -1,10 +1,11 @@
 use anyhow::Result;
 use rusqlite::Connection;
-use std::io::{self, Write};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::model::Project;
 use crate::infrastructure::project::find_git_root;
+
+mod render;
 
 /// Detect which tech stacks are present in the project root.
 pub fn detect_stack(path: &str) -> String {
@@ -54,24 +55,6 @@ pub fn detect_stack(path: &str) -> String {
     }
 }
 
-fn prompt(msg: &str, default: Option<&str>) -> Result<String> {
-    let prompt_str = if let Some(d) = default {
-        format!("{msg} [{d}]: ")
-    } else {
-        format!("{msg}: ")
-    };
-    print!("{prompt_str}");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let trimmed = input.trim().to_string();
-    if trimmed.is_empty() {
-        Ok(default.unwrap_or("").to_string())
-    } else {
-        Ok(trimmed)
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     conn: &Connection,
@@ -98,10 +81,7 @@ pub fn run(
     let project_path = Some(resolved_path);
 
     if git_root.is_none() {
-        println!(
-            "Note: not inside a git repo — initializing the current folder as project '{}'.",
-            project_name
-        );
+        render::note_not_in_git(&project_name);
     }
 
     // Detect stack (auto-detection can be overridden via --stack)
@@ -110,8 +90,7 @@ pub fn run(
         .map(detect_stack)
         .unwrap_or_else(|| "unknown".to_string());
 
-    println!("Initializing project: {}", project_name);
-    println!("Detected stack: {}", detected_stack);
+    render::print_intro(&project_name, &detected_stack);
 
     // Load existing profile if any
     let existing = crate::infrastructure::db::get_project(conn, &project_name)?;
@@ -131,7 +110,7 @@ pub fn run(
             .unwrap_or_default()
     } else {
         let current_goal = existing.as_ref().and_then(|p| p.goal.as_deref());
-        prompt("What is this project? (one-line goal)", current_goal)?
+        render::prompt("What is this project? (one-line goal)", current_goal)?
     };
 
     let notes = if let Some(n) = notes_override {
@@ -143,7 +122,7 @@ pub fn run(
             .unwrap_or_default()
     } else {
         let current_notes = existing.as_ref().and_then(|p| p.notes.as_deref());
-        prompt("Any conventions or notes? (optional)", current_notes)?
+        render::prompt("Any conventions or notes? (optional)", current_notes)?
     };
 
     // Conventions: set via flag, otherwise preserve any existing value.
@@ -184,24 +163,8 @@ pub fn run(
         )?;
     }
 
-    println!("✔ Project '{}' profile saved.", project_name);
-
-    if let Some(g) = &project.goal {
-        println!("  Goal:  {g}");
-    }
-    println!("  Stack: {resolved_stack}");
-
     let commands = crate::infrastructure::db::get_project_commands(conn, &project_name)?;
-    for (label, cmd) in [
-        ("Setup", &commands.setup_cmd),
-        ("Test", &commands.test_cmd),
-        ("Lint", &commands.lint_cmd),
-        ("Run", &commands.run_cmd),
-    ] {
-        if let Some(c) = cmd {
-            println!("  {label}:  {c}");
-        }
-    }
+    render::print_saved(&project, &resolved_stack, &commands);
 
     Ok(())
 }

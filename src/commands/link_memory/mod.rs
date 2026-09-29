@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
+mod render;
+
 /// Core shared by CLI and MCP. Resolves memory labels (e.g. "m7") to UUIDs,
 /// inserts the typed link, and returns structured output.
 pub fn link_memory_value(
@@ -47,25 +49,14 @@ pub fn run(
     weight: f64,
 ) -> Result<()> {
     let v = link_memory_value(conn, from_handle, relation, to_handle, weight)?;
-    println!(
-        "Linked: {} {} {} (weight: {})",
-        v["from"].as_str().unwrap_or(from_handle),
-        v["relation"].as_str().unwrap_or(relation),
-        v["to"].as_str().unwrap_or(to_handle),
-        v["weight"].as_f64().unwrap_or(weight),
-    );
+    render::print_linked(&v, from_handle, relation, to_handle, weight);
     Ok(())
 }
 
 /// `sara unlink-memory <from> <relation> <to>` — remove a specific typed edge.
 pub fn unlink(conn: &Connection, from_handle: &str, relation: &str, to_handle: &str) -> Result<()> {
     let v = unlink_value(conn, from_handle, relation, to_handle)?;
-    let removed = v["removed"].as_bool().unwrap_or(false);
-    if removed {
-        println!("Unlinked: {from_handle} {relation} {to_handle}");
-    } else {
-        println!("No such link: {from_handle} {relation} {to_handle}");
-    }
+    render::print_unlinked(&v, from_handle, relation, to_handle);
     Ok(())
 }
 

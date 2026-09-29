@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
+mod render;
+
 /// Print-free core shared by the CLI `promote` command and the MCP `promote`
 /// tool. Marks a provisional (auto-synthesised) memory as reviewed by setting
 /// status='active' in place — created date, tags, files, and task links are
@@ -27,9 +29,6 @@ pub fn promote_value(conn: &Connection, handle: &str) -> Result<Value> {
 /// `sara promote <label>` — promote a provisional auto-memory to active.
 pub fn run(conn: &Connection, handle: &str) -> Result<()> {
     let v = promote_value(conn, handle)?;
-    println!(
-        "Promoted {}: now an active (reviewed) memory.",
-        v["label"].as_str().unwrap_or(handle),
-    );
+    render::print_promoted(&v, handle);
     Ok(())
 }
