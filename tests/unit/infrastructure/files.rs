@@ -32,7 +32,6 @@ fn collect_entries_excludes_dot_git_but_keeps_other_dotdirs() {
     write(&root, ".git/hooks/pre-commit");
     write(&root, ".github/workflows/ci.yml");
 
-    // Normalize separators so assertions hold on Windows (backslash) too.
     let entries: Vec<String> = collect_project_entries(&root)
         .into_iter()
         .map(|e| e.replace('\\', "/"))
@@ -61,7 +60,6 @@ fn collect_files_excludes_dot_git() {
     write(&root, ".git/config");
     write(&root, ".git/objects/ab/cdef0123");
 
-    // Normalize separators so assertions hold on Windows (backslash) too.
     let files: Vec<String> = collect_project_files(&root)
         .into_iter()
         .map(|f| f.replace('\\', "/"))

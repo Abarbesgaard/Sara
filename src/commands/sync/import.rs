@@ -102,12 +102,6 @@ pub(super) fn create_new_task(
     Ok(task.uuid)
 }
 
-/// Import comments for a single issue into the task's annotation list.
-///
-/// Each comment is stored idempotently: the stable `comment_id` is used as the
-/// deduplication key so repeated syncs never create duplicates.
-///
-/// Returns `(added, skipped)` counts.
 pub(super) fn import_issue_comments(
     conn: &Connection,
     task_uuid: &uuid::Uuid,
@@ -133,7 +127,6 @@ pub(super) fn import_issue_comments(
     }
 
     let skipped = comments.len().saturating_sub(added);
-    // Always refresh the full metadata so url/updated_at stay current.
     db::set_github_comments(conn, task_uuid, &meta_comments)?;
     Ok((added, skipped))
 }

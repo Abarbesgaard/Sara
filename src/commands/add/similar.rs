@@ -8,20 +8,14 @@ use crate::infrastructure::db;
 use crate::infrastructure::embedding::{self, Embedder};
 use crate::infrastructure::model::Item;
 
-/// Common English function words + conventional task prefixes that carry no
-/// discriminating signal for similarity matching.
 const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at", "by", "up", "as", "or",
     "do", "if", "be", "we", "he", "she", "they", "but", "and", "not", "with", "from", "this",
     "that", "are", "was", "has", "have", "feat", "fix", "via", "add", "new",
 ];
 
-/// Maximum number of tokens to AND together in a token-based search.
-/// Too many required tokens produces zero results; cap at a useful sweet spot.
 const MAX_AND_TOKENS: usize = 6;
 
-/// Extract meaningful search tokens from free text: lowercase, alpha-only,
-/// >=3 chars, not a stop word.
 fn meaningful_tokens(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphabetic())
         .map(|w| w.to_lowercase())
@@ -29,7 +23,6 @@ fn meaningful_tokens(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Count how many of `query_tokens` appear (case-insensitive) in `text`.
 fn token_overlap(query_tokens: &[String], text: &str) -> usize {
     let lower = text.to_lowercase();
     query_tokens
@@ -38,16 +31,7 @@ fn token_overlap(query_tokens: &[String], text: &str) -> usize {
         .count()
 }
 
-/// Emit a memory (learned item) as a similarity hit carrying its **full body** --
-/// not a snippet -- so the agent receives the actual prior finding the instant
-/// the charge is created, with no second `recall` round-trip. This is the core
-/// of "relevant context, as early as possible": a pointer forces re-derivation,
-/// the body prevents it.
 fn memory_hit(item: &Item, confidence: &str, cosine: Option<f32>, current_project: &str) -> Value {
-    // Cross-project memory is surfaced deliberately (a canonical pattern from
-    // another province is still useful), but same-province prior art must rank
-    // first and cross-province hits must be labeled so common tags (auth/api/db)
-    // don't bury local knowledge under other provinces' memories.
     let same_project = item.project.as_deref() == Some(current_project);
     json!({
         "ref_kind": "memory",
@@ -60,27 +44,10 @@ fn memory_hit(item: &Item, confidence: &str, cosine: Option<f32>, current_projec
         "cosine": cosine,
         "project": item.project,
         "same_project": same_project,
-        // Full, untruncated memory text -- the whole point of surfacing it here.
         "body": item.body,
     })
 }
 
-/// Best-effort recall of prior tasks AND learned memories whose content overlaps
-/// with a new task -- run before creation so `add` surfaces "this may already be
-/// solved" instead of an agent silently re-deriving an approach.
-///
-/// Four passes, most-precise first, deduped by uuid across passes:
-///   Pass 0 -- **tag-exact memories** (canonical): any active memory carrying one
-///            of the new task's tags. Highest confidence -- a deliberate topic hit.
-///   Pass 1 -- **phrase match** (exact wording, any order): high confidence.
-///   Pass 2 -- **token AND match** (stop-word-stripped tokens): medium confidence.
-///   Pass 3 -- **semantic** (embedding cosine >= threshold): surfaces paraphrases
-///            that share no literal keyword -- the fix that would have caught a
-///            canonical memory whose wording differs from the new task's title.
-///
-/// Memory hits carry the full body; task hits stay a snippet + ref (a task is a
-/// pointer to reopen, a memory is knowledge to apply now). Non-blocking: the
-/// task is always created regardless of hits.
 pub(super) fn find_similar(
     conn: &Connection,
     cfg: &Config,
@@ -93,7 +60,6 @@ pub(super) fn find_similar(
     let mut seen_mem: HashSet<String> = HashSet::new();
     let mut out: Vec<Value> = Vec::new();
 
-    // -- Pass 0: tag-exact memories -> canonical confidence -------------------
     for tag in tags {
         let items = db::find_items_by_tag(conn, tag).unwrap_or_default();
         for item in &items {
@@ -104,7 +70,6 @@ pub(super) fn find_similar(
         }
     }
 
-    // -- Pass 1: phrase match -> high confidence ------------------------------
     let phrase_hits = db::search_fts(conn, description, limit).unwrap_or_default();
     for h in &phrase_hits {
         push_fts_hit(
@@ -118,14 +83,11 @@ pub(super) fn find_similar(
         );
     }
 
-    // -- Pass 2: token AND match -> medium confidence -------------------------
     let tokens = meaningful_tokens(description);
     let capped: Vec<String> = tokens.into_iter().take(MAX_AND_TOKENS).collect();
     if !capped.is_empty() {
         let token_hits = db::search_fts_tokens(conn, &capped, limit).unwrap_or_default();
         for h in &token_hits {
-            // Require at least half the query tokens to appear; otherwise the AND
-            // match is too coincidental to be useful.
             if token_overlap(&capped, &h.text) < capped.len().div_ceil(2) {
                 continue;
             }
@@ -141,8 +103,6 @@ pub(super) fn find_similar(
         }
     }
 
-    // -- Pass 3: semantic memories -> confidence by cosine --------------------
-    // Best-effort: any embed/storage hiccup leaves the lexical hits untouched.
     if let Err(e) = merge_semantic_memories(
         conn,
         cfg,
@@ -154,10 +114,6 @@ pub(super) fn find_similar(
         eprintln!("Warning: semantic recall on add failed: {e}");
     }
 
-    // Rank same-project memory hits first. A stable sort preserves the
-    // confidence ordering (canonical > high > medium > semantic) *within* each
-    // project group, so local prior art leads without discarding cross-project
-    // canonical patterns.
     out.sort_by_key(|h| {
         !h.get("same_project")
             .and_then(|v| v.as_bool())
@@ -167,11 +123,6 @@ pub(super) fn find_similar(
     Ok(out)
 }
 
-/// Resolve one FTS hit: memory hits (`item_*`) become full-body memory hits;
-/// task/note/anchor hits become the existing snippet+ref pointer. The prior
-/// implementation ran `resolve_task` on *every* hit, which silently dropped
-/// memory hits (their `task_uuid` column carries the item's own uuid, not a
-/// task) -- the bug that kept canonical memories from ever reaching `add`.
 fn push_fts_hit(
     conn: &Connection,
     h: &db::SearchHit,
@@ -182,7 +133,6 @@ fn push_fts_hit(
     out: &mut Vec<Value>,
 ) {
     if h.ref_kind.starts_with("item_") {
-        // A learned memory: `task_uuid` carries the item's own uuid.
         if !seen_mem.insert(h.task_uuid.clone()) {
             return;
         }
@@ -192,7 +142,6 @@ fn push_fts_hit(
         return;
     }
 
-    // A task / annotation / anchor hit: a pointer to reopen, snippet is enough.
     if !seen_tasks.insert(h.task_uuid.clone()) {
         return;
     }
@@ -209,10 +158,6 @@ fn push_fts_hit(
     }));
 }
 
-/// Rank stored memory embeddings against the new task's text and fold the
-/// strongest (cosine >= configured threshold) in as full-body memory hits,
-/// deduped against memories already surfaced lexically or by tag. This is what
-/// catches a canonical memory whose wording differs from the new task's title.
 fn merge_semantic_memories(
     conn: &Connection,
     cfg: &Config,
@@ -223,7 +168,7 @@ fn merge_semantic_memories(
 ) -> Result<()> {
     let qv = embedding::bundled().embed(query);
     if qv.iter().all(|&x| x == 0.0) {
-        return Ok(()); // query had no in-vocabulary content
+        return Ok(());
     }
     let threshold = cfg.recall.semantic_threshold;
     let top_k = cfg.recall.semantic_top_k;
@@ -238,7 +183,7 @@ fn merge_semantic_memories(
 
     for (uuid, cos) in scored {
         if !seen_mem.insert(uuid.clone()) {
-            continue; // already surfaced lexically or by tag
+            continue;
         }
         if let Ok(item) = db::get_item_by_uuid(conn, &uuid) {
             out.push(memory_hit(&item, "semantic", Some(cos), current_project));

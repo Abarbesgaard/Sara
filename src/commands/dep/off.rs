@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
-/// Remove a dependency. Print-free core shared by the CLI `dep off` and MCP `dep`.
 pub fn dep_off_value(conn: &Connection, cfg: &Config, id: &str, other: &str) -> Result<Value> {
     let task = db::resolve_task(conn, id)?;
     let dep = db::resolve_task(conn, other)?;

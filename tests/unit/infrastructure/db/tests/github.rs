@@ -1,5 +1,3 @@
-//! Unit tests for db::github.
-
 use super::*;
 use chrono::Utc;
 
@@ -17,7 +15,6 @@ fn project_commands_round_trip_and_partial_update_preserves_others() {
         },
     )
     .unwrap();
-    // A partial update (only lint) must COALESCE-preserve the earlier commands.
     set_project_commands(
         &conn,
         "demo",
@@ -106,7 +103,6 @@ fn github_sync_partial_update_preserves_existing_fields() {
         },
     )
     .unwrap();
-    // Update only scope — repo and login must be preserved (COALESCE).
     set_github_sync(
         &conn,
         "p",
@@ -126,7 +122,6 @@ fn github_sync_partial_update_preserves_existing_fields() {
 
 #[test]
 fn github_sync_no_secret_field_in_settings_struct() {
-    // login is a username, not a token — the type only accepts non-secret strings.
     let s = GithubSyncSettings {
         repo: Some("org/repo".into()),
         login: Some("user".into()),
@@ -153,7 +148,6 @@ fn project_detection_loads_github_sync_metadata_for_path() {
     )
     .unwrap();
 
-    // Simulates what detect_current_project returns: the project loaded by path.
     let project = get_project_by_path(&conn, "/home/u/Sara")
         .unwrap()
         .expect("project must be found by path");
@@ -201,7 +195,6 @@ fn github_provenance_merges_with_existing_meta_json_keys() {
     let conn = mem();
     let task = seed_task(&conn);
 
-    // Pre-populate meta_json with some other data.
     set_meta_json(&conn, &task.uuid, r#"{"my_key":"keep_me"}"#).unwrap();
 
     let prov = crate::infrastructure::model::GithubProvenance {
@@ -226,7 +219,6 @@ fn github_provenance_merges_with_existing_meta_json_keys() {
         .meta_json
         .unwrap();
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    // Both the existing key and the new github key must be present.
     assert_eq!(obj["my_key"], "keep_me");
     assert_eq!(obj["github"]["repo"], "org/repo");
     assert_eq!(obj["github"]["number"], 1);
@@ -234,7 +226,6 @@ fn github_provenance_merges_with_existing_meta_json_keys() {
 
 #[test]
 fn github_provenance_contains_no_secret_fields() {
-    // GithubProvenance only stores remote identity and sync metadata.
     let prov = crate::infrastructure::model::GithubProvenance {
         repo: "org/repo".into(),
         issue_id: Some(7),
@@ -251,7 +242,6 @@ fn github_provenance_contains_no_secret_fields() {
         synced_by: Some("bob".into()),
     };
     let serialized = serde_json::to_string(&prov).unwrap();
-    // Sanity: no "token" or "pat" key appears in the serialised provenance.
     assert!(!serialized.to_lowercase().contains("token"));
     assert!(!serialized.to_lowercase().contains(r#""pat""#));
 }
@@ -313,7 +303,6 @@ fn github_comment_annotation_is_inserted_once() {
 
 #[test]
 fn github_comment_kind_is_comment_for_info_visibility() {
-    // Comments must use kind="comment" so sara info shows them.
     let conn = mem();
     let task = seed_task(&conn);
     let c = make_gh_comment(7, "bob", "Fix it");
@@ -406,7 +395,6 @@ fn repeated_set_github_comments_replaces_array() {
 
 #[test]
 fn upsert_github_comment_idempotent_across_multiple_calls() {
-    // Simulates two consecutive sync runs with the same comment list.
     let conn = mem();
     let task = seed_task(&conn);
     let comments = vec![
@@ -414,13 +402,11 @@ fn upsert_github_comment_idempotent_across_multiple_calls() {
         make_gh_comment(101, "bob", "Please clarify"),
     ];
 
-    // First sync
     for c in &comments {
         upsert_github_comment_annotation(&conn, &task.uuid, c).unwrap();
     }
     set_github_comments(&conn, &task.uuid, &comments).unwrap();
 
-    // Second sync (same data)
     for c in &comments {
         let inserted = upsert_github_comment_annotation(&conn, &task.uuid, c).unwrap();
         assert!(
@@ -431,7 +417,6 @@ fn upsert_github_comment_idempotent_across_multiple_calls() {
     }
     set_github_comments(&conn, &task.uuid, &comments).unwrap();
 
-    // Exactly two annotations, no duplicates.
     let anns = get_annotations(&conn, &task.uuid).unwrap();
     assert_eq!(
         anns.len(),
@@ -439,7 +424,6 @@ fn upsert_github_comment_idempotent_across_multiple_calls() {
         "no duplicate annotations after repeated sync"
     );
 
-    // Meta JSON also holds exactly two entries.
     let meta = get_github_comments(&conn, &task.uuid).unwrap();
     assert_eq!(meta.len(), 2);
 }

@@ -1,8 +1,4 @@
-//! Shared fixtures for the contract suite: an isolated `sara` environment, a
-//! deterministic seed, a volatile-field redactor, and a minimal MCP stdio
-//! client that speaks newline-delimited JSON-RPC to `sara mcp`.
-
-#![allow(dead_code)] // helpers are shared across sibling modules; not all used by each.
+#![allow(dead_code)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -11,15 +7,12 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-/// An isolated sara install: a temp `HOME`/`XDG_*` root plus a project folder,
-/// so tests never touch the developer's real `~/.local/share/sara`.
 pub struct Sara {
     home: TempDir,
     project: PathBuf,
 }
 
 impl Sara {
-    /// Fresh, empty install with one initialised project ("Demo").
     pub fn new() -> Self {
         let home = tempfile::tempdir().expect("tempdir");
         let project = home.path().join("project");
@@ -29,13 +22,10 @@ impl Sara {
         s
     }
 
-    /// The project directory sara commands operate in.
     pub fn project(&self) -> &Path {
         &self.project
     }
 
-    /// A `Command` for the compiled `sara` binary, pinned to this install and
-    /// run from the project directory.
     pub fn cmd(&self) -> Command {
         let mut c = Command::new(bin());
         c.current_dir(&self.project)
@@ -47,7 +37,6 @@ impl Sara {
         c
     }
 
-    /// Run a sara subcommand to completion, asserting success, and return stdout.
     pub fn run(&self, args: &[&str]) -> String {
         let out = self.cmd().args(args).output().expect("spawn sara");
         assert!(
@@ -60,13 +49,10 @@ impl Sara {
         String::from_utf8(out.stdout).expect("utf8 stdout")
     }
 
-    /// Run a sara subcommand whose stdout is JSON and return the parsed value.
     pub fn json(&self, args: &[&str]) -> Value {
         serde_json::from_str(&self.run(args)).expect("stdout is valid json")
     }
 
-    /// Start an MCP session (`sara mcp`) against this install and complete the
-    /// `initialize` handshake so `tools/call` requests are accepted.
     pub fn mcp(&self) -> Mcp {
         let mut child = Command::new(bin())
             .arg("mcp")
@@ -93,13 +79,10 @@ impl Sara {
     }
 }
 
-/// Path to the `sara` binary built for this test run.
 fn bin() -> PathBuf {
     assert_cmd::cargo::cargo_bin("sara")
 }
 
-/// A minimal MCP stdio client: writes newline-delimited JSON-RPC requests and
-/// reads the matching responses.
 pub struct Mcp {
     child: Child,
     stdin: ChildStdin,
@@ -115,7 +98,6 @@ impl Mcp {
         self.stdin.flush().expect("flush");
     }
 
-    /// Read lines until one carries the given response id.
     fn read_response(&mut self, id: u64) -> Value {
         loop {
             let mut line = String::new();
@@ -152,7 +134,6 @@ impl Mcp {
         }));
     }
 
-    /// Call a tool and return the full JSON-RPC response envelope.
     pub fn call(&mut self, name: &str, arguments: Value) -> Value {
         let id = self.next_id;
         self.next_id += 1;
@@ -165,8 +146,6 @@ impl Mcp {
         self.read_response(id)
     }
 
-    /// Call a tool and return the parsed JSON payload the tool produced
-    /// (the text content of the response envelope).
     pub fn call_result(&mut self, name: &str, arguments: Value) -> Value {
         let env = self.call(name, arguments);
         let text = env["result"]["content"][0]["text"]
@@ -178,15 +157,11 @@ impl Mcp {
 
 impl Drop for Mcp {
     fn drop(&mut self) {
-        // Killing the child lets the server exit; then reap it.
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
 }
 
-/// Keys whose values are non-deterministic (random ids, wall-clock times,
-/// age-derived scores, git commits). Replaced with a stable placeholder so
-/// snapshots pin structure, not run-specific noise.
 const VOLATILE: &[&str] = &[
     "uuid",
     "entry",
@@ -200,7 +175,6 @@ const VOLATILE: &[&str] = &[
     "step_id",
 ];
 
-/// Recursively replace volatile field values with `"[redacted]"`.
 pub fn redact(mut value: Value) -> Value {
     scrub(&mut value);
     value

@@ -1,15 +1,3 @@
-//! Surfacing a task's own prior findings that are semantically close to a new
-//! result or finding — so an agent is reconnected to what it already concluded
-//! the moment it records something that touches the same ground. This is the
-//! guard against the "recorded a finding early, then contradicted it later
-//! without noticing" failure: the earlier finding is pushed back into view (with
-//! a reconsider prompt) exactly when the new text overlaps it in meaning.
-//!
-//! Deliberately embedding-based, not keyword-based: a contradiction rarely
-//! shares surface wording ("no coupled NightOwl fault" vs "reverted NightOwl for
-//! the coupled NU1605"), but it is semantically adjacent — which cosine catches
-//! and FTS does not.
-
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -17,26 +5,17 @@ use uuid::Uuid;
 use crate::infrastructure::db;
 use crate::infrastructure::embedding::{self, Embedder};
 
-/// Cosine floor for calling a prior finding "related enough to reconsider".
-/// Higher than the general recall threshold (0.30) because a false reconsider
-/// prompt is noise the agent must burn a thought on — precision over recall.
+mod render;
+mod types;
+
+#[allow(unused_imports)]
+pub use render::print_related_findings;
+pub use types::Related;
+
 const RELATED_THRESHOLD: f32 = 0.55;
 
-/// At most this many prior findings are surfaced, strongest first — enough to
-/// catch a contradiction without drowning the agent in its own backlog.
 const MAX_RELATED: usize = 2;
 
-/// A prior finding surfaced as related to some new text, with its similarity.
-pub struct Related {
-    pub id: i64,
-    pub text: String,
-    pub cosine: f32,
-}
-
-/// Find the task's own prior `finding` annotations semantically closest to
-/// `new_text`, above [`RELATED_THRESHOLD`], strongest first, capped at
-/// [`MAX_RELATED`]. `exclude_id` skips the just-inserted annotation so a finding
-/// never matches itself. Best-effort: returns empty on any embed hiccup.
 pub fn related_findings(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -72,26 +51,11 @@ pub fn related_findings(
     scored
 }
 
-/// JSON form for MCP/`--json` callers.
 pub fn related_findings_json(related: &[Related]) -> Vec<Value> {
     related
         .iter()
         .map(|r| json!({ "annotation_id": r.id, "cosine": r.cosine, "text": r.text }))
         .collect()
-}
-
-/// Print a reconsider prompt for related prior findings, if any. No-op on empty.
-pub fn print_related_findings(related: &[Related]) {
-    if related.is_empty() {
-        return;
-    }
-    eprintln!("⟳ reconsider — related prior finding(s) on this task:");
-    for r in related {
-        eprintln!("    (~{:.2}) #{}: {}", r.cosine, r.id, r.text);
-    }
-    eprintln!(
-        "  If your new note revises or contradicts one, correct it (denotate / re-annotate)."
-    );
 }
 
 #[cfg(test)]

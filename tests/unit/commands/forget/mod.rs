@@ -9,8 +9,6 @@ fn seed(conn: &Connection, title: &str, tags: &[&str]) -> Item {
     item
 }
 
-/// Raw status lookup that (unlike `get_item_by_uuid`) doesn't filter out
-/// archived rows — needed to assert an item was actually archived.
 fn item_status(conn: &Connection, uuid: &str) -> String {
     db::item_status_for_test(conn, uuid)
 }
@@ -53,7 +51,6 @@ fn forget_canonical_lists_derived_children_but_does_not_archive_them() {
     assert_eq!(derived, vec![child_label.clone()]);
     assert!(v["cascaded"].as_array().unwrap().is_empty());
 
-    // Canonical archived, derived child still active.
     assert_eq!(item_status(&conn, &canonical.uuid.to_string()), "archived");
     assert_eq!(item_status(&conn, &child.uuid.to_string()), "active");
 }

@@ -1,7 +1,3 @@
-//! Completion / edit / lifecycle MCP tools: dependencies, links, validation,
-//! field edits, feedback resolution, time tracking, and completion. Contributes
-//! `lifecycle_router`.
-
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};

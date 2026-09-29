@@ -62,14 +62,12 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
             continue;
         }
 
-        // Any key dismisses the overlay without otherwise acting on it.
         if showing_help {
             showing_help = false;
             continue;
         }
 
         let items = focusables(&st.detail, st.show_notes);
-        // Keep the cursor in range (links/files can disappear after a reload).
         if !items.is_empty() && st.selected >= items.len() {
             st.selected = items.len() - 1;
         }
@@ -84,9 +82,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                 Action::Confirm | Action::Save => {
                     let text = st.editor.lines().join(" ");
                     if !text.trim().is_empty() {
-                        // Add to the kind of the focused checklist row (so adding
-                        // while on an acceptance criterion adds another criterion);
-                        // default to a step otherwise.
                         let kind = match &current {
                             Some(Focusable::Checklist(i)) => st
                                 .detail
@@ -193,9 +188,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
             }
         } else {
             let action = dispatcher.dispatch(key, Mode::Normal);
-            // Enter and 'e' both open/confirm the focused item — 'e' isn't
-            // part of the shared vocabulary (it's a domain letter, not a
-            // navigation key), so it comes back as Action::Raw.
             let confirmed = matches!(action, Action::Confirm)
                 || matches!(&action, Action::Raw(k) if k.code == KeyCode::Char('e'));
             if confirmed {
@@ -223,11 +215,8 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                     }
                     Some(Focusable::File(path)) => {
                         if db::is_url(&path) {
-                            // URL stored as a file (legacy attach) -> browser.
                             open_url(&path);
                         } else {
-                            // Real file -> open in the user's editor. Hand the
-                            // terminal back while the editor runs.
                             let target = st
                                 .detail
                                 .project_root
@@ -247,7 +236,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                     }
-                    // Enter on an anchor opens the file in the editor.
                     Some(Focusable::Anchor(i)) => {
                         if let Some(anchor) = st.detail.anchors.get(i) {
                             let target = st
@@ -262,12 +250,10 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                             terminal.clear()?;
                         }
                     }
-                    // Enter on a comment opens the comment input to reply.
                     Some(Focusable::Comment(_)) => {
                         st.editor = TextArea::default();
                         st.commenting = true;
                     }
-                    // Enter on a typed note opens the comment input to comment on it.
                     Some(Focusable::Note(_)) => {
                         st.editor = TextArea::default();
                         st.commenting = true;
@@ -277,7 +263,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
             } else {
                 match action {
                     Action::Quit => break,
-                    // Reorder the focused checklist step within its kind.
                     Action::ReorderUp => reorder_focused_step(conn, &mut st, &current, true),
                     Action::ReorderDown => reorder_focused_step(conn, &mut st, &current, false),
                     Action::Down => {
@@ -305,10 +290,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                     }
-                    // Ctrl+E: hand the current long text field to $EDITOR
-                    // instead of the in-TUI textarea. On the Description
-                    // field, edit it directly; anywhere else, compose a new
-                    // comment (mirroring 'c', which is unconditional on focus).
                     Action::ExternalEdit => {
                         if current_field == Some(EditField::Description) {
                             tui::suspend()?;
@@ -359,31 +340,18 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                             cycle_priority(&mut st.detail.task, true);
                             save(conn, cfg, &mut st.detail)?;
                         }
-                        // ── Add a new checklist step ────────────────────────
                         KeyCode::Char('a') => {
                             st.editor = TextArea::default();
                             st.adding_step = true;
                         }
-                        // ── Task tree panel ─────────────────────────────────
-                        // 'd' expands the always-visible task tree from its
-                        // compact default (2 levels, a few siblings per node)
-                        // to its full fetched depth/fan-out — instant, since
-                        // the tree is already fetched that deep (see
-                        // `TREE_FETCH_*` in handler.rs).
                         KeyCode::Char('d') => {
                             st.tree_expanded = !st.tree_expanded;
                         }
-                        // ── Review & comment loop ───────────────────────────
                         KeyCode::Char('c') => {
                             st.editor = TextArea::default();
                             st.commenting = true;
                         }
                         KeyCode::Char('r') => {
-                            // Mark the focused element for reconsideration.
-                            // If it already has an open comment, toggle the flag
-                            // on it. If not, create a new comment with
-                            // request_revision=true so the element is flagged
-                            // even without a written note.
                             let fb = feedback_for_focus(&st.detail, &current);
                             if let Some(existing) = fb.first() {
                                 let _ = db::set_request_revision(
@@ -392,7 +360,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                     !existing.request_revision,
                                 );
                             } else {
-                                // No existing comment — auto-create a reconsider marker.
                                 let (tk, tid) = comment_target(&st.detail, &current);
                                 let _ = db::add_annotation_full(
                                     conn,
@@ -402,14 +369,13 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                     "human",
                                     tk.as_deref(),
                                     tid.as_deref(),
-                                    true, // request_revision = true
+                                    true,
                                 );
                             }
                             st.detail.annotations =
                                 db::get_annotations(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                         KeyCode::Char('x') => {
-                            // Resolve the focused element's latest open feedback.
                             if let Some(fb) = feedback_for_focus(&st.detail, &current).first() {
                                 let _ = db::resolve_annotation(conn, fb.id, None);
                                 st.detail.annotations =
@@ -417,7 +383,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                         .unwrap_or_default();
                             }
                         }
-                        // ── Display density toggles ─────────────────────────
                         KeyCode::Char('u') => {
                             st.show_urgency_breakdown = !st.show_urgency_breakdown;
                         }
@@ -426,15 +391,11 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                         }
                         KeyCode::Char('n') => {
                             st.show_notes = !st.show_notes;
-                            // Notes just appeared/disappeared from the focusable
-                            // list — keep the cursor from landing mid-air on a
-                            // row that no longer exists.
                             let items = focusables(&st.detail, st.show_notes);
                             if !items.is_empty() && st.selected >= items.len() {
                                 st.selected = items.len() - 1;
                             }
                         }
-                        // ── Open the highlighted link, else the task's PR ───
                         KeyCode::Char('o') => {
                             let url = match &current {
                                 Some(Focusable::Link(i)) => {
@@ -460,9 +421,6 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
     Ok(())
 }
 
-/// Info/edit's help overlay: the shared bindings it acts on (all of them —
-/// unlike board, this screen reorders steps, saves fields, and toggles
-/// checklist items) plus its own domain letters.
 fn help_bindings() -> Vec<(&'static str, &'static str)> {
     use keymap::help::*;
     vec![
@@ -532,7 +490,6 @@ pub(super) fn current_value(task: &Task, field: EditField) -> String {
             })
             .unwrap_or_default(),
         EditField::Recur => task.recur.clone().unwrap_or_default(),
-        // Dependencies live in a separate table; handled via depends_on_display.
         EditField::DependsOn => String::new(),
     }
 }
@@ -571,7 +528,6 @@ pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &
             let v = value.trim().to_lowercase();
             task.recur = if v.is_empty() { None } else { Some(v) };
         }
-        // Reconciled against the dependencies table in reconcile_dependencies.
         EditField::DependsOn => {}
     }
 }
@@ -595,20 +551,15 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
     task.urgency = db::compute_urgency(task, &cfg.urgency, false, 0);
     db::update_task(conn, task)?;
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
-    // Pull back the authoritative urgency (refresh accounts for blocking).
     if let Some(t) = db::get_task_by_uuid_prefix(conn, &task.uuid.to_string()[..8])? {
         task.urgency = t.urgency;
     }
     detail.history = db::get_history(conn, &detail.task.uuid)?;
-    // The project may have changed — re-resolve its root so file/anchor opens
-    // don't keep joining paths against the old project's directory.
     detail.project_root = db::get_project(conn, &detail.task.project)?
         .and_then(|p| p.path)
         .map(std::path::PathBuf::from);
-    // Reload branch / overlaps in case project changed.
     detail.branch = db::get_task_branch(conn, &detail.task.uuid);
     detail.overlaps = compute_overlaps(conn, &detail.task, &detail.branch);
-    // Reload similar tasks and checklist after any save.
     detail.similar = db::similar_tasks(
         conn,
         &detail.task.uuid,
@@ -625,12 +576,10 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
         !blockers.is_empty(),
         blocking_tasks.len(),
     ));
-    // Dependencies (or the task itself) may have just changed — refresh the tree too.
     detail.tree = build_task_tree(conn, detail.task.uuid);
     Ok(())
 }
 
-/// Parse a human duration string like "2h30m", "90m", "1h", "45" (minutes) into minutes.
 pub(super) fn parse_duration_to_mins(s: &str) -> Option<i64> {
     let s = s.trim();
     if s.is_empty() {
@@ -638,7 +587,6 @@ pub(super) fn parse_duration_to_mins(s: &str) -> Option<i64> {
     }
     let s_lower = s.to_lowercase();
     let rest = s_lower.as_str();
-    // Parse hours (handles "2h", "2h30m", "2h 30m")
     if let Some(h_pos) = rest.find('h')
         && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
     {
@@ -651,7 +599,6 @@ pub(super) fn parse_duration_to_mins(s: &str) -> Option<i64> {
         }
         return Some(total);
     }
-    // "Ym" or bare number (minutes)
     let m_part = rest.trim_end_matches('m').trim();
     m_part.parse::<i64>().ok()
 }

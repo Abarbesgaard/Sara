@@ -5,82 +5,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::infrastructure::{db, memory_graph::MemoryGraph};
 
-/// Default minimum synapse weight for two memories to be considered clustered.
-/// Above a single weak shared tag (`W_SHARED_TAG` = 0.3) so broad tag crowding
-/// does not explode into noise; a shared file (0.6), shared task (0.8), an
-/// explicit link, or several summed anchors clears it.
+mod types;
+use types::{Cluster, UnionFind};
+
 pub const DEFAULT_MIN_WEIGHT: f64 = 0.5;
 
-/// Default largest cluster `reflect` will propose. A connected component above
-/// this is single-linkage chaining (A~B~C~…), not one lesson, so it is split at
-/// its weakest synapses until every piece fits. 0 disables splitting.
 pub const DEFAULT_MAX_CLUSTER: usize = 8;
 
-/// A proposed consolidation: a cluster of related, not-yet-consolidated memories
-/// and the canonical+derived_from restructuring that would tidy them.
-#[derive(Debug)]
-struct Cluster {
-    /// Member labels (e.g. `m209`), suggested canonical first.
-    members: Vec<String>,
-    /// Label of the member proposed to become the canonical (strongest member).
-    suggested_canonical: String,
-    /// Tags shared by every member (may be empty).
-    shared_tags: Vec<String>,
-    /// Ranking score: size dominates, strength breaks ties.
-    score: f64,
-}
-
-/// Union-find over memory indices for transitive clustering.
-struct UnionFind {
-    parent: Vec<usize>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        UnionFind {
-            parent: (0..n).collect(),
-        }
-    }
-    fn find(&mut self, x: usize) -> usize {
-        let mut r = x;
-        while self.parent[r] != r {
-            r = self.parent[r];
-        }
-        // Path compression.
-        let mut cur = x;
-        while self.parent[cur] != r {
-            let next = self.parent[cur];
-            self.parent[cur] = r;
-            cur = next;
-        }
-        r
-    }
-    fn union(&mut self, a: usize, b: usize) {
-        let (ra, rb) = (self.find(a), self.find(b));
-        if ra != rb {
-            self.parent[ra] = rb;
-        }
-    }
-}
-
-/// Core shared by CLI and MCP. Clusters related memories via the MemoryGraph and
-/// proposes canonical+derived_from consolidations for clusters not yet tidied.
-///
-/// A cluster is a connected component (over synapses of weight >= `min_weight`)
-/// of two or more memories. A component is **excluded** when it is already
-/// consolidated: there exists a memory `P` such that every member either *is* `P`
-/// or has an outgoing `derived_from` edge to `P` (i.e. a canonical and its
-/// children, or siblings under a shared parent).
-///
-/// A component larger than `max_cluster` (0 = unlimited) that is not already
-/// consolidated is split by [`split_component`] before being proposed.
 pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> Result<Value> {
     let graph = MemoryGraph::build(conn)?;
     if graph.is_empty() {
         return Ok(json!({ "clusters": [], "count": 0 }));
     }
 
-    // uuid -> node index.
     let index: HashMap<String, usize> = graph
         .nodes
         .iter()
@@ -88,22 +25,10 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
         .map(|(i, n)| (n.uuid.to_string(), i))
         .collect();
 
-    // Per-memory project set — the boundary Hebbian clustering must respect.
-    // Near-identical text across repos (e.g. dependabot "restore PR to green"
-    // notes) otherwise co-activates and merges into cross-project mega-clusters
-    // whose canonical swamps every member project's recall.
     let projects_by_uuid = projects_by_uuid(conn)?;
 
-    // Deliberately-authored associations (any explicit `memory_links` relation
-    // except the machine-learned `co_activated`). These are the ONLY signal
-    // allowed to cross a project boundary: a shared lesson you intentionally
-    // link with `sara link-memory` still consolidates across repos, but
-    // incidental co-firing or a shared tag never drags two repos together.
     let deliberate = deliberate_links(conn)?;
 
-    // Cluster via union-find over strong-enough edges. Within a project (or the
-    // null scope) any edge above `min_weight` joins; across projects only a
-    // deliberate explicit link does.
     let mut uf = UnionFind::new(graph.nodes.len());
     let mut eligible: Vec<(usize, usize, f64)> = Vec::new();
     for (a, b, w) in graph.edges() {
@@ -121,14 +46,12 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
         }
     }
 
-    // Group node indices by component root.
     let mut components: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..graph.nodes.len() {
         let root = uf.find(i);
         components.entry(root).or_default().push(i);
     }
 
-    // Per-memory outgoing `derived_from` parents (uuids), for the exclusion rule.
     let derived_parents: HashMap<String, HashSet<String>> = graph
         .nodes
         .iter()
@@ -143,7 +66,6 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
         })
         .collect();
 
-    // Per-memory normalised tag set, for shared-tag intersection.
     let mut tags_by_uuid: HashMap<String, Vec<String>> = HashMap::new();
     for m in db::list_memories(conn)? {
         let tags: Vec<String> = m.tags.iter().map(|t| t.to_lowercase()).collect();
@@ -157,8 +79,6 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
             .collect()
     };
 
-    // Split oversized components, but only ones not already tidied: a canonical
-    // with many children is one consolidated family, not a chain to break up.
     let mut pieces: Vec<Vec<usize>> = Vec::new();
     for members in components.into_values() {
         if members.len() < 2 {
@@ -185,7 +105,6 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
             continue;
         }
 
-        // Strongest member becomes the suggested canonical.
         let mut sorted: Vec<usize> = member_idx.clone();
         sorted.sort_by(|&a, &b| {
             graph.nodes[b]
@@ -213,7 +132,6 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
         });
     }
 
-    // Rank: biggest, strongest clusters first; stable by canonical label.
     clusters.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -252,11 +170,6 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
     }))
 }
 
-/// Break a chained component into pieces of at most `max` members by repeatedly
-/// dropping its weakest synapse level and re-taking connected components
-/// (divisive single linkage). Tightly-bound cores survive; the weak bridges that
-/// chained them together are what get cut. Members left without any surviving
-/// edge come back as singletons, which callers ignore.
 fn split_component(
     members: Vec<usize>,
     edges: &[(usize, usize, f64)],
@@ -291,13 +204,10 @@ fn split_component(
     out
 }
 
-/// A component is already consolidated when some memory `P` is a common parent:
-/// every member either *is* `P` or has a `derived_from` edge to `P`.
 fn is_already_consolidated(
     uuids: &[String],
     derived_parents: &HashMap<String, HashSet<String>>,
 ) -> bool {
-    // Candidate parents: any member, plus any parent any member points at.
     let mut candidates: HashSet<String> = uuids.iter().cloned().collect();
     for u in uuids {
         if let Some(parents) = derived_parents.get(u) {
@@ -314,7 +224,6 @@ fn is_already_consolidated(
     })
 }
 
-/// All memory→projects associations, loaded once for the project-boundary guard.
 fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, HashSet<String>>> {
     let mut map: HashMap<String, HashSet<String>> = HashMap::new();
     for (uuid, project) in db::all_item_projects(conn)? {
@@ -323,7 +232,6 @@ fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, HashSet<String>
     Ok(map)
 }
 
-/// An order-independent key for a pair of memory uuids.
 fn pair_key(a: &str, b: &str) -> (String, String) {
     if a <= b {
         (a.to_string(), b.to_string())
@@ -332,10 +240,6 @@ fn pair_key(a: &str, b: &str) -> (String, String) {
     }
 }
 
-/// Pairs joined by a deliberately-authored `memory_links` edge — every explicit
-/// relation except the machine-learned `co_activated`. These are the only edges
-/// permitted to cross a project boundary, so intentional cross-repo sharing
-/// survives while incidental co-firing does not.
 fn deliberate_links(conn: &Connection) -> Result<HashSet<(String, String)>> {
     let mut set = HashSet::new();
     for link in db::all_memory_links(conn).unwrap_or_default() {
@@ -347,10 +251,6 @@ fn deliberate_links(conn: &Connection) -> Result<HashSet<(String, String)>> {
     Ok(set)
 }
 
-/// True when two memories belong to the same scope: they share a project, or
-/// both have no project at all (the null scope). A memory scoped to one repo is
-/// never dragged into another repo's cluster, but same-repo (and project-less)
-/// memories cluster as before.
 fn shares_project(a: &str, b: &str, projects_by_uuid: &HashMap<String, HashSet<String>>) -> bool {
     match (projects_by_uuid.get(a), projects_by_uuid.get(b)) {
         (Some(pa), Some(pb)) => pa.intersection(pb).next().is_some(),
@@ -359,7 +259,6 @@ fn shares_project(a: &str, b: &str, projects_by_uuid: &HashMap<String, HashSet<S
     }
 }
 
-/// Tags present on every member of the cluster.
 fn shared_tags(uuids: &[String], tags_by_uuid: &HashMap<String, Vec<String>>) -> Vec<String> {
     let mut iter = uuids.iter();
     let first = match iter.next().and_then(|u| tags_by_uuid.get(u)) {
@@ -379,14 +278,6 @@ fn shared_tags(uuids: &[String], tags_by_uuid: &HashMap<String, Vec<String>>) ->
     shared
 }
 
-/// Materialise the consolidation the proposer suggests: for every cluster,
-/// create the proposed `derived_from` edges (each non-canonical member ->
-/// suggested canonical) via `db::insert_memory_link`. Idempotent — the DB dedups
-/// `(from,to,relation)` and an already-consolidated cluster is not proposed
-/// again. A link that would trip the `derived_from` cycle guard is skipped and
-/// reported rather than aborting the whole pass.
-///
-/// Returns `{ applied, links[], skipped[], clusters }`.
 pub fn apply_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> Result<Value> {
     let proposal = reflect_value(conn, min_weight, max_cluster)?;
     let clusters = proposal["clusters"].as_array().cloned().unwrap_or_default();
@@ -437,8 +328,6 @@ pub fn apply_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> Re
     }))
 }
 
-/// `sara reflect [--apply]` — propose (default) or materialise canonical+derived
-/// consolidations for clusters of related, not-yet-tidied memories.
 pub fn run(
     conn: &Connection,
     min_weight: f64,

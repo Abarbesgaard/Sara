@@ -2,17 +2,11 @@ use super::*;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 
-// Mutating $EDITOR/$VISUAL is process-wide state, so serialize the tests
-// that touch it (same pattern as infrastructure::config's HOME tests).
 static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
     TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
 }
 
-/// Write an executable shell script standing in for $EDITOR. Unix-only:
-/// Windows can't exec a shebang script directly, and `edit_text_via_external_editor`
-/// itself is platform-agnostic (just Command::new + args), so only the
-/// *test harness* needs the unix gate, not the feature.
 #[cfg(unix)]
 fn fake_editor(name: &str, body: &str) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;

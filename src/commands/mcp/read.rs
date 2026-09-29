@@ -1,7 +1,3 @@
-//! Task-reading MCP tools plus the memory-maintenance surface (`forget`,
-//! `promote`, `link_memory`, `prune_memories`, `consolidate`, `reflect`,
-//! `diagnose_memories`, `reindex_embeddings`). Contributes `read_router`.
-
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};
@@ -133,8 +129,6 @@ impl SaraServer {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
                 let items = crate::infrastructure::db::list_memories(conn)?;
-                // Batched: see `db::item_strengths` — the per-item form scans
-                // the recall-event log once per memory.
                 let strengths = crate::infrastructure::db::item_strengths(conn, &items);
                 let rows: Vec<serde_json::Value> = items
                     .iter()

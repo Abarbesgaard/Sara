@@ -22,7 +22,6 @@ fn sort_rows_orders_by_recent_activity_then_name() {
     ];
     sort_rows(&mut rows);
     let order: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-    // beta (newest) first, then zeta (older), then None-activity by name.
     assert_eq!(order, ["beta", "zeta", "alpha", "gamma"]);
 }
 

@@ -1,7 +1,3 @@
-//! Drive the real `sara mcp` stdio server and snapshot the tool-response
-//! contracts agents depend on. Covers the JSON-RPC envelope shape plus the
-//! payloads of `begin`, `learn`, and `recall`.
-
 use insta::assert_json_snapshot;
 use serde_json::json;
 

@@ -33,7 +33,6 @@ fn is_clean_detects_dirty_and_clean_trees() {
     std::fs::write(dir.join("a.txt"), "changed").unwrap();
     assert_eq!(is_clean(&dir), Some(false), "modified file → dirty");
 
-    // Untracked files also count as dirty.
     std::process::Command::new("git")
         .args(["checkout", "--", "a.txt"])
         .current_dir(&dir)
@@ -42,8 +41,6 @@ fn is_clean_detects_dirty_and_clean_trees() {
     std::fs::write(dir.join("new.txt"), "x").unwrap();
     assert_eq!(is_clean(&dir), Some(false), "untracked file → dirty");
 }
-
-// --- parse_github_owner_repo ---
 
 #[test]
 fn parses_ssh_remote_url() {
@@ -94,8 +91,6 @@ fn rejects_url_with_empty_owner() {
 fn rejects_url_with_empty_repo() {
     assert!(parse_github_owner_repo("https://github.com/owner/").is_none());
 }
-
-// --- github_repo_from_remote ---
 
 fn make_git_repo_with_remote(dir: &std::path::Path, remote_url: Option<&str>) {
     std::process::Command::new("git")

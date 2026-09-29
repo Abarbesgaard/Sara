@@ -1,7 +1,6 @@
 use crate::infrastructure::{db, model::Item};
 use uuid::Uuid;
 
-/// Insert a tagged memory (no anchors — edges are added explicitly per test).
 fn insert_memory(conn: &rusqlite::Connection, body: &str, tag: &str) -> Uuid {
     let mut item = Item::new_memory(body.to_string(), body.to_string(), None);
     item.tags = vec![tag.to_string()];
@@ -38,18 +37,15 @@ fn cluster_sizes(v: &serde_json::Value) -> Vec<usize> {
 
 #[test]
 fn chained_mega_component_is_split_at_its_weakest_links() {
-    // Single linkage chains a long run of moderately-related memories into
-    // one blob. Two tight triangles joined by a weak chain must come back as
-    // the two triangles, not as one 12-member cluster.
     let conn = db::open_in_memory_for_test();
     let m: Vec<Uuid> = (0..12)
         .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
         .collect();
     for w in m[2..10].windows(2) {
-        weighted_link(&conn, &w[0], &w[1], 1.0); // chain edge: 0.7
+        weighted_link(&conn, &w[0], &w[1], 1.0);
     }
     for tri in [&m[0..3], &m[9..12]] {
-        weighted_link(&conn, &tri[0], &tri[1], 2.0); // tight edge: capped 1.0
+        weighted_link(&conn, &tri[0], &tri[1], 2.0);
         weighted_link(&conn, &tri[1], &tri[2], 2.0);
         weighted_link(&conn, &tri[0], &tri[2], 2.0);
     }
@@ -77,8 +73,6 @@ fn component_within_max_size_is_not_split() {
 #[test]
 fn fresh_related_cluster_is_proposed_with_a_canonical() {
     let conn = db::open_in_memory_for_test();
-    // Three memories flagged related (similar_to, 0.7 each) but with no
-    // canonical yet — the exact shape a consolidation should propose.
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -103,9 +97,7 @@ fn fresh_related_cluster_is_proposed_with_a_canonical() {
     let cluster = &v["clusters"][0];
     assert_eq!(cluster["members"].as_array().unwrap().len(), 3);
     assert!(!cluster["suggested_canonical"].as_str().unwrap().is_empty());
-    // Two derived_from links proposed (canonical + 2 children).
     assert_eq!(cluster["proposed_links"].as_array().unwrap().len(), 2);
-    // The shared tag is surfaced.
     assert!(
         cluster["shared_tags"]
             .as_array()
@@ -122,8 +114,6 @@ fn already_consolidated_cluster_is_excluded() {
     let child_a = insert_memory(&conn, "applied in repo a", "dependabot");
     let child_b = insert_memory(&conn, "applied in repo b", "dependabot");
 
-    // Both children point at the canonical — the cluster is already tidy.
-    // (derived_from carries weight 0.8, so they still form one component.)
     link(&conn, &child_a, &canonical, "derived_from");
     link(&conn, &child_b, &canonical, "derived_from");
 
@@ -154,8 +144,6 @@ fn unrelated_memories_are_not_clustered() {
 #[test]
 fn cross_project_memories_do_not_cluster() {
     let conn = db::open_in_memory_for_test();
-    // Two near-identical dependabot memories that would normally cluster on
-    // their shared tag — but each lives in a different repo.
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -168,9 +156,6 @@ fn cross_project_memories_do_not_cluster() {
     );
     db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
     db::set_item_projects(&conn, &b, &["repo-b".to_string()]).unwrap();
-    // Incidental machine signals only: a shared tag plus strong co-activation
-    // (the exact shape of the accidental cross-repo mega-merge). This clears
-    // the weight threshold but is NOT deliberate, so it must not cross.
     db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "co_activated", 2.0).unwrap();
 
     let v =
@@ -181,7 +166,6 @@ fn cross_project_memories_do_not_cluster() {
         "incidental co-firing must never merge memories across projects"
     );
 
-    // Sanity: put them in the SAME project and they cluster as expected.
     db::set_item_projects(&conn, &b, &["repo-a".to_string()]).unwrap();
     let v2 =
         super::reflect_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER).unwrap();
@@ -195,12 +179,10 @@ fn cross_project_memories_do_not_cluster() {
 #[test]
 fn deliberate_link_clusters_across_projects() {
     let conn = db::open_in_memory_for_test();
-    // A genuinely shared lesson, deliberately linked across two repos.
     let a = insert_memory(&conn, "NU1608 NSubstitute fix pattern", "nsubstitute");
     let b = insert_memory(&conn, "applied NU1608 fix in other repo", "nsubstitute");
     db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
     db::set_item_projects(&conn, &b, &["repo-b".to_string()]).unwrap();
-    // An explicit, author-created association is allowed to cross projects.
     link(&conn, &a, &b, "similar_to");
 
     let v =
@@ -212,7 +194,6 @@ fn deliberate_link_clusters_across_projects() {
     );
 }
 
-/// Count `derived_from` edges emanating from the given memories.
 fn derived_from_count(conn: &rusqlite::Connection, uuids: &[&Uuid]) -> usize {
     uuids
         .iter()
@@ -247,7 +228,6 @@ fn reflect_apply_creates_derived_links() {
         "nothing skipped"
     );
 
-    // Exactly two derived_from edges now exist across the cluster.
     assert_eq!(derived_from_count(&conn, &[&a, &b, &c]), 2);
 }
 
@@ -264,13 +244,11 @@ fn reflect_apply_is_idempotent_and_excludes_after() {
         super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER).unwrap();
     assert_eq!(first["applied"].as_u64().unwrap(), 2);
 
-    // Second run: the cluster is now consolidated -> nothing to propose/apply.
     let second =
         super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER).unwrap();
     assert_eq!(second["applied"].as_u64().unwrap(), 0, "no re-application");
     assert!(second["skipped"].as_array().unwrap().is_empty());
 
-    // No duplicate edges, and the proposer no longer sees the cluster.
     assert_eq!(
         derived_from_count(&conn, &[&a, &b, &c]),
         2,
@@ -288,19 +266,12 @@ fn reflect_apply_is_idempotent_and_excludes_after() {
 #[test]
 fn reflect_apply_skips_cycle_violations() {
     let conn = db::open_in_memory_for_test();
-    // Insertion order fixes labels m1<m2<m3; equal strength -> canonical = a.
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
     link(&conn, &a, &b, "similar_to");
     link(&conn, &b, &c, "similar_to");
-    // Pre-existing a -> b derived_from: proposing b -> a would form a cycle.
     link(&conn, &a, &b, "derived_from");
-    // `b` now carries an incoming derived_from edge, which gives it a small
-    // canonical-derived strength bonus (task e7ff611e) that would otherwise
-    // flip the tie-break and make `b` the suggested canonical instead of
-    // `a`. Pin `a`'s strength above that bonus via a completed source task
-    // so the tie-break (and the scenario this test targets) is unaffected.
     let mut task =
         crate::infrastructure::model::Task::new("completed task".to_string(), "Sara".to_string());
     task.status = crate::infrastructure::model::Status::Completed;
@@ -309,7 +280,6 @@ fn reflect_apply_skips_cycle_violations() {
 
     let v =
         super::apply_value(&conn, super::DEFAULT_MIN_WEIGHT, super::DEFAULT_MAX_CLUSTER).unwrap();
-    // c -> a applies; b -> a is skipped for the cycle it would create.
     assert_eq!(
         v["applied"].as_u64().unwrap(),
         1,
@@ -331,7 +301,6 @@ fn reflect_apply_skips_cycle_violations() {
         skipped[0]["reason"]
     );
 
-    // c -> a exists; b -> a does not.
     let c_links = db::get_memory_links_from(&conn, &c.to_string()).unwrap();
     assert!(
         c_links

@@ -1,32 +1,8 @@
-//! Semantic-recall embedder.
-//!
-//! Sara's recall is lexical (FTS5) by default, so paraphrased or conceptually
-//! similar memories with different wording are missed. This module adds a small,
-//! **bundled, local** embedding model so recall can also rank by meaning — no
-//! daemon, no network, no runtime download.
-//!
-//! The model is a [model2vec](https://github.com/MinishLab/model2vec) *static*
-//! embedding model (`minishlab/potion-base-8M`): a plain token→vector lookup
-//! table. Inference is therefore trivially cheap and pure-Rust — no neural
-//! runtime:
-//!
-//! ```text
-//! tokenize (BERT WordPiece) → gather a matrix row per token → mean-pool → L2-normalize
-//! ```
-//!
-//! The matrix (int8-quantized from the original f32 `[29528, 256]`) and the
-//! tokenizer are `include_bytes!`d into the binary, so a `sara` build is fully
-//! self-contained. See `assets/embedding-model/PROVENANCE.md`.
-
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Anything that can turn text into a dense, L2-normalized vector. A trait so
-/// tests can substitute a deterministic fake and the backend can evolve.
 pub trait Embedder: Send + Sync {
-    /// Embed `text` into a unit-length vector of length [`Embedder::dim`].
     fn embed(&self, text: &str) -> Vec<f32>;
-    /// Dimensionality of the produced vectors.
     fn dim(&self) -> usize;
 }
 
@@ -39,26 +15,18 @@ const TOKENIZER_JSON: &[u8] = include_bytes!(concat!(
     "/assets/embedding-model/tokenizer.json"
 ));
 
-/// The bundled model2vec static-embedding backend.
 pub struct StaticEmbedder {
     vocab: HashMap<String, u32>,
     unk_id: u32,
-    /// Row-major int8 matrix, `vocab_n * dim`. Dequantize with `* scale`.
     matrix: Vec<i8>,
     scale: f32,
     dim: usize,
     vocab_n: usize,
-    /// The matrix blob's format version (`SEMB` header). Part of the embedding
-    /// scheme fingerprint, so a re-quantized/swapped model that bumps this (or
-    /// changes shape/scale) invalidates every stored vector.
     model_version: u32,
 }
 
 impl StaticEmbedder {
-    /// Parse the `include_bytes!`d model + tokenizer. Fails only if the vendored
-    /// bytes are corrupt (a build/packaging error, never a runtime condition).
     pub fn load_bundled() -> Result<Self, String> {
-        // ── matrix blob ── magic "SEMB", u32 version, u32 vocab, u32 dim, f32 scale, i8 data
         let b = MODEL_BIN;
         if b.len() < 20 || &b[0..4] != b"SEMB" {
             return Err("embedding matrix: bad magic".into());
@@ -81,7 +49,6 @@ impl StaticEmbedder {
         }
         let matrix: Vec<i8> = data.iter().map(|&x| x as i8).collect();
 
-        // ── tokenizer vocab ── parse only `model.vocab` (token → id) from tokenizer.json.
         let v: serde_json::Value =
             serde_json::from_slice(TOKENIZER_JSON).map_err(|e| format!("tokenizer.json: {e}"))?;
         let raw_vocab = v
@@ -109,20 +76,12 @@ impl StaticEmbedder {
         })
     }
 
-    /// Dequantized matrix row (the embedding for token `id`).
     #[inline]
     fn row(&self, id: u32) -> &[i8] {
         let o = id as usize * self.dim;
         &self.matrix[o..o + self.dim]
     }
 
-    /// BERT-style WordPiece tokenization → token ids.
-    ///
-    /// A self-contained implementation (no heavy `tokenizers` C-dependency):
-    /// because index-time and query-time use *this same* tokenizer, cosine
-    /// ranking is self-consistent regardless of tiny deviations from the
-    /// reference tokenizer. Special tokens ([CLS]/[SEP]) are intentionally
-    /// omitted — model2vec pools content tokens only.
     fn tokenize(&self, text: &str) -> Vec<u32> {
         let mut ids = Vec::new();
         for word in pre_tokenize(text) {
@@ -131,8 +90,6 @@ impl StaticEmbedder {
         ids
     }
 
-    /// Greedy longest-match WordPiece for a single pre-token. Continuation
-    /// pieces carry the `##` prefix; an unmatchable word maps to `[UNK]`.
     fn wordpiece(&self, word: &str, out: &mut Vec<u32>) {
         let chars: Vec<char> = word.chars().collect();
         if chars.is_empty() {
@@ -162,7 +119,6 @@ impl StaticEmbedder {
                     start = end;
                 }
                 None => {
-                    // Any piece unmatchable → whole word is [UNK].
                     out.push(self.unk_id);
                     return;
                 }
@@ -188,7 +144,7 @@ impl Embedder for StaticEmbedder {
             n += 1;
         }
         if n == 0 {
-            return acc; // all-zero for empty/OOV input
+            return acc;
         }
         let inv = 1.0 / n as f32;
         for a in acc.iter_mut() {
@@ -204,11 +160,6 @@ impl Embedder for StaticEmbedder {
 }
 
 impl StaticEmbedder {
-    /// A compact fingerprint of the model that produced a vector: format
-    /// version, vocabulary size, dimensionality, and the dequantization scale.
-    /// A re-quantized or swapped model changes at least one of these, so the
-    /// fingerprint changes and every vector produced under the old model is
-    /// recognised as stale. Pure — derived only from the loaded model.
     pub fn fingerprint(&self) -> String {
         format!(
             "m2v/v{}/n{}/d{}/s{:08x}",
@@ -220,43 +171,22 @@ impl StaticEmbedder {
     }
 }
 
-/// Version of `memory_embed_text`'s field-composition scheme. Bump this whenever
-/// the text assembled below changes (different fields, order, or separators), so
-/// vectors computed under the old text scheme are recognised as stale.
 const MEMORY_EMBED_TEXT_VERSION: u32 = 1;
 
-/// DB meta key under which the active embedding scheme version is recorded.
 const SCHEME_VERSION_KEY: &str = "embedding_scheme_version";
 
-/// Compose the embedding scheme version from the two things that invalidate
-/// stored vectors: the model fingerprint and the `memory_embed_text` version.
-/// Pure, so tests can prove that bumping either input changes the version.
 fn compose_scheme_version(model_fingerprint: &str, text_version: u32) -> String {
     format!("{model_fingerprint}|text{text_version}")
 }
 
-/// The embedding scheme version for the *currently compiled* binary: the
-/// bundled model's fingerprint blended with the `memory_embed_text` version.
 pub fn scheme_version() -> String {
     compose_scheme_version(&bundled().fingerprint(), MEMORY_EMBED_TEXT_VERSION)
 }
 
-/// Whether the stored scheme version requires a reindex to become current.
-/// A `None` stored version (fresh DB, or pre-versioning) counts as a mismatch.
-/// Pure, so the trigger condition is unit-testable without a database.
 fn needs_reindex(stored: Option<&str>, current: &str) -> bool {
     stored != Some(current)
 }
 
-/// Self-heal the semantic index: if the stored embedding scheme version differs
-/// from the compiled-in one (bundled model swapped, or `memory_embed_text`
-/// changed), every stored vector lives in a different vector space, so
-/// transparently reindex the whole corpus once and record the new version.
-///
-/// Returns `Ok(true)` when a reindex was performed, `Ok(false)` when the index
-/// was already current. Uses only the bundled model — no network, no download.
-/// Called once per process at startup; the recorded version makes it a no-op on
-/// every subsequent run until the scheme changes again.
 pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool> {
     let current = scheme_version();
     let stored = crate::infrastructure::db::meta_get(conn, SCHEME_VERSION_KEY)?;
@@ -268,16 +198,11 @@ pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool>
     Ok(true)
 }
 
-/// The process-wide bundled embedder, loaded once on first use. The model is
-/// compiled into the binary, so this is always available (it only fails on a
-/// corrupt build, which `load_bundled` would surface at first call).
 pub fn bundled() -> &'static StaticEmbedder {
     static E: OnceLock<StaticEmbedder> = OnceLock::new();
     E.get_or_init(|| StaticEmbedder::load_bundled().expect("bundled embedding model is valid"))
 }
 
-/// The text a memory is embedded from: its title plus its body/summary, so both
-/// the headline and the detail contribute to the semantic vector.
 fn memory_embed_text(item: &crate::infrastructure::model::Item) -> String {
     let detail = item.summary.clone().unwrap_or_else(|| item.body.clone());
     if item.title.trim().is_empty() {
@@ -287,9 +212,6 @@ fn memory_embed_text(item: &crate::infrastructure::model::Item) -> String {
     }
 }
 
-/// Embed a single memory and store its vector (best-effort). Called after a
-/// memory is learned so the semantic index stays current. Silently no-ops on
-/// failure — a missing embedding only means that memory won't match semantically.
 pub fn index_memory(conn: &rusqlite::Connection, item: &crate::infrastructure::model::Item) {
     let text = memory_embed_text(item);
     if text.trim().is_empty() {
@@ -299,8 +221,6 @@ pub fn index_memory(conn: &rusqlite::Connection, item: &crate::infrastructure::m
     let _ = crate::infrastructure::db::upsert_embedding(conn, &item.uuid.to_string(), &v);
 }
 
-/// (Re)build the semantic index over every active memory. Returns the number of
-/// memories embedded. Backs the `sara reindex-embeddings` command.
 pub fn reindex_all(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
     let emb = bundled();
     let memories = crate::infrastructure::db::list_memories(conn)?;
@@ -317,7 +237,6 @@ pub fn reindex_all(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
     Ok(n)
 }
 
-/// L2-normalize in place. A zero vector is left untouched.
 fn l2_normalize(v: &mut [f32]) {
     let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
@@ -327,8 +246,6 @@ fn l2_normalize(v: &mut [f32]) {
     }
 }
 
-/// Cosine similarity of two vectors. For L2-normalized inputs this equals the
-/// dot product; the explicit normalization keeps it correct regardless.
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;
@@ -347,8 +264,6 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     dot / (na.sqrt() * nb.sqrt())
 }
 
-/// BERT pre-tokenization: normalize (clean control chars, lowercase) then split
-/// on whitespace, isolating punctuation into standalone pieces.
 fn pre_tokenize(text: &str) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -358,7 +273,6 @@ fn pre_tokenize(text: &str) -> Vec<String> {
         }
     };
     for ch in text.chars() {
-        // clean_text: drop control chars; treat all whitespace as a separator.
         if ch.is_control() || ch.is_whitespace() {
             flush(&mut cur, &mut words);
             continue;
@@ -376,11 +290,8 @@ fn pre_tokenize(text: &str) -> Vec<String> {
     words
 }
 
-/// BERT treats ASCII punctuation and Unicode punctuation as standalone tokens.
 fn is_punct(ch: char) -> bool {
     ch.is_ascii_punctuation() || ch.is_ascii_graphic() && !ch.is_alphanumeric() || {
-        // General Unicode punctuation blocks (best-effort; English dev text is
-        // dominated by ASCII, so this only needs to be reasonable).
         matches!(ch, '\u{2000}'..='\u{206F}' | '\u{3000}'..='\u{303F}')
     }
 }

@@ -42,11 +42,9 @@ fn list_accepts_short_and_long_project_flag() {
 
 #[test]
 fn project_filter_short_flag_is_consistent_across_commands() {
-    // `-p` must mean `--project` on every command exposing a project filter.
     assert!(Cli::try_parse_from(["sara", "list", "-p", "x"]).is_ok());
     assert!(Cli::try_parse_from(["sara", "reset", "-p", "x"]).is_ok());
     assert!(Cli::try_parse_from(["sara", "activity", "-p", "x"]).is_ok());
-    // `add` takes `-p` before the trailing description.
     let cli = Cli::try_parse_from(["sara", "add", "-p", "x", "do", "thing"]).unwrap();
     match cli.command {
         Command::Add { project, words, .. } => {

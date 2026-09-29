@@ -1,7 +1,3 @@
-//! Memory items: CRUD, embeddings, tag/project/file associations, task links, and lookup queries.
-//!
-//! Part of the db memory subsystem (issue #168); re-exported by `super`.
-
 use super::*;
 use crate::infrastructure::model::{Item, Task};
 use anyhow::{Context, Result};
@@ -104,9 +100,6 @@ pub fn list_items(conn: &Connection, kind: Option<&str>) -> Result<Vec<Item>> {
     Ok(items)
 }
 
-/// Store (or replace) the embedding vector for a memory/item, keyed by its uuid.
-/// Vectors are persisted as a JSON array of f32 in the `embeddings` table.
-/// Best-effort by convention: callers treat a failure as "no semantic index".
 pub fn upsert_embedding(conn: &Connection, ref_uuid: &str, vector: &[f32]) -> Result<()> {
     let vector_json = serde_json::to_string(vector)?;
     conn.execute(
@@ -117,7 +110,6 @@ pub fn upsert_embedding(conn: &Connection, ref_uuid: &str, vector: &[f32]) -> Re
     Ok(())
 }
 
-/// Read back a single stored embedding, if present.
 pub fn get_embedding(conn: &Connection, ref_uuid: &str) -> Result<Option<Vec<f32>>> {
     let row: Option<String> = conn
         .query_row(
@@ -132,8 +124,6 @@ pub fn get_embedding(conn: &Connection, ref_uuid: &str) -> Result<Option<Vec<f32
     }
 }
 
-/// All stored embeddings as `(ref_uuid, vector)` pairs — the corpus semantic
-/// recall ranks the query against.
 pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
     let mut stmt = conn.prepare("SELECT ref_uuid, vector_json FROM embeddings")?;
     let rows = stmt.query_map([], |r| {
@@ -151,18 +141,11 @@ pub fn all_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
     Ok(out)
 }
 
-/// Remove a stored embedding (e.g. when a memory is forgotten). Idempotent.
 pub fn delete_embedding(conn: &Connection, ref_uuid: &str) -> Result<()> {
     conn.execute("DELETE FROM embeddings WHERE ref_uuid = ?1", [ref_uuid])?;
     Ok(())
 }
 
-/// Stored embeddings for *active/provisional* memories only, as
-/// `(ref_uuid, vector)` — the set semantic recall can actually surface.
-/// Archived, superseded and pruned memories keep their embeddings (only
-/// `forget` deletes one), so ranking the whole table wastes a JSON parse and a
-/// cosine on every vector [`get_item_by_uuid`] would discard anyway. Joining to
-/// live items drops them before scoring, which is the bulk of a large store.
 pub fn active_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
     let mut stmt = conn.prepare(
         "SELECT e.ref_uuid, e.vector_json FROM embeddings e
@@ -184,9 +167,6 @@ pub fn active_embeddings(conn: &Connection) -> Result<Vec<(String, Vec<f32>)>> {
     Ok(out)
 }
 
-/// All active memories (`kind = 'memory'`), sorted newest-created first.
-/// Use this for the `sara memories` browse command — display_id order is not
-/// guaranteed to match creation order, so sort explicitly on `created`.
 pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
@@ -209,10 +189,6 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     } else if let Some(rest) = handle.strip_prefix('m') {
         ("memory", rest)
     } else {
-        // Not an nN/lN/mN display handle. Uuids are hex ([0-9a-f]) and so never
-        // start with n/l/m — fall through to a uuid-prefix lookup, honoring the
-        // "8-char uuid prefix" that the link-memory docs advertise. The uuid
-        // prefix is also the *stable* handle (display ids get recompacted).
         return get_item_by_uuid_prefix(conn, &handle);
     };
     let id: i64 = id_str.parse().context("Invalid item id")?;
@@ -225,8 +201,6 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     .map_err(|_| anyhow::anyhow!("No active {kind} with id {id}"))
 }
 
-/// Resolve an active item by a uuid prefix, ambiguity-safe. Returns an error if
-/// the prefix matches more than one item (mirrors [`get_task_by_uuid_prefix`]).
 pub fn get_item_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Item> {
     let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
@@ -246,10 +220,6 @@ pub fn get_item_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Item> 
         .ok_or_else(|| anyhow::anyhow!("No active item with handle or uuid matching '{prefix}'"))
 }
 
-/// Look up an active item by its own uuid (as opposed to `get_item_by_handle`,
-/// which resolves the short `n1`/`l2`/`m3` display handle). Used by `recall`,
-/// where `search_index.task_uuid` carries the item's own uuid for item hits
-/// (see the `trg_items_*` triggers above).
 pub fn get_item_by_uuid(conn: &Connection, uuid: &str) -> Result<Item> {
     conn.query_row(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
@@ -289,8 +259,6 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
     Ok(())
 }
 
-/// Raw status lookup that (unlike [`get_item_by_uuid`]) doesn't filter out
-/// archived rows — used by tests to assert an item was actually archived.
 #[cfg(test)]
 pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
     conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| {
@@ -299,8 +267,6 @@ pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
     .unwrap()
 }
 
-/// Promote a provisional (auto-synthesised) memory to active after review.
-/// Returns false when the item wasn't provisional (already active/archived).
 pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
     let n = conn.execute(
         "UPDATE items SET status='active', modified=?2 WHERE uuid=?1 AND status='provisional'",
@@ -309,8 +275,6 @@ pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
     Ok(n > 0)
 }
 
-/// Replace an item's normalized tag set. Case-folded so "service-a" and
-/// "serviceA" collide into one vocabulary entry.
 pub fn set_item_tags(conn: &Connection, item_uuid: &Uuid, tags: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
     atomically(conn, "set_item_tags", || {
@@ -329,7 +293,6 @@ pub fn set_item_tags(conn: &Connection, item_uuid: &Uuid, tags: &[String]) -> Re
     })
 }
 
-/// Replace an item's project references (a memory can reference more than one).
 pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
     atomically(conn, "set_item_projects", || {
@@ -348,9 +311,6 @@ pub fn set_item_projects(conn: &Connection, item_uuid: &Uuid, projects: &[String
     })
 }
 
-/// The projects an item is linked to (the `item_projects` link table is the
-/// canonical attribution for memories — `items.project` is always NULL for
-/// them). Used to scope memory-wide scans to a single province.
 pub fn get_item_projects(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {
     let mut stmt =
         conn.prepare("SELECT project FROM item_projects WHERE item_uuid = ?1 ORDER BY project")?;
@@ -362,9 +322,6 @@ pub fn get_item_projects(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<Stri
     Ok(out)
 }
 
-/// Every memory→project association in the store as `(item_uuid, project)`
-/// pairs, loaded once for whole-corpus scans (e.g. reflect's project-boundary
-/// guard) instead of a per-item query.
 pub fn all_item_projects(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare("SELECT item_uuid, project FROM item_projects")?;
     let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
@@ -375,8 +332,6 @@ pub fn all_item_projects(conn: &Connection) -> Result<Vec<(String, String)>> {
     Ok(out)
 }
 
-/// Replace an item's file associations (a memory can be tied to multiple files).
-/// Paths should be absolute before calling; no normalisation is done here.
 pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> Result<()> {
     let uuid = item_uuid.to_string();
     atomically(conn, "set_item_files", || {
@@ -395,7 +350,6 @@ pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> 
     })
 }
 
-/// File paths stored for a given memory (by its UUID).
 pub fn get_item_files(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {
     let uuid = item_uuid.to_string();
     let mut stmt =
@@ -408,10 +362,6 @@ pub fn get_item_files(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>
     Ok(paths)
 }
 
-/// Active items associated with `path`.
-/// When `prefix` is false, only items whose file_path exactly equals `path`
-/// are returned. When `prefix` is true, items whose file_path starts with
-/// `path` are returned (directory-level recall — pass a trailing `/`).
 pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Item>> {
     let mut items = vec![];
     if prefix {
@@ -440,9 +390,6 @@ pub fn find_items_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
     Ok(items)
 }
 
-/// Replace a memory's task associations. `links` is a slice of (task_uuid, source)
-/// where source is either `"auto"` (detected from file overlap) or `"explicit"`
-/// (user-supplied). Existing rows for the item are deleted first.
 pub fn set_item_task_links(
     conn: &Connection,
     item_uuid: &Uuid,
@@ -461,11 +408,6 @@ pub fn set_item_task_links(
     })
 }
 
-/// Completed tasks that have `path` in their `task_files` attachment list.
-/// When `prefix` is false, only tasks with an exact `path` match are returned.
-/// When `prefix` is true, tasks with any attached file starting with `path`
-/// are returned (directory-level lookup — pass a trailing `/`).
-/// Pending / in-progress / deleted tasks are always excluded.
 pub fn find_tasks_by_file(conn: &Connection, path: &str, prefix: bool) -> Result<Vec<Task>> {
     let mut tasks = vec![];
     if prefix {
@@ -494,9 +436,6 @@ pub fn find_tasks_by_file(conn: &Connection, path: &str, prefix: bool) -> Result
     Ok(tasks)
 }
 
-/// All task links recorded for a memory, each paired with its source label
-/// (`"auto"` or `"explicit"`). Ordered by task.modified DESC so the most
-/// recently completed work surfaces first.
 pub fn get_item_task_links(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<(Task, String)>> {
     let uuid = item_uuid.to_string();
     let mut stmt = conn.prepare(&format!(
@@ -518,11 +457,6 @@ pub fn get_item_task_links(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<(T
     Ok(result)
 }
 
-// ── memory queries (tags, files, projects) ──────────────────────────────────
-
-/// Whether any memory has ever been learned (active `items` row with
-/// kind='memory'). Used by `recall` to distinguish "no memories recorded yet"
-/// from "no matches for this specific query".
 pub fn has_any_memories(conn: &Connection) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM items WHERE kind = 'memory' AND status IN ('active','provisional')",
@@ -532,8 +466,6 @@ pub fn has_any_memories(conn: &Connection) -> Result<bool> {
     Ok(count > 0)
 }
 
-/// Known tag vocabulary across active items, with usage counts, for `sara tags`
-/// (discoverability) and exact `--tag` recall filters.
 pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT it.tag, COUNT(*) FROM item_tags it
@@ -548,7 +480,6 @@ pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
     Ok(rows)
 }
 
-/// Active items whose normalized tag set contains `tag` (case-folded exact match).
 pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
     let folded = fold_tag(tag);
     let mut stmt = conn.prepare(
@@ -564,7 +495,6 @@ pub fn find_items_by_tag(conn: &Connection, tag: &str) -> Result<Vec<Item>> {
     Ok(items)
 }
 
-/// Active items referencing `project` (exact match, same casing as `projects.name`).
 pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         "SELECT i.uuid, i.kind, i.display_id, i.title, i.url, i.project, i.tags_json, i.path, i.summary, i.body, i.created, i.modified, i.status, i.source_task_uuid
@@ -579,12 +509,6 @@ pub fn find_items_by_project(conn: &Connection, project: &str) -> Result<Vec<Ite
     Ok(items)
 }
 
-/// Canonical memories that should surface under `project` even though the
-/// canonical itself isn't tagged with that project: any memory with an
-/// incoming `derived_from` edge from an item that *is* scoped to `project`.
-/// A pattern learned once in its own repo but applied (derived) in `project`
-/// is relevant there regardless of project scoping — see task tracking
-/// "cross-project canonical memories via global tag recall".
 pub fn find_cross_project_canonicals_for_project(
     conn: &Connection,
     project: &str,

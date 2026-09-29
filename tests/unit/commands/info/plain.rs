@@ -163,10 +163,8 @@ fn render_plain_wraps_long_comments_onto_indented_lines() {
     assert!(out.contains("Comments:"));
     assert!(out.contains("#1"));
     assert!(out.contains("(reconsider)"));
-    // The header line carries no body text — the comment id line is short.
     let header = out.lines().find(|l| l.contains("#1")).unwrap();
     assert!(!header.contains("word word word word word word word word"));
-    // The body is wrapped onto its own indented line(s).
     assert!(out.lines().any(|l| l.starts_with("      word")));
 }
 
@@ -227,14 +225,11 @@ fn render_markdown_has_description_steps_and_acceptance() {
         vec![],
     );
     let md = render_markdown(&d, RenderOpts::default());
-    // Description present.
     assert!(md.contains("## Description"));
     assert!(md.contains("original"));
-    // Steps rendered as GitHub-style checkboxes.
     assert!(md.contains("## Steps"));
     assert!(md.contains("- [ ] first step"));
     assert!(md.contains("- [x] second step"));
-    // Acceptance criteria rendered with checkboxes.
     assert!(md.contains("## Acceptance criteria"));
     assert!(md.contains("- [ ] definition of done"));
 }

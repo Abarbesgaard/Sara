@@ -11,93 +11,36 @@ use crate::infrastructure::project;
 
 mod scoring;
 
-/// `sara recall <query>` — cross-task memory. Uses the FTS5 index over task
-/// descriptions/rationale/assignment, annotations (findings/decisions/…), and
-/// code-anchor reasons so an agent can pull prior context from the whole history.
-/// Also supports exact `--tag`/`--project` lookups over learned memories
-/// (`sara learn`), indexed via `item_tags`/`item_projects` rather than FTS
-/// ranking, so a known topic can be found precisely instead of by keyword luck.
-///
-/// A single resolved hit, unifying task-level FTS matches and memory
-/// (`items`) hits so both can be ranked together.
 struct Hit {
     ref_kind: String,
-    /// "task <id>" or the item's short handle (e.g. "m3").
     label: String,
     description: String,
-    /// Short preview (≤160 chars) for the human terminal view.
     snippet: String,
-    /// The complete, untruncated memory text — emitted in the JSON/MCP path so
-    /// agents receive the full memory, not just the preview.
     body: String,
-    /// Task-linkage-derived confidence (see `db::item_strength`); 1.0 baseline
-    /// for plain task hits, which have no such linkage to derive from.
     strength: f64,
-    /// True when this hit came from an exact `--tag`/`--project` match rather
-    /// than plain-text FTS ranking.
     exact_match: bool,
-    /// True when this hit came from the loose Tier-3 token-OR fallback (only
-    /// SOME query terms matched, not the full phrase or every token). Signals
-    /// lower confidence so callers treat it as "maybe related", not exact.
     loose: bool,
-    /// bm25 relevance rank for free-text FTS hits: the hit's 0-based position in
-    /// `db::search_fts`'s `ORDER BY rank` result (lower = better match). `None`
-    /// for exact-filter hits, which are ordered by strength/recency instead.
-    /// Used as the primary tie-break among equal-strength FTS hits so the most
-    /// query-relevant memory leads (matters for LLM retrieval accuracy).
     fts_rank: Option<usize>,
     modified: Option<DateTime<Utc>>,
-    /// File paths the memory is associated with (from `item_files`).
     files: Vec<String>,
-    /// Tasks linked to this memory: (task, source "auto"|"explicit").
     linked_tasks: Vec<(Task, String)>,
-    /// Labels of memories that supersede this one (incoming `supersedes` edges).
-    /// Non-empty means this memory may be stale — the superseding memory is more current.
     superseded_by: Vec<String>,
-    /// True when this memory is auto-generated (status=provisional) and not yet reviewed.
     provisional: bool,
-    /// The item's own uuid for memory hits (None for plain task hits) — used
-    /// to record usage-reinforcement events after the final hit list is known.
     item_uuid: Option<uuid::Uuid>,
-    /// Labels of memories this one is derived from (outgoing `derived_from` edges).
-    /// Non-empty means this is a per-application copy of a canonical pattern memory.
     derived_from_labels: Vec<String>,
-    /// Labels of memories that derive from this one (incoming `derived_from` edges).
-    /// Non-empty means this is a canonical pattern memory; the labels are its
-    /// per-application evidence cards, so recall can point straight at them.
     derived_children: Vec<String>,
-    /// True when this hit was surfaced by semantic (embedding-cosine) matching
-    /// rather than lexical FTS — it may share no literal token with the query.
     semantic: bool,
-    /// Cosine similarity to the query for a semantic hit (`None` for lexical hits).
     cosine: Option<f32>,
-    /// When this hit stands in for a whole canonical family (a pattern memory
-    /// plus its per-application derived children), the family it represents.
-    /// `Some` means recall collapsed the near-duplicate siblings into this one
-    /// representative rather than returning every member — bounding the response
-    /// and freeing the top-k for diverse memories. `None` for standalone hits.
     cluster: Option<ClusterInfo>,
 }
 
-/// A collapsed canonical family: the pattern memory (canonical) plus its
-/// per-application derived children, represented in recall output by a single
-/// highest-valued member instead of every near-duplicate. Lets the caller see
-/// "one of a cluster of N related memories" and jump to the canonical, without
-/// the whole family flooding the response.
 #[derive(Clone, Debug)]
 struct ClusterInfo {
-    /// The canonical (root) memory's label, e.g. "m228" — the family's anchor.
     canonical_label: String,
-    /// Total memories in the family: the canonical plus all its derived
-    /// children (the *true* corpus size, not merely how many surfaced here).
     size: usize,
-    /// How many sibling members of this family were collapsed OUT of this recall
-    /// result to leave a single representative — for transparency.
     collapsed_here: usize,
 }
 
-/// Structured cross-task recall for the MCP `recall` tool and the `--json` CLI
-/// path: keyword (FTS5) hits and exact tag/project hits.
 pub fn recall_value(
     conn: &Connection,
     cfg: &Config,
@@ -117,8 +60,6 @@ pub fn recall_value(
         .collect();
 
     if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
-        // Bare recall: surface the most recent memories instead of erroring, so
-        // the cheap exploratory "what do I know?" call just works.
         let hits = recent_hits(conn, limit)?;
         for h in &hits {
             if let Some(u) = h.item_uuid {
@@ -141,9 +82,6 @@ pub fn recall_value(
         }));
     }
 
-    // Drill-deeper: a bare memory handle like `m228` resolves that memory
-    // directly and returns it in full plus its cluster as a guide — the "recall
-    // deeper" affordance an agent uses after a lean recall surfaced the label.
     if let Some(item) = resolve_label_query(conn, query) {
         let _ = db::record_memory_recall(conn, &item.uuid);
         let hit = item_hit(conn, item, true);
@@ -176,17 +114,8 @@ pub fn recall_value(
     let keyword = keyword_json(&hits);
     let patterns = detect_patterns(conn, &hits);
 
-    // Match-confidence signal: distinguish "FTS found nothing" from "nothing exists".
-    // Only meaningful when a free-text query drove the search (tag/file-only = high).
     let (confidence, caveat) = match_confidence(query, &tags, &hits);
 
-    // Spreading activation: radiate from the direct memory hits across the graph
-    // and return the associatively-related memories a keyword search misses, so
-    // agents can pull in context that shares no literal term. Fires when either
-    // explicitly requested (`--spread`) or a *free-text* query returned thin
-    // literal hits (see `should_auto_spread`) — a plentiful lexical result stays
-    // lexical, and a bare tag/file lookup (no query) is already precise so it
-    // never auto-radiates. Surfaced memories are reinforced exactly like direct hits.
     let auto_spread = !spread && !query.trim().is_empty() && should_auto_spread(&hits);
     let do_spread = spread || auto_spread;
     let associative: Vec<_> = if do_spread {
@@ -210,17 +139,6 @@ pub fn recall_value(
     }))
 }
 
-/// Derive a match-confidence label and human-readable caveat from the search
-/// inputs and results.
-///
-/// - `high`:   exact tag/project/file filters drove all hits (reliable index lookup).
-/// - `medium`: some or all hits came from FTS keyword ranking (literal match only —
-///   paraphrased or conceptually related content may not surface).
-/// - `none`:   no hits at all AND a free-text query was involved — this does NOT
-///   mean no similar work exists; it means no keywords overlapped.
-///
-/// Tag/file-only searches with zero results emit `"none"` without a caveat (the
-/// absence of a tagged memory is meaningful — the tag simply doesn't exist).
 fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str, &'static str) {
     let has_query = !query.is_empty();
     let has_exact_filters = !tags.is_empty();
@@ -234,19 +152,14 @@ fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str
                  Try --tag, different keywords, or --file to broaden the search.",
             );
         }
-        // Tag/file-only miss — meaningful absence, no misleading caveat needed.
         return ("none", "");
     }
 
-    // Hits exist. Confidence is high only when every hit came from an exact
-    // tag/project/file filter (no FTS ranking involved).
     let all_exact = hits.iter().all(|h| h.exact_match);
     if all_exact || (has_exact_filters && !has_query) {
         return ("high", "");
     }
 
-    // Semantic hits present: recall matched by meaning (embedding cosine), so
-    // the "literal-only, paraphrases may not surface" caveat no longer applies.
     if hits.iter().any(|h| h.semantic) {
         return (
             "semantic",
@@ -255,9 +168,6 @@ fn match_confidence(query: &str, tags: &[String], hits: &[Hit]) -> (&'static str
         );
     }
 
-    // Loose Tier-3 (token-OR) hits: only some query terms overlapped, so these
-    // are weaker signals than a phrase or token-AND match. Flag them distinctly
-    // so callers don't treat a tangential hit as a confident one.
     if hits.iter().any(|h| h.loose) {
         return (
             "low",
@@ -305,8 +215,6 @@ pub fn run(
 
     let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
 
-    // Drill-deeper: `sara recall m228` resolves the handle and prints that memory
-    // in full plus its cluster, mirroring the JSON path's label lookup.
     if !recent && let Some(item) = resolve_label_query(conn, query) {
         let _ = db::record_memory_recall(conn, &item.uuid);
         let hit = item_hit(conn, item, true);
@@ -368,7 +276,6 @@ pub fn run(
     }
 
     if recent {
-        // Bare recall reinforces the surfaced memories, mirroring collect_hits.
         for h in &hits {
             if let Some(u) = h.item_uuid {
                 let _ = db::record_memory_recall(conn, &u);
@@ -376,8 +283,6 @@ pub fn run(
         }
         println!("Recent memories (no query given):");
     } else {
-        // Show confidence caveat for FTS-only results so callers know the absence
-        // of further hits is not a guarantee that nothing similar exists.
         let (_, caveat) = match_confidence(query, &tags, &hits);
         if !caveat.is_empty() {
             println!("Note: {caveat}");
@@ -465,10 +370,6 @@ pub fn run(
         );
     }
 
-    // Spreading activation: from the memories that matched directly, radiate
-    // outward across the graph and surface the associatively-related memories a
-    // flat keyword search would miss. Fires on explicit `--spread`, or
-    // automatically when a non-bare query returned thin literal hits.
     let auto_spread = !spread && !recent && !query.trim().is_empty() && should_auto_spread(&hits);
     if spread || auto_spread {
         let related = spreading_related(conn, &hits)?;
@@ -489,7 +390,6 @@ pub fn run(
                     .chars()
                     .take(100)
                     .collect();
-                // Show the path minus the node itself: seed → … → (this).
                 let via = if r.path.len() > 1 {
                     format!("  [via {}]", r.path[..r.path.len() - 1].join(" → "))
                 } else {
@@ -501,10 +401,6 @@ pub fn run(
                     snippet.trim(),
                     via
                 );
-                // These surfaced only via spreading activation, not a deliberate
-                // query — record them as *surfaced* so they still feed Hebbian
-                // co-activation, but do NOT reinforce strength like a direct hit
-                // would. Fire-and-forget.
                 let _ = db::record_memory_surfaced(conn, &r.item.uuid);
             }
         }
@@ -512,41 +408,21 @@ pub fn run(
     Ok(())
 }
 
-/// A memory reached by spreading activation, with the dominant synaptic path
-/// (`seed → … → this`, as labels) that explains why it lit up.
 struct Related {
     item: Item,
     activation: f64,
     path: Vec<String>,
 }
 
-/// Upper bound on associatively-surfaced memories. Spreading activation is only
-/// useful to a reader (often an LLM) as a *small* set of the strongest links —
-/// beyond a handful it becomes context-flooding noise.
 const ASSOCIATIVE_CAP: usize = 5;
 
-/// Direct memory hits below this count are "thin" — too few for confidence that
-/// the literal keyword search surfaced everything relevant. When recall is
-/// *not* given an explicit `--spread`, thin results auto-radiate across the
-/// graph so the caller still gets associatively-related context. Zero direct
-/// memory hits cannot seed spreading activation, so auto-spread fires only with
-/// `1..AUTO_SPREAD_HIT_FLOOR` seeds — a plentiful literal result set stays
-/// lexical (and noise-free).
 const AUTO_SPREAD_HIT_FLOOR: usize = 3;
 
-/// Whether recall should auto-radiate: true when there are some (but few) direct
-/// memory hits to seed from. Explicit `--spread` bypasses this and always spreads.
 fn should_auto_spread(hits: &[Hit]) -> bool {
     let memory_hits = hits.iter().filter(|h| h.item_uuid.is_some()).count();
     (1..AUTO_SPREAD_HIT_FLOOR).contains(&memory_hits)
 }
 
-/// Radiate activation from the memories that matched directly and return the
-/// *other* memories the network lights up, ranked by accumulated activation.
-/// Results are capped to [`ASSOCIATIVE_CAP`] and their activation normalized to
-/// `0..1` (relative to the strongest) so the caller — often an LLM — gets a
-/// small, calibrated set instead of a global-centrality dump. Empty when
-/// nothing matched a memory (e.g. task-only hits) or the graph is disconnected.
 fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
     let seeds: Vec<uuid::Uuid> = hits.iter().filter_map(|h| h.item_uuid).collect();
     if seeds.is_empty() {
@@ -560,7 +436,7 @@ fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
     let mut out = vec![];
     for act in graph.spread_activation_explained(&seeds, 2, 0.6, 1e-6) {
         if seed_set.contains(&act.uuid) {
-            continue; // already shown as a direct hit
+            continue;
         }
         if let Ok(item) = db::get_item_by_uuid(conn, &act.uuid.to_string()) {
             out.push(Related {
@@ -570,11 +446,9 @@ fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
             });
         }
         if out.len() >= ASSOCIATIVE_CAP {
-            break; // a small, bounded set — not a global-centrality dump
+            break;
         }
     }
-    // Normalize activation to 0..1 relative to the strongest, so the score is a
-    // calibrated relative signal rather than an unbounded raw sum.
     let max = out.iter().map(|r| r.activation).fold(0.0_f64, f64::max);
     if max > 0.0 {
         for r in &mut out {
@@ -584,7 +458,6 @@ fn spreading_related(conn: &Connection, hits: &[Hit]) -> Result<Vec<Related>> {
     Ok(out)
 }
 
-/// Trim, drop empty entries.
 fn normalize(values: &[String]) -> Vec<String> {
     values
         .iter()
@@ -593,9 +466,6 @@ fn normalize(values: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Stop words + max-token cap for the token-AND fallback. Duplicated locally
-/// (rather than reused from `add::similar`) to keep the vertical-slice
-/// boundary the architecture tests enforce.
 const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at", "by", "up", "as", "or",
     "do", "if", "be", "we", "he", "she", "they", "but", "and", "not", "with", "from", "this",
@@ -603,8 +473,6 @@ const STOP_WORDS: &[&str] = &[
 ];
 const MAX_AND_TOKENS: usize = 6;
 
-/// Extract meaningful search tokens from free text: lowercase, alpha-only,
-/// ≥3 chars, not a stop word, capped at MAX_AND_TOKENS.
 fn meaningful_tokens(text: &str) -> Vec<String> {
     text.split(|c: char| !c.is_alphabetic())
         .map(|w| w.to_lowercase())
@@ -613,13 +481,6 @@ fn meaningful_tokens(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Resolve query/tag/project/file inputs into a single ranked list of hits:
-/// Strong (linkage-derived) memories first, then exact tag/project matches,
-/// then plain FTS hits; ties broken by most-recently-modified.
-/// Per-invocation semantic-recall settings. Semantic recall is **always on**:
-/// `threshold`/`top_k` still come from `Config`, but `enabled` is never gated —
-/// the legacy `[recall] semantic` toggle and `--semantic` flag are retained for
-/// backward compatibility and no longer decide whether embeddings are ranked.
 struct SemanticOpts {
     enabled: bool,
     threshold: f32,
@@ -627,9 +488,6 @@ struct SemanticOpts {
 }
 
 impl SemanticOpts {
-    /// Semantic recall is ALWAYS enabled, so every free-text `sara recall` also
-    /// ranks memories by embedding cosine and surfaces paraphrases that share no
-    /// literal keyword. `threshold` and `top_k` are still read from config.
     fn from_cfg(cfg: &Config) -> Self {
         SemanticOpts {
             enabled: true,
@@ -638,8 +496,6 @@ impl SemanticOpts {
         }
     }
 
-    /// Lexical-only (semantic disabled) — the default used everywhere recall is
-    /// not explicitly opted into semantic mode.
     fn off() -> Self {
         SemanticOpts {
             enabled: false,
@@ -649,11 +505,6 @@ impl SemanticOpts {
     }
 }
 
-/// Rank the stored memory embeddings against the query embedding and fold the
-/// strongest matches into `hits` (deduped against memories already surfaced
-/// lexically). This is what lets recall find a paraphrase that shares no literal
-/// term with the query. Best-effort: any storage/embed hiccup leaves the lexical
-/// hits untouched rather than breaking recall.
 fn merge_semantic_hits(
     conn: &Connection,
     query: &str,
@@ -665,7 +516,7 @@ fn merge_semantic_hits(
 
     let qv = embedding::bundled().embed(query);
     if qv.iter().all(|&x| x == 0.0) {
-        return Ok(()); // query had no in-vocabulary content
+        return Ok(());
     }
 
     let already: HashSet<String> = hits
@@ -673,10 +524,6 @@ fn merge_semantic_hits(
         .filter_map(|h| h.item_uuid.map(|u| u.to_string()))
         .collect();
 
-    // Drop lexical duplicates and any memory outside the exact-filter allowlist
-    // *before* sorting/truncating, so `top_k` counts only memories that can
-    // actually be surfaced. Filtering after `truncate` would let high-scoring
-    // out-of-filter candidates consume slots and evict valid in-filter hits.
     let mut scored: Vec<(String, f32)> = db::active_embeddings(conn)?
         .into_iter()
         .filter(|(uuid, _)| {
@@ -714,7 +561,6 @@ fn collect_hits(
     limit: i64,
     semantic: &SemanticOpts,
 ) -> Result<Vec<Hit>> {
-    // File filter: intersect items across all --file values (AND semantics).
     let file_uuids: Option<HashSet<uuid::Uuid>> = if !files.is_empty() {
         let mut combined: Option<HashSet<uuid::Uuid>> = None;
         for path in files {
@@ -731,8 +577,6 @@ fn collect_hits(
         None
     };
 
-    // Exact filters narrow first: a memory must carry every given --tag, and
-    // reference at least one of the given --project values.
     let tag_project_uuids: Option<HashSet<uuid::Uuid>> = if !tags.is_empty() || !projects.is_empty()
     {
         let mut by_tag: Option<HashSet<uuid::Uuid>> = None;
@@ -753,10 +597,6 @@ fn collect_hits(
                 .into_iter()
                 .map(|i| i.uuid)
                 .collect();
-            // Cross-project canonicals: a pattern memory with a derived
-            // application scoped to `project` is relevant here too, even
-            // though the canonical itself may live under a different
-            // project (or none).
             hit.extend(db::find_cross_project_canonicals_for_project(
                 conn, project,
             )?);
@@ -779,7 +619,6 @@ fn collect_hits(
         None
     };
 
-    // Combined exact filter: AND of file + tag/project sets when both provided.
     let exact_uuids: Option<HashSet<uuid::Uuid>> = match (file_uuids, tag_project_uuids) {
         (Some(f), Some(tp)) => Some(f.intersection(&tp).copied().collect()),
         (Some(f), None) => Some(f),
@@ -787,10 +626,6 @@ fn collect_hits(
         (None, None) => None,
     };
 
-    // Build exact_items from the combined UUID set. Keep the UUID set itself as
-    // the semantic allowlist: when exact filters are present, semantic recall
-    // must stay inside them (AND semantics) rather than surfacing corpus-wide
-    // paraphrases that carry none of the requested tag/project/file.
     let semantic_allowlist = exact_uuids.clone();
     let exact_items: Option<Vec<Item>> = if let Some(uuids) = exact_uuids {
         let mut items = vec![];
@@ -811,21 +646,14 @@ fn collect_hits(
         if !phrase.is_empty() {
             (phrase, false)
         } else {
-            // Phrase literal missed — fall back to token-AND (order-independent,
-            // stop-word-stripped) so paraphrased queries still surface hits.
             let tokens = meaningful_tokens(query);
             if tokens.is_empty() {
                 (vec![], false)
             } else {
                 let and_hits = db::search_fts_tokens(conn, &tokens, limit.max(50))?;
                 if !and_hits.is_empty() || tokens.len() < 2 {
-                    // token-AND found something, or a single token (where OR == AND
-                    // so the fallback would add nothing).
                     (and_hits, false)
                 } else {
-                    // Tier 3: loose token-OR fallback — match ANY meaningful
-                    // token so a partial-vocabulary query returns candidates
-                    // instead of nothing. Flagged loose (lower confidence).
                     (
                         db::search_fts_tokens_or(conn, &tokens, limit.max(50))?,
                         true,
@@ -839,9 +667,6 @@ fn collect_hits(
 
     match exact_items {
         Some(items) => {
-            // Filters given: AND with free-text query when one was also
-            // provided (both must match), otherwise the exact filter alone
-            // defines the result set.
             let fts_item_uuids: HashSet<String> = fts_hits
                 .iter()
                 .filter(|h| h.ref_kind.starts_with("item_"))
@@ -899,10 +724,6 @@ fn collect_hits(
         }
     }
 
-    // Semantic (embedding) recall: rank the memory corpus by cosine to the
-    // query embedding and fold in the strong matches a lexical search missed —
-    // the whole point being to surface paraphrases sharing no literal token.
-    // Off by default (config/flag), so lexical behaviour stays byte-identical.
     if semantic.enabled && !query.is_empty() {
         merge_semantic_hits(
             conn,
@@ -915,20 +736,9 @@ fn collect_hits(
 
     let hits = scoring::rank(hits);
 
-    // Collapse canonical families: a pattern memory plus its per-application
-    // derived children are near-duplicates; returning every one floods the
-    // response (e.g. one dependabot fault with ~85 sibling memories) and eats
-    // the top-k. Fold each surfaced family down to its single highest-valued
-    // representative (already sorted first — the canonical, boosted by
-    // item_strength's canonical_derived_bonus), tagging it with the family it
-    // stands for. Done AFTER the sort (so the representative is the best member)
-    // and BEFORE truncate (so `limit` counts distinct clusters, not siblings).
     let mut hits = collapse_clusters(conn, hits);
     hits.truncate(limit.max(0) as usize);
 
-    // Usage reinforcement: log each memory that actually surfaced, so
-    // frequently-recalled memories gain strength (see db::item_strength).
-    // Fire-and-forget — a failed event write must never break recall.
     for h in &hits {
         if let Some(u) = h.item_uuid {
             let _ = db::record_memory_recall(conn, &u);
@@ -938,11 +748,6 @@ fn collect_hits(
     Ok(hits)
 }
 
-/// The canonical family a hit belongs to, or `None` if it stands alone.
-/// A derived child is grouped under its canonical (its first `derived_from`
-/// label); a canonical is grouped under itself; a plain memory (or task) has no
-/// family and is never collapsed. When a memory is both derived and canonical
-/// (a mid-tier), its parent link wins so it folds up, not down.
 fn family_key(h: &Hit) -> Option<String> {
     if let Some(parent) = h.derived_from_labels.first() {
         Some(parent.clone())
@@ -953,11 +758,6 @@ fn family_key(h: &Hit) -> Option<String> {
     }
 }
 
-/// Total members of a canonical family — the canonical plus all its derived
-/// children (the *true* corpus size, independent of how many surfaced). When
-/// the representative IS the canonical its `derived_children` already holds the
-/// full set, so no query is needed; otherwise (only children surfaced) resolve
-/// the canonical by label and count its incoming `derived_from` edges.
 fn family_size(conn: &Connection, rep: &Hit, canonical_label: &str) -> usize {
     if rep.label == canonical_label {
         return 1 + rep.derived_children.len();
@@ -971,30 +771,14 @@ fn family_size(conn: &Connection, rep: &Hit, canonical_label: &str) -> usize {
                 .count();
             1 + children
         }
-        // Canonical not resolvable (shouldn't happen) — report only what we see.
         Err(_) => 1,
     }
 }
 
-/// Collapse each surfaced canonical family down to a single representative.
-///
-/// Walks the already-sorted hits, keeping the first (highest-valued) member of
-/// each family and dropping the rest — but always promoting the canonical to be
-/// the representative if it surfaces at all, since the canonical is the signal
-/// (its derived children are per-application evidence). Standalone memories and
-/// task hits pass through untouched. Each surviving representative of a family
-/// with more than one member is tagged with `ClusterInfo` so the caller sees
-/// "one of a cluster of N" and can jump to the canonical for the full family.
 fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
     let mut kept: Vec<Hit> = Vec::with_capacity(hits.len());
-    // (family label, project signature) -> index of its representative in `kept`.
-    // Keying on the project signature as well as the canonical family means a
-    // member is only folded under a representative it actually shares a project
-    // with — a foreign-project sibling (e.g. a legacy cross-repo canonical) is
-    // never allowed to stand in for, or hide, a local memory.
     let mut rep_of: std::collections::HashMap<(String, String), usize> =
         std::collections::HashMap::new();
-    // (family, project signature) -> how many members were folded out here.
     let mut collapsed: std::collections::HashMap<(String, String), usize> =
         std::collections::HashMap::new();
 
@@ -1010,19 +794,15 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
                     }
                     Some(idx) => {
                         *collapsed.entry(key).or_insert(0) += 1;
-                        // Promote the canonical to representative if it is the one
-                        // arriving now and the current rep is merely a child.
                         if h.label == fam && kept[idx].label != fam {
                             kept[idx] = h;
                         }
-                        // Otherwise the incoming member is dropped (folded in).
                     }
                 }
             }
         }
     }
 
-    // Tag each family representative with its cluster metadata.
     for h in kept.iter_mut() {
         if let Some(fam) = family_key(h) {
             let key = (fam.clone(), hit_project_sig(conn, h));
@@ -1040,18 +820,10 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
     kept
 }
 
-/// Minimum number of prior applications (incoming `derived_from` edges) for a
-/// canonical memory to be surfaced as a recurring *problem-solving pattern*.
-/// One application is just a canonical-and-its-copy; a genuine reusable pattern
-/// is one that has recurred, so require at least two.
 const PATTERN_MIN_INSTANCES: usize = 2;
 
-/// The full-body cap for a canonical memory's `text` in the patterns section.
-/// Canonical recipes are the whole point here (the agent turns them into a
-/// guide), so this is generous — it only guards against a pathological body.
 const PATTERN_TEXT_CAP: usize = 4000;
 
-/// Resolve a memory uuid to its `mN` handle.
 fn label_of(item: &Item) -> String {
     format!(
         "{}{}",
@@ -1060,8 +832,6 @@ fn label_of(item: &Item) -> String {
     )
 }
 
-/// Labels of the memories that derive from `uuid` (its incoming `derived_from`
-/// edges) — i.e. the prior applications of a canonical pattern.
 fn derived_child_labels(conn: &Connection, uuid: &str) -> Vec<String> {
     db::get_memory_links_to(conn, uuid)
         .unwrap_or_default()
@@ -1072,33 +842,18 @@ fn derived_child_labels(conn: &Connection, uuid: &str) -> Vec<String> {
         .collect()
 }
 
-/// Accumulator for one canonical anchor while scanning the hit set.
 struct PatternAcc {
     item: Item,
     instances: Vec<String>,
     matched: Vec<String>,
 }
 
-/// From the resolved hit set, surface the canonical *problem-solving patterns*
-/// the hits belong to.
-///
-/// A pattern is anchored on a **canonical memory** — one with
-/// `>= PATTERN_MIN_INSTANCES` incoming `derived_from` edges — that is either a
-/// direct hit or the parent of a hit. This promotes what is otherwise buried in
-/// each hit's `derived_children`/`derived_from` flags into a dedicated,
-/// actionable section: the canonical's full recipe body plus a `guide` string
-/// telling the agent to turn it into a `sara add` task and link the outcome back
-/// with `derived_from`, so recurring fixes are applied from a proven guide
-/// instead of re-derived. Ranked most-recurrent first.
 fn detect_patterns(conn: &Connection, hits: &[Hit]) -> Vec<serde_json::Value> {
     use std::collections::BTreeMap;
     let mut anchors: BTreeMap<String, PatternAcc> = BTreeMap::new();
 
     for h in hits {
         let Some(uuid) = h.item_uuid else { continue };
-        // Candidate canonical anchors reachable from this hit:
-        //  - the hit itself, when it is canonical (has derived children); and
-        //  - each canonical this hit is derived from (its `derived_from` parents).
         let mut candidates: Vec<String> = Vec::new();
         if !h.derived_children.is_empty() {
             candidates.push(uuid.to_string());
@@ -1162,15 +917,10 @@ fn detect_patterns(conn: &Connection, hits: &[Hit]) -> Vec<serde_json::Value> {
         })
         .collect();
 
-    // Most-recurrent first; break ties by how many of THIS recall's hits the
-    // pattern claimed (more matched = more central to the query).
     patterns.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     patterns.into_iter().map(|(_, _, v)| v).collect()
 }
 
-/// A stable signature of the projects a memory hit belongs to, used to keep
-/// canonical-family collapsing within a project boundary. Task hits and
-/// project-less memories yield an empty signature.
 fn hit_project_sig(conn: &Connection, h: &Hit) -> String {
     match h.item_uuid {
         Some(u) => {
@@ -1182,12 +932,6 @@ fn hit_project_sig(conn: &Connection, h: &Hit) -> String {
     }
 }
 
-/// Serialize recall hits into the `keyword` JSON array shared by the bare-recall
-/// and query-driven paths.
-/// Resolve a query that is a bare memory handle (`m<NN>`) to its item, for the
-/// "recall deeper" drill-in. Returns `None` for ordinary free-text queries so
-/// they still go through keyword/associative search. Only memory handles (`m…`)
-/// qualify — not `n`/`l` handles or uuid prefixes — since recall is memory-facing.
 fn resolve_label_query(conn: &Connection, query: &str) -> Option<Item> {
     let q = query.trim();
     let is_memory_handle = q.len() >= 2
@@ -1199,10 +943,6 @@ fn resolve_label_query(conn: &Connection, query: &str) -> Option<Item> {
     db::get_item_by_handle(conn, q).ok()
 }
 
-/// Render spreading-activation neighbours as a compact **guide** — label,
-/// ≤160-char preview, activation, strength, and the synaptic path — with NO full
-/// body. The associative array is a map to the cluster, not a payload; an agent
-/// pulls any neighbour in full by re-calling `recall` with its `mNN` label.
 fn associative_guide(conn: &Connection, related: &[Related]) -> Vec<serde_json::Value> {
     related
         .iter()
@@ -1219,22 +959,10 @@ fn associative_guide(conn: &Connection, related: &[Related]) -> Vec<serde_json::
         .collect()
 }
 
-/// Render the keyword hits as JSON. Only the **top hit** comes back in full —
-/// its complete metadata envelope plus the untruncated `text`. Every other hit
-/// collapses to a lean guide entry (`label`, ≤160-char `preview`, `strength`,
-/// and — only when they carry signal — cluster/canonical/derivation and
-/// linked-task handles), with none of the null/empty scaffolding fields. The
-/// model gets one memory in full plus a compact map of the cluster it belongs
-/// to, and can drill into any sibling by re-calling `recall` with that memory's
-/// `mNN` label. This keeps the MCP payload lean instead of dumping every matched
-/// memory's full envelope.
 fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
     hits.iter()
         .enumerate()
         .map(|(i, h)| {
-            // Only the top hit is returned in full detail (all metadata + body);
-            // every other hit collapses to a lean guide entry so the payload
-            // stays small.
             if i == 0 {
                 json!({
                     "ref_kind": h.ref_kind,
@@ -1273,11 +1001,6 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Compact guide rendering of a non-top keyword hit: enough to identify the
-/// memory, gauge its weight, and know where it sits in its cluster so the model
-/// can drill into it with `recall("mNN")` — but no full body and none of the
-/// null/empty scaffolding fields that bloat the payload. Cluster/canonical,
-/// derivation, and linked-task pointers are only emitted when they carry signal.
 fn keyword_guide(h: &Hit) -> serde_json::Value {
     let mut o = json!({
         "label": h.label,
@@ -1318,9 +1041,6 @@ fn keyword_guide(h: &Hit) -> serde_json::Value {
     o
 }
 
-/// Recent memories for a bare `sara recall` (no query, no filters): newest
-/// memories first, truncated to `limit`. Lets the cheap exploratory recall
-/// just work instead of erroring, so an agent can survey what it knows.
 fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {
     let mut memories = db::list_memories(conn)?;
     memories.truncate(limit.max(0) as usize);
@@ -1345,13 +1065,11 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .collect();
     let files = db::get_item_files(conn, &item.uuid).unwrap_or_default();
     let linked_tasks = db::get_item_task_links(conn, &item.uuid).unwrap_or_default();
-    // Check for incoming `supersedes` edges — means this memory may be stale.
     let superseded_by: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
         .unwrap_or_default()
         .into_iter()
         .filter(|l| l.relation == "supersedes")
         .map(|l| {
-            // Resolve the from_uuid to a label like "m12".
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
                 .map(|i| {
@@ -1364,7 +1082,6 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
                 .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
-    // Outgoing `derived_from` edges — this memory is derived from a canonical.
     let derived_from_labels: Vec<String> = db::get_memory_links_from(conn, &item.uuid.to_string())
         .unwrap_or_default()
         .into_iter()
@@ -1382,7 +1099,6 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
                 .unwrap_or_else(|| l.to_uuid.chars().take(8).collect::<String>())
         })
         .collect();
-    // Incoming `derived_from` edges — other memories derive from this canonical.
     let derived_children: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
         .unwrap_or_default()
         .into_iter()
@@ -1424,9 +1140,6 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
     }
 }
 
-/// Compact relative age, e.g. "just now", "5m ago", "3h ago", "2d ago". Local
-/// to `recall` (rather than reused from another command slice) to keep the
-/// vertical-slice boundary the architecture tests enforce.
 fn age_str(dt: DateTime<Utc>) -> String {
     let secs = (Utc::now() - dt).num_seconds().max(0);
     const MIN: i64 = 60;

@@ -1,5 +1,3 @@
-//! Unit tests for db::tasks.
-
 use super::*;
 use crate::infrastructure::db::*;
 use crate::infrastructure::model::{Status, Task};
@@ -56,7 +54,6 @@ fn undo_reverts_a_completed_task_to_pending() {
     task.modified = Utc::now();
     update_task(&conn, &task).unwrap();
 
-    // Task is now completed and no longer pending.
     assert!(get_task_by_id(&conn, 1).unwrap().is_none());
 
     let undone = undo(&conn).unwrap();
@@ -94,7 +91,6 @@ fn undo_removes_a_newly_added_task() {
 fn get_task_by_uuid_prefix_errors_on_ambiguous_prefix() {
     let conn = mem();
 
-    // Two tasks whose UUIDs share the leading prefix "5cb0".
     let mut a = Task::new("task a".into(), "proj".into());
     a.uuid = uuid::Uuid::parse_str("5cb00000-0000-0000-0000-00000000000a").unwrap();
     insert_task(&conn, &mut a).unwrap();
@@ -102,17 +98,14 @@ fn get_task_by_uuid_prefix_errors_on_ambiguous_prefix() {
     b.uuid = uuid::Uuid::parse_str("5cb01111-0000-0000-0000-00000000000b").unwrap();
     insert_task(&conn, &mut b).unwrap();
 
-    // An ambiguous prefix must error, not silently pick one.
     assert!(
         get_task_by_uuid_prefix(&conn, "5cb0").is_err(),
         "ambiguous prefix should error instead of arbitrarily returning one task"
     );
 
-    // A prefix long enough to be unique still resolves.
     let only = get_task_by_uuid_prefix(&conn, "5cb00000").unwrap().unwrap();
     assert_eq!(only.uuid, a.uuid);
 
-    // A non-matching prefix is still a clean None.
     assert!(
         get_task_by_uuid_prefix(&conn, "ffffffff")
             .unwrap()
@@ -131,8 +124,6 @@ fn resolve_task_errors_on_ambiguous_uuid_prefix() {
     b.uuid = uuid::Uuid::parse_str("ab121111-0000-0000-0000-00000000000b").unwrap();
     insert_task(&conn, &mut b).unwrap();
 
-    // "ab12" is not a numeric display id, falls through to uuid prefix,
-    // which is ambiguous → error rather than a silent wrong pick.
     assert!(resolve_task(&conn, "ab12").is_err());
 }
 
@@ -140,20 +131,15 @@ fn resolve_task_errors_on_ambiguous_uuid_prefix() {
 fn get_task_by_uuid_prefix_treats_underscore_as_literal() {
     let conn = mem();
 
-    // A single task whose uuid does NOT contain the queried prefix except
-    // where an unescaped `_` would wildcard-match any character.
     let mut a = Task::new("task a".into(), "proj".into());
     a.uuid = uuid::Uuid::parse_str("ab1c0000-0000-0000-0000-00000000000a").unwrap();
     insert_task(&conn, &mut a).unwrap();
 
-    // "ab_c" contains a literal underscore. If `_` is not escaped it acts as
-    // a wildcard and matches "ab1c…"; escaped, it must NOT match.
     assert!(
         get_task_by_uuid_prefix(&conn, "ab_c").unwrap().is_none(),
         "underscore in a uuid prefix must be matched literally, not as a wildcard"
     );
 
-    // The real prefix still resolves.
     assert_eq!(
         get_task_by_uuid_prefix(&conn, "ab1c")
             .unwrap()
@@ -173,7 +159,6 @@ fn find_tasks_by_file_prefix_escapes_underscore_wildcard() {
     let mut miss = Task::new("under collision dir".into(), "proj".into());
     insert_task(&conn, &mut miss).unwrap();
     set_task_files(&conn, &miss.uuid, &["/repo/fooXbar/y.rs".into()]).unwrap();
-    // find_tasks_by_file only considers completed tasks.
     conn.execute("UPDATE tasks SET status='completed'", [])
         .unwrap();
 
@@ -262,8 +247,6 @@ fn find_tasks_by_file_prefix_returns_all_completed_under_dir() {
     assert!(uuids.contains(&b.uuid));
 }
 
-/// Two agents adding a task at the same time must not both receive the
-/// same display id — `sara done <id>` would then be ambiguous.
 #[test]
 fn concurrent_task_inserts_get_distinct_display_ids() {
     let dir = std::env::temp_dir().join(format!("sara-race-{}", uuid::Uuid::new_v4()));

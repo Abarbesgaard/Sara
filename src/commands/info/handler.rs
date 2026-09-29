@@ -9,19 +9,10 @@ use super::types::{
     BranchOverlap, Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, NOTE_KINDS, TaskTree,
 };
 
-/// Safety caps applied while *fetching* the task tree — generous enough that
-/// "compact vs expanded" (the render-time caps below) is almost always the
-/// real limit a user hits, not this one.
 const TREE_FETCH_MAX_DEPTH: usize = 6;
 const TREE_FETCH_MAX_NODES: usize = 40;
-/// Direct children per node kept when fetching; the rest are counted in
-/// `hidden_children` rather than dropped silently.
 const TREE_FETCH_MAX_CHILDREN: usize = 8;
 
-/// Render-time caps for the *compact* (default) task tree — how many levels
-/// and siblings-per-node show before the 'd' expand toggle is needed. The
-/// tree is always fetched at the deeper `TREE_FETCH_*` bounds above, so
-/// toggling expand is instant (no re-query).
 pub(super) const TREE_COMPACT_DEPTH: usize = 2;
 pub(super) const TREE_COMPACT_CHILDREN: usize = 4;
 
@@ -53,18 +44,14 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         .and_then(|p| p.path)
         .map(std::path::PathBuf::from);
 
-    // Branch snapshot and overlap detection (pure stored-data, no live git).
     let branch = db::get_task_branch(conn, &task.uuid);
     let overlaps = compute_overlaps(conn, &task, &branch);
 
-    // Similar tasks (shared tags, same project)
     let similar =
         db::similar_tasks(conn, &task.uuid, &task.project, &task.tags).unwrap_or_default();
 
-    // Checklist
     let checklist = db::get_checklist(conn, &task.uuid).unwrap_or_default();
 
-    // Urgency breakdown
     let blockers = db::get_blockers(conn, &task.uuid).unwrap_or_default();
     let blocking_tasks = db::get_blocking(conn, &task.uuid).unwrap_or_default();
     let urgency_breakdown = Some(db::compute_urgency_breakdown(
@@ -74,10 +61,8 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         blocking_tasks.len(),
     ));
 
-    // Activity heatmap for the project (last 16 weeks)
     let activity = db::activity_counts(conn, 16 * 7, Some(&task.project)).unwrap_or_default();
 
-    // Project stats
     let stats = db::project_stats(conn, &task.project).ok();
 
     let guide = db::get_guide_fields(conn, &task.uuid).unwrap_or_default();
@@ -116,21 +101,12 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
     })
 }
 
-/// Which direction a hop in the task tree walks: "← blocked by" follows
-/// depends_on edges (any status, so completed blockers still show, crossed
-/// out); "blocks →" follows the reverse (what depends on this).
 #[derive(Clone, Copy)]
 enum TreeDir {
     Blockers,
     Dependents,
 }
 
-/// Build the full task-relationship tree for `root`: every blocker
-/// recursively (blockers-of-blockers, …) and every dependent recursively
-/// (dependents-of-dependents, …), each bounded by `TREE_FETCH_MAX_DEPTH`/
-/// `_CHILDREN`/`_NODES` so a pathologically large or cyclic-looking DAG can't
-/// blow up the fetch. Rendered compactly by default; 'd' expands to these
-/// full bounds without a re-query (see `TREE_COMPACT_*`).
 pub(super) fn build_task_tree(conn: &Connection, root: uuid::Uuid) -> TaskTree {
     let flags = db::link_flags_by_task(conn).unwrap_or_default();
     let mut up_visited = std::collections::HashSet::from([root]);
@@ -163,12 +139,6 @@ pub(super) fn build_task_tree(conn: &Connection, root: uuid::Uuid) -> TaskTree {
     }
 }
 
-/// Fetch one level's worth of neighbors (any status) and recurse into each,
-/// returning `(children, hidden_count)` where `hidden_count` is how many
-/// direct neighbors of `parent` exist beyond `TREE_FETCH_MAX_CHILDREN` — the
-/// caller attaches that to the `GraphNode` it's building for `parent` (or,
-/// at the top level, to the tree itself) so the render layer can show a
-/// "+N more" leaf without a synthetic placeholder node.
 fn build_tree_level(
     conn: &Connection,
     parent: uuid::Uuid,
@@ -182,8 +152,6 @@ fn build_tree_level(
         return (Vec::new(), 0);
     }
     let neighbors = match dir {
-        // All-status (not just pending) so completed neighbors still show,
-        // crossed out — `get_blockers` is pending-only (it feeds urgency).
         TreeDir::Blockers => db::get_dependency_uuids(conn, &parent).unwrap_or_default(),
         TreeDir::Dependents => db::get_blocking(conn, &parent).unwrap_or_default(),
     };
@@ -193,9 +161,6 @@ fn build_tree_level(
         if *budget == 0 {
             break;
         }
-        // A node reachable via more than one path (diamond in the DAG) is
-        // shown once, at its first occurrence — re-expanding it again lower
-        // down would risk exponential blowup for no new information.
         if !visited.insert(u) {
             continue;
         }
@@ -221,9 +186,6 @@ fn build_tree_level(
     (out, hidden)
 }
 
-/// Verification/execution commands an executor should run, gathered from the
-/// project record (setup/test/lint/run) and the task's `meta_json` grab-bag
-/// (e.g. task-specific test_cmd / lint_cmd). Returns (scope, label, command).
 pub(super) fn verification_rows(d: &Detail) -> Vec<(&'static str, String, String)> {
     let mut rows: Vec<(&'static str, String, String)> = Vec::new();
     let pc = &d.project_commands;
@@ -237,7 +199,6 @@ pub(super) fn verification_rows(d: &Detail) -> Vec<(&'static str, String, String
             rows.push(("project", label.to_string(), c.to_string()));
         }
     }
-    // Task-level commands from the meta_json grab-bag (render any "*_cmd" key).
     if let Some(meta) = d
         .guide
         .meta_json
@@ -255,7 +216,6 @@ pub(super) fn verification_rows(d: &Detail) -> Vec<(&'static str, String, String
     rows
 }
 
-/// Whether the guide is stale (validated against a different commit than HEAD).
 pub(super) fn guide_is_stale(d: &Detail) -> bool {
     match (&d.head_commit, &d.guide.validated_commit) {
         (Some(h), Some(v)) => h != v,
@@ -264,7 +224,6 @@ pub(super) fn guide_is_stale(d: &Detail) -> bool {
     }
 }
 
-/// Annotations of a given kind (findings, constraints, …) authored on the task.
 pub(super) fn notes_of_kind<'a>(
     d: &'a Detail,
     kind: &str,
@@ -272,7 +231,6 @@ pub(super) fn notes_of_kind<'a>(
     d.annotations.iter().filter(|a| a.kind == kind).collect()
 }
 
-/// All typed notes in render order (finding, constraint, assumption, …).
 pub(super) fn typed_notes(d: &Detail) -> Vec<&crate::infrastructure::db::Annotation> {
     let mut out = Vec::new();
     for kind in NOTE_KINDS {
@@ -283,7 +241,6 @@ pub(super) fn typed_notes(d: &Detail) -> Vec<&crate::infrastructure::db::Annotat
     out
 }
 
-/// Resolve dependency uuids to their display IDs (skips tasks without an id).
 pub(super) fn dep_ids(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<i64> {
     uuids
         .iter()
@@ -296,7 +253,6 @@ pub(super) fn dep_ids(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<i64> {
         .collect()
 }
 
-/// Resolve dependency uuids to "[id] description" labels.
 fn dep_labels(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<String> {
     uuids
         .iter()
@@ -309,8 +265,6 @@ fn dep_labels(conn: &Connection, uuids: &[uuid::Uuid]) -> Vec<String> {
         .collect()
 }
 
-/// Current value shown (and pre-filled when editing) for the "Depends on" field:
-/// the task's pending blocker IDs, space-separated.
 pub(super) fn depends_on_display(d: &Detail) -> String {
     d.depends_on_ids
         .iter()
@@ -319,11 +273,6 @@ pub(super) fn depends_on_display(d: &Detail) -> String {
         .join(" ")
 }
 
-/// Apply an edited "Depends on" value: reconcile the task's pending dependency
-/// edges with the IDs the user typed (space/comma separated). Adds and removes
-/// edges as needed, then refreshes urgency and reloads dependency detail.
-/// Returns a human-readable error (kept on screen) if a token can't be resolved
-/// or the change would be invalid (self/cycle).
 pub(super) fn reconcile_dependencies(
     conn: &Connection,
     cfg: &Config,
@@ -371,7 +320,6 @@ pub(super) fn reconcile_dependencies(
     Ok(())
 }
 
-/// Refresh the dependency-derived parts of the detail view after an edit.
 pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut Detail) {
     let uuid = detail.task.uuid;
     let blockers = db::get_blockers(conn, &uuid).unwrap_or_default();
@@ -392,7 +340,6 @@ pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut De
         blocking.len(),
     ));
     detail.history = db::get_history(conn, &uuid).unwrap_or_default();
-    // Dependency edits reshape the task tree.
     detail.tree = build_task_tree(conn, uuid);
 }
 
@@ -435,14 +382,8 @@ pub(super) fn compute_overlaps(
     result
 }
 
-/// Ordered list of focusable items — matches on-screen render order so ↑/↓ feels natural.
-/// Screen order: metadata fields → typed notes (findings/constraints/…) → links →
-///               manual files → anchors → checklist → task-level comments.
 pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
-    // Typed notes appear right after the metadata block in the TUI. Only
-    // "risk" notes and (when toggled) the rest are actually on screen, so
-    // only those are focusable — a hidden row shouldn't be selectable.
     for (i, note) in typed_notes(d).iter().enumerate() {
         if show_notes || note.kind == "risk" {
             v.push(Focusable::Note(i));
@@ -460,7 +401,6 @@ pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
     for i in 0..d.checklist.len() {
         v.push(Focusable::Checklist(i));
     }
-    // Task-level comments (anchor-threaded ones are shown inline under their element).
     let comment_count = d
         .annotations
         .iter()
@@ -472,7 +412,6 @@ pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
     v
 }
 
-/// Index in the focusable list of the checklist row with the given item id.
 pub(super) fn checklist_focus_index(d: &Detail, show_notes: bool, item_id: i64) -> Option<usize> {
     focusables(d, show_notes).iter().position(|f| match f {
         Focusable::Checklist(i) => d.checklist.get(*i).map(|c| c.id) == Some(item_id),
@@ -480,9 +419,6 @@ pub(super) fn checklist_focus_index(d: &Detail, show_notes: bool, item_id: i64) 
     })
 }
 
-/// Move the focused checklist step up/down within its kind, keeping the cursor
-/// on the moved row. No-op when the focus is not a checklist item or the row is
-/// already at its section boundary.
 pub(super) fn reorder_focused_step(
     conn: &Connection,
     st: &mut EditState,
@@ -503,9 +439,6 @@ pub(super) fn reorder_focused_step(
     }
 }
 
-/// Find the task's PR URL, if any: the first *link* that points at a GitHub
-/// pull request, else the first PR URL mentioned inside an annotation's text
-/// (agents often note the PR in a comment before/instead of linking it).
 pub(super) fn find_pr_url(d: &Detail) -> Option<String> {
     pr_url_from(&d.links, &d.annotations)
 }
@@ -523,8 +456,6 @@ fn pr_url_from(links: &[db::Link], annotations: &[db::Annotation]) -> Option<Str
     })
 }
 
-/// Open a URL in the OS default browser (non-blocking). Adds a scheme for
-/// bare `www.` style links.
 pub(super) fn open_url(raw: &str) {
     let url = if raw.starts_with("www.") {
         format!("https://{raw}")
@@ -545,8 +476,6 @@ pub(super) fn open_url(raw: &str) {
         .spawn();
 }
 
-/// Pick the user's terminal editor: $VISUAL, then $EDITOR, then the first of
-/// nvim/vim/nano that exists on PATH.
 pub(super) fn editor_command() -> String {
     if let Ok(v) = std::env::var("VISUAL")
         && !v.trim().is_empty()
@@ -573,10 +502,7 @@ pub(super) fn editor_command() -> String {
     "vi".to_string()
 }
 
-/// Launch the editor on `path`, inheriting stdio so it takes over the terminal.
-/// The caller is responsible for suspending/resuming the TUI around this.
 pub(super) fn open_in_editor(path: &std::path::Path) -> std::io::Result<()> {
-    // $EDITOR may contain args (e.g. "code -w"); split on whitespace.
     let editor = editor_command();
     let mut parts = editor.split_whitespace();
     let bin = parts.next().unwrap_or("vi");
@@ -585,15 +511,6 @@ pub(super) fn open_in_editor(path: &std::path::Path) -> std::io::Result<()> {
     cmd.status().map(|_| ())
 }
 
-/// Edit `initial` in the user's $EDITOR via a tempfile, the same pattern
-/// `git commit` uses for commit messages: write, shell out, block until
-/// exit, read back. The caller is responsible for suspending/resuming the
-/// TUI around this (same contract as `open_in_editor`).
-///
-/// Returns `Ok(None)` — treat as "no change" — if the editor exited
-/// non-zero, or the file's trimmed content is unchanged (so simply saving
-/// without editing, or trimming trailing-newline noise a lot of editors add
-/// on write, never triggers a spurious update).
 pub(super) fn edit_text_via_external_editor(initial: &str) -> std::io::Result<Option<String>> {
     let path = std::env::temp_dir().join(format!("sara-edit-{}.md", uuid::Uuid::new_v4()));
     std::fs::write(&path, initial)?;
@@ -617,7 +534,6 @@ pub(super) fn edit_text_via_external_editor(initial: &str) -> std::io::Result<Op
     Ok(result)
 }
 
-/// The (target_kind, target_id) a comment would anchor to given the focused item.
 pub(super) fn comment_target(
     d: &Detail,
     focus: &Option<Focusable>,
@@ -648,7 +564,6 @@ pub(super) fn comment_target(
             (None, None)
         }
         Some(Focusable::Comment(i)) => {
-            // Replying to a comment: anchor to the note itself.
             let comments: Vec<&crate::infrastructure::db::Annotation> = d
                 .annotations
                 .iter()
@@ -663,12 +578,10 @@ pub(super) fn comment_target(
     }
 }
 
-/// Open feedback annotations anchored to the focused element (most recent first).
 pub(super) fn feedback_for_focus<'a>(
     d: &'a Detail,
     focus: &Option<Focusable>,
 ) -> Vec<&'a crate::infrastructure::db::Annotation> {
-    // When the cursor is ON a comment, r/x act on that comment directly.
     if let Some(Focusable::Comment(i)) = focus {
         let comments: Vec<&crate::infrastructure::db::Annotation> = d
             .annotations

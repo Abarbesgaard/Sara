@@ -1,5 +1,3 @@
-//! Unit tests for db::memory_maintenance.
-
 use super::*;
 use crate::infrastructure::model::{Item, Status, Task};
 use chrono::Utc;
@@ -10,7 +8,6 @@ fn synthesize_done_memory_skips_when_no_steps_or_annotations() {
     let mut task = Task::new("bare task".to_string(), "Sara".to_string());
     task.status = Status::Completed;
     insert_task(&conn, &mut task).unwrap();
-    // No checklist steps, no annotations — nothing to distil
     let result = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
     assert!(result.is_none());
 }
@@ -23,7 +20,6 @@ fn synthesize_done_memory_creates_provisional_item_with_done_steps() {
     task.status = Status::Completed;
     insert_task(&conn, &mut task).unwrap();
 
-    // Add a done step with result
     let step_id = add_step(
         &conn,
         &task.uuid,
@@ -42,7 +38,6 @@ fn synthesize_done_memory_creates_provisional_item_with_done_steps() {
     let label = synthesize_done_memory(&conn, &task.uuid, "Sara").unwrap();
     assert!(label.is_some(), "should create a memory");
 
-    // Provisional memories are visible in list_memories (flagged by status)
     let listed = list_memories(&conn).unwrap();
     assert!(
         listed.iter().any(|i| i.status == "provisional"),
@@ -75,7 +70,6 @@ fn synthesize_done_memory_includes_key_annotations() {
     task.status = Status::Completed;
     insert_task(&conn, &mut task).unwrap();
 
-    // Add a done step so we pass the "nothing useful" guard
     let step_id = add_step(
         &conn,
         &task.uuid,
@@ -89,7 +83,6 @@ fn synthesize_done_memory_includes_key_annotations() {
     conn.execute("UPDATE task_checklist SET done=1 WHERE id=?1", [step_id])
         .unwrap();
 
-    // Add a decision annotation
     add_annotation_full(
         &conn,
         &task.uuid,
@@ -121,7 +114,6 @@ fn synthesize_done_memory_includes_key_annotations() {
 #[test]
 fn done_surfaces_review_nudge_without_archiving() {
     let conn = mem();
-    // A provisional memory backdated past the 30-day floor.
     let mut item = Item::new_memory("stale provisional".into(), "body".into(), None);
     item.path = Some(String::new());
     item.status = "provisional".into();
@@ -141,7 +133,6 @@ fn done_surfaces_review_nudge_without_archiving() {
     assert!(report.oldest_age_days >= 40, "oldest age is surfaced");
     assert!(report.archived.is_empty(), "nothing lossless to archive");
 
-    // It was surfaced, NOT deleted.
     let status: String = conn
         .query_row(
             "SELECT status FROM items WHERE uuid=?1",
@@ -155,7 +146,6 @@ fn done_surfaces_review_nudge_without_archiving() {
 #[test]
 fn archive_superseded_respects_active_superseder() {
     let conn = mem();
-    // Pair 1: superseder active -> old archived.
     let mut a1 = Item::new_memory("pair1 old".into(), "b".into(), None);
     a1.path = Some(String::new());
     insert_item(&conn, &mut a1).unwrap();
@@ -171,7 +161,6 @@ fn archive_superseded_respects_active_superseder() {
     )
     .unwrap();
 
-    // Pair 2: superseder archived -> old preserved.
     let mut a2 = Item::new_memory("pair2 old".into(), "b".into(), None);
     a2.path = Some(String::new());
     insert_item(&conn, &mut a2).unwrap();

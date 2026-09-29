@@ -9,16 +9,11 @@ use crate::infrastructure::portable::{
     TaskEnvelope,
 };
 
-/// Export a task (and its full dependency closure) to a portable copy-paste blob.
-///
-/// The root is resolved by display id or uuid prefix; its dependency closure
-/// (the task plus every transitive blocker) is serialized together so the bundle
-/// is self-contained and dependency edges survive the trip. When `output` is set
-/// the blob is written there; otherwise it is printed to stdout.
+mod render;
+
 pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
     let root = db::resolve_task(conn, id)?;
 
-    // The closure includes the root itself (depth 0) plus all transitive blockers.
     let closure = db::dependency_closure(conn, &root.uuid)?;
 
     let mut tasks = Vec::with_capacity(closure.len());
@@ -64,8 +59,6 @@ pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
             .map(|(path, source)| FileDto { path, source })
             .collect();
 
-        // Only keep dependency edges whose target is also in the closure (it
-        // always is, by construction) so the bundle is internally consistent.
         let blocked_by = db::get_dependency_uuids(conn, &task.uuid)?
             .into_iter()
             .filter(|d| closure.contains(d))
@@ -100,41 +93,5 @@ pub fn run(conn: &Connection, id: &str, output: Option<&Path>) -> Result<()> {
     let blob = bundle.encode()?;
     let extra = bundle.tasks.len().saturating_sub(1);
 
-    match output {
-        Some(path) => {
-            std::fs::write(path, format!("{blob}\n"))
-                .with_context(|| format!("writing blob to {}", path.display()))?;
-            let dep_note = if extra > 0 {
-                format!(
-                    " (+{extra} dependency task{})",
-                    if extra == 1 { "" } else { "s" }
-                )
-            } else {
-                String::new()
-            };
-            eprintln!(
-                "Exported task {}{dep_note} to {}",
-                root.id.unwrap_or(0),
-                path.display()
-            );
-        }
-        None => {
-            // The blob alone goes to stdout so it can be piped/redirected cleanly;
-            // the human-readable hint goes to stderr.
-            println!("{blob}");
-            if extra > 0 {
-                eprintln!(
-                    "Exported task {} with {extra} dependency task{}. Import with `sara import`.",
-                    root.id.unwrap_or(0),
-                    if extra == 1 { "" } else { "s" }
-                );
-            } else {
-                eprintln!(
-                    "Exported task {}. Import with `sara import`.",
-                    root.id.unwrap_or(0)
-                );
-            }
-        }
-    }
-    Ok(())
+    render::emit(output, &blob, root.id.unwrap_or(0), extra)
 }

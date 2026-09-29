@@ -12,7 +12,6 @@ pub(super) struct GhIssueAssignee {
     pub(super) login: String,
 }
 
-/// Minimal GitHub issue shape from the REST API.
 #[derive(Debug, Deserialize)]
 pub(super) struct GhIssue {
     pub(super) id: i64,
@@ -26,11 +25,9 @@ pub(super) struct GhIssue {
     pub(super) user: GhUser,
     #[serde(default)]
     pub(super) assignees: Vec<GhIssueAssignee>,
-    /// Present only on pull requests; used to exclude them.
     pub(super) pull_request: Option<serde_json::Value>,
 }
 
-/// Minimal GitHub issue comment shape from the REST API.
 #[derive(Debug, Deserialize)]
 pub(super) struct GhComment {
     pub(super) id: i64,
@@ -41,10 +38,6 @@ pub(super) struct GhComment {
     pub(super) user: GhUser,
 }
 
-/// Fall back to the gh CLI's stored token via `gh auth token`.
-///
-/// Returns `None` (rather than erroring) when gh is missing or unauthenticated,
-/// so the caller falls through to the explicit "no token found" error.
 pub(super) fn gh_auth_token() -> Option<String> {
     let out = std::process::Command::new("gh")
         .args(["auth", "token"])
@@ -57,7 +50,6 @@ pub(super) fn gh_auth_token() -> Option<String> {
     if token.is_empty() { None } else { Some(token) }
 }
 
-/// Resolve the authenticated GitHub login via `gh api /user`.
 pub(super) fn github_login(token: &str) -> Result<String> {
     let out = std::process::Command::new("gh")
         .env("GH_TOKEN", token)
@@ -76,11 +68,6 @@ pub(super) fn github_login(token: &str) -> Result<String> {
     anyhow::bail!("Could not resolve GitHub login: {stderr}. Run 'gh auth login' first.")
 }
 
-/// Fetch all open issues assigned to `login` for `owner/repo`.
-///
-/// Uses `gh api --paginate` so every page is retrieved automatically.
-/// Pull requests (which the issues API also returns) are filtered out
-/// by checking for the `pull_request` field.
 pub(super) fn fetch_assigned_issues(
     token: &str,
     owner: &str,
@@ -118,9 +105,6 @@ pub(super) fn fetch_assigned_issues(
         .collect())
 }
 
-/// Fetch all comments for a single issue (or PR) in `owner/repo`.
-///
-/// Uses `gh api --paginate` so every page is retrieved automatically.
 pub(super) fn fetch_issue_comments(
     token: &str,
     owner: &str,

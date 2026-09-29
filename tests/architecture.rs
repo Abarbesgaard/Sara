@@ -1,13 +1,5 @@
-/// Architecture enforcement tests.
-///
-/// These tests parse source files as text and assert the five invariants
-/// defined in ARCHITECTURE.md. They run with `cargo test` and produce
-/// human-readable failure messages that name the offending file and line.
 use std::path::{Path, PathBuf};
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/// Return the path to every `src/commands/<name>/mod.rs` that exists.
 fn command_slice_files() -> Vec<PathBuf> {
     let commands_dir = Path::new("src/commands");
     std::fs::read_dir(commands_dir)
@@ -19,8 +11,6 @@ fn command_slice_files() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Scan every command slice for lines containing `needle`.
-/// Returns `"<file>:<line>: <content>"` for each hit.
 fn scan_slices(needle: &str) -> Vec<String> {
     let mut hits = Vec::new();
     for path in command_slice_files() {
@@ -34,12 +24,6 @@ fn scan_slices(needle: &str) -> Vec<String> {
     hits
 }
 
-// ── invariant 1 ──────────────────────────────────────────────────────────────
-
-/// A command slice must not import another command slice.
-///
-/// Violation example (forbidden inside src/commands/done/mod.rs):
-///   use crate::commands::list;
 #[test]
 fn test_no_cross_slice_dependencies() {
     let violations = scan_slices("use crate::commands::");
@@ -50,10 +34,6 @@ fn test_no_cross_slice_dependencies() {
     );
 }
 
-// ── invariant 2 ──────────────────────────────────────────────────────────────
-
-/// A command slice may only import from `crate::infrastructure::*`.
-/// Importing `crate::cli` is forbidden — CLI types are wired in main.rs.
 #[test]
 fn test_commands_only_depend_on_infrastructure() {
     let violations = scan_slices("use crate::cli");
@@ -64,10 +44,6 @@ fn test_commands_only_depend_on_infrastructure() {
     );
 }
 
-// ── invariant 3 ──────────────────────────────────────────────────────────────
-
-/// All DB migrations must live in `src/infrastructure/db.rs` only.
-/// No command slice may call `Migrations::new` or `M::up`.
 #[test]
 fn test_db_migrations_are_centralized() {
     let mut violations = scan_slices("Migrations::new");
@@ -79,10 +55,6 @@ fn test_db_migrations_are_centralized() {
     );
 }
 
-// ── invariant 4 ──────────────────────────────────────────────────────────────
-
-/// Every directory under `src/commands/` must contain a `mod.rs`.
-/// A new command added as a bare directory with no mod.rs is caught here.
 #[test]
 fn test_command_slices_have_proper_structure() {
     let commands_dir = Path::new("src/commands");
@@ -101,13 +73,6 @@ fn test_command_slices_have_proper_structure() {
     );
 }
 
-// ── invariant 5 ──────────────────────────────────────────────────────────────
-
-/// `init_terminal()` must only be *defined* in `src/infrastructure/tui/mod.rs`.
-/// Command slices may call it, but may not redefine it.
-///
-/// We scan for `fn init_terminal` (the definition signature) rather than the
-/// bare string `init_terminal`, so call-sites in commands don't trigger this.
 #[test]
 fn test_tui_infrastructure_is_centralized() {
     let violations = scan_slices("fn init_terminal");
@@ -118,19 +83,10 @@ fn test_tui_infrastructure_is_centralized() {
     );
 }
 
-// ── naming conventions ────────────────────────────────────────────────────────
-
-/// Every directory under `src/commands/` must have a matching `pub mod <name>;`
-/// in `src/commands/mod.rs`, and vice-versa.
-///
-/// This catches a new command added as a directory without updating mod.rs
-/// (silently unreachable) or a pub mod declaration pointing at a non-existent
-/// directory (compile error, but caught here first with a clear message).
 #[test]
 fn test_slice_dirs_match_mod_declarations() {
     let commands_dir = Path::new("src/commands");
 
-    // Names declared in mod.rs
     let mod_rs = std::fs::read_to_string(commands_dir.join("mod.rs"))
         .expect("src/commands/mod.rs must exist");
     let declared: std::collections::BTreeSet<String> = mod_rs
@@ -144,7 +100,6 @@ fn test_slice_dirs_match_mod_declarations() {
         })
         .collect();
 
-    // Names that exist as subdirectories
     let on_disk: std::collections::BTreeSet<String> = std::fs::read_dir(commands_dir)
         .expect("src/commands/ must exist")
         .filter_map(|e| e.ok())
@@ -165,13 +120,6 @@ fn test_slice_dirs_match_mod_declarations() {
     );
 }
 
-// ── query ownership ───────────────────────────────────────────────────────────
-
-/// Raw SQL must only live in `src/infrastructure/db.rs`.
-/// Command slices must not embed SQL strings directly — they call db helpers.
-///
-/// We scan for SQL statement keywords that would appear at the start of a
-/// query string literal (`"SELECT `, `"INSERT `, etc.).
 #[test]
 fn test_sql_query_ownership() {
     const SQL_KEYWORDS: &[&str] = &[
@@ -196,17 +144,6 @@ fn test_sql_query_ownership() {
     );
 }
 
-/// The MCP stdio transport carries JSON-RPC and nothing else, so the acceptance
-/// gate must be completely silent when run in `GateOutput::Capture` mode. A
-/// single stray `println!` in `run_acceptance_gate` re-corrupts the stream and
-/// crashes conformant clients — invisibly, since the unit tests inspect the
-/// returned gate rather than the process's stdout.
-///
-/// All gate output therefore goes through `GateOutput::say`, which is a no-op in
-/// `Capture` mode. Pin that structurally: the function must contain no bare
-/// stdout print at all. This is deliberately a dumb substring scan rather than a
-/// brace-matching walker — a walker has to model multi-line `if` conditions,
-/// `} else {`, and single-line blocks, and every one it gets wrong fails *open*.
 #[test]
 fn test_acceptance_gate_never_prints_directly() {
     let src = std::fs::read_to_string("src/commands/guide/mod.rs")
@@ -216,11 +153,6 @@ fn test_acceptance_gate_never_prints_directly() {
         .find("fn run_acceptance_gate")
         .expect("run_acceptance_gate must exist");
 
-    // Iterate lines rather than searching for "\n}\n": a Windows checkout has
-    // CRLF endings, so that needle never matches and the "body" would run to
-    // EOF, flagging prints belonging to entirely different functions.
-    // A top-level fn body ends at the first `}` in column 0 (rustfmt guarantees
-    // this, and `cargo fmt --check` runs in CI).
     let body: Vec<&str> = src[start..]
         .lines()
         .enumerate()
@@ -233,8 +165,6 @@ fn test_acceptance_gate_never_prints_directly() {
         .enumerate()
         .filter(|(_, l)| {
             let t = l.trim();
-            // `eprintln!` ends up on stderr, which is not part of the transport
-            // — and note it *contains* "println!", so it must be excluded first.
             !t.starts_with("//")
                 && !t.contains("eprintln!")
                 && (t.contains("println!") || t.contains("print!"))

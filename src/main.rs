@@ -16,14 +16,8 @@ use cli::{Cli, Command, DepAction, ProjectAction};
 use infrastructure::{config, db};
 
 fn run() -> Result<()> {
-    // Dynamic shell completion: when invoked as `COMPLETE=<shell> sara …`
-    // (the registration installed via `source <(COMPLETE=zsh sara)`), emit
-    // completions and exit. A no-op during normal invocation.
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
 
-    // Taskwarrior-style shorthands:
-    //   `sara <id>`          -> `sara info <id>`
-    //   `sara <id> <action>` -> `sara <action> <id>`
     let mut args: Vec<String> = std::env::args().collect();
     if args.len() == 2 && args[1].parse::<i64>().is_ok() {
         args.insert(1, "info".to_string());
@@ -63,9 +57,6 @@ fn run() -> Result<()> {
     let cfg = config::load()?;
     let mut conn = db::open()?;
 
-    // Self-heal the semantic index if the embedding scheme changed since the
-    // vectors were last written (bundled model swapped, or embed-text scheme
-    // bumped). Best-effort: a reindex failure must never block the command.
     let _ = infrastructure::embedding::ensure_index_current(&conn);
 
     if !matches!(cli.command, Command::Undo) {
@@ -468,8 +459,6 @@ fn run() -> Result<()> {
                 json,
             } => {
                 let effective_limit = top.unwrap_or(limit);
-                // Semantic recall is always on (see SemanticOpts::from_cfg); the
-                // `--semantic` flag is a no-op kept for backward compatibility.
                 let _ = semantic;
                 let cfg = cfg.clone();
                 commands::recall::run(
@@ -570,9 +559,6 @@ fn run() -> Result<()> {
             } => {
                 let actual_dry_run = !apply && dry_run;
                 commands::prune_memories::run(&conn, weak_days, provisional_days, actual_dry_run)?;
-                // Informational: surface unlinked conflict candidates alongside prune
-                // output — scoped to this province so a scan here never advertises
-                // another project's pairs.
                 let scope = infrastructure::project::detect_current_project(&conn, &cfg)
                     .ok()
                     .map(|(name, _)| name);
@@ -681,9 +667,6 @@ fn run() -> Result<()> {
             }
 
             Command::Mcp => {
-                // This terminal arm moves `conn` (the server owns it for its lifetime).
-                // That's fine even though other arms borrow `&conn`/`&mut conn`: match
-                // arms are mutually exclusive, and `conn` is not used after the match.
                 commands::mcp::run(conn, &cfg)?;
             }
 

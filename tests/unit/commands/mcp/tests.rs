@@ -10,7 +10,6 @@ use crate::infrastructure::model::Task;
 
 use super::server::{CwdGuard, SaraServer};
 
-// cwd is process-global; serialize the tests that mutate it.
 static CWD_LOCK: Mutex<()> = Mutex::new(());
 
 fn server_with(conn: Connection) -> SaraServer {
@@ -31,7 +30,6 @@ fn exposes_the_agent_loop_tools() {
         .collect();
     assert_eq!(names.len(), 45, "expected 45 tools, got {names:?}");
     for expected in [
-        // read
         "list",
         "info",
         "next",
@@ -42,7 +40,6 @@ fn exposes_the_agent_loop_tools() {
         "plan_show",
         "tags",
         "projects",
-        // mutate (create / guide)
         "add",
         "begin",
         "step_done",
@@ -58,7 +55,6 @@ fn exposes_the_agent_loop_tools() {
         "forget",
         "promote",
         "relearn",
-        // completion / edit / lifecycle
         "done",
         "link",
         "unlink",
@@ -71,7 +67,6 @@ fn exposes_the_agent_loop_tools() {
         "start",
         "stop",
         "move_task",
-        // memory maintenance
         "consolidate",
         "reflect",
         "diagnose_memories",
@@ -84,10 +79,6 @@ fn exposes_the_agent_loop_tools() {
     }
 }
 
-/// Folder awareness is the server's core contract: it is long-running and has no
-/// per-call working directory, so EVERY tool must accept `project_path` to name
-/// the target repo. A hand-written params struct that omits it compiles fine and
-/// registers fine — it just silently operates on the launch dir forever.
 #[test]
 fn every_tool_accepts_project_path() {
     let missing: Vec<String> = SaraServer::all_router()
@@ -144,7 +135,6 @@ fn cwd_guard_sets_and_restores_working_dir() {
     }
     assert_eq!(std::env::current_dir().unwrap(), start, "cwd not restored");
 
-    // None / empty leaves cwd untouched.
     {
         let _g = CwdGuard::enter(None).unwrap();
         assert_eq!(std::env::current_dir().unwrap(), start);
@@ -153,8 +143,6 @@ fn cwd_guard_sets_and_restores_working_dir() {
 
 #[test]
 fn cwd_guard_rejects_a_relative_project_path() {
-    // The server has no per-call cwd, so a relative path would resolve against
-    // whatever the previous call left behind — a silent cross-project write.
     let _lock = CWD_LOCK.lock().unwrap();
     let start = std::env::current_dir().unwrap();
     for rel in ["..", ".", "some/sub/dir"] {
@@ -192,7 +180,6 @@ fn with_project_runs_closure_against_the_connection() {
     seed_task_via(&server, "alpha", "first");
     seed_task_via(&server, "alpha", "second");
 
-    // project_path=None avoids touching process cwd; filter by explicit project.
     let v = server
         .with_project(None, "test", |conn, cfg| {
             commands::list::list_value(conn, cfg, false, Some("alpha"))
@@ -211,7 +198,6 @@ fn seed_task_via(server: &SaraServer, project: &str, desc: &str) {
         .expect("seed");
 }
 
-/// Seed a task and return its uuid string (for targeting mutate tools).
 fn seed_returning(server: &SaraServer, project: &str, desc: &str) -> String {
     server
         .with_project(None, "seed", |conn, _cfg| {
@@ -292,12 +278,10 @@ fn verify_value_rejects_step_zero() {
             commands::guide::check_value(conn, &uuid, "step one", None, None, None, None)
         })
         .expect("check");
-    // step is 1-based: 0 must error, not silently return step 1.
     let zero = server.with_project(None, "verify", |conn, _cfg| {
         commands::guide::verify_value(conn, &uuid, Some(0))
     });
     assert!(zero.is_err(), "verify_value(step=0) should error");
-    // step 1 is valid.
     let one = server.with_project(None, "verify", |conn, _cfg| {
         commands::guide::verify_value(conn, &uuid, Some(1))
     });
@@ -329,7 +313,6 @@ fn modify_value_sets_priority_and_requires_a_field() {
         .expect("modify");
     assert_eq!(v["priority"], "H");
 
-    // No field flags → must error, never open the TUI.
     let empty = server.with_project(None, "modify-empty", |conn, cfg| {
         commands::modify::modify_value(
             conn,
@@ -361,7 +344,6 @@ fn step_done_current_ticks_the_first_not_done_step() {
             })
             .expect("check");
     }
-    // No `n`/`step_id`: completes the execution cursor (step 1).
     let first = server
         .with_project(None, "done-current", |conn, _cfg| {
             commands::guide::step_done_current_value(conn, &uuid, Some("did one"), None)
@@ -369,14 +351,12 @@ fn step_done_current_ticks_the_first_not_done_step() {
         .expect("step_done_current");
     assert_eq!(first["index"], 1);
     assert_eq!(first["done"], true);
-    // Called again, the cursor advances to the next not-done step (step 2).
     let second = server
         .with_project(None, "done-current", |conn, _cfg| {
             commands::guide::step_done_current_value(conn, &uuid, Some("did two"), None)
         })
         .expect("step_done_current");
     assert_eq!(second["index"], 2);
-    // With everything done, it errors rather than silently no-op.
     let none_left = server.with_project(None, "done-current", |conn, _cfg| {
         commands::guide::step_done_current_value(conn, &uuid, None, None)
     });
@@ -392,7 +372,6 @@ fn step_undone_then_remove_edit_the_checklist() {
             commands::guide::check_value(conn, &uuid, "step one", None, None, None, None)
         })
         .expect("check");
-    // done → undone flips it back to not-done.
     server
         .with_project(None, "done", |conn, _cfg| {
             commands::guide::step_done_value(conn, &uuid, 1, None, None)
@@ -404,7 +383,6 @@ fn step_undone_then_remove_edit_the_checklist() {
         })
         .expect("step_undone");
     assert_eq!(undone["done"], false);
-    // remove drops the item.
     let removed = server
         .with_project(None, "remove", |conn, _cfg| {
             commands::guide::step_remove_value(conn, &uuid, 1, None)
@@ -467,8 +445,6 @@ fn attach_value_records_a_file_and_an_anchor() {
 
 #[test]
 fn attach_value_tags_a_url_as_link() {
-    // PR #58 review: the URL branch delegates to link_value but must still carry a
-    // `kind`, so every attach result shape is discriminable (file / anchor / link).
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
@@ -511,7 +487,6 @@ fn start_then_stop_tracks_a_session() {
 fn feedback_and_resolve_round_trip() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
-    // Seed an open feedback item via a human annotation flagged for revision.
     server
         .with_project(None, "annotate", |conn, _cfg| {
             commands::annotate::annotate_value(
@@ -614,17 +589,10 @@ fn plan_show_value_returns_a_briefing() {
     assert_eq!(v["briefing"].as_array().map(|a| a.len()), Some(1));
 }
 
-// ── Guide-tool ergonomics: tolerate the vocabulary the tools emit ────────────
-// The MCP guide tools return {task, step_id, index} but historically required
-// {id, n}. Agents faithfully round-trip the emitted names and hit
-// "failed to deserialize parameters: missing field `id`". These tests pin the
-// tolerant contract: aliases (task/task_id -> id, index -> n), string-or-number
-// ids, step_id addressing, and check returning the new item's position.
 use super::params::{CheckParams, StepDoneParams, StepEditParams};
 
 #[test]
 fn step_done_params_accept_task_and_index_aliases() {
-    // A model round-tripping a step_done/step_undone response: {task, index}.
     let p: StepDoneParams = serde_json::from_value(serde_json::json!({ "task": 14, "index": 1 }))
         .expect("{task,index} must deserialize into StepDoneParams");
     assert_eq!(p.id, "14");
@@ -633,7 +601,6 @@ fn step_done_params_accept_task_and_index_aliases() {
 
 #[test]
 fn step_done_params_accept_string_id_and_step_id() {
-    // A model round-tripping a check response: {task, step_id}.
     let p: StepDoneParams =
         serde_json::from_value(serde_json::json!({ "task": "14", "step_id": 1614 }))
             .expect("{task,step_id} must deserialize into StepDoneParams");
@@ -665,10 +632,6 @@ fn check_params_accept_task_alias_as_number() {
 
 #[test]
 fn begin_params_accept_comma_separated_tags_string() {
-    // Models frequently emit `tags` as a single comma-separated string instead
-    // of a JSON array. serde used to reject the whole call with
-    // "invalid type: string …, expected a sequence", failing `begin` on the
-    // first try. The tolerant deserializer must accept both forms.
     use super::params::BeginParams;
     let from_string: BeginParams = serde_json::from_value(serde_json::json!({
         "description": "restore a red PR",
@@ -685,7 +648,6 @@ fn begin_params_accept_comma_separated_tags_string() {
         ]),
         "the comma string is split, trimmed, into a tag vec"
     );
-    // Whitespace after commas is trimmed and empty segments dropped.
     let spaced: BeginParams = serde_json::from_value(serde_json::json!({
         "description": "d",
         "tags": "a, b ,,c",
@@ -695,7 +657,6 @@ fn begin_params_accept_comma_separated_tags_string() {
         spaced.tags,
         Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
     );
-    // The canonical array form still works unchanged.
     let from_array: BeginParams = serde_json::from_value(serde_json::json!({
         "description": "d",
         "tags": ["ci", "build"],
@@ -705,7 +666,6 @@ fn begin_params_accept_comma_separated_tags_string() {
         from_array.tags,
         Some(vec!["ci".to_string(), "build".to_string()])
     );
-    // Omitted entirely -> None (default), no error.
     let none: BeginParams = serde_json::from_value(serde_json::json!({ "description": "d" }))
         .expect("absent tags default to None");
     assert_eq!(none.tags, None);
@@ -737,7 +697,6 @@ fn check_value_returns_the_new_items_position() {
 fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
-    // An acceptance criterion with no verify command is unprovable — warn.
     let acc = server
         .with_project(None, "check", |conn, _cfg| {
             commands::guide::check_value(conn, &uuid, "done", None, Some("acceptance"), None, None)
@@ -750,7 +709,6 @@ fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
             .contains("no verify command"),
         "acceptance without verify warns: {acc}"
     );
-    // With a verify command, no warning.
     let acc_ok = server
         .with_project(None, "check", |conn, _cfg| {
             commands::guide::check_value(
@@ -765,7 +723,6 @@ fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
         })
         .expect("check");
     assert!(acc_ok["warning"].is_null(), "verify present, no warning");
-    // A plain step never carries this warning.
     let step = server
         .with_project(None, "check", |conn, _cfg| {
             commands::guide::check_value(conn, &uuid, "a", None, None, None, None)
@@ -778,7 +735,6 @@ fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
 fn step_done_by_step_id_ticks_the_right_item() {
     let server = server_with(db::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
-    // Add two acceptance criteria; capture the second one's step_id.
     server
         .with_project(None, "check", |conn, _cfg| {
             commands::guide::check_value(conn, &uuid, "c1", None, Some("acceptance"), None, None)
@@ -790,7 +746,6 @@ fn step_done_by_step_id_ticks_the_right_item() {
         })
         .expect("check c2");
     let step_id = c2["step_id"].as_i64().expect("check returns step_id");
-    // Tick by rowid (what the agent had in hand) — must land on criterion #2.
     let done = server
         .with_project(None, "done", |conn, _cfg| {
             commands::guide::step_done_by_id_value(conn, step_id, Some("proved"))

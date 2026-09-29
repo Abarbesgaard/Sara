@@ -1,24 +1,9 @@
-//! Shared safety guardrails for all memory-ingestion paths.
-//!
-//! These checks apply to **every** path that writes to the `items` store —
-//! explicit `sara learn`, auto-synthesis on `done`, and event-logging hooks.
-//! Centralising here ensures new ingestion paths can't skip them.
-
 use anyhow::Result;
 
-/// Default maximum body length in Unicode characters. Above this we assume the
-/// caller is pasting a raw conversation rather than a distilled paragraph.
-/// The effective limit is resolved by [`size_limit`], which honours the
-/// `SARA_MEMORY_CHAR_LIMIT` environment override.
 pub const SIZE_LIMIT_CHARS: usize = 4000;
 
-/// Environment variable that overrides the memory body size limit.
 pub const SIZE_LIMIT_ENV: &str = "SARA_MEMORY_CHAR_LIMIT";
 
-/// Resolve the effective size limit: the `SARA_MEMORY_CHAR_LIMIT` env var when
-/// set to a positive integer, otherwise [`SIZE_LIMIT_CHARS`]. Lets an operator
-/// raise (or stream in) a larger distilled note without editing the binary,
-/// while keeping the default guard against pasted raw conversations.
 pub fn size_limit() -> usize {
     std::env::var(SIZE_LIMIT_ENV)
         .ok()
@@ -27,18 +12,12 @@ pub fn size_limit() -> usize {
         .unwrap_or(SIZE_LIMIT_CHARS)
 }
 
-/// Run the full guardrail suite: size check then secret detection.
-///
-/// Returns `Ok(())` when the content passes. Returns an `Err` with a
-/// human-readable message that explains what to fix. The caller is responsible
-/// for surfacing `--force` semantics (i.e. skip this call when force=true).
 pub fn check_memory_body(text: &str) -> Result<()> {
     check_size(text)?;
     check_secrets(text)?;
     Ok(())
 }
 
-/// Body length guard. Rejects texts longer than the effective [`size_limit`].
 pub fn check_size(text: &str) -> Result<()> {
     let len = text.chars().count();
     let limit = size_limit();
@@ -53,8 +32,6 @@ Raise the limit with {SIZE_LIMIT_ENV}=<n>, or save anyway (not recommended) with
     Ok(())
 }
 
-/// Secret-pattern guard. Rejects text that contains recognisable credential
-/// patterns (key=value assignments, AWS AKIA keys, high-entropy tokens).
 pub fn check_secrets(text: &str) -> Result<()> {
     if let Some(reason) = detect_secret(text) {
         anyhow::bail!(
@@ -65,9 +42,6 @@ Remove the sensitive value before saving, or add --force to skip this check."
     Ok(())
 }
 
-/// Returns `Some(reason)` when a secret pattern is detected, `None` otherwise.
-/// This is the low-level predicate — callers that want a `Result` should use
-/// [`check_secrets`] instead.
 pub fn detect_secret(text: &str) -> Option<&'static str> {
     let kv_patterns = [
         "api_key",

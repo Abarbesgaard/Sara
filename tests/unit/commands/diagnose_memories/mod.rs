@@ -1,8 +1,6 @@
 use crate::infrastructure::{db, embedding, model::Item};
 use uuid::Uuid;
 
-/// Seed a memory with a file link, a tag and a real embedding, so the
-/// cosine gate is exercised rather than bypassed by the fail-open path.
 fn insert_memory_with_file(conn: &rusqlite::Connection, body: &str, tag: &str, file: &str) -> Uuid {
     let mut item = Item::new_memory(body.to_string(), body.to_string(), None);
     item.tags = vec![tag.to_string()];
@@ -61,7 +59,6 @@ fn pair_without_embeddings_is_kept_fail_open() {
     let file = "/tmp/sara_diag_noemb.rs".to_string();
     let a = insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     let b = insert_memory_with_file(&conn, FAR, "tag-b", &file);
-    // Simulate a lagging index: drop both embedding rows.
     for u in [a, b] {
         db::delete_embedding(&conn, &u.to_string()).unwrap();
     }
@@ -88,7 +85,6 @@ fn candidates_are_sorted_by_cosine_descending() {
         &file,
     );
 
-    // Threshold 0 keeps every pair so the ordering itself is under test.
     let v = super::diagnose_value(&conn, 0.0, None, None).unwrap();
     let scores: Vec<f64> = v["conflicts"]
         .as_array()
@@ -125,7 +121,6 @@ fn project_scope_excludes_other_provinces() {
     let file = "/tmp/sara_diag_scope.rs".to_string();
     let a = insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, NEAR_B, "tag-b", &file);
-    // Move one side of the pair into a different project.
     db::set_item_projects(&conn, &a, &["elsewhere".to_string()]).unwrap();
 
     let scoped =
@@ -149,7 +144,6 @@ fn linked_memories_do_not_appear_in_diagnose() {
     let uuid_a = insert_memory_with_file(&conn, NEAR_A, "tag-c", &file);
     let uuid_b = insert_memory_with_file(&conn, NEAR_B, "tag-d", &file);
 
-    // Link them — they should disappear from diagnose output.
     db::insert_memory_link(
         &conn,
         &uuid_a.to_string(),

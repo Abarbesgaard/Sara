@@ -26,7 +26,6 @@ fn seed_memory(
     item
 }
 
-/// A Config with semantic recall enabled, for the semantic-path tests.
 fn cfg_semantic() -> Config {
     let mut c = Config::default();
     c.recall.semantic = true;
@@ -35,9 +34,6 @@ fn cfg_semantic() -> Config {
 
 #[test]
 fn recall_semantic_surfaces_paraphrase() {
-    // The core value of the embedder: a query that shares NO literal token
-    // with a memory still surfaces it via embedding cosine — something the
-    // lexical FTS path (validated in the same test) cannot do.
     let conn = db::open_in_memory_for_test();
     let m = seed_memory(
         &conn,
@@ -48,11 +44,8 @@ fn recall_semantic_surfaces_paraphrase() {
     );
     crate::infrastructure::embedding::index_memory(&conn, &m);
 
-    // A paraphrase with no shared content word ("automated" "dependency"
-    // "update" "wrecked" "pipeline" vs "dependabot" "bump" "broke" "build").
     let query = "automated dependency update wrecked the pipeline";
 
-    // Lexical-only recall misses it (no literal overlap).
     let lexical = collect_hits(&conn, query, &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
     assert!(
         lexical.is_empty(),
@@ -60,7 +53,6 @@ fn recall_semantic_surfaces_paraphrase() {
         lexical.len()
     );
 
-    // Semantic recall surfaces it, flagged as a semantic hit with a cosine.
     let semantic = collect_hits(
         &conn,
         query,
@@ -86,12 +78,8 @@ fn recall_semantic_surfaces_paraphrase() {
 
 #[test]
 fn recall_semantic_respects_exact_tag_filter() {
-    // A --tag filter is an AND constraint. Semantic recall must stay inside
-    // it: a paraphrase-matching memory that lacks the tag must NOT surface,
-    // or the filter silently leaks unrelated-tag memories.
     let conn = db::open_in_memory_for_test();
 
-    // The memory the query paraphrases — but it is NOT tagged "ci".
     let untagged = seed_memory(
         &conn,
         "CI restore step failed",
@@ -101,7 +89,6 @@ fn recall_semantic_respects_exact_tag_filter() {
     );
     crate::infrastructure::embedding::index_memory(&conn, &untagged);
 
-    // An unrelated memory that DOES carry the "ci" tag.
     let tagged = seed_memory(
         &conn,
         "unrelated note",
@@ -131,17 +118,10 @@ fn recall_semantic_respects_exact_tag_filter() {
 
 #[test]
 fn recall_semantic_filter_applied_before_top_k_truncation() {
-    // Regression: the exact-filter allowlist must be applied BEFORE the
-    // `top_k` truncation. Here a higher-scoring memory sits OUTSIDE the
-    // filter and a weaker one sits INSIDE it, with top_k = 1. If the filter
-    // ran after truncation, the single slot would be consumed by the
-    // out-of-filter memory and then discarded, leaving the valid in-filter
-    // hit invisible.
     let conn = db::open_in_memory_for_test();
 
     let query = "lockfile pin fixes the broken dependabot build";
 
-    // Strongest match, but NOT tagged "keep" — must never occupy the slot.
     let outside = seed_memory(
         &conn,
         "outside filter",
@@ -151,7 +131,6 @@ fn recall_semantic_filter_applied_before_top_k_truncation() {
     );
     crate::infrastructure::embedding::index_memory(&conn, &outside);
 
-    // Weaker match, but carries the "keep" tag — this is the one we want.
     let inside = seed_memory(&conn, "inside filter", "lockfile pin broke", &["keep"], &[]);
     crate::infrastructure::embedding::index_memory(&conn, &inside);
 
@@ -185,8 +164,6 @@ fn recall_full_body_reaches_agent_json_untruncated() {
     );
     let item = seed_memory(&conn, "long memory", &long_body, &[], &[]);
 
-    // JSON path (the MCP recall tool / `--json`): the agent must receive the
-    // full, untruncated memory body.
     let v = recall_value(&conn, &cfg(), "uniquewidget", &[], &[], &[], 20, false).unwrap();
     let hits = v["keyword"].as_array().unwrap();
     assert_eq!(hits.len(), 1, "the memory should surface");
@@ -196,7 +173,6 @@ fn recall_full_body_reaches_agent_json_untruncated() {
         "recall JSON must carry the complete memory body, not a 160-char preview"
     );
 
-    // The human terminal view still gets a short preview.
     let hit = item_hit(&conn, item, false);
     assert!(
         hit.snippet.chars().count() <= 160,
@@ -208,8 +184,6 @@ fn recall_full_body_reaches_agent_json_untruncated() {
 #[test]
 fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
     let conn = db::open_in_memory_for_test();
-    // Two memories that both match the query. Distinct long bodies so a
-    // full-vs-preview mistake is unambiguous.
     seed_memory(
         &conn,
         "widget alpha",
@@ -228,12 +202,10 @@ fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
     let v = recall_value(&conn, &cfg(), "widget body", &[], &[], &[], 10, false).unwrap();
     let hits = v["keyword"].as_array().unwrap();
     assert!(hits.len() >= 2, "both memories should surface: {hits:?}");
-    // The top hit carries the full body...
     assert!(
         hits[0]["text"].as_str().is_some_and(|t| t.len() > 160),
         "top hit must carry its full untruncated body"
     );
-    // ...every other hit is a guide entry: preview present, no full text.
     for h in &hits[1..] {
         assert!(h["text"].is_null(), "non-top hits carry no full body: {h}");
         assert!(
@@ -241,8 +213,6 @@ fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
             "guide entries still carry a preview and label"
         );
         assert!(h["label"].as_str().is_some());
-        // Guide entries must be LEAN: none of the bulky/null scaffolding
-        // fields the top hit carries. Only signal-bearing keys survive.
         for noise in [
             "description",
             "ref_kind",
@@ -291,7 +261,6 @@ fn recall_by_label_drills_into_a_single_memory_in_full() {
     .unwrap();
     let label = format!("m{}", seed.display_id.unwrap());
 
-    // Recalling the bare handle returns that memory in full + its cluster guide.
     let v = recall_value(&conn, &cfg(), &label, &[], &[], &[], 10, false).unwrap();
     assert_eq!(v["deep"], true, "label recall is a deep drill-in");
     assert_eq!(v["spread"], "label");
@@ -301,7 +270,6 @@ fn recall_by_label_drills_into_a_single_memory_in_full() {
         hits[0]["text"].as_str().is_some_and(|t| t.len() > 160),
         "the drilled-into memory comes back in full"
     );
-    // Its cluster is a guide (no full bodies).
     let assoc = v["associative"].as_array().unwrap();
     assert!(
         assoc
@@ -317,9 +285,6 @@ fn recall_by_label_drills_into_a_single_memory_in_full() {
 
 #[test]
 fn recall_default_surfaces_semantic_paraphrase() {
-    // Semantic recall is ALWAYS on: a paraphrase sharing no literal keyword
-    // with any memory is surfaced by embedding similarity, even with a
-    // default config and no --semantic flag.
     let conn = db::open_in_memory_for_test();
     let m = seed_memory(
         &conn,
@@ -346,8 +311,6 @@ fn recall_default_surfaces_semantic_paraphrase() {
 
 #[test]
 fn semantic_opts_from_cfg_is_always_enabled() {
-    // Even when the legacy config toggle is off, from_cfg reports enabled —
-    // semantic recall can no longer be turned off via config.
     let mut c = Config::default();
     c.recall.semantic = false;
     assert!(super::SemanticOpts::from_cfg(&c).enabled);
@@ -364,8 +327,6 @@ fn recall_falls_back_to_token_and_when_phrase_misses() {
         &["web-app"],
     );
 
-    // Word order differs from the stored text → phrase literal misses,
-    // token-AND fallback should still surface the memory.
     let hits = collect_hits(
         &conn,
         "pagination MudTable",
@@ -433,8 +394,6 @@ fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
     )
     .unwrap();
 
-    // Thin literal result (1 direct hit) now AUTO-spreads without --spread:
-    // the linked neighbour surfaces associatively and the mode is "auto".
     let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, false).unwrap();
     assert_eq!(v["keyword"].as_array().unwrap().len(), 1);
     assert_eq!(v["spread"], "auto", "one thin hit triggers auto-spread");
@@ -447,7 +406,6 @@ fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
         "auto-spread should surface the linked neighbour"
     );
 
-    // With explicit --spread: same surfacing, but the mode is "explicit".
     let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, true).unwrap();
     assert_eq!(v["spread"], "explicit");
     let assoc = v["associative"].as_array().unwrap();
@@ -476,7 +434,6 @@ fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
 #[test]
 fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
     let conn = db::open_in_memory_for_test();
-    // Three memories all match "cache" directly → not thin → no auto-spread.
     let a = seed_memory(
         &conn,
         "cache one",
@@ -498,7 +455,6 @@ fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
         &[],
         &["web-app"],
     );
-    // A linked outsider that auto-spread WOULD surface if it fired.
     let outsider = seed_memory(
         &conn,
         "outsider",
@@ -555,9 +511,6 @@ fn recall_zero_hits_does_not_spread() {
 #[test]
 fn recall_bare_tag_lookup_does_not_auto_spread() {
     let conn = db::open_in_memory_for_test();
-    // A single tag-matched memory (thin) linked to an outsider. A bare
-    // tag lookup is already precise, so it must NOT auto-radiate even
-    // though the hit count (1) is in the thin band.
     let a = seed_memory(
         &conn,
         "billing note",
@@ -581,7 +534,6 @@ fn recall_bare_tag_lookup_does_not_auto_spread() {
     )
     .unwrap();
 
-    // Empty query + tag filter → bare lookup.
     let v = recall_value(
         &conn,
         &cfg(),
@@ -605,7 +557,6 @@ fn recall_bare_tag_lookup_does_not_auto_spread() {
 #[test]
 fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
     let conn = db::open_in_memory_for_test();
-    // Direct hit on the query, and a linked neighbour that shares no query term.
     let seed = seed_memory(
         &conn,
         "postgres connection pooling",
@@ -641,8 +592,6 @@ fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
         related.iter().all(|r| r.item.uuid != seed.uuid),
         "direct hits must not be repeated in the associative section"
     );
-    // The neighbour's path explains the hop: it ends at the neighbour and
-    // starts at the seed memory.
     let n = related
         .iter()
         .find(|r| r.item.uuid == neighbour.uuid)
@@ -656,8 +605,6 @@ fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
 #[test]
 fn spread_surfacing_does_not_reinforce_strength() {
     let conn = db::open_in_memory_for_test();
-    // A seed that matches the query directly, and a neighbour that only
-    // surfaces by spreading activation (shares no query term).
     let seed = seed_memory(
         &conn,
         "postgres connection pooling",
@@ -681,10 +628,8 @@ fn spread_surfacing_does_not_reinforce_strength() {
     )
     .unwrap();
 
-    // The neighbour has never been deliberately recalled — baseline strength.
     assert_eq!(db::item_strength(&conn, &neighbour), 1.0);
 
-    // A deliberate recall for the seed that radiates to the neighbour.
     let v = recall_value(&conn, &cfg(), "pgbouncer", &[], &[], &[], 20, true).unwrap();
     assert!(
         v["associative"]
@@ -695,9 +640,6 @@ fn spread_surfacing_does_not_reinforce_strength() {
         "the neighbour must surface via spreading activation for this test to be meaningful"
     );
 
-    // The neighbour surfaced ONLY as an uninvited graph side-effect. It must
-    // NOT gain strength the way a deliberately-recalled memory does, or the
-    // ranking signal is polluted by associative noise.
     assert_eq!(
         db::item_strength(&conn, &neighbour),
         1.0,
@@ -708,7 +650,6 @@ fn spread_surfacing_does_not_reinforce_strength() {
 #[test]
 fn spreading_related_is_empty_without_memory_seeds() {
     let conn = db::open_in_memory_for_test();
-    // No memory hits → no seeds → nothing to spread from.
     let related = spreading_related(&conn, &[]).unwrap();
     assert!(related.is_empty());
 }
@@ -717,7 +658,6 @@ fn spreading_related_is_empty_without_memory_seeds() {
 fn associative_output_is_capped_and_normalized() {
     let conn = db::open_in_memory_for_test();
     let hub = seed_memory(&conn, "hub topic", "central memory", &["hub"], &["p"]);
-    // Many neighbours linked to the seed — without a cap, all would surface.
     for i in 0..12 {
         let n = seed_memory(&conn, &format!("n{i}"), &format!("body {i}"), &[], &["p"]);
         db::insert_memory_link(
@@ -838,9 +778,6 @@ fn hyphenated_tag_is_not_misparsed_as_fts_operator() {
         &[],
     );
 
-    // Regression: FTS5 treats bare hyphens as NOT; --tag must never go
-    // through MATCH at all (find_items_by_tag uses a plain WHERE clause),
-    // and a free-text query containing a hyphen must still be quoted.
     let hits = collect_hits(
         &conn,
         "",
@@ -893,10 +830,6 @@ fn ties_on_strength_and_match_kind_break_by_recency() {
 
 #[test]
 fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
-    // A memory about pruning. The query shares SOME terms ("pruning",
-    // "decay") but adds terms the memory lacks ("archive", "policy" absent
-    // from body) so token-AND requires all four and misses. The Tier-3
-    // token-OR fallback should still surface it, flagged loose / low.
     let conn = db::open_in_memory_for_test();
     seed_memory(
         &conn,
@@ -906,8 +839,6 @@ fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
         &["engine"],
     );
 
-    // token-AND over all four tokens finds nothing (memory lacks
-    // "archive"/"garbage"), so recall would previously be empty.
     let and_only = db::search_fts_tokens(
         &conn,
         &[
@@ -939,7 +870,6 @@ fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
     assert_eq!(hits[0].description, "prune stale entries");
     assert!(hits[0].loose, "OR-fallback hit must be flagged loose");
 
-    // Confidence must reflect the loose match, not medium/high.
     let (confidence, caveat) = match_confidence("pruning decay archive garbage", &[], &hits);
     assert_eq!(confidence, "low");
     assert!(caveat.contains("Loose match"));
@@ -947,8 +877,6 @@ fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
 
 #[test]
 fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
-    // When token-AND (or phrase) already matches, the loose fallback must
-    // NOT fire and hits must NOT be flagged loose (no displacement).
     let conn = db::open_in_memory_for_test();
     seed_memory(
         &conn,
@@ -957,7 +885,6 @@ fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
         &[],
         &["platform"],
     );
-    // Both tokens present → token-AND matches → not loose.
     let hits = collect_hits(
         &conn,
         "consumer lag",
@@ -976,8 +903,6 @@ fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
 
 #[test]
 fn bare_recall_returns_recent_memories_instead_of_erroring() {
-    // A `sara recall` with no query/tag/project/file must not error — it
-    // surfaces the most recent memories so exploratory recall just works.
     let conn = db::open_in_memory_for_test();
     seed_memory(&conn, "alpha note", "first insight", &[], &["proj"]);
     seed_memory(&conn, "beta note", "second insight", &[], &["proj"]);
@@ -991,9 +916,6 @@ fn bare_recall_returns_recent_memories_instead_of_erroring() {
 
 #[test]
 fn recall_value_keyword_and_confidence_are_stable() {
-    // Pins the observable recall_value contract that must survive the
-    // removal of the dead semantic scaffold: a matching free-text query
-    // yields its keyword hit and a medium confidence signal.
     let conn = db::open_in_memory_for_test();
     seed_memory(
         &conn,
@@ -1019,12 +941,8 @@ fn recall_value_keyword_and_confidence_are_stable() {
 #[test]
 fn bm25_relevance_orders_equal_strength_fts_hits_over_recency() {
     let conn = db::open_in_memory_for_test();
-    // Strong bm25 match: term-dense, short document. Plain memory (1.0).
     let relevant = seed_memory(&conn, "widget widget widget", "widget", &[], &[]);
     std::thread::sleep(std::time::Duration::from_millis(20));
-    // Weak bm25 match: the term appears once in a long, mostly-unrelated
-    // body. Inserted later, so it is MORE RECENT — under the old recency
-    // tie-break it wrongly led despite being the poorer match.
     let recent_but_weak = seed_memory(
         &conn,
         "misc note",
@@ -1147,7 +1065,6 @@ fn recall_linked_tasks_are_surfaced_on_item_hit() {
 fn recall_surfaces_recurring_pattern_with_guide() {
     let conn = db::open_in_memory_for_test();
 
-    // A canonical pattern with two prior applications = a recurring pattern.
     let canonical = seed_memory(
         &conn,
         "CANONICAL NSubstitute dependabot restore fault",
@@ -1198,7 +1115,6 @@ fn recall_surfaces_recurring_pattern_with_guide() {
     let canon_label = format!("m{}", canonical.display_id.unwrap_or(0));
     assert_eq!(p["canonical"], serde_json::json!(canon_label));
     assert_eq!(p["occurrences"], serde_json::json!(2));
-    // Full canonical recipe is surfaced as `text`, not a truncated preview.
     assert!(
         p["text"]
             .as_str()
@@ -1206,7 +1122,6 @@ fn recall_surfaces_recurring_pattern_with_guide() {
             .contains("pin NSubstitute back to 5.3.0"),
         "pattern must carry the canonical's full recipe body"
     );
-    // Instances name both prior applications.
     let instances: Vec<String> = p["instances"]
         .as_array()
         .unwrap()
@@ -1214,7 +1129,6 @@ fn recall_surfaces_recurring_pattern_with_guide() {
         .map(|x| x.as_str().unwrap().to_string())
         .collect();
     assert_eq!(instances.len(), 2);
-    // Guide tells the agent to build a task from the pattern.
     let guide = p["guide"].as_str().unwrap();
     assert!(guide.contains("add") && guide.contains("derived_from"));
 }
@@ -1250,7 +1164,6 @@ fn recall_reports_no_pattern_for_a_lone_memory() {
 fn recall_surfaces_canonical_and_derived_memory_distinction() {
     let conn = db::open_in_memory_for_test();
 
-    // Canonical: the pattern memory.
     let canonical = seed_memory(
         &conn,
         "CodeQL config pattern",
@@ -1258,7 +1171,6 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
         &["codeql"],
         &[],
     );
-    // Derived: per-repo application memories.
     let derived_a = seed_memory(
         &conn,
         "CodeQL config applied to repo-a",
@@ -1274,7 +1186,6 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
         &[],
     );
 
-    // Link derived memories to canonical.
     db::insert_memory_link(
         &conn,
         &derived_a.uuid.to_string(),
@@ -1292,13 +1203,10 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
     )
     .unwrap();
 
-    // Distinction fields are computed per-memory in item_hit (independent of
-    // the family collapse that collect_hits applies below).
     let canonical_hit = item_hit(&conn, canonical.clone(), true);
     let derived_a_hit = item_hit(&conn, derived_a.clone(), true);
     let derived_b_hit = item_hit(&conn, derived_b.clone(), true);
 
-    // Canonical: has 2 derived children (by label), no derived_from_labels.
     assert_eq!(
         canonical_hit.derived_children.len(),
         2,
@@ -1308,7 +1216,6 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
         canonical_hit.derived_from_labels.is_empty(),
         "canonical must not be derived from anything"
     );
-    // The canonical's child labels must be exactly its two derived memories.
     assert!(
         canonical_hit
             .derived_children
@@ -1320,21 +1227,16 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
         canonical_hit.derived_children
     );
 
-    // Derived: has no children, derived_from_labels pointing to canonical.
     assert!(derived_a_hit.derived_children.is_empty());
     assert_eq!(derived_a_hit.derived_from_labels.len(), 1);
     assert!(derived_b_hit.derived_children.is_empty());
     assert_eq!(derived_b_hit.derived_from_labels.len(), 1);
 
-    // Both derived memories point to the same canonical label.
     assert_eq!(
         derived_a_hit.derived_from_labels[0],
         derived_b_hit.derived_from_labels[0]
     );
 
-    // collect_hits COLLAPSES the family: the canonical + its 2 children fold
-    // into a single representative (the canonical, which sorts first via its
-    // strength bonus), tagged with the family size.
     let hits = collect_hits(
         &conn,
         "",
@@ -1368,9 +1270,6 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
 fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
     let conn = db::open_in_memory_for_test();
 
-    // A canonical with three per-application derived children — the shape of
-    // a recurring fault (e.g. the dependabot/NSubstitute family) that would
-    // otherwise flood recall with near-duplicates.
     let canonical = seed_memory(&conn, "canonical fix", "the pattern", &["dep"], &[]);
     let mut children = vec![];
     for i in 0..3 {
@@ -1403,7 +1302,6 @@ fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
     )
     .unwrap();
 
-    // Four memories in the corpus, one representative in the result.
     assert_eq!(
         hits.len(),
         1,
@@ -1424,8 +1322,6 @@ fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
 fn recall_leaves_standalone_memories_uncollapsed() {
     let conn = db::open_in_memory_for_test();
 
-    // Two unrelated memories with no derived_from linkage — neither should be
-    // collapsed or tagged with cluster metadata.
     seed_memory(&conn, "note one", "body one", &["misc"], &[]);
     seed_memory(&conn, "note two", "body two", &["misc"], &[]);
 
@@ -1450,7 +1346,6 @@ fn recall_leaves_standalone_memories_uncollapsed() {
 fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
     let conn = db::open_in_memory_for_test();
 
-    // Canonical lives only under "sara-repo".
     let canonical = seed_memory(
         &conn,
         "CodeQL config pattern",
@@ -1458,7 +1353,6 @@ fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
         &[],
         &["sara-repo"],
     );
-    // Derived application lives under a completely different project.
     let derived = seed_memory(
         &conn,
         "applied CodeQL config to other-repo",
@@ -1475,10 +1369,6 @@ fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
     )
     .unwrap();
 
-    // A --project other-repo recall must NOT fold the local child under the
-    // foreign-project canonical: collapsing is now project-scoped, so a
-    // canonical from another repo can never stand in for (and hide) a memory
-    // that actually belongs to the queried project.
     let hits = collect_hits(
         &conn,
         "",
@@ -1495,16 +1385,12 @@ fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
         "the local child stays visible, got: {:?}",
         hits.iter().map(|h| &h.description).collect::<Vec<_>>()
     );
-    // The foreign canonical and the local child do not collapse together —
-    // different project signatures keep them as distinct representatives.
     assert!(
         hits.len() >= 2,
         "local child and foreign canonical are not merged, got: {:?}",
         hits.iter().map(|h| &h.description).collect::<Vec<_>>()
     );
 
-    // A project with no derived children anywhere must not pull the
-    // canonical in.
     let unrelated_hits = collect_hits(
         &conn,
         "",

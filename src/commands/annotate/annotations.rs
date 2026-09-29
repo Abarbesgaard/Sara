@@ -4,9 +4,6 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
-/// Parse an `--on` reference (`step:N`, `acceptance:N`, `anchor:ID`, `note:ID`)
-/// into a stable (target_kind, target_id) pair, resolving step/acceptance
-/// indices to their database ids.
 fn parse_on_ref(conn: &Connection, task_uuid: &uuid::Uuid, on: &str) -> Result<(String, String)> {
     let (kind, rest) = on.split_once(':').ok_or_else(|| {
         anyhow::anyhow!("--on must look like step:2, acceptance:1, anchor:ID, or note:ID")
@@ -36,8 +33,6 @@ impl<T> ParseCtx<T> for std::result::Result<T, std::num::ParseIntError> {
     }
 }
 
-/// Add an annotation and return a structured record. Shared by the CLI
-/// `annotate`/`comment` command and the MCP `annotate` tool (which cannot print).
 #[allow(clippy::too_many_arguments)]
 pub fn annotate_value(
     conn: &Connection,
@@ -79,9 +74,6 @@ pub fn annotate_value(
         reconsider,
     )?;
 
-    // When recording a finding, resurface the task's own prior findings that are
-    // semantically close — the reconsider guard against silently contradicting
-    // an earlier conclusion.
     let related = if note_kind == "finding" {
         crate::commands::insight::related_findings(conn, &task.uuid, text.trim(), Some(ann_id))
     } else {

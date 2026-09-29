@@ -1,10 +1,5 @@
-//! Assert the exit-code contract on error paths. Agents branch on process exit
-//! status, so a regression that turns a hard failure into a silent success (or
-//! flips the code) must break the build.
-
 use crate::harness::Sara;
 
-/// Run a subcommand expected to fail; return (exit code, stderr).
 fn fails(s: &Sara, args: &[&str]) -> (Option<i32>, String) {
     let out = s.cmd().args(args).output().expect("spawn sara");
     assert!(

@@ -67,9 +67,7 @@ impl std::fmt::Display for Status {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
-    /// Stable surrogate key (never recycled)
     pub uuid: Uuid,
-    /// Small sequential display ID (recycled on completion)
     pub id: Option<i64>,
     pub description: String,
     pub project: String,
@@ -81,13 +79,9 @@ pub struct Task {
     pub end: Option<DateTime<Utc>>,
     pub tags: Vec<String>,
     pub urgency: f64,
-    /// Set while the task is actively being worked on (time tracking)
     pub started_at: Option<DateTime<Utc>>,
-    /// Accumulated active time in seconds
     pub time_spent: i64,
-    /// Optional time estimate in minutes
     pub estimate_mins: Option<i64>,
-    /// Recurrence interval: "daily", "weekly", "2w", "1m", etc. None = no recurrence.
     pub recur: Option<String>,
 }
 
@@ -96,7 +90,6 @@ impl Task {
         self.started_at.is_some()
     }
 
-    /// Total time spent including the current active session.
     pub fn total_time_spent(&self) -> i64 {
         let live = self
             .started_at
@@ -105,19 +98,14 @@ impl Task {
         self.time_spent + live
     }
 
-    /// Compute the next due date for a recurring task based on its recur string.
-    /// Anchors from `base` (usually the current due date, or today if none).
     pub fn next_due(&self, base: DateTime<Utc>) -> Option<DateTime<Utc>> {
         let interval = self.recur.as_deref()?;
         Some(advance_by_interval(base, interval))
     }
 }
 
-/// Advance a datetime by a recurrence interval string.
-/// Supported: "daily"/"1d", "weekly"/"1w", "monthly"/"1m", "Nd", "Nw", "Nm".
 pub fn advance_by_interval(base: DateTime<Utc>, interval: &str) -> DateTime<Utc> {
     let s = interval.trim().to_lowercase();
-    // Named aliases
     if s == "daily" {
         return base + chrono::Duration::days(1);
     }
@@ -130,7 +118,6 @@ pub fn advance_by_interval(base: DateTime<Utc>, interval: &str) -> DateTime<Utc>
     if s == "yearly" {
         return add_months(base, 12);
     }
-    // Numeric prefix: "Nd", "Nw", "Nm"
     if let Some(stripped) = s.strip_suffix('d')
         && let Ok(n) = stripped.parse::<i64>()
     {
@@ -146,7 +133,6 @@ pub fn advance_by_interval(base: DateTime<Utc>, interval: &str) -> DateTime<Utc>
     {
         return add_months(base, n as u32);
     }
-    // Fallback: +1 week
     base + chrono::Duration::weeks(1)
 }
 
@@ -156,12 +142,8 @@ fn add_months(dt: DateTime<Utc>, months: u32) -> DateTime<Utc> {
     let extra_years = total_month / 12;
     let new_month = (total_month % 12) + 1;
     let new_year = dt.year() + extra_years as i32;
-    // Clamp day to last day of target month
     let max_day = days_in_month(new_year, new_month);
     let new_day = dt.day().min(max_day);
-    // Collapse the day to 1 first so intermediate `with_year`/`with_month`
-    // steps can never land on an invalid date (e.g. Jan 31 -> Feb 31), which
-    // would short-circuit the chain and leave the date unchanged.
     dt.with_day(1)
         .and_then(|d| d.with_year(new_year))
         .and_then(|d| d.with_month(new_month))
@@ -231,76 +213,49 @@ pub struct Project {
     pub notes: Option<String>,
     pub initialized_at: Option<DateTime<Utc>>,
     pub last_seen: Option<DateTime<Utc>>,
-    /// GitHub full repository name (e.g. "owner/repo"). Never a secret.
     pub github_repo: Option<String>,
-    /// GitHub login (username) used when syncing. Never a PAT or token.
     pub github_login: Option<String>,
-    /// Comma-separated sync scopes, e.g. "issues" or "issues,prs".
     pub github_sync_scope: Option<String>,
 }
 
-/// Non-secret provenance metadata for a task imported from a GitHub issue or PR.
-/// Stored under the key `"github"` inside `tasks.meta_json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubProvenance {
-    /// Full repository name (owner/repo).
     pub repo: String,
-    /// GitHub database id for the issue or PR.
     #[serde(default)]
     pub issue_id: Option<i64>,
-    /// GitHub node id for the issue or PR.
     #[serde(default)]
     pub node_id: Option<String>,
-    /// Issue or PR number on GitHub.
     pub number: i64,
-    /// Canonical HTML URL for the remote issue.
     #[serde(default)]
     pub html_url: Option<String>,
-    /// Remote issue title as imported from GitHub.
     #[serde(default)]
     pub title: Option<String>,
-    /// Remote issue body as imported from GitHub.
     #[serde(default)]
     pub body: Option<String>,
-    /// Remote issue state ("open" / "closed").
     #[serde(default)]
     pub state: Option<String>,
-    /// Assignee logins attached to the remote issue.
     #[serde(default)]
     pub assignees: Vec<String>,
-    /// Remote issue creator login.
     #[serde(default)]
     pub creator: Option<String>,
-    /// RFC3339 timestamp when the remote issue was last updated.
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-    /// RFC3339 timestamp when this task was synced.
     #[serde(alias = "imported_at")]
     pub synced_at: DateTime<Utc>,
-    /// GitHub login of the user who performed the sync (not a token).
     #[serde(alias = "imported_by")]
     pub synced_by: Option<String>,
 }
 
-/// A single comment imported from a GitHub issue.
-/// Stored under the key `"github_comments"` inside `tasks.meta_json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubComment {
-    /// GitHub database id for the comment (stable deduplication key).
     pub comment_id: i64,
-    /// Login of the comment author.
     pub author: String,
-    /// Comment body text.
     pub body: String,
-    /// Canonical HTML URL for the comment.
     pub url: String,
-    /// When the comment was created on GitHub.
     pub created_at: DateTime<Utc>,
-    /// When the comment was last updated on GitHub.
     pub updated_at: DateTime<Utc>,
 }
 
-/// A code anchor pointing at a file (or symbol) relevant to a task.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RelevantFile {
@@ -311,34 +266,23 @@ pub struct RelevantFile {
     pub line_end: Option<i64>,
 }
 
-/// A captured note or link in Sara's store (indexed in SQLite, body in markdown).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub uuid: Uuid,
-    /// Small display id within kind (n1, l2 prefixes in CLI)
     pub display_id: Option<i64>,
     pub kind: String,
     pub title: String,
     pub url: Option<String>,
     pub project: Option<String>,
     pub tags: Vec<String>,
-    /// Relative path inside the store
     pub path: Option<String>,
     pub summary: Option<String>,
     pub body: String,
     pub created: DateTime<Utc>,
     pub modified: DateTime<Utc>,
     pub status: String,
-    /// The task this memory was learned from/about, if any. Loose reference
-    /// (no FK): a memory outlives the task it points at.
     pub source_task_uuid: Option<Uuid>,
-    /// File paths this memory is associated with (absolute). Not auto-populated
-    /// by row_to_item — call set_item_files / find_items_by_file explicitly.
     pub files: Vec<String>,
-    /// Tasks linked to this memory with their source label ("auto" or
-    /// "explicit"). Not auto-populated by row_to_item — call
-    /// set_item_task_links / get_item_task_links explicitly.
-    /// Tuple: (task display id as string, description, source label).
     pub linked_tasks: Vec<(String, String, String)>,
 }
 

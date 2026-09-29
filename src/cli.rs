@@ -16,584 +16,384 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Initialize (or update) the project profile for the current folder
     Init {
-        /// Override the project name
         #[arg(long)]
         name: Option<String>,
-        /// Set the project goal directly (skips prompt)
         #[arg(long)]
         goal: Option<String>,
-        /// Set the tech stack directly (overrides auto-detection)
         #[arg(long)]
         stack: Option<String>,
-        /// Set project conventions directly
         #[arg(long)]
         conventions: Option<String>,
-        /// Set project notes directly (skips prompt)
         #[arg(long)]
         notes: Option<String>,
-        /// Command that installs/prepares the project (shown in `sara info`'s Verification section)
         #[arg(long)]
         setup_cmd: Option<String>,
-        /// Command that runs the test suite (shown in `sara info`'s Verification section)
         #[arg(long)]
         test_cmd: Option<String>,
-        /// Command that lints/type-checks the project (shown in `sara info`'s Verification section)
         #[arg(long)]
         lint_cmd: Option<String>,
-        /// Command that runs the project locally (shown in `sara info`'s Verification section)
         #[arg(long)]
         run_cmd: Option<String>,
-        /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
     },
 
-    /// Git project profile commands (deprecated: use `sara init`)
     #[command(hide = true)]
     Project {
         #[command(subcommand)]
         action: ProjectAction,
     },
 
-    /// Nuke a project: delete all its tasks and profile (run `sara init` to recreate)
     Reset {
-        /// Project to reset (defaults to the current project)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
-        /// Skip the confirmation prompt
         #[arg(short, long)]
         yes: bool,
     },
 
-    /// Add a task
     Add {
         words: Vec<String>,
-        /// Override project
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
-        /// Override priority (H/M/L)
         #[arg(long)]
         priority: Option<String>,
-        /// Tag (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// Accept all values without the TUI review form
         #[arg(short, long)]
         yes: bool,
-        /// Recurrence interval: daily, weekly, monthly, 2w, 3d, 1m, etc.
         #[arg(long, visible_alias = "recur")]
         every: Option<String>,
-        /// Annotation / note to attach (repeatable)
         #[arg(long)]
         annotation: Vec<String>,
-        /// URL to link to the task (repeatable)
         #[arg(long)]
         link: Vec<String>,
-        /// Checklist step to add (repeatable)
         #[arg(long)]
         check: Vec<String>,
-        /// UUID prefix of a task this task depends on (repeatable)
         #[arg(long, add = ArgValueCandidates::new(task_ids))]
         depends_on: Vec<String>,
     },
 
-    /// Start a task: create it and seed a first step to recall prior art
     Begin {
-        /// The task description (the request you're about to work on)
         words: Vec<String>,
-        /// Override project
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
-        /// Override priority (H/M/L)
         #[arg(long)]
         priority: Option<String>,
-        /// Tag (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// File this task touches (repeatable)
         #[arg(long)]
         file: Vec<String>,
-        /// The originating request/prompt (defaults to the description)
         #[arg(long)]
         assignment: Option<String>,
-        /// Why this task exists (the rationale)
         #[arg(long, visible_alias = "rationale")]
         why: Option<String>,
-        /// Acceptance criterion — the definition of done (optional)
         #[arg(long)]
         check: Option<String>,
-        /// Shell command that verifies the acceptance criterion
         #[arg(long)]
         verify: Option<String>,
-        /// Emit the full result as JSON (for agents/scripts)
         #[arg(long)]
         json: bool,
     },
 
-    /// Show full details of a task
     Info {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Emit the full guide as JSON (for agents/scripts)
         #[arg(long)]
         json: bool,
-        /// Force the readable text digest regardless of TTY (no TUI)
         #[arg(long)]
         plain: bool,
-        /// Emit a Markdown digest (description, steps, acceptance) for agent context or PR bodies
         #[arg(long)]
         md: bool,
-        /// Include the full History log in --plain/--md output (collapsed by default)
         #[arg(long)]
         history: bool,
     },
 
-    /// Add a comment, note, or anchored feedback to a task
     #[command(visible_alias = "comment")]
     Annotate {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// The comment / note text or URL
         #[arg(required = true)]
         text: Vec<String>,
-        /// Note kind: comment|finding|thought|constraint|assumption|open_question|non_goal|decision|risk|pattern
         #[arg(long)]
         kind: Option<String>,
-        /// Author of the note: human|ai
         #[arg(long)]
         author: Option<String>,
-        /// Anchor the comment to a guide element: step:N, acceptance:N, anchor:ID, note:ID
         #[arg(long)]
         on: Option<String>,
-        /// Flag the targeted element for reconsideration
         #[arg(long)]
         reconsider: bool,
     },
 
-    /// Remove a comment by its number (see `sara info`)
     #[command(visible_alias = "uncomment")]
     Denotate {
-        /// Comment id (the number shown in the detail view)
         annotation_id: i64,
     },
 
-    /// Attach a file path or URL to a task (URLs become links)
     #[command(visible_alias = "pr")]
     Attach {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// File path (relative to project) or URL
         path: String,
-        /// Why this file matters (turns it into a code anchor)
         #[arg(long)]
         reason: Option<String>,
-        /// Specific symbol (function/type) to change
         #[arg(long)]
         symbol: Option<String>,
-        /// Line range, e.g. 10:57
         #[arg(long)]
         lines: Option<String>,
-        /// Provenance: human (default) or ai (records as a suggestion)
         #[arg(long)]
         source: Option<String>,
     },
 
-    /// Add a link (e.g. a GitHub PR) to a task
     Link {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// The URL to link
         url: String,
-        /// Optional display label (auto-derived for GitHub PRs/issues)
         #[arg(long)]
         label: Option<String>,
     },
 
-    /// Remove a link by its number (see `sara info`)
     Unlink {
-        /// Link id (the number shown in the detail view)
         link_id: i64,
     },
 
-    /// Show pending tasks for a project as a collapsible issue tree
     Board {
-        /// Project name (defaults to current git project)
         #[arg(long, short)]
         project: Option<String>,
-        /// Also show completed tasks (hidden by default)
         #[arg(long)]
         finished: bool,
     },
 
-    /// Browse all projects in a TUI; select one to open its board
     Projects,
 
-    /// List pending tasks
     List {
-        /// Show tasks for all projects (default: current project only)
         #[arg(short, long)]
         all: bool,
-        /// Filter by project name
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
-        /// Emit the list as JSON
         #[arg(long)]
         json: bool,
-        /// Group tasks by their linked GitHub issue, for at-a-glance tracing
         #[arg(long)]
         by_issue: bool,
     },
 
-    /// Start working on a task (begins time tracking, marks it active)
     Start {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
     },
 
-    /// Stop working on a task (accumulates time spent)
     Stop {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
     },
 
-    /// Mark a task as done
     Done {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Force-complete even if blocked
         #[arg(long)]
         force: bool,
     },
 
-    /// Modify a task (opens the review form pre-filled)
     Modify {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Set the description non-interactively (skips the review-form TUI)
         #[arg(long)]
         description: Option<String>,
-        /// Set the priority (H/M/L) non-interactively
         #[arg(long)]
         priority: Option<String>,
-        /// Set the due date non-interactively (same formats as `add`)
         #[arg(long)]
         due: Option<String>,
-        /// Clear the due date
         #[arg(long)]
         clear_due: bool,
-        /// Replace tags (repeatable) non-interactively
         #[arg(long, short)]
         tag: Vec<String>,
-        /// Clear all tags
         #[arg(long)]
         clear_tags: bool,
-        /// Set the time estimate non-interactively, e.g. "90m", "2h", "2h30m"
         #[arg(long)]
         estimate: Option<String>,
-        /// Clear the time estimate
         #[arg(long)]
         clear_estimate: bool,
-        /// Set the recurrence interval non-interactively: daily, weekly, monthly, 2w, 3d, 1m, etc.
         #[arg(long, visible_alias = "recur")]
         every: Option<String>,
-        /// Clear the recurrence interval
         #[arg(long)]
         clear_recur: bool,
     },
 
-    /// Move a task to another project (non-interactive)
     #[command(visible_alias = "mv")]
     Move {
-        /// Task id or uuid prefix
         id: String,
-        /// Target project name
         project: String,
     },
 
-    /// Export a task (and its dependency closure) to a portable copy-paste blob
     Export {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Write the blob to a file instead of stdout
         #[arg(short, long)]
         output: Option<std::path::PathBuf>,
     },
 
-    /// Import a task bundle from a portable blob (file, argument, or stdin)
     Import {
-        /// Path to a blob file, or the blob string itself; omit to read stdin
         source: Option<String>,
-        /// Reassign every imported task to this project
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
     },
 
-    /// Delete a task (soft-delete)
     Delete {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Skip confirmation
         #[arg(short, long)]
         yes: bool,
     },
 
-    /// Manage task dependencies
     Dep {
-        /// Task id or uuid prefix (not required for `chain`)
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: Option<String>,
         #[command(subcommand)]
         action: DepAction,
     },
 
-    /// Tie the currently active git branch to a task (snapshot on sara stop)
     Addbranch {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Remove the tied branch
         #[arg(long)]
         clear: bool,
     },
 
-    /// Revert the most recent command
     Undo,
 
-    /// Add a checklist item / step / acceptance criterion to a task
     #[clap(name = "check")]
     Check {
-        /// Task ID
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// Step / criterion text
         text: String,
-        /// Fuller "what this step does" intent
         #[arg(long)]
         intent: Option<String>,
-        /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
-        /// Provenance: human (default) or ai
         #[arg(long)]
         source: Option<String>,
-        /// Command that verifies this step / criterion
         #[arg(long)]
         verify: Option<String>,
     },
 
-    /// Show the next not-done step (the execution cursor)
     Next {
-        /// Task id or uuid prefix
         id: String,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Show ordered steps, optionally up to checkmark N ("implement until N")
     Steps {
-        /// Task id or uuid prefix
         id: String,
-        /// Only show steps 1..=N
         #[arg(long)]
         until: Option<usize>,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Mark steps done/undone with an execution record
     Step {
         #[command(subcommand)]
         action: StepAction,
     },
 
-    /// Print (and optionally run) verification commands / acceptance criteria
     Verify {
-        /// Task id or uuid prefix
         id: String,
-        /// Only verify step N
         #[arg(long)]
         step: Option<usize>,
-        /// Actually run the verification command(s)
         #[arg(long)]
         run: bool,
-        /// Run each step/criterion's own verify command and tick it done only
-        /// when it exits 0, recording the result (implies running)
         #[arg(long)]
         tick_on_pass: bool,
     },
 
-    /// Save a distilled, freeform memory for future recall (global, not
-    /// task/project-scoped: it references projects rather than belonging to one)
     Learn {
-        /// The memory text (a short distilled paragraph)
         #[arg(trailing_var_arg = true, required = true)]
         text: Vec<String>,
-        /// Tag (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// Project this memory references (repeatable; defaults to the current project)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Vec<String>,
-        /// Task uuid prefix this memory was learned from/about (repeatable; source='explicit')
         #[arg(long, add = ArgValueCandidates::new(task_ids))]
         task: Vec<String>,
-        /// File path to associate with this memory (repeatable; stored as absolute path)
         #[arg(long)]
         file: Vec<String>,
-        /// Auto-attach files touched since HEAD via `git diff --name-only HEAD`
-        /// (requires a git root; error if none is found and --file is also absent)
         #[arg(long)]
         auto_files: bool,
-        /// Skip the size and secret-pattern warnings and save anyway
         #[arg(long)]
         force: bool,
-        /// Mark an existing memory as superseded by the new one (repeatable).
-        /// Atomically creates a supersedes link — no separate `sara link-memory` needed.
-        /// Accepts memory labels like "m7".
         #[arg(long, add = ArgValueCandidates::new(memory_labels))]
         supersedes: Vec<String>,
-        /// Mark the new memory as derived from an existing canonical one (repeatable).
-        /// Atomically creates a derived_from link. Accepts memory labels like "m7".
         #[arg(long = "derived-from", add = ArgValueCandidates::new(memory_labels))]
         derived_from: Vec<String>,
-        /// Link the new memory as similar to an existing one (repeatable).
-        /// Atomically creates a similar_to link. Accepts memory labels like "m7".
         #[arg(long = "similar-to", add = ArgValueCandidates::new(memory_labels))]
         similar_to: Vec<String>,
     },
 
-    /// Cross-task memory: keyword search across tasks/findings/anchors, or an
-    /// exact `--tag`/`--project` lookup over learned memories
     Recall {
-        /// Search query (optional when --tag/--project narrows the lookup;
-        /// combines with them using AND — both the filter and the text must match)
         query: Vec<String>,
-        /// Exact tag match against indexed memory tags (repeatable — a memory
-        /// must carry every tag given to match)
         #[arg(long)]
         tag: Vec<String>,
-        /// Exact project match against indexed memory project references
-        /// (repeatable — a memory matches if it references any of the given projects)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Vec<String>,
-        /// Filter by associated file path (repeatable; trailing '/' = prefix/directory match)
         #[arg(long)]
         file: Vec<String>,
-        /// Max results (alias for --limit)
         #[arg(long)]
         top: Option<i64>,
-        /// Max results
         #[arg(long, default_value_t = 10)]
         limit: i64,
-        /// Also surface associatively-related memories by spreading activation
-        /// across the memory graph (synapses = links + shared anchors), not just
-        /// direct keyword/tag matches
         #[arg(long)]
         spread: bool,
-        /// Deprecated / no-op: semantic recall (embedding cosine) is now ALWAYS
-        /// on, so paraphrases and conceptually-related wording surface even when
-        /// they share no literal keyword. Kept for backward compatibility. Uses
-        /// Sara's bundled local model (no network).
         #[arg(long)]
         semantic: bool,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// (Re)build the semantic index: embed every memory with Sara's bundled
-    /// model so `sara recall` can match by meaning. New memories are embedded
-    /// automatically on `learn`; run this once to backfill memories learned
-    /// before automatic embedding, or after a bulk import.
     ReindexEmbeddings,
-    /// Hebbian consolidation: turn memories recalled together (within
-    /// `--bucket-secs`) over the last `--window-days` into `co_activated`
-    /// synapses, so the memory graph learns its own wiring from use. Recomputed
-    /// from the window each run: idempotent, and stale synapses decay away.
     Consolidate {
-        /// Look back this many days of recall events
         #[arg(long, default_value_t = 30)]
         window_days: i64,
-        /// Co-firing time window in seconds (recalls within it fired together)
         #[arg(long, default_value_t = 5)]
         bucket_secs: i64,
-        /// Weight added to a synapse per co-firing
         #[arg(long, default_value_t = 0.1)]
         delta: f64,
-        /// Ignore bulk recalls: a co-firing window with more than this many
-        /// distinct memories is a listing, not genuine co-activation, and is
-        /// skipped (prevents `recall --tag` dumps from over-wiring the graph)
         #[arg(long, default_value_t = 5)]
         max_bucket: usize,
     },
 
-    /// Archive (forget) a memory by its label — e.g. `sara forget m3`
     Forget {
-        /// Memory label, e.g. m3 (from `sara learn` output or `sara recall`)
         handle: String,
-        /// Skip confirmation prompt
         #[arg(long, short)]
         yes: bool,
-        /// Also archive any memories `derived_from` this one (one level).
         #[arg(long)]
         cascade: bool,
     },
 
-    /// Promote a provisional auto-memory to active after review — e.g. `sara promote m14`
     Promote {
-        /// Memory label, e.g. m14 (provisional memories are flagged in `sara memories`/`recall`)
         handle: String,
     },
 
-    /// Peek into a memory as if inside a dream — neuron graph, recall pulse (TUI).
-    /// With no label: the whole-brain web of memories, bonds and strengths.
     Dream {
-        /// Memory label, e.g. m3 (omit for the constellation view)
         handle: Option<String>,
     },
 
-    /// Edit a memory in place (body/tags/files) — e.g. `sara relearn m3 --tag db "corrected text"`
     Relearn {
-        /// Memory label, e.g. m3
         handle: String,
-        /// New body text (optional; omit to only change tags/files)
         #[arg(trailing_var_arg = true)]
         text: Vec<String>,
-        /// Replace the tag set (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-        /// Replace the file associations (repeatable; stored as absolute path)
         #[arg(long)]
         file: Vec<String>,
-        /// Skip the size and secret-pattern warnings and save anyway
         #[arg(long)]
         force: bool,
     },
 
-    /// List all memory tags with usage counts (most-used first)
     Tags {
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Browse all saved memories, newest first, with strength label
     Memories {
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
@@ -606,198 +406,127 @@ pub enum Command {
         json: bool,
     },
 
-    /// (internal) Ship queued telemetry to the collector, then remove what was
-    /// sent. Spawned detached by the CLI/MCP after each call; not for direct use.
     #[command(name = "__telemetry_flush", hide = true)]
     TelemetryFlush,
 
-    /// Create a typed directed link between two memories (e.g. m12 supersedes m7).
-    /// Relations: supersedes, similar_to, derived_from, used_in
     #[command(name = "link-memory")]
     LinkMemory {
-        /// Source memory label (e.g. m12)
         from: String,
-        /// Relation type: supersedes | similar_to | derived_from | used_in
         relation: String,
-        /// Target memory label (e.g. m7)
         to: String,
-        /// Edge weight (default 1.0)
         #[arg(long, default_value = "1.0")]
         weight: f64,
     },
 
-    /// Remove a typed directed link between two memories
     #[command(name = "unlink-memory")]
     UnlinkMemory {
-        /// Source memory label (e.g. m12)
         from: String,
-        /// Relation type
         relation: String,
-        /// Target memory label (e.g. m7)
         to: String,
     },
 
-    /// Evaluate and optionally archive low-value memories (superseded, weak+old, provisional+old).
-    /// Runs in dry-run mode by default — pass --apply to actually archive.
     #[command(name = "prune-memories")]
     PruneMemories {
-        /// Show what would be archived without making changes (default)
         #[arg(long, default_value = "true")]
         dry_run: bool,
-        /// Actually archive the candidates (opposite of --dry-run)
         #[arg(long, conflicts_with = "dry_run")]
         apply: bool,
-        /// Days before a Weak (no task link) memory is eligible (default 90)
         #[arg(long, default_value = "90")]
         weak_days: i64,
-        /// Days before a Provisional auto-memory is eligible if unreviewed (default 30)
         #[arg(long, default_value = "30")]
         provisional_days: i64,
     },
 
-    /// Find memories that may be duplicates or contradictions: pairs that read
-    /// alike (close semantic match) and share a file or an identical tag set,
-    /// but that you haven't linked or reconciled yet. Read-only; worst first.
-    /// Alias: `sara conflicts`
     #[command(name = "diagnose-memories", alias = "conflicts")]
     DiagnoseMemories {
-        /// Cosine floor for treating a co-occurring pair as a real candidate.
-        /// Lower to widen the net, raise for near-duplicates only.
         #[arg(long, default_value_t = crate::commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD)]
         threshold: f32,
-        /// Only report pairs where both memories belong to this project
         #[arg(long, short)]
         project: Option<String>,
-        /// Show at most N candidates (they are sorted worst-first)
         #[arg(long)]
         limit: Option<usize>,
-        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Reflect over the memory graph: cluster related, not-yet-consolidated
-    /// memories and propose a canonical + `derived_from` links to tidy each
-    /// cluster. Read-only — prints the `sara link-memory` lines to apply.
     Reflect {
-        /// Minimum synapse weight for two memories to be treated as related.
         #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MIN_WEIGHT)]
         min_weight: f64,
-        /// Largest cluster to propose; bigger connected components are split at
-        /// their weakest synapses (0 = never split).
         #[arg(long, default_value_t = crate::commands::reflect::DEFAULT_MAX_CLUSTER)]
         max_cluster: usize,
-        /// Materialise the proposed consolidations (create the derived_from
-        /// links) instead of only printing them. Idempotent and cycle-guarded.
         #[arg(long)]
         apply: bool,
-        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Set the originating assignment/prompt for a task
     Assignment {
-        /// Task id or uuid prefix
         id: String,
-        /// The assignment text
         #[arg(trailing_var_arg = true, required = true)]
         text: Vec<String>,
     },
 
-    /// Set the rationale (why this task exists)
     Rationale {
-        /// Task id or uuid prefix
         id: String,
-        /// The rationale text
         #[arg(trailing_var_arg = true, required = true)]
         text: Vec<String>,
     },
 
-    /// Prove every acceptance criterion green (runs their verify commands), then
-    /// stamp the guide as validated against the current git HEAD
     Validate {
-        /// Task id or uuid prefix
         id: String,
-        /// Skip the acceptance gate and stamp without running verify commands
-        /// (escape hatch for environments where the checks cannot run locally)
         #[arg(long)]
         no_run: bool,
-        /// Ignore the "already proven at this commit" cache and re-run every
-        /// verify command, even for criteria already green at the current HEAD
         #[arg(long)]
         fresh: bool,
     },
 
-    /// List open feedback (human comments) for a task
     Feedback {
-        /// Task id or uuid prefix
         id: String,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
 
-    /// Resolve a piece of feedback by its id
     Resolve {
-        /// Feedback (annotation) id
         feedback_id: i64,
-        /// Link the resolution to an AI run id (see `sara record-run`) that addressed it
         #[arg(long)]
         run: Option<i64>,
     },
 
-    /// Record an AI/LLM interaction against a task (audit trail shown in `sara info`)
     RecordRun {
-        /// Task id or uuid prefix
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,
-        /// What the AI did, e.g. enrich, refine, implement, review
         #[arg(long)]
         kind: String,
-        /// Model used, e.g. claude-sonnet-5-thinking-high
         #[arg(long)]
         model: Option<String>,
-        /// Provider/platform, e.g. cursor
         #[arg(long)]
         provider: Option<String>,
-        /// The prompt/instruction given to the model (stored, not displayed)
         #[arg(long)]
         prompt: Option<String>,
-        /// A summary of the model's response (stored, not displayed)
         #[arg(long)]
         response: Option<String>,
     },
 
-    /// Atomic plan ingestion and dependency-ordered briefings
     Plan {
         #[command(subcommand)]
         action: PlanAction,
     },
 
-    /// Show a GitHub-style activity heatmap
     #[clap(name = "activity", alias = "heat")]
     Activity {
-        /// Limit to a specific project (defaults to current git project)
         #[arg(long, short, add = ArgValueCandidates::new(projects))]
         project: Option<String>,
-        /// Show activity across all projects
         #[arg(long, short)]
         all: bool,
     },
 
-    /// Sync open GitHub issues assigned to you for the current repo
     Sync,
 
-    /// Run an MCP server (stdio JSON-RPC) exposing sara's agent loop as typed tools
     Mcp,
 
-    /// Print config and data directory paths
     Paths,
 
-    /// Generate shell completions
     Completions {
-        /// Shell type
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
@@ -805,15 +534,11 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum ProjectAction {
-    /// Initialize (or update) the current git project profile
     Init {
-        /// Override the project name
         #[arg(long)]
         name: Option<String>,
-        /// Set the project goal directly (skips prompt)
         #[arg(long)]
         goal: Option<String>,
-        /// Accept all detected values non-interactively
         #[arg(short, long)]
         yes: bool,
     },
@@ -821,46 +546,30 @@ pub enum ProjectAction {
 
 #[derive(Debug, Subcommand)]
 pub enum StepAction {
-    /// Mark step N done, recording an execution result + commit
     Done {
-        /// Task id or uuid prefix
         id: String,
-        /// 1-based step number
         n: usize,
-        /// Execution result / note
         #[arg(long)]
         result: Option<String>,
-        /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
-    /// Reopen step N
     Undone {
-        /// Task id or uuid prefix
         id: String,
-        /// 1-based step number
         n: usize,
-        /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
-    /// Remove step N (a checklist item / acceptance criterion)
     #[command(visible_alias = "rm")]
     Remove {
-        /// Task id or uuid prefix
         id: String,
-        /// 1-based step number
         n: usize,
-        /// Item kind: step (default) or acceptance
         #[arg(long)]
         kind: Option<String>,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
@@ -868,16 +577,11 @@ pub enum StepAction {
 
 #[derive(Debug, Subcommand)]
 pub enum PlanAction {
-    /// Ingest a whole task graph from JSON (file path, or '-' for stdin)
     Import {
-        /// Path to the plan JSON file, or '-' to read stdin
         source: String,
     },
-    /// Emit a dependency-ordered briefing for a task and its blockers
     Show {
-        /// Task id or uuid prefix
         id: String,
-        /// Emit as JSON
         #[arg(long)]
         json: bool,
     },
@@ -885,21 +589,14 @@ pub enum PlanAction {
 
 #[derive(Debug, Subcommand)]
 pub enum DepAction {
-    /// Add a dependency: task depends ON another task
     On {
-        /// The id or uuid prefix of the task this task depends on
         other: String,
     },
-    /// Remove a dependency
     Off {
-        /// The id or uuid prefix to remove as a dependency
         other: String,
     },
-    /// List dependencies of this task
     List,
-    /// Wire a linear chain: A → B → C → … in one command
     Chain {
-        /// Task ids or uuid prefixes to chain (at least 2)
         #[arg(required = true, num_args = 2.., add = ArgValueCandidates::new(task_ids))]
         ids: Vec<String>,
     },

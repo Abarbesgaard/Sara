@@ -1,7 +1,3 @@
-//! Task CRUD, undo log, and dependency graph.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use super::*;
 use crate::infrastructure::model::Task;
 use anyhow::{Context, Result};
@@ -9,21 +5,15 @@ use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
-// ── undo ─────────────────────────────────────────────────────────────────────
-
 struct UndoCtx {
     batch_id: String,
     command: String,
 }
 
 thread_local! {
-    /// Active undo batch for the current process/thread. When set, every task
-    /// write records a snapshot so the whole command can later be reverted.
     static UNDO_CTX: std::cell::RefCell<Option<UndoCtx>> = const { std::cell::RefCell::new(None) };
 }
 
-/// Open an undo batch for the current command (e.g. "done 3"). All task writes
-/// until process exit are grouped under one batch that `undo` reverts together.
 pub fn begin_undo_batch(command: &str) {
     UNDO_CTX.with(|c| {
         *c.borrow_mut() = Some(UndoCtx {
@@ -33,7 +23,6 @@ pub fn begin_undo_batch(command: &str) {
     });
 }
 
-/// Record a single task snapshot into the active batch (no-op if none is open).
 fn log_undo(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -65,8 +54,6 @@ fn log_undo(
     Ok(())
 }
 
-/// Restore a task row to a previous snapshot. Uses UPDATE (never REPLACE) so
-/// dependent rows in other tables keyed by uuid are preserved.
 fn restore_task_row(conn: &Connection, t: &Task) -> Result<()> {
     let n = conn.execute(
         "UPDATE tasks SET id=?1, description=?2, project=?3, status=?4, priority=?5, due=?6,
@@ -119,8 +106,6 @@ fn restore_task_row(conn: &Connection, t: &Task) -> Result<()> {
     Ok(())
 }
 
-/// Revert the most recent recorded command. Returns the command label that was
-/// undone, or None when there is nothing to undo.
 pub fn undo(conn: &Connection) -> Result<Option<String>> {
     let latest: Option<(String, String)> = conn
         .query_row(
@@ -133,7 +118,6 @@ pub fn undo(conn: &Connection) -> Result<Option<String>> {
         return Ok(None);
     };
 
-    // Reverse the writes newest-first within the batch.
     let entries: Vec<(Option<String>, String)> = {
         let mut stmt = conn.prepare(
             "SELECT before_json, task_uuid FROM undo_log WHERE batch_id=?1 ORDER BY id DESC",
@@ -146,13 +130,11 @@ pub fn undo(conn: &Connection) -> Result<Option<String>> {
 
     for (before_json, task_uuid) in entries {
         match before_json {
-            // Task existed before: restore that snapshot.
             Some(json) => {
                 let task: Task =
                     serde_json::from_str(&json).context("Failed to decode undo snapshot")?;
                 restore_task_row(conn, &task)?;
             }
-            // Task was created by this command: removing it (and cascaded rows) undoes it.
             None => {
                 conn.execute("DELETE FROM tasks WHERE uuid=?1", [&task_uuid])?;
             }
@@ -164,10 +146,7 @@ pub fn undo(conn: &Connection) -> Result<Option<String>> {
     Ok(Some(command))
 }
 
-// ── task CRUD ────────────────────────────────────────────────────────────────
-
 pub fn next_display_id(conn: &Connection) -> Result<i64> {
-    // Find the smallest positive integer not in use by pending tasks
     let mut stmt = conn.prepare(
         "SELECT id FROM tasks WHERE status='pending' AND id IS NOT NULL ORDER BY id ASC",
     )?;
@@ -237,11 +216,6 @@ pub fn get_task_by_id(conn: &Connection, id: i64) -> Result<Option<Task>> {
     Ok(rows.next().transpose()?)
 }
 
-/// Build a SQL `LIKE` pattern that matches rows *starting with* `prefix`,
-/// treating any `%`, `_`, or `\` in `prefix` as literal characters rather than
-/// wildcards. Must be paired with an `ESCAPE '\'` clause in the query. Without
-/// this, an underscore in a directory path (very common) would wildcard-match
-/// sibling paths and over-match on prefix lookups.
 pub(crate) fn like_prefix_pattern(prefix: &str) -> String {
     let escaped = prefix
         .replace('\\', "\\\\")
@@ -267,7 +241,6 @@ pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option
     Ok(tasks.pop())
 }
 
-/// Resolve "3" (display id) or a uuid prefix to a Task
 pub fn resolve_task(conn: &Connection, id_or_uuid: &str) -> Result<Task> {
     if let Ok(n) = id_or_uuid.parse::<i64>()
         && let Some(t) = get_task_by_id(conn, n)?
@@ -301,8 +274,6 @@ pub fn list_tasks(conn: &Connection, project: Option<&str>) -> Result<Vec<Task>>
     Ok(rows)
 }
 
-/// Pending tasks (by urgency DESC) followed by completed tasks (by end DESC) for a project.
-/// Used by `sara board` to show the full feature progress view.
 pub fn list_tasks_for_board(conn: &Connection, project: &str) -> Result<Vec<Task>> {
     let mut tasks = Vec::new();
     let mut stmt = conn.prepare(&format!(
@@ -353,7 +324,6 @@ pub fn update_task(conn: &Connection, task: &Task) -> Result<()> {
     Ok(())
 }
 
-/// Display-ready values for each tracked field, used to diff task revisions.
 fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 9] {
     [
         ("description", non_empty(&t.description)),
@@ -385,7 +355,6 @@ fn tracked_field_values(t: &Task) -> [(&'static str, Option<String>); 9] {
     ]
 }
 
-/// Human-readable estimate (e.g. "90" minutes -> "1h30m").
 fn fmt_estimate(mins: i64) -> String {
     if mins >= 60 {
         let h = mins / 60;
@@ -408,7 +377,6 @@ fn non_empty(s: &str) -> Option<String> {
     }
 }
 
-/// Append a single history row for a task.
 pub(crate) fn record_history(
     conn: &Connection,
     task_uuid: &Uuid,
@@ -430,7 +398,6 @@ pub(crate) fn record_history(
     Ok(())
 }
 
-/// Record one history row per tracked field that changed between revisions.
 fn record_changes(conn: &Connection, old: &Task, new: &Task) -> Result<()> {
     let olds = tracked_field_values(old);
     let news = tracked_field_values(new);
@@ -447,7 +414,6 @@ fn record_changes(conn: &Connection, old: &Task, new: &Task) -> Result<()> {
     Ok(())
 }
 
-/// After completing a task, compact pending IDs to stay small
 pub fn repack_ids(conn: &Connection) -> Result<()> {
     with_write_lock(conn, || {
         let mut stmt =
@@ -465,8 +431,6 @@ pub fn repack_ids(conn: &Connection) -> Result<()> {
         Ok(())
     })
 }
-
-// ── dependencies ─────────────────────────────────────────────────────────────
 
 pub fn add_dependency(conn: &Connection, task_uuid: &Uuid, dep_uuid: &Uuid) -> Result<()> {
     if task_uuid == dep_uuid {
@@ -498,7 +462,6 @@ pub fn remove_dependency(conn: &Connection, task_uuid: &Uuid, dep_uuid: &Uuid) -
     Ok(())
 }
 
-/// "[id] description" label for a dependency task, falling back to the uuid.
 fn dep_label(conn: &Connection, dep_uuid: &Uuid) -> String {
     get_task_by_uuid_prefix(conn, &dep_uuid.to_string()[..8])
         .ok()
@@ -508,7 +471,6 @@ fn dep_label(conn: &Connection, dep_uuid: &Uuid) -> String {
 }
 
 fn would_create_cycle(conn: &Connection, task: &Uuid, new_dep: &Uuid) -> Result<bool> {
-    // If new_dep transitively depends on task, adding task->new_dep creates a cycle
     let mut visited = std::collections::HashSet::new();
     let mut queue = vec![new_dep.to_string()];
     while let Some(cur) = queue.pop() {
@@ -553,10 +515,6 @@ pub fn get_blocking(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
     Ok(uuids)
 }
 
-/// All dependency (blocker) uuids for a task regardless of the blocker's status.
-/// Unlike [`get_blockers`], which only returns *pending* blockers for urgency and
-/// readiness, this returns every `depends_on` edge — used when exporting a task's
-/// full dependency closure.
 pub fn get_dependency_uuids(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Uuid>> {
     let mut stmt = conn.prepare("SELECT depends_on_uuid FROM dependencies WHERE task_uuid=?1")?;
     let uuids = stmt
@@ -567,12 +525,9 @@ pub fn get_dependency_uuids(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<U
     Ok(uuids)
 }
 
-/// Dependency state of a single task, for at-a-glance list rendering.
 #[derive(Debug, Default, Clone)]
 pub struct DepInfo {
-    /// Display IDs of the pending tasks that block this task (sorted).
     pub blocked_by: Vec<i64>,
-    /// How many pending tasks this task is blocking.
     pub blocking: usize,
 }
 
@@ -582,14 +537,9 @@ impl DepInfo {
     }
 }
 
-/// Dependency state for every task that has any, keyed by task uuid string.
-/// Only pending tasks count as live blockers/dependents, matching the
-/// semantics of `get_blockers`/`get_blocking`. Computed in two batch queries
-/// so `sara list` stays O(1) in round-trips regardless of task count.
 pub fn dep_info_by_task(conn: &Connection) -> Result<std::collections::HashMap<String, DepInfo>> {
     let mut map: std::collections::HashMap<String, DepInfo> = std::collections::HashMap::new();
 
-    // Pending blockers (with their display id) for each task.
     let mut stmt = conn.prepare(
         "SELECT d.task_uuid, b.id
          FROM dependencies d
@@ -606,7 +556,6 @@ pub fn dep_info_by_task(conn: &Connection) -> Result<std::collections::HashMap<S
         }
     }
 
-    // How many pending tasks each task is blocking.
     let mut stmt = conn.prepare(
         "SELECT d.depends_on_uuid, COUNT(*)
          FROM dependencies d

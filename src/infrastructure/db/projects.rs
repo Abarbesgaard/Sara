@@ -1,17 +1,9 @@
-//! Project profiles, urgency scoring, checklist/steps, activity stats.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super` so
-//! `db::*` call sites are unchanged. Shared low-level helpers live in the
-//! parent `db` module, reached here via `use super::*`.
-
 use super::*;
 use crate::infrastructure::model::{Project, Task};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
-
-// ── projects ─────────────────────────────────────────────────────────────────
 
 pub fn upsert_project_seen(conn: &Connection, name: &str, path: Option<&str>) -> Result<()> {
     let now = dt_to_str(&Utc::now());
@@ -87,8 +79,6 @@ pub fn get_project(conn: &Connection, name: &str) -> Result<Option<Project>> {
     Ok(rows.next().transpose()?)
 }
 
-/// All known project names — the union of registered profiles and any project
-/// referenced by a task — sorted. Used for shell-completion candidates.
 pub fn project_names(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT project FROM tasks
@@ -100,9 +90,6 @@ pub fn project_names(conn: &Connection) -> Result<Vec<String>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-/// Look up a project profile by its (canonical) path. When several profiles
-/// share a path — e.g. stale rows from before path resolution was fixed — the
-/// most-recently-seen one wins.
 pub fn get_project_by_path(conn: &Connection, path: &str) -> Result<Option<Project>> {
     let mut stmt = conn.prepare(
         "SELECT name,path,goal,stack,conventions,notes,initialized_at,last_seen,
@@ -131,7 +118,6 @@ pub fn get_project_by_path(conn: &Connection, path: &str) -> Result<Option<Proje
     Ok(rows.next().transpose()?)
 }
 
-/// How many tasks a project currently owns (any status).
 pub fn count_project_tasks(conn: &Connection, name: &str) -> Result<usize> {
     let n: i64 = conn.query_row(
         "SELECT COUNT(*) FROM tasks WHERE project=?1",
@@ -141,8 +127,6 @@ pub fn count_project_tasks(conn: &Connection, name: &str) -> Result<usize> {
     Ok(n as usize)
 }
 
-/// The most recent task-modification time across a project's tasks, if any.
-/// Used by the project browser to show each project's last activity.
 pub fn project_last_activity(conn: &Connection, name: &str) -> Result<Option<DateTime<Utc>>> {
     let raw: Option<String> = conn.query_row(
         "SELECT MAX(modified) FROM tasks WHERE project=?1",
@@ -152,13 +136,9 @@ pub fn project_last_activity(conn: &Connection, name: &str) -> Result<Option<Dat
     Ok(raw.and_then(|s| str_to_dt(&s).ok()))
 }
 
-/// Nuke a project: delete all of its tasks (cascading to their dependencies,
-/// files, links, annotations and history), purge undo-log rows for those tasks,
-/// and remove the project profile itself. Returns the number of tasks deleted.
 pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
     let tx = conn.transaction()?;
 
-    // Collect the task uuids first so we can clean the undo log (no FK cascade).
     let uuids: Vec<String> = {
         let mut stmt = tx.prepare("SELECT uuid FROM tasks WHERE project=?1")?;
         let rows = stmt.query_map([name], |row| row.get::<_, String>(0))?;
@@ -169,16 +149,12 @@ pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
         tx.execute("DELETE FROM undo_log WHERE task_uuid=?1", [uuid])?;
     }
 
-    // Cascades remove dependencies, task_files, annotations, task_history,
-    // and task_links for each deleted task.
     let deleted = tx.execute("DELETE FROM tasks WHERE project=?1", [name])?;
     tx.execute("DELETE FROM projects WHERE name=?1", [name])?;
 
     tx.commit()?;
     Ok(deleted)
 }
-
-// ── urgency ──────────────────────────────────────────────────────────────────
 
 pub fn compute_urgency(
     task: &Task,
@@ -194,7 +170,6 @@ pub fn compute_urgency(
 
     if let Some(due) = task.due {
         let days_until: f64 = (due - Utc::now()).num_seconds() as f64 / 86400.0;
-        // ramp: overdue -> 1.0, due in 7+ days -> 0.0
         let factor = if days_until <= 0.0 {
             1.0
         } else if days_until >= 7.0 {
@@ -251,8 +226,6 @@ pub fn refresh_urgency(
     )?;
     Ok(())
 }
-
-// ── urgency breakdown ─────────────────────────────────────────────────────────
 
 pub struct UrgencyBreakdown {
     pub priority: f64,
@@ -323,9 +296,6 @@ pub fn compute_urgency_breakdown(
     }
 }
 
-// ── similar tasks ─────────────────────────────────────────────────────────────
-
-/// Tasks in the same project sharing at least one tag, excluding the task itself.
 pub fn similar_tasks(
     conn: &Connection,
     task_uuid: &Uuid,

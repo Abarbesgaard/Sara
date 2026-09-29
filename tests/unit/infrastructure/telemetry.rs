@@ -93,19 +93,15 @@ fn records_mcp_invocation() {
 fn extract_cli_flags_names_only_sorted_deduped() {
     let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
 
-    // values are excluded; long+short captured; sorted + deduped
     assert_eq!(
         extract_cli_flags(&a("recall --tag herdr -p pling --json")),
         vec!["--json", "--tag", "-p"]
     );
-    // `=value` form keeps only the name; duplicates collapse
     assert_eq!(
         extract_cli_flags(&a("learn --tag=a --tag=b --auto-files")),
         vec!["--auto-files", "--tag"]
     );
-    // bare `--`, negative numbers, and a lone `-` are not flags
     assert!(extract_cli_flags(&a("modify 5 -- -3 -")).is_empty());
-    // no flags at all
     assert!(extract_cli_flags(&a("done 3f45")).is_empty());
 }
 
@@ -177,7 +173,6 @@ fn disabled_writes_nothing() {
     let _ = std::fs::remove_file(&path);
 }
 
-// ── flush tests ──────────────────────────────────────────────────────────
 use std::io::Read as _;
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -202,8 +197,6 @@ fn write_queue(path: &Path, n: usize) {
     std::fs::write(path, body).unwrap();
 }
 
-/// One-shot HTTP server: returns (url, receiver-of-request-body). `status_line`
-/// e.g. "HTTP/1.1 200 OK" or "HTTP/1.1 500 Internal Server Error".
 fn mock_server(status_line: &'static str) -> (String, mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -342,7 +335,6 @@ fn flush_min_interval_gates_repeat_sends() {
     let dir = temp_dir_isolated("interval");
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
     set_flush_env(&dir, &url);
-    // A big interval + a fresh last-flush marker means: skip despite data.
     unsafe {
         std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "3600");
     }
@@ -382,7 +374,6 @@ fn flush_single_sender_lock_blocks_second() {
     let _g = lock();
     let dir = temp_dir_isolated("lock");
     set_flush_env(&dir, "http://127.0.0.1:9/insert");
-    // Hold the lock, then a flush attempt must skip rather than double-send.
     let held = FlushLock::try_acquire().unwrap();
     assert!(held.is_some(), "first acquire succeeds");
     write_queue(&dir.join("queue.jsonl"), 1);

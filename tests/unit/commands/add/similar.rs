@@ -65,7 +65,6 @@ fn same_project_memory_hits_rank_first_and_are_labeled() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    // Two tag-exact memories on the same common tag, different provinces.
     let mut other = Item::new_memory("other province auth".into(), "cross body".into(), None);
     other.tags = vec!["auth".into()];
     other.project = Some("other".into());
@@ -83,7 +82,6 @@ fn same_project_memory_hits_rank_first_and_are_labeled() {
     let hits = find_similar(&conn, &cfg, "add auth", &["auth".to_string()], "proj", 5).unwrap();
     let mem_hits: Vec<&Value> = hits.iter().filter(|h| h["ref_kind"] == "memory").collect();
     assert!(mem_hits.len() >= 2, "both memories surface");
-    // Same-project hit ranks ahead of the cross-project hit.
     assert_eq!(
         mem_hits[0]["same_project"], true,
         "local province prior art ranks first"

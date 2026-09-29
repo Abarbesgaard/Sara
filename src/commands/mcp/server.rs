@@ -1,9 +1,3 @@
-//! The MCP server runtime: the [`SaraServer`] type, its per-call project/cwd
-//! guard, the JSON helpers the tool slices share, the `ServerHandler` (get_info +
-//! dispatch), and the `sara mcp` entry point. The `#[tool]` methods themselves
-//! live in the `read` / `guide` / `lifecycle` slices; `new` composes their named
-//! routers into one.
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -34,8 +28,6 @@ Typical execution loop: list/info to load a task → next for the current step �
 the work → step_done (with a result) → verify. To finish, link the PR (link) and \
 call done only once that PR has merged — opening a PR is not completion.";
 
-/// Restores the process working directory on drop. Only changes cwd when a
-/// non-empty `project_path` is supplied.
 pub(crate) struct CwdGuard {
     prev: Option<PathBuf>,
 }
@@ -45,10 +37,6 @@ impl CwdGuard {
         match project_path {
             Some(p) if !p.trim().is_empty() => {
                 let p = p.trim();
-                // The server is long-running and its cwd is whatever the last
-                // call left it as, so a relative path has no stable meaning —
-                // it would silently resolve against an unrelated project.
-                // Every tool documents `project_path` as absolute; enforce it.
                 let path = Path::new(p);
                 if !path.is_absolute() {
                     anyhow::bail!(
@@ -89,21 +77,10 @@ impl SaraServer {
         }
     }
 
-    /// The full tool set: the three capability routers combined. Shared by `new`
-    /// (to populate the dispatch field) and the tool-count test.
     pub(crate) fn all_router() -> ToolRouter<Self> {
         Self::read_router() + Self::guide_router() + Self::lifecycle_router()
     }
 
-    /// Run `f` against the DB in the context of `project_path`: locks the single
-    /// connection (serializing all tool calls), sets the process cwd to the
-    /// project, and opens an undo batch — all on one thread, so both the cwd and
-    /// the thread-local undo context are coherent for the enclosed call.
-    ///
-    /// After the closure returns, a minimal event is written to the `events` table
-    /// (action = tool label, project = derived from cwd) so every MCP tool call
-    /// is automatically captured as an activity record. Recording errors are
-    /// suppressed — a failed INSERT never aborts the tool result.
     pub(crate) fn with_project<T>(
         &self,
         project_path: Option<&str>,
@@ -132,15 +109,10 @@ impl SaraServer {
     }
 }
 
-/// anyhow → MCP error. Tool-level failures surface as client-visible errors.
 pub(crate) fn mcp_err(e: anyhow::Error) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
 
-/// Render a value as a pretty JSON string — the tool result is returned as a text
-/// content block (mirroring the CLI's `--json` output). Tools return dynamic JSON
-/// objects, so text avoids MCP's requirement that structured `outputSchema` be a
-/// statically-typed object.
 pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, ErrorData> {
     serde_json::to_string_pretty(&v).map_err(|e| mcp_err(e.into()))
 }
@@ -148,8 +120,6 @@ pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, ErrorData> {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for SaraServer {
     fn get_info(&self) -> ServerInfo {
-        // ServerInfo / Implementation are #[non_exhaustive]: build from Default and
-        // assign public fields rather than using a struct literal.
         let mut info = ServerInfo::default();
         info.instructions = Some(INSTRUCTIONS.to_string());
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
@@ -158,10 +128,6 @@ impl ServerHandler for SaraServer {
     }
 }
 
-/// `sara mcp` entry point: serve the MCP tool set over stdio until the client
-/// disconnects. Builds the tokio runtime here so the rest of the CLI stays sync.
-/// On startup, prunes events older than 90 days (retention policy) so the
-/// table doesn't grow unboundedly across long-running server sessions.
 pub fn run(conn: Connection, cfg: &Config) -> anyhow::Result<()> {
     let _ = db::prune_old_events(&conn, 90);
     let server = SaraServer::new(conn, cfg.clone());
@@ -169,9 +135,6 @@ pub fn run(conn: Connection, cfg: &Config) -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     rt.block_on(async move {
-        // Copilot CLI probes with a custom `server/discover` request before
-        // `initialize`; rmcp's handshake would die on it. Absorb pre-init
-        // unknown traffic so the server always comes up (see `transport`).
         let (stdin, stdout) = stdio();
         let transport =
             super::transport::TolerantInit::new(AsyncRwTransport::new_server(stdin, stdout));

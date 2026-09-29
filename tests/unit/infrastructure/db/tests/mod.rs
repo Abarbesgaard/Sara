@@ -1,5 +1,3 @@
-//! Shared fixtures for the db unit-test suite, split by domain (issue #168).
-
 use crate::infrastructure::db::*;
 use crate::infrastructure::model::{Item, Status, Task};
 use chrono::{TimeZone as _, Utc};

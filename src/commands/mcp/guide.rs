@@ -1,6 +1,3 @@
-//! Create + guide-editing MCP tools: build a task and shape its guide (steps,
-//! notes, anchors, assignment/rationale). Contributes `guide_router`.
-
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};
@@ -83,9 +80,6 @@ impl SaraServer {
                         p.kind.as_deref(),
                     )
                 } else {
-                    // No `n`/`step_id`: default to the execution cursor (first
-                    // not-done item of `kind`) so `next` -> `step_done` round-trips
-                    // without the caller tracking positions.
                     commands::guide::step_done_current_value(
                         conn,
                         &p.id,
@@ -258,11 +252,11 @@ impl SaraServer {
                     &projects,
                     &tasks,
                     &files,
-                    false, // auto_files not available via MCP — paths must be explicit
+                    false,
                     p.force.unwrap_or(false),
-                    &[], // supersedes not yet exposed via MCP
-                    &[], // derived_from not yet exposed via MCP
-                    &[], // similar_to not yet exposed via MCP
+                    &[],
+                    &[],
+                    &[],
                 )
             })
             .map_err(mcp_err)?;

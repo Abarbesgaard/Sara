@@ -1,15 +1,9 @@
-//! Task links (URLs/issues/PRs) and change history.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use super::*;
 use crate::infrastructure::model::Task;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 use uuid::Uuid;
-
-// ── links ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct Link {
@@ -20,7 +14,6 @@ pub struct Link {
 }
 
 impl Link {
-    /// A human-friendly display string (explicit label, else derived from URL).
     pub fn display(&self) -> String {
         self.label
             .clone()
@@ -29,7 +22,6 @@ impl Link {
     }
 }
 
-/// Heuristic: does this string look like a web URL rather than a file path?
 pub fn is_url(s: &str) -> bool {
     let s = s.trim();
     s.starts_with("http://")
@@ -38,10 +30,7 @@ pub fn is_url(s: &str) -> bool {
         || s.starts_with("www.")
 }
 
-/// Derive a nice label from common URLs (e.g. GitHub PRs/issues).
-/// Returns None when no special pattern applies.
 pub fn derive_link_label(url: &str) -> Option<String> {
-    // https://github.com/<owner>/<repo>/pull/<n>  or  /issues/<n>
     let rest = url
         .strip_prefix("https://github.com/")
         .or_else(|| url.strip_prefix("http://github.com/"))
@@ -67,22 +56,18 @@ pub fn derive_link_label(url: &str) -> Option<String> {
     None
 }
 
-/// Does this URL point at a GitHub issue (as opposed to a PR or anything else)?
 pub fn is_issue_link(url: &str) -> bool {
     derive_link_label(url)
         .map(|l| l.starts_with("Issue "))
         .unwrap_or(false)
 }
 
-/// Does this URL point at a GitHub pull request?
 pub fn is_pr_link(url: &str) -> bool {
     derive_link_label(url)
         .map(|l| l.starts_with("PR "))
         .unwrap_or(false)
 }
 
-/// If `url` is a GitHub issue link, return `(owner/repo, issue number)` so
-/// tasks linking the same issue can be grouped together.
 pub fn parse_issue_link(url: &str) -> Option<(String, u64)> {
     let rest = url
         .strip_prefix("https://github.com/")
@@ -100,7 +85,6 @@ pub fn parse_issue_link(url: &str) -> Option<(String, u64)> {
     Some((format!("{}/{}", parts[0], parts[1]), number))
 }
 
-/// A GitHub issue and the tasks (from a given set) that link to it.
 #[derive(Debug, Clone)]
 pub struct IssueGroup {
     pub owner_repo: String,
@@ -108,8 +92,6 @@ pub struct IssueGroup {
     pub tasks: Vec<Task>,
 }
 
-/// Group `tasks` by the GitHub issue they link to, sorted by (owner/repo, number).
-/// Returns `(groups, tasks_without_an_issue_link)`; every input task appears exactly once.
 pub fn group_tasks_by_issue(
     conn: &Connection,
     tasks: &[Task],
@@ -169,18 +151,13 @@ pub fn get_links(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Link>> {
     Ok(links)
 }
 
-/// Link presence summary for a single task, for at-a-glance list markers.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LinkFlags {
-    /// Task has at least one link of any kind.
     pub any: bool,
-    /// Task has at least one GitHub PR link.
     pub pr: bool,
-    /// Task has at least one GitHub issue link.
     pub issue: bool,
 }
 
-/// Build a per-task link-flag map in a single query (keyed by task uuid string).
 pub fn link_flags_by_task(
     conn: &Connection,
 ) -> Result<std::collections::HashMap<String, LinkFlags>> {
@@ -201,9 +178,6 @@ pub fn link_flags_by_task(
     Ok(map)
 }
 
-/// Uuids (as strings) of tasks that were themselves imported by `sara sync`
-/// (i.e. carry GitHub provenance in `meta_json`), as opposed to tasks that
-/// merely link back to an issue for traceability (see `group_tasks_by_issue`).
 pub fn github_synced_task_uuids(conn: &Connection) -> Result<std::collections::HashSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT uuid FROM tasks
@@ -218,10 +192,6 @@ pub fn github_synced_task_uuids(conn: &Connection) -> Result<std::collections::H
     Ok(set)
 }
 
-/// Best-effort GitHub issue titles for a project's tasks, keyed by task uuid
-/// (string). Only populated for tasks synced via `sara sync`, which carry the
-/// remote issue title in `meta_json.github.title` — used to label `sara board`
-/// issue tree nodes with more than a bare number when available.
 pub fn github_issue_titles_for_project(
     conn: &Connection,
     project: &str,
@@ -268,8 +238,6 @@ pub fn delete_link(conn: &Connection, link_id: i64) -> Result<bool> {
     Ok(n > 0)
 }
 
-// ── history ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct HistoryEntry {
     pub field: String,
@@ -278,7 +246,6 @@ pub struct HistoryEntry {
     pub changed_at: DateTime<Utc>,
 }
 
-/// All recorded changes for a task, oldest first.
 pub fn get_history(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<HistoryEntry>> {
     let mut stmt = conn.prepare(
         "SELECT field, old_value, new_value, changed_at

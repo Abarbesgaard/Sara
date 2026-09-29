@@ -13,7 +13,6 @@ pub(super) enum ProjectAction {
     Open(String),
 }
 
-/// One row in the project browser: a project plus the metadata shown for it.
 pub(super) struct ProjectRow {
     pub(super) name: String,
     pub(super) goal: Option<String>,
@@ -29,8 +28,6 @@ pub(super) struct ProjectListState {
     pub(super) scroll: u16,
 }
 
-/// Browse all projects in a scrollable TUI; pressing Enter drills into the
-/// selected project's board, and quitting the board returns to this list.
 pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     let mut selected = 0usize;
     let mut scroll = 0u16;
@@ -58,8 +55,6 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
         match action {
             ProjectAction::Quit => break,
             ProjectAction::Open(name) => {
-                // Reuse the existing per-project board as the drill-in target,
-                // then loop back to a freshly rebuilt project list.
                 crate::commands::board::run(conn, cfg, Some(&name), false)?;
             }
         }
@@ -67,8 +62,6 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Collect every known project with its metadata and task counts, ordered by
-/// most-recent activity (projects with no tasks sort last), then by name.
 fn build_rows(conn: &Connection) -> Result<Vec<ProjectRow>> {
     let names = db::project_names(conn)?;
     let mut rows = Vec::with_capacity(names.len());
@@ -89,8 +82,6 @@ fn build_rows(conn: &Connection) -> Result<Vec<ProjectRow>> {
     Ok(rows)
 }
 
-/// Most-recently-active project first; projects with no activity (`None`) sort
-/// last; ties broken by name for stable output.
 fn sort_rows(rows: &mut [ProjectRow]) {
     rows.sort_by(|a, b| {
         b.last_activity
@@ -109,7 +100,6 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-/// Compact relative age, e.g. "just now", "5m ago", "3h ago", "2d ago".
 pub(super) fn rel_time(dt: DateTime<Utc>) -> String {
     let secs = (Utc::now() - dt).num_seconds().max(0);
     const MIN: i64 = 60;

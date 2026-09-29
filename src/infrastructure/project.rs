@@ -1,10 +1,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-/// Detect the git root for the given directory (or CWD).
-/// Handles .git as either a directory (normal repo) or a file (worktree/submodule).
 pub fn find_git_root(start: &Path) -> Option<PathBuf> {
-    // Prefer asking git itself — handles all edge cases
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(start)
@@ -17,7 +14,6 @@ pub fn find_git_root(start: &Path) -> Option<PathBuf> {
         }
     }
 
-    // Fallback: walk up looking for .git (dir or file)
     let mut cur = start.to_path_buf();
     loop {
         if cur.join(".git").exists() {
@@ -30,7 +26,6 @@ pub fn find_git_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Extract a project name from the git root path.
 pub fn project_name_from_root(root: &Path) -> String {
     root.file_name()
         .and_then(|n| n.to_str())
@@ -38,15 +33,6 @@ pub fn project_name_from_root(root: &Path) -> String {
         .to_string()
 }
 
-/// Pure resolver for file-link paths stored on memories.
-///
-/// Absolute paths pass through unchanged. A *relative* path is anchored to the
-/// `git_root` when the caller is inside a repository, so the same file resolves
-/// to the same absolute path from any subdirectory of the repo — this is what
-/// lets `sara recall --file lib/foo.rs` match whether it is run from the repo
-/// root or a nested folder. Outside a repository (`git_root == None`) it falls
-/// back to `cwd`. A trailing `/` (directory-prefix, used for prefix matching in
-/// recall) is preserved.
 pub fn resolve_file_link(path: &str, git_root: Option<&Path>, cwd: &Path) -> String {
     let is_dir_prefix = path.ends_with('/') && path != "/";
     let core = if is_dir_prefix {
@@ -54,19 +40,12 @@ pub fn resolve_file_link(path: &str, git_root: Option<&Path>, cwd: &Path) -> Str
     } else {
         path
     };
-    // Sara always stores/compares file links as forward-slash paths, so
-    // "absolute" must be judged platform-independently — std::path::Path::is_absolute()
-    // returns false for a POSIX-style "/repo/x" on Windows (no drive letter), which
-    // would otherwise send an already-absolute path through the join-with-cwd branch.
     let is_absolute = core.starts_with('/') || Path::new(core).is_absolute();
     let resolved = if is_absolute {
         PathBuf::from(core)
     } else {
         git_root.unwrap_or(cwd).join(core)
     };
-    // Always store forward-slash paths regardless of platform, so links saved
-    // on one OS resolve identically when recalled on another (and so joining
-    // native path separators on Windows doesn't leave a mixed "\"/"/" string).
     let mut out = resolved.to_string_lossy().replace('\\', "/");
     if is_dir_prefix {
         out.push('/');
@@ -74,27 +53,12 @@ pub fn resolve_file_link(path: &str, git_root: Option<&Path>, cwd: &Path) -> Str
     out
 }
 
-/// Resolve a file-link path against the real environment: anchors relative
-/// paths to the git root of the current directory (falling back to CWD outside
-/// a repo). Thin wrapper over [`resolve_file_link`] used by `learn` and
-/// `recall` so stored links and recall lookups resolve identically.
 pub fn resolve_file_link_here(path: &str) -> String {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let git_root = find_git_root(&cwd);
     resolve_file_link(path, git_root.as_deref(), &cwd)
 }
 
-/// Resolve the project identity (name, path) for a directory.
-///
-/// A git repo is its own project, named after the repo root. Otherwise the
-/// directory itself is the project, named after the folder — Sara initializes
-/// "inside the folder" rather than dumping into a catch-all. The legacy
-/// `default_project` ("inbox") is only used as a last resort when the folder
-/// has no usable name (e.g. the filesystem root).
-///
-/// `$HOME` (and anything above it) is never treated as a project root: a
-/// dotfiles repo living at `$HOME` would otherwise capture every non-git
-/// subfolder (e.g. `~/workspace`) as a project named after the home folder.
 pub fn project_identity_for_dir(
     dir: &Path,
     cfg: &crate::infrastructure::config::Config,
@@ -112,9 +76,6 @@ pub fn project_identity_for_dir(
     (name, root.to_string_lossy().to_string())
 }
 
-/// Pick the project root for `dir`: the detected `git_root`, unless that root is
-/// `$HOME` or an ancestor of it (too broad to be a project), in which case fall
-/// back to `dir` itself. All inputs are assumed already canonicalized.
 fn project_root_for(dir: &Path, git_root: Option<&Path>, home: Option<&Path>) -> PathBuf {
     match git_root {
         Some(root) if home.is_none_or(|h| !h.starts_with(root)) => root.to_path_buf(),
@@ -122,17 +83,11 @@ fn project_root_for(dir: &Path, git_root: Option<&Path>, home: Option<&Path>) ->
     }
 }
 
-/// The user's home directory, canonicalized when possible.
 fn home_dir() -> Option<PathBuf> {
     let home = directories::BaseDirs::new()?.home_dir().to_path_buf();
     Some(home.canonicalize().unwrap_or(home))
 }
 
-/// Parse inline Taskwarrior-style tokens from the raw add arguments.
-/// Tokens are only extracted when they appear as leading or trailing words.
-/// Everything between the first non-token and last non-token is the literal description.
-///
-/// Supported: `project:foo`, `+tag`, `pri:H`, `every:daily`
 #[derive(Debug, Default)]
 pub struct ParsedTokens {
     pub description: String,
@@ -144,7 +99,6 @@ pub struct ParsedTokens {
 
 pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
     let mut result = ParsedTokens::default();
-    // Strip any --flag tokens that slipped in via trailing_var_arg before parsing
     let cleaned: Vec<&str> = args
         .iter()
         .filter(|a| !a.starts_with("--"))
@@ -152,7 +106,6 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
         .collect();
     let mut remaining: Vec<&str> = cleaned;
 
-    // Strip leading tokens
     while let Some(&tok) = remaining.first() {
         if let Some(stripped) = tok.strip_prefix("project:") {
             result.project = Some(stripped.to_string());
@@ -171,7 +124,6 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
         }
     }
 
-    // Strip trailing tokens
     while let Some(&tok) = remaining.last() {
         if let Some(stripped) = tok.strip_prefix("project:") {
             if result.project.is_none() {
@@ -200,13 +152,6 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
     result
 }
 
-/// Detect the current project name and path.
-/// Returns (name, Option<path_string>).
-///
-/// Path-aware: if a project profile is registered at the current canonical path,
-/// its stored name wins. This honors `sara init --name X`, whose chosen name
-/// need not match the folder basename. Only when no profile is registered for
-/// this path do we fall back to the name derived from the folder.
 pub fn detect_current_project(
     conn: &rusqlite::Connection,
     cfg: &crate::infrastructure::config::Config,
@@ -214,14 +159,11 @@ pub fn detect_current_project(
     let cwd = std::env::current_dir()?;
     let (derived_name, path_str) = project_identity_for_dir(&cwd, cfg);
 
-    // Honor a project registered at this exact path, whatever it is named.
     if let Some(existing) = crate::infrastructure::db::get_project_by_path(conn, &path_str)? {
         crate::infrastructure::db::upsert_project_seen(conn, &existing.name, Some(&path_str))?;
         return Ok((existing.name, Some(path_str)));
     }
 
-    // No profile at this path — fall back to the derived name, warning if that
-    // name is already registered at a *different* path (an ambiguous collision).
     if let Some(existing) = crate::infrastructure::db::get_project(conn, &derived_name)?
         && let Some(ref existing_path) = existing.path
         && existing_path != &path_str

@@ -1,5 +1,3 @@
-//! Unit tests for db::migrations.
-
 use super::*;
 use crate::infrastructure::db::*;
 use uuid::Uuid;
@@ -15,10 +13,6 @@ fn fresh_database_has_github_sync_columns() {
 
 #[test]
 fn in_memory_test_db_enforces_foreign_keys() {
-    // Regression for PR #58 review: open_in_memory_for_test must set the same
-    // PRAGMAs as open(), notably foreign_keys=ON, so FK enforcement / cascade
-    // behaviour matches production. A child row referencing a non-existent
-    // task must be rejected.
     let conn = open_in_memory_for_test();
     let missing = Uuid::new_v4();
     let res = add_link(&conn, &missing, "https://example.com/pr/1", None);
@@ -30,11 +24,6 @@ fn in_memory_test_db_enforces_foreign_keys() {
 
 #[test]
 fn appended_migration_backfills_github_columns_on_upgraded_db() {
-    // Reproduce a database that upgraded across the point where the GitHub
-    // sync columns migration was inserted mid-list: the projects table
-    // predates those columns, yet user_version is already at the old list
-    // length (14), so rusqlite_migration would otherwise skip the inserted
-    // migration forever and the schema would stay broken.
     let mut conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
         "CREATE TABLE projects (
@@ -76,7 +65,6 @@ fn appended_migration_backfills_github_columns_on_upgraded_db() {
     for col in ["github_repo", "github_login", "github_sync_scope"] {
         assert!(cols.contains(col), "backfill missing column {col}");
     }
-    // Existing rows survive the backfill and re-running is a no-op.
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
         .unwrap();

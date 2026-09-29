@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use crate::infrastructure::db;
 
-/// Structured blockers/blocking view. Shared by the CLI `dep list` and MCP `dep`.
 pub fn dep_list_value(conn: &Connection, id: &str) -> Result<Value> {
     let task = db::resolve_task(conn, id)?;
     let blockers = db::get_blockers(conn, &task.uuid)?;

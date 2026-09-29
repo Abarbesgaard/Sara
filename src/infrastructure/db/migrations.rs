@@ -1,8 +1,3 @@
-//! Database schema migrations (rusqlite_migration).
-//!
-//! Centralized here per ARCHITECTURE.md — command slices must never call
-//! `Migrations::new`/`M::up` (enforced by `test_db_migrations_are_centralized`).
-
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
@@ -63,8 +58,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             );",
         ),
         M::up(
-            // Track whether a file was attached by the user ('manual') or
-            // proposed by the LLM ('suggested').
             "ALTER TABLE task_files ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';",
         ),
         M::up(
@@ -91,9 +84,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             );",
         ),
         M::up(
-            // Records full task snapshots so the most recent command can be reverted.
-            // before_json is NULL when the task was newly created (undo = remove it);
-            // rows from a single CLI invocation share a batch_id.
             "CREATE TABLE IF NOT EXISTS undo_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 batch_id    TEXT NOT NULL,
@@ -127,8 +117,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              );",
         ),
         M::up(
-            // recur: a recurrence interval string like "daily", "weekly", "2w", "1m", etc.
-            // NULL means the task does not recur.
             "ALTER TABLE tasks ADD COLUMN recur TEXT;",
         ),
         M::up(
@@ -162,8 +150,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             );",
         ),
         M::up(
-            // AI-first guide expansion: each task becomes a self-contained,
-            // LLM-authored implementation guide with provenance + freshness.
             "ALTER TABLE tasks ADD COLUMN assignment TEXT;
              ALTER TABLE tasks ADD COLUMN rationale TEXT;
              ALTER TABLE tasks ADD COLUMN validated_commit TEXT;
@@ -211,8 +197,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 ON task_ai_runs(task_uuid, created_at);",
         ),
         M::up(
-            // Non-secret GitHub sync identity fields for projects, plus a
-            // stable index to let project detection look up repos by full_name.
             "ALTER TABLE projects ADD COLUMN github_repo        TEXT;
              ALTER TABLE projects ADD COLUMN github_login       TEXT;
              ALTER TABLE projects ADD COLUMN github_sync_scope  TEXT;
@@ -220,9 +204,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                ON projects(github_repo) WHERE github_repo IS NOT NULL;",
         ),
         M::up(
-            // Lean on the SQLite engine: an FTS5 index for cross-task memory
-            // kept in sync by triggers, and a JSON-producing view that
-            // assembles the whole guide in one query (json1 is bundled).
             "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
                 ref_kind UNINDEXED, ref_id UNINDEXED, task_uuid UNINDEXED, text
              );
@@ -308,15 +289,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              ) AS guide_json
              FROM tasks t;",
         ),
-        // Backfill the GitHub sync columns on databases that upgraded across the
-        // point where the earlier `ALTER TABLE projects ADD COLUMN github_*`
-        // migration was (incorrectly) inserted mid-list. rusqlite_migration only
-        // tracks a single `user_version` watermark, so a database already past
-        // that index silently skips the inserted migration forever, leaving the
-        // schema without the columns the code SELECTs. This migration is appended
-        // (a fresh, higher index) so every existing database re-runs it, and the
-        // hook adds each column only when missing so it is a no-op on databases
-        // that already have them (fresh installs, or ones manually repaired).
         M::up_with_hook(
             "",
             |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
@@ -350,12 +322,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             },
         ),
         M::up(
-            // Normalized tag/project index for items (memories, notes, links),
-            // additive to items.tags_json (kept for rendering). Tags are stored
-            // case-folded (lowercase) so "service-a" and "serviceA" collide into
-            // one vocabulary entry instead of fragmenting recall/`sara tags`.
-            // Projects are stored as-is: they must match `projects.name` exactly,
-            // which is itself case-sensitive (derived from repo folder names).
             "CREATE TABLE IF NOT EXISTS item_tags (
                 item_uuid TEXT NOT NULL,
                 tag       TEXT NOT NULL,
@@ -373,14 +339,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_item_projects_project ON item_projects(project);",
         ),
         M::up(
-            // Index items (memories/notes/links) into the same FTS5 table used
-            // for tasks/annotations/anchors, namespaced as 'item_<kind>' (e.g.
-            // 'item_memory') so hits don't collide with the existing 'note'
-            // ref_kind (annotations). The update trigger only re-inserts when
-            // status='active', so archiving an item (sara forget) automatically
-            // drops it from search_index via the same UPDATE -- no separate
-            // cleanup step needed. task_uuid is reused to carry the item's own
-            // uuid since items aren't necessarily tied to one task.
             "CREATE TRIGGER IF NOT EXISTS trg_items_ai AFTER INSERT ON items BEGIN
                 INSERT INTO search_index(ref_kind, ref_id, task_uuid, text)
                 SELECT 'item_' || new.kind, new.uuid, new.uuid,
@@ -399,28 +357,16 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              END;",
         ),
         M::up(
-            // A memory can point back at the task it was learned from/about.
-            // Deliberately no FK/cascade: like items.project, this is a loose
-            // reference so a memory outlives the task it references rather
-            // than being silently orphaned or deleted if the task is removed.
             "ALTER TABLE items ADD COLUMN source_task_uuid TEXT;
              CREATE INDEX IF NOT EXISTS idx_items_source_task
                 ON items(source_task_uuid) WHERE source_task_uuid IS NOT NULL;",
         ),
         M::up(
-            // Token usage columns for task_ai_runs — all nullable so existing
-            // rows and callers that don't supply token counts stay valid.
             "ALTER TABLE task_ai_runs ADD COLUMN prompt_tokens     INTEGER;
              ALTER TABLE task_ai_runs ADD COLUMN completion_tokens INTEGER;
              ALTER TABLE task_ai_runs ADD COLUMN total_tokens      INTEGER;",
         ),
         M::up(
-            // File and task-link association tables for memories.
-            // item_files: ties a memory to one or more absolute file paths so
-            // `sara recall --file <path>` can surface relevant memories.
-            // item_task_links: stores memory→task associations with a source
-            // label ('auto' = detected from file reverse-lookup via task_files,
-            // 'explicit' = user-supplied --task flag).
             "CREATE TABLE IF NOT EXISTS item_files (
                 item_uuid TEXT NOT NULL,
                 file_path TEXT NOT NULL,
@@ -439,14 +385,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_item_task_links_item ON item_task_links(item_uuid);",
         ),
         M::up(
-            // memory_links: typed directed edges between memories (items) or
-            // between a memory and a task. Relation types:
-            //   supersedes   — from is the newer/correct version, to is outdated
-            //   similar_to   — informational similarity (bidirectional intent)
-            //   derived_from — from was derived/synthesised from to
-            //   used_in      — from (memory) was used in to (task)
-            // Unique on (from_uuid, to_uuid, relation) — dedup enforced at DB level.
-            // Weight (default 1.0) reserved for future confidence tuning.
             "CREATE TABLE IF NOT EXISTS memory_links (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 from_uuid TEXT    NOT NULL,
@@ -460,11 +398,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              CREATE INDEX IF NOT EXISTS idx_memory_links_to   ON memory_links(to_uuid);",
         ),
         M::up(
-            // Provisional visibility fix: the original item triggers only
-            // indexed status='active', so auto-memories created on `done`
-            // (status='provisional') never reached FTS and could not surface
-            // in recall. Recreate the triggers to index provisional too, and
-            // backfill the index for existing provisional rows.
             "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
                 ref_kind UNINDEXED, ref_id UNINDEXED, task_uuid UNINDEXED, text
              );
@@ -490,60 +423,32 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
         ),
         M::up_with_hook(
             "",
-            // Hot-path indexes. Until now `tasks` carried only the UNIQUE on
-            // `uuid`, and `annotations` / `task_checklist` / `task_links` /
-            // `events` carried none at all, so every per-task read and every
-            // filtered list was a full table SCAN followed by a TEMP B-TREE
-            // sort. Each index below was chosen from the actual query shapes in
-            // this file and verified with EXPLAIN QUERY PLAN to turn its SCAN
-            // into a SEARCH and to satisfy the ORDER BY from the index itself.
-            //
-            // Applied through a hook that skips any index whose table is
-            // absent. rusqlite_migration tracks a single `user_version`
-            // watermark, so a database that upgraded across an inserted
-            // migration can sit at a high version with a partial schema (the
-            // same hazard the GitHub-columns backfill above exists to repair).
-            // A bare `CREATE INDEX` would then abort every migration run and
-            // leave the CLI unable to open the database at all; indexes are
-            // pure optimisation, so skipping one is always preferable.
-            //
-            // `end` is a SQL keyword, hence the quoting. The partial indexes
-            // (`WHERE ... IS NOT NULL`) match the queries' own NULL guards and
-            // keep the index off rows that can never qualify.
             |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
                 let tables: std::collections::HashSet<String> = tx
                     .prepare("SELECT name FROM sqlite_master WHERE type='table'")?
                     .query_map([], |r| r.get::<_, String>(0))?
                     .collect::<rusqlite::Result<_>>()?;
                 for (table, ddl) in [
-                    // Dominant task shape: `WHERE project=? AND status=?`,
-                    // usually ordered by urgency. The trailing `urgency DESC`
-                    // makes that sort free.
                     (
                         "tasks",
                         "CREATE INDEX IF NOT EXISTS idx_tasks_project_status
                             ON tasks(project, status, urgency DESC)",
                     ),
-                    // Same, for cross-project variants that filter on status only.
                     (
                         "tasks",
                         "CREATE INDEX IF NOT EXISTS idx_tasks_status_urgency
                             ON tasks(status, urgency DESC)",
                     ),
-                    // Completion history: `WHERE end IS NOT NULL ORDER BY end DESC`.
                     (
                         "tasks",
                         "CREATE INDEX IF NOT EXISTS idx_tasks_end
                             ON tasks(\"end\" DESC) WHERE \"end\" IS NOT NULL",
                     ),
-                    // Short display-id lookup: `WHERE id=? AND status='pending'`.
                     (
                         "tasks",
                         "CREATE INDEX IF NOT EXISTS idx_tasks_id
                             ON tasks(id) WHERE id IS NOT NULL",
                     ),
-                    // Per-task child rows: all were `WHERE task_uuid=? ORDER BY ...`
-                    // against unindexed tables, i.e. a full scan per task opened.
                     (
                         "annotations",
                         "CREATE INDEX IF NOT EXISTS idx_annotations_task
@@ -559,22 +464,16 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                         "CREATE INDEX IF NOT EXISTS idx_task_links_task
                             ON task_links(task_uuid, entry)",
                     ),
-                    // Reverse dependency edge. The PRIMARY KEY autoindex is
-                    // (task_uuid, depends_on_uuid), so it cannot serve the
-                    // `WHERE depends_on_uuid=?` direction blocker lookups use.
                     (
                         "dependencies",
                         "CREATE INDEX IF NOT EXISTS idx_dependencies_depends_on
                             ON dependencies(depends_on_uuid)",
                     ),
-                    // Event-history windows: `WHERE action IN (...) AND at >= ?`.
                     (
                         "events",
                         "CREATE INDEX IF NOT EXISTS idx_events_action_at
                             ON events(action, at)",
                     ),
-                    // Project detection by folder path on every CLI invocation.
-                    // `projects.name` is covered by its PRIMARY KEY autoindex.
                     (
                         "projects",
                         "CREATE INDEX IF NOT EXISTS idx_projects_path
@@ -589,9 +488,6 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             },
         ),
         M::up(
-            // Key/value store for small singleton facts about this database.
-            // First use: the embedding scheme version, so recall can self-heal
-            // stale vectors when the bundled model or embed-text scheme changes.
             "CREATE TABLE IF NOT EXISTS meta (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL

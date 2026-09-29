@@ -6,10 +6,9 @@ use serde_json::{Value, json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::git;
-use crate::infrastructure::model::format_duration;
 
-/// Start the timer for a task, returning a structured record (no-op if already
-/// active). Print-free core shared by the CLI `start` command and MCP `start`.
+mod render;
+
 pub fn start_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
@@ -38,26 +37,10 @@ pub fn start_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<
 
 pub fn start(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let v = start_value(conn, cfg, id_or_uuid)?;
-    if v["already_active"].as_bool().unwrap_or(false) {
-        println!(
-            "Task {} is already active (running for {}).",
-            v["task"].as_i64().unwrap_or(0),
-            format_duration(v["elapsed_seconds"].as_i64().unwrap_or(0))
-        );
-    } else {
-        println!(
-            "Started task {}: {}",
-            v["task"].as_i64().unwrap_or(0),
-            v["description"].as_str().unwrap_or_default()
-        );
-    }
+    render::print_started(&v);
     Ok(())
 }
 
-/// Stop the timer for a task (and snapshot a tied branch's changed files, if any),
-/// returning a structured record. Print-free core shared by the CLI `stop` command
-/// and the MCP `stop` tool. Branch-snapshot warnings still go to stderr (safe on
-/// the stdio transport, which uses stdout as the JSON-RPC channel).
 pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
@@ -77,7 +60,6 @@ pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<V
     db::update_task(conn, &task)?;
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
 
-    // If this task has a tied branch, snapshot its changed files.
     let mut branch_log = Value::Null;
     if let Some(branch_rec) = db::get_task_branch(conn, &task.uuid) {
         let project_path = db::get_project(conn, &task.project)
@@ -112,28 +94,6 @@ pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<V
 
 pub fn stop(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let v = stop_value(conn, cfg, id_or_uuid)?;
-
-    if !v["stopped"].as_bool().unwrap_or(false) {
-        println!("Task {} is not active.", v["task"].as_i64().unwrap_or(0));
-        return Ok(());
-    }
-
-    println!(
-        "Stopped task {} (this session: {}, total: {})",
-        v["task"].as_i64().unwrap_or(0),
-        format_duration(v["session_seconds"].as_i64().unwrap_or(0)),
-        format_duration(v["total_seconds"].as_i64().unwrap_or(0))
-    );
-
-    if let Some(bl) = v.get("branch_log").filter(|b| !b.is_null()) {
-        let n = bl["files_logged"].as_i64().unwrap_or(0);
-        println!(
-            "Logged {} changed file{} on branch '{}'.",
-            n,
-            if n == 1 { "" } else { "s" },
-            bl["branch"].as_str().unwrap_or_default()
-        );
-    }
-
+    render::print_stopped(&v);
     Ok(())
 }

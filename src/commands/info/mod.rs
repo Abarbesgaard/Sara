@@ -15,14 +15,10 @@ use edit::edit_loop;
 use handler::load_detail;
 use plain::{RenderOpts, render_markdown, render_plain};
 
-/// Assemble the full guide (from the `task_guide` view) plus freshness +
-/// open-feedback into one machine-readable document. Single source of truth for
-/// the `--json` CLI path and the MCP `info` tool.
 pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
     let mut guide = db::guide_json(conn, &task.uuid)?;
 
-    // Freshness: compare the validated commit against the project's current HEAD.
     let head = db::get_project(conn, &task.project)
         .ok()
         .flatten()
@@ -34,7 +30,6 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
         _ => false,
     };
 
-    // Open feedback the agent should act on (flagged-for-reconsider first).
     let feedback = db::get_open_feedback(conn, &task.uuid)?;
     let open_feedback: Vec<_> = feedback
         .iter()
@@ -64,9 +59,6 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
             serde_json::Value::Bool(needs_revision),
         );
 
-        // Auto-recall: surface Strong prior-work memories relevant to this task.
-        // Only injected when Strong matches exist — omitted entirely otherwise so
-        // normal task-loading output is unchanged in the common case.
         let description = obj
             .get("description")
             .and_then(|v| v.as_str())
@@ -117,8 +109,6 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
     Ok(guide)
 }
 
-/// `sara info --json` — emit the full guide (assembled by the `task_guide` view)
-/// plus freshness + open-feedback, in one machine-readable document.
 pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
     println!(
         "{}",
@@ -139,14 +129,11 @@ pub fn run(
     let detail = load_detail(conn, cfg, task)?;
     let opts = RenderOpts { history };
 
-    // Markdown digest — agent context / PR bodies. Never opens the TUI.
     if md {
         print!("{}", render_markdown(&detail, opts));
         return Ok(());
     }
 
-    // Readable text digest: forced via --plain, or the automatic fallback when
-    // stdout is not a TTY (e.g. piped into an agent).
     use std::io::IsTerminal;
     if plain || !std::io::stdout().is_terminal() {
         print!("{}", render_plain(&detail, opts));

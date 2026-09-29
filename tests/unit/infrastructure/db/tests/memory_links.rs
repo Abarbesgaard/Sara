@@ -1,5 +1,3 @@
-//! Unit tests for db::memory_links.
-
 use super::*;
 use crate::infrastructure::model::Item;
 
@@ -13,8 +11,6 @@ fn similar_to_does_not_block_a_hierarchical_link_but_real_cycles_do() {
     b.path = Some(String::new());
     insert_item(&conn, &mut b).unwrap();
 
-    // A symmetric association a~b must NOT count as a hierarchical path,
-    // so consolidating into derived_from b->a is allowed.
     insert_memory_link(
         &conn,
         &a.uuid.to_string(),
@@ -32,7 +28,6 @@ fn similar_to_does_not_block_a_hierarchical_link_but_real_cycles_do() {
     )
     .expect("similar_to must not trip the hierarchical cycle guard");
 
-    // But a genuine hierarchical cycle (a->b derived_from already exists) is refused.
     let err = insert_memory_link(
         &conn,
         &a.uuid.to_string(),

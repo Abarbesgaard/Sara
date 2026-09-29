@@ -1,5 +1,3 @@
-//! Unit tests for db::guide.
-
 use super::*;
 
 #[test]
@@ -17,7 +15,6 @@ fn add_task_file_upserts_anchor_metadata() {
         None,
     )
     .unwrap();
-    // Same path again: ON CONFLICT updates in place, no duplicate row.
     add_task_file(
         &conn,
         &task.uuid,
@@ -120,7 +117,6 @@ fn ai_runs_are_recorded_and_returned_in_order() {
 fn open_feedback_lists_comments_flagged_first_and_resolves() {
     let conn = mem();
     let task = seed_task(&conn);
-    // A plain comment, a flagged comment, and a non-comment note.
     add_annotation_full(
         &conn, &task.uuid, "plain", "comment", "human", None, None, false,
     )
@@ -155,7 +151,6 @@ fn open_feedback_lists_comments_flagged_first_and_resolves() {
         "flagged feedback sorts first"
     );
 
-    // Resolving links the run and drops it from the open set.
     assert!(resolve_annotation(&conn, flagged, Some(7)).unwrap());
     let open = get_open_feedback(&conn, &task.uuid).unwrap();
     assert_eq!(open.len(), 1);
@@ -203,7 +198,6 @@ fn search_fts_matches_tasks_notes_and_anchors() {
 fn search_fts_tolerates_quotes_in_query() {
     let conn = mem();
     let task = seed_named_task(&conn, "handle the \"weird\" input");
-    // A query containing a double-quote must not blow up the FTS parser.
     let hits = search_fts(&conn, "\"weird\" input", 10).unwrap();
     assert!(hits.iter().any(|h| h.task_uuid == task.uuid.to_string()));
 }
@@ -215,7 +209,6 @@ fn search_fts_tolerates_hyphenated_service_name_query() {
     item.body = "service-a requires an X-Client-Id header".to_string();
     insert_item(&conn, &mut item).unwrap();
 
-    // A bare hyphenated word must not be parsed as column-filter/NOT syntax.
     let hits = search_fts(&conn, "service-a", 10).unwrap();
     assert_eq!(hits.len(), 1);
 }
@@ -227,7 +220,6 @@ fn search_fts_treats_boolean_keywords_as_literal_text() {
     item.body = "config-and-setup guide".to_string();
     insert_item(&conn, &mut item).unwrap();
 
-    // Must not error out or be parsed as an FTS5 boolean expression.
     let hits = search_fts(&conn, "config-and-setup", 10).unwrap();
     assert_eq!(hits.len(), 1);
     let hits = search_fts(&conn, "AND OR NOT", 10).unwrap();
@@ -249,7 +241,6 @@ fn search_fts_tolerates_wildcard_and_empty_queries() {
 #[test]
 fn dependency_closure_returns_blockers_first() {
     let conn = mem();
-    // c depends on b, b depends on a  →  closure of c is [a, b, c].
     let a = seed_named_task(&conn, "a");
     let b = seed_named_task(&conn, "b");
     let c = seed_named_task(&conn, "c");

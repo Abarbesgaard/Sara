@@ -9,6 +9,8 @@ use crate::infrastructure::model::Task;
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
+mod render;
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     conn: &Connection,
@@ -27,8 +29,6 @@ pub fn run(
 ) -> Result<()> {
     let task = db::resolve_task(conn, id_or_uuid)?;
 
-    // Non-interactive mode: if any field flag is present, apply it directly via
-    // db::update_task and skip the review-form TUI entirely.
     let has_field_flags = description.is_some()
         || priority.is_some()
         || due.is_some()
@@ -57,7 +57,6 @@ pub fn run(
         );
     }
 
-    // Build form context from existing task
     let pending = db::list_tasks(conn, None)?;
     let available_deps: Vec<(String, String)> = pending
         .iter()
@@ -101,11 +100,10 @@ pub fn run(
     tui::restore_terminal()?;
 
     let Some(form) = result? else {
-        println!("Cancelled.");
+        render::print_cancelled();
         return Ok(());
     };
 
-    // Apply changes
     let mut updated = task.clone();
     updated.description = form.description;
     updated.project = form.project.clone();
@@ -127,22 +125,14 @@ pub fn run(
     updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
     db::update_task(conn, &updated)?;
 
-    // Update files (paths come directly from the form).
     db::set_task_files(conn, &updated.uuid, &form.selected_files)?;
 
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
 
-    println!(
-        "Updated task {}: {}",
-        updated.id.unwrap_or(0),
-        updated.description
-    );
+    render::print_updated(updated.id.unwrap_or(0), &updated.description);
     Ok(())
 }
 
-/// Apply field setters non-interactively and return a structured record. Requires
-/// at least one field flag — it NEVER opens the review-form TUI. Print-free core
-/// shared by the CLI `modify` field-flags path and the MCP `modify` tool.
 #[allow(clippy::too_many_arguments)]
 pub fn modify_value(
     conn: &Connection,
@@ -206,7 +196,6 @@ pub fn modify_value(
     }))
 }
 
-/// Apply field changes non-interactively (no TUI), reusing [`modify_value`].
 #[allow(clippy::too_many_arguments)]
 fn apply_fields(
     conn: &Connection,
@@ -239,15 +228,13 @@ fn apply_fields(
         every,
         clear_recur,
     )?;
-    println!(
-        "Updated task {}: {}",
+    render::print_updated(
         v["task"].as_i64().unwrap_or(0),
-        v["description"].as_str().unwrap_or_default()
+        v["description"].as_str().unwrap_or_default(),
     );
     Ok(())
 }
 
-/// Parse a human duration string like "2h30m", "90m", "1h", "45" (minutes) into minutes.
 fn parse_estimate_mins(s: &str) -> Option<i64> {
     let s = s.trim();
     if s.is_empty() {
@@ -271,8 +258,6 @@ fn parse_estimate_mins(s: &str) -> Option<i64> {
     m_part.parse::<i64>().ok()
 }
 
-/// Pure field-merge: apply the CLI setter flags onto a `Task`. No DB / IO, so it
-/// is unit-testable. Returns an error on an unparseable priority, due date, or estimate.
 #[allow(clippy::too_many_arguments)]
 fn merge_task_fields(
     task: Task,
@@ -301,7 +286,6 @@ fn merge_task_fields(
         );
     }
 
-    // `--clear-tags` wins; otherwise `--tag` (repeatable) replaces the tag set.
     if clear_tags {
         updated.tags = vec![];
     } else if !tags.is_empty() {

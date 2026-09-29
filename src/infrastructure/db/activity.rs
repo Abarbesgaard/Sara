@@ -1,13 +1,7 @@
-//! Task estimates, activity heatmap, and project stats.
-//!
-//! Split out of the db monolith (issue #168); re-exported by `super`.
-
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 use uuid::Uuid;
-
-// ── estimate ──────────────────────────────────────────────────────────────────
 
 pub fn set_estimate(conn: &Connection, task_uuid: &Uuid, mins: Option<i64>) -> Result<()> {
     conn.execute(
@@ -17,11 +11,6 @@ pub fn set_estimate(conn: &Connection, task_uuid: &Uuid, mins: Option<i64>) -> R
     Ok(())
 }
 
-// ── activity heatmap ──────────────────────────────────────────────────────────
-
-/// Returns a map of NaiveDate → activity count for the last `days` days.
-/// Activity = tasks created + tasks completed + history change events.
-/// When `project` is Some, filter to that project only.
 pub fn activity_counts(
     conn: &Connection,
     days: u32,
@@ -39,7 +28,6 @@ pub fn activity_counts(
         ""
     };
 
-    // Tasks created
     {
         let sql = format!(
             "SELECT substr(entry,1,10), COUNT(*) FROM tasks WHERE entry >= ?1 {proj_filter} GROUP BY substr(entry,1,10)"
@@ -61,7 +49,6 @@ pub fn activity_counts(
         }
     }
 
-    // Tasks completed
     {
         let sql = format!(
             "SELECT substr(end,1,10), COUNT(*) FROM tasks WHERE end IS NOT NULL AND end >= ?1 {proj_filter} GROUP BY substr(end,1,10)"
@@ -78,12 +65,11 @@ pub fn activity_counts(
         };
         for (date_str, count) in rows {
             if let Ok(d) = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                *map.entry(d).or_insert(0) += count * 2; // completions count double
+                *map.entry(d).or_insert(0) += count * 2;
             }
         }
     }
 
-    // History events (modifications, annotations, etc.)
     {
         let proj_join = if project.is_some() {
             "JOIN tasks t ON t.uuid = h.task_uuid"
@@ -120,7 +106,6 @@ pub fn activity_counts(
     Ok(map)
 }
 
-/// Returns (total_created, total_completed, current_streak_days, longest_streak_days)
 pub fn activity_stats(conn: &Connection, project: Option<&str>) -> Result<(u32, u32, u32, u32)> {
     let proj_filter = if project.is_some() {
         "WHERE project=?1"
@@ -152,8 +137,6 @@ pub fn activity_stats(conn: &Connection, project: Option<&str>) -> Result<(u32, 
         )?
     };
 
-    // Streak: consecutive days with any activity (from activity_counts).
-    // We'll compute this from completion dates for simplicity.
     let mut dates: Vec<chrono::NaiveDate> = {
         let sql = if project.is_some() {
             "SELECT DISTINCT substr(end,1,10) FROM tasks WHERE end IS NOT NULL AND project=?1 ORDER BY end DESC"
@@ -195,7 +178,6 @@ pub fn activity_stats(conn: &Connection, project: Option<&str>) -> Result<(u32, 
         longest_streak = longest_streak.max(streak);
         prev = Some(*d);
     }
-    // Current streak: count backwards from today
     if let Some(&last) = dates.last()
         && (today - last).num_days() <= 1
     {
@@ -213,8 +195,6 @@ pub fn activity_stats(conn: &Connection, project: Option<&str>) -> Result<(u32, 
 
     Ok((created, completed, current_streak, longest_streak))
 }
-
-// ── project stats ─────────────────────────────────────────────────────────────
 
 pub struct ProjectStats {
     pub pending: u32,

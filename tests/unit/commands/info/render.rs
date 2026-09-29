@@ -90,10 +90,6 @@ fn base_state(detail: Detail) -> EditState {
 }
 
 fn draw(st: &mut EditState) -> String {
-    // Wide enough that render()'s `chunks[0].width >= 96` gate shows the
-    // side panel at all, and tall enough that the panel's own stacked
-    // constraints (task tree + Git(Min 4)) don't get starved and
-    // silently truncated by Layout::split.
     draw_at(st, 140, 60)
 }
 
@@ -134,9 +130,6 @@ fn task_tree_shows_branching_blockers_and_dependents() {
     };
     let mut st = base_state(d);
     let out = draw(&mut st);
-    // Both blockers (one completed, one pending) and the dependent render
-    // as distinct rows — this is exactly what the old linear feature
-    // chain couldn't do for a task with neighbors in different features.
     assert!(out.contains("blocked by (2)"));
     assert!(out.contains("blocks"));
     assert!(out.contains("task 1"));
@@ -198,9 +191,6 @@ fn task_tree_nests_grandchildren_with_tree_connectors() {
 
 #[test]
 fn task_tree_hides_beyond_compact_depth_until_expanded() {
-    // blocker(10) -> blocker(100) -> blocker(1000): three hops up.
-    // Compact depth is 2, so task 1000 (the third hop) stays hidden
-    // behind the expand hint until 'd' is toggled.
     let great_grandchild = node(1000, Status::Pending);
     let grandchild = node_with_children(100, vec![great_grandchild]);
     let child = node_with_children(10, vec![grandchild]);
@@ -272,11 +262,8 @@ fn risk_notes_always_show_but_other_notes_collapse_until_toggled() {
     ];
     let mut st = base_state(d);
     let out = draw(&mut st);
-    // Risk is the human-relevant one — always visible.
     assert!(out.contains("Risks"));
     assert!(out.contains("touches the shared urgency formula"));
-    // The AI's own process notes collapse to a counted summary instead
-    // of dumping their text — that's the whole point of the toggle.
     assert!(!out.contains("existing tests cover this path"));
     assert!(!out.contains("kept the old signature"));
     assert!(out.contains("n to view"));
@@ -335,12 +322,11 @@ fn checklist_detail_only_shows_for_selected_row_unless_verbose() {
         },
     ];
     let mut st = base_state(d);
-    st.selected = 0; // metadata field, not a checklist row: nothing selected below
+    st.selected = 0;
     let out = draw(&mut st);
     assert!(!out.contains("do the first thing"));
     assert!(!out.contains("do the second thing"));
 
-    // Select the first checklist row explicitly.
     let idx = focusables(&st.detail, st.show_notes)
         .iter()
         .position(|f| matches!(f, Focusable::Checklist(0)))
@@ -384,9 +370,6 @@ fn selection_follow_scrolls_highlighted_row_into_view() {
         .position(|f| matches!(f, Focusable::Checklist(39)))
         .unwrap();
 
-    // On a short terminal the last checklist row sits far below the fold;
-    // navigating to it must pull the viewport down so the highlight
-    // stays visible.
     let out = draw_at(&mut st, 100, 20);
     assert!(st.scroll > 0, "viewport should have scrolled down");
     assert!(out.contains("step number 39"));
@@ -397,13 +380,9 @@ fn manual_scroll_is_clamped_but_not_snapped_back() {
     let mut d = base_detail(task());
     d.checklist = many_steps(40);
     let mut st = base_state(d);
-    // Selection unchanged since the last frame (no navigation) …
     st.last_selected = Some(st.selected);
-    // … then a manual scroll far past the end of the content.
     st.scroll = 500;
     draw_at(&mut st, 100, 20);
-    // Clamped to the end of the content, but NOT snapped back up to the
-    // still-selected first row — free scrolling stays free.
     assert!(st.scroll < 500, "scroll should be clamped to content");
     assert!(st.scroll > 0, "scroll must not snap back to the selection");
 }

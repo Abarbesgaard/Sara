@@ -1,12 +1,11 @@
 use anyhow::Result;
 use rusqlite::Connection;
-use std::io::{self, Write};
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::project::project_identity_for_dir;
 
-/// Resolve the project name for the current directory *without* registering it
-/// (unlike `detect_current_project`, which upserts a `last_seen` row).
+mod render;
+
 fn resolve_name(cfg: &Config, override_name: Option<&str>) -> Result<String> {
     if let Some(name) = override_name {
         return Ok(name.to_string());
@@ -27,28 +26,16 @@ pub fn run(
     let profile = crate::infrastructure::db::get_project(conn, &name)?;
 
     if task_count == 0 && profile.is_none() {
-        println!("Nothing to reset: project '{name}' has no tasks or profile.");
+        render::print_nothing_to_reset(&name);
         return Ok(());
     }
 
-    if !yes {
-        println!(
-            "This will permanently delete project '{name}':\n  \
-             • {task_count} task(s) and all their files, links, comments and history\n  \
-             • the project profile (you'll need to run `sara init` again)"
-        );
-        print!("Type the project name to confirm: ");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        if input.trim() != name {
-            println!("Aborted — name did not match.");
-            return Ok(());
-        }
+    if !yes && !render::confirm(&name, task_count)? {
+        render::print_aborted();
+        return Ok(());
     }
 
     let deleted = crate::infrastructure::db::reset_project(conn, &name)?;
-    println!("✔ Reset project '{name}': removed {deleted} task(s) and its profile.");
-    println!("Run `sara init` to set it up again.");
+    render::print_reset(&name, deleted);
     Ok(())
 }
