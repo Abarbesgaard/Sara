@@ -6,7 +6,8 @@ use serde_json::{Value, json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::git;
-use crate::infrastructure::model::format_duration;
+
+mod render;
 
 /// Start the timer for a task, returning a structured record (no-op if already
 /// active). Print-free core shared by the CLI `start` command and MCP `start`.
@@ -38,19 +39,7 @@ pub fn start_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<
 
 pub fn start(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let v = start_value(conn, cfg, id_or_uuid)?;
-    if v["already_active"].as_bool().unwrap_or(false) {
-        println!(
-            "Task {} is already active (running for {}).",
-            v["task"].as_i64().unwrap_or(0),
-            format_duration(v["elapsed_seconds"].as_i64().unwrap_or(0))
-        );
-    } else {
-        println!(
-            "Started task {}: {}",
-            v["task"].as_i64().unwrap_or(0),
-            v["description"].as_str().unwrap_or_default()
-        );
-    }
+    render::print_started(&v);
     Ok(())
 }
 
@@ -112,28 +101,6 @@ pub fn stop_value(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<V
 
 pub fn stop(conn: &Connection, cfg: &Config, id_or_uuid: &str) -> Result<()> {
     let v = stop_value(conn, cfg, id_or_uuid)?;
-
-    if !v["stopped"].as_bool().unwrap_or(false) {
-        println!("Task {} is not active.", v["task"].as_i64().unwrap_or(0));
-        return Ok(());
-    }
-
-    println!(
-        "Stopped task {} (this session: {}, total: {})",
-        v["task"].as_i64().unwrap_or(0),
-        format_duration(v["session_seconds"].as_i64().unwrap_or(0)),
-        format_duration(v["total_seconds"].as_i64().unwrap_or(0))
-    );
-
-    if let Some(bl) = v.get("branch_log").filter(|b| !b.is_null()) {
-        let n = bl["files_logged"].as_i64().unwrap_or(0);
-        println!(
-            "Logged {} changed file{} on branch '{}'.",
-            n,
-            if n == 1 { "" } else { "s" },
-            bl["branch"].as_str().unwrap_or_default()
-        );
-    }
-
+    render::print_stopped(&v);
     Ok(())
 }

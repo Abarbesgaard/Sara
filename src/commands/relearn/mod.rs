@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 
+mod render;
+
 /// Print-free core shared by the CLI `relearn` command and the MCP `relearn`
 /// tool. Edits a memory in place — body, tags, and/or file associations —
 /// preserving its uuid, label, created date, status, task links, and memory
@@ -91,16 +93,7 @@ pub fn run(
     force: bool,
 ) -> Result<()> {
     let v = relearn_value(conn, handle, text, tags, files, force)?;
-    let updated: Vec<&str> = v["updated"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-        .unwrap_or_default();
-    println!(
-        "Relearned {} (updated: {}): {}",
-        v["label"].as_str().unwrap_or(handle),
-        updated.join(", "),
-        v["title"].as_str().unwrap_or(""),
-    );
+    render::print_relearned(&v, handle);
     Ok(())
 }
 
