@@ -42,7 +42,7 @@ fn recall_semantic_surfaces_paraphrase() {
         &[],
         &[],
     );
-    crate::infrastructure::embedding::index_memory(&conn, &m);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &m);
 
     let query = "automated dependency update wrecked the pipeline";
 
@@ -87,7 +87,7 @@ fn recall_semantic_respects_exact_tag_filter() {
         &[],
         &[],
     );
-    crate::infrastructure::embedding::index_memory(&conn, &untagged);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &untagged);
 
     let tagged = seed_memory(
         &conn,
@@ -96,7 +96,7 @@ fn recall_semantic_respects_exact_tag_filter() {
         &["ci"],
         &[],
     );
-    crate::infrastructure::embedding::index_memory(&conn, &tagged);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &tagged);
 
     let query = "automated dependency update wrecked the pipeline";
     let hits = collect_hits(
@@ -129,10 +129,10 @@ fn recall_semantic_filter_applied_before_top_k_truncation() {
         &[],
         &[],
     );
-    crate::infrastructure::embedding::index_memory(&conn, &outside);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &outside);
 
     let inside = seed_memory(&conn, "inside filter", "lockfile pin broke", &["keep"], &[]);
-    crate::infrastructure::embedding::index_memory(&conn, &inside);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &inside);
 
     let opts = SemanticOpts {
         enabled: true,
@@ -293,7 +293,7 @@ fn recall_default_surfaces_semantic_paraphrase() {
         &[],
         &[],
     );
-    crate::infrastructure::embedding::index_memory(&conn, &m);
+    crate::infrastructure::memory::embedding::index_memory(&conn, &m);
 
     let query = "automated dependency update wrecked the pipeline";
     let v = recall_value(&conn, &cfg(), query, &[], &[], &[], 20, false).unwrap();

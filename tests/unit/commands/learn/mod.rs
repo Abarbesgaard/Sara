@@ -1,4 +1,4 @@
-use crate::infrastructure::safety;
+use crate::infrastructure::util::safety;
 
 #[test]
 fn size_check_passes_under_threshold() {
