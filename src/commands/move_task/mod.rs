@@ -33,3 +33,7 @@ pub fn run(conn: &Connection, cfg: &Config, id: &str, project: &str) -> Result<(
     render::print_moved(&v, project);
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/move_task/mod.rs"]
+mod tests;

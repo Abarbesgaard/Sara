@@ -29,3 +29,7 @@ pub fn run(conn: &Connection, id_or_uuid: &str, yes: bool) -> Result<()> {
     render::print_deleted(&task.description);
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/delete/mod.rs"]
+mod tests;

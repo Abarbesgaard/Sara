@@ -189,3 +189,7 @@ pub fn show(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/plan/mod.rs"]
+mod tests;

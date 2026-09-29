@@ -124,3 +124,7 @@ fn read_source(source: Option<&str>) -> Result<String> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/import/mod.rs"]
+mod tests;

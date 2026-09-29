@@ -287,3 +287,129 @@ fn concurrent_task_inserts_get_distinct_display_ids() {
         "concurrent adds produced duplicate display ids: {ids:?}"
     );
 }
+
+#[test]
+fn add_dependency_rejects_self_dependency() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "solo");
+    let err = add_dependency(&conn, &a.uuid, &a.uuid)
+        .expect_err("a task must not be allowed to depend on itself");
+    assert!(
+        err.to_string().to_lowercase().contains("itself"),
+        "error should explain the self-dependency: {err}"
+    );
+    assert!(
+        get_blockers(&conn, &a.uuid).unwrap().is_empty(),
+        "no dependency row should have been written"
+    );
+}
+
+#[test]
+fn add_dependency_rejects_direct_cycle() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let b = seed_named_task(&conn, "b");
+    add_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+
+    let err = add_dependency(&conn, &b.uuid, &a.uuid)
+        .expect_err("b -> a would close a two-node cycle and must be refused");
+    assert!(
+        err.to_string().to_lowercase().contains("cycle"),
+        "error should name the cycle: {err}"
+    );
+    assert!(
+        get_blockers(&conn, &b.uuid).unwrap().is_empty(),
+        "the cycle-forming dependency must not be persisted"
+    );
+}
+
+#[test]
+fn add_dependency_rejects_transitive_cycle() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let b = seed_named_task(&conn, "b");
+    let c = seed_named_task(&conn, "c");
+    add_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+    add_dependency(&conn, &b.uuid, &c.uuid).unwrap();
+
+    let err = add_dependency(&conn, &c.uuid, &a.uuid)
+        .expect_err("c -> a closes the transitive chain a -> b -> c and must be refused");
+    assert!(
+        err.to_string().to_lowercase().contains("cycle"),
+        "error should name the cycle: {err}"
+    );
+    assert!(
+        get_blockers(&conn, &c.uuid).unwrap().is_empty(),
+        "the cycle-forming dependency must not be persisted"
+    );
+}
+
+#[test]
+fn add_dependency_is_idempotent() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let b = seed_named_task(&conn, "b");
+    add_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+    add_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+
+    let blockers = get_blockers(&conn, &a.uuid).unwrap();
+    assert_eq!(
+        blockers,
+        vec![b.uuid],
+        "adding the same dependency twice must not duplicate it"
+    );
+}
+
+#[test]
+fn remove_dependency_clears_the_blocker() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let b = seed_named_task(&conn, "b");
+    add_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+    assert_eq!(get_blockers(&conn, &a.uuid).unwrap(), vec![b.uuid]);
+
+    remove_dependency(&conn, &a.uuid, &b.uuid).unwrap();
+    assert!(
+        get_blockers(&conn, &a.uuid).unwrap().is_empty(),
+        "removing the dependency must clear the blocker"
+    );
+    assert!(
+        get_blocking(&conn, &b.uuid).unwrap().is_empty(),
+        "the reverse (blocking) view must be cleared too"
+    );
+}
+
+#[test]
+fn remove_dependency_is_a_noop_when_absent() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let b = seed_named_task(&conn, "b");
+    remove_dependency(&conn, &a.uuid, &b.uuid)
+        .expect("removing a non-existent dependency should not error");
+    assert!(get_blockers(&conn, &a.uuid).unwrap().is_empty());
+}
+
+#[test]
+fn get_blockers_only_counts_pending_blockers() {
+    let conn = mem();
+    let a = seed_named_task(&conn, "a");
+    let mut blocker = seed_named_task(&conn, "blocker");
+    add_dependency(&conn, &a.uuid, &blocker.uuid).unwrap();
+    assert_eq!(
+        get_blockers(&conn, &a.uuid).unwrap(),
+        vec![blocker.uuid],
+        "a pending blocker is counted"
+    );
+
+    blocker.status = Status::Completed;
+    update_task(&conn, &blocker).unwrap();
+    assert!(
+        get_blockers(&conn, &a.uuid).unwrap().is_empty(),
+        "a completed blocker no longer blocks its dependent"
+    );
+    assert_eq!(
+        get_blocking(&conn, &blocker.uuid).unwrap(),
+        vec![a.uuid],
+        "the dependency row still exists, so `get_blocking` still lists the dependent"
+    );
+}
