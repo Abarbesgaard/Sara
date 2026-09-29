@@ -5,6 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::infrastructure::{db, memory_graph::MemoryGraph};
 
+mod types;
+use types::{Cluster, UnionFind};
+
 /// Default minimum synapse weight for two memories to be considered clustered.
 /// Above a single weak shared tag (`W_SHARED_TAG` = 0.3) so broad tag crowding
 /// does not explode into noise; a shared file (0.6), shared task (0.8), an
@@ -15,53 +18,6 @@ pub const DEFAULT_MIN_WEIGHT: f64 = 0.5;
 /// this is single-linkage chaining (A~B~C~…), not one lesson, so it is split at
 /// its weakest synapses until every piece fits. 0 disables splitting.
 pub const DEFAULT_MAX_CLUSTER: usize = 8;
-
-/// A proposed consolidation: a cluster of related, not-yet-consolidated memories
-/// and the canonical+derived_from restructuring that would tidy them.
-#[derive(Debug)]
-struct Cluster {
-    /// Member labels (e.g. `m209`), suggested canonical first.
-    members: Vec<String>,
-    /// Label of the member proposed to become the canonical (strongest member).
-    suggested_canonical: String,
-    /// Tags shared by every member (may be empty).
-    shared_tags: Vec<String>,
-    /// Ranking score: size dominates, strength breaks ties.
-    score: f64,
-}
-
-/// Union-find over memory indices for transitive clustering.
-struct UnionFind {
-    parent: Vec<usize>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        UnionFind {
-            parent: (0..n).collect(),
-        }
-    }
-    fn find(&mut self, x: usize) -> usize {
-        let mut r = x;
-        while self.parent[r] != r {
-            r = self.parent[r];
-        }
-        // Path compression.
-        let mut cur = x;
-        while self.parent[cur] != r {
-            let next = self.parent[cur];
-            self.parent[cur] = r;
-            cur = next;
-        }
-        r
-    }
-    fn union(&mut self, a: usize, b: usize) {
-        let (ra, rb) = (self.find(a), self.find(b));
-        if ra != rb {
-            self.parent[ra] = rb;
-        }
-    }
-}
 
 /// Core shared by CLI and MCP. Clusters related memories via the MemoryGraph and
 /// proposes canonical+derived_from consolidations for clusters not yet tidied.

@@ -1,38 +1,13 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
-#[derive(Debug, Deserialize)]
-struct PlanInput {
-    #[serde(default)]
-    project: Option<String>,
-    #[serde(default)]
-    tasks: Vec<PlanTask>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct PlanTask {
-    /// Local key used to wire dependencies within this plan.
-    key: Option<String>,
-    description: String,
-    assignment: Option<String>,
-    rationale: Option<String>,
-    priority: Option<String>,
-    tags: Vec<String>,
-    steps: Vec<String>,
-    acceptance: Vec<String>,
-    findings: Vec<String>,
-    constraints: Vec<String>,
-    files: Vec<crate::infrastructure::model::RelevantFile>,
-    /// Local keys (or existing task ids/uuids) this task depends on.
-    depends_on: Vec<String>,
-}
+mod types;
+use types::PlanInput;
 
 /// `sara plan import <source>` — atomically ingest a whole task graph.
 pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {

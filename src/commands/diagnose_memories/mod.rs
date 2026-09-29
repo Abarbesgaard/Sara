@@ -5,6 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::infrastructure::{db, embedding};
 
+mod types;
+use types::ConflictCandidate;
+
 /// Cosine floor for calling two memories a genuine conflict candidate.
 ///
 /// Sharing a file or a tag proves *co-occurrence*, not contradiction: on a real
@@ -19,21 +22,6 @@ use crate::infrastructure::{db, embedding};
 /// chosen: a false candidate is noise a human or agent must burn attention on,
 /// so this pass buys precision with recall.
 pub const DEFAULT_CONFLICT_THRESHOLD: f32 = 0.75;
-
-/// A pair of memories that may be in conflict (no memory_links edge between them).
-#[derive(Debug)]
-pub struct ConflictCandidate {
-    pub label_a: String,
-    pub label_b: String,
-    pub snippet_a: String,
-    pub snippet_b: String,
-    pub shared_files: Vec<String>,
-    pub shared_tags: Vec<String>,
-    /// Embedding cosine between the two bodies. `None` when either memory has
-    /// no embedding row yet — such a pair is kept (fail-open) so a lagging
-    /// index never silently hides a candidate.
-    pub cosine: Option<f32>,
-}
 
 /// Core shared by CLI and MCP. Scans active memories and returns conflict
 /// candidates: pairs sharing file-path links OR full tag sets, with no

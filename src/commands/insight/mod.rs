@@ -17,6 +17,13 @@ use uuid::Uuid;
 use crate::infrastructure::db;
 use crate::infrastructure::embedding::{self, Embedder};
 
+mod render;
+mod types;
+
+#[allow(unused_imports)]
+pub use render::print_related_findings;
+pub use types::Related;
+
 /// Cosine floor for calling a prior finding "related enough to reconsider".
 /// Higher than the general recall threshold (0.30) because a false reconsider
 /// prompt is noise the agent must burn a thought on — precision over recall.
@@ -25,13 +32,6 @@ const RELATED_THRESHOLD: f32 = 0.55;
 /// At most this many prior findings are surfaced, strongest first — enough to
 /// catch a contradiction without drowning the agent in its own backlog.
 const MAX_RELATED: usize = 2;
-
-/// A prior finding surfaced as related to some new text, with its similarity.
-pub struct Related {
-    pub id: i64,
-    pub text: String,
-    pub cosine: f32,
-}
 
 /// Find the task's own prior `finding` annotations semantically closest to
 /// `new_text`, above [`RELATED_THRESHOLD`], strongest first, capped at
@@ -78,20 +78,6 @@ pub fn related_findings_json(related: &[Related]) -> Vec<Value> {
         .iter()
         .map(|r| json!({ "annotation_id": r.id, "cosine": r.cosine, "text": r.text }))
         .collect()
-}
-
-/// Print a reconsider prompt for related prior findings, if any. No-op on empty.
-pub fn print_related_findings(related: &[Related]) {
-    if related.is_empty() {
-        return;
-    }
-    eprintln!("⟳ reconsider — related prior finding(s) on this task:");
-    for r in related {
-        eprintln!("    (~{:.2}) #{}: {}", r.cosine, r.id, r.text);
-    }
-    eprintln!(
-        "  If your new note revises or contradicts one, correct it (denotate / re-annotate)."
-    );
 }
 
 #[cfg(test)]
