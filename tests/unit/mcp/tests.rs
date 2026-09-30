@@ -28,7 +28,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 43, "expected 43 tools, got {names:?}");
+    assert_eq!(names.len(), 44, "expected 44 tools, got {names:?}");
     for expected in [
         "list",
         "info",
@@ -36,6 +36,7 @@ fn exposes_the_agent_loop_tools() {
         "steps",
         "verify",
         "recall",
+        "doctor",
         "feedback",
         "plan_show",
         "tags",
