@@ -1002,12 +1002,10 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
 }
 
 fn keyword_guide(h: &Hit) -> serde_json::Value {
-    let mut o = json!({
-        "label": h.label,
-        "preview": h.snippet,
-        "strength": h.strength,
-    });
-    let map = o.as_object_mut().expect("json object");
+    let mut map = serde_json::Map::new();
+    map.insert("label".into(), json!(h.label));
+    map.insert("preview".into(), json!(h.snippet));
+    map.insert("strength".into(), json!(h.strength));
     if !h.derived_children.is_empty() {
         map.insert("canonical".into(), json!(true));
     }
@@ -1038,7 +1036,7 @@ fn keyword_guide(h: &Hit) -> serde_json::Value {
             ),
         );
     }
-    o
+    serde_json::Value::Object(map)
 }
 
 fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {

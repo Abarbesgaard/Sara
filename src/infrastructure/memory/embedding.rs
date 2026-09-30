@@ -200,6 +200,10 @@ pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool>
 
 pub fn bundled() -> &'static StaticEmbedder {
     static E: OnceLock<StaticEmbedder> = OnceLock::new();
+    // Infallible invariant: the model bytes are embedded at compile time, so a
+    // load failure means the binary itself is corrupt (a build defect, not a
+    // user-reachable error). There is no recoverable action to take, hence expect.
+    #[allow(clippy::expect_used)]
     E.get_or_init(|| StaticEmbedder::load_bundled().expect("bundled embedding model is valid"))
 }
 
