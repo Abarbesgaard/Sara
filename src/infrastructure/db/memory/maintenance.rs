@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::infrastructure::model::Item;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::Connection;
 use uuid::Uuid;
@@ -266,7 +266,10 @@ pub fn synthesize_done_memory(
             .map(|a| a.text.trim())
             .collect();
         if !group.is_empty() {
-            let cap = kind.chars().next().unwrap().to_uppercase().to_string() + &kind[1..];
+            let cap = match kind.chars().next() {
+                Some(first) => first.to_uppercase().to_string() + &kind[1..],
+                None => String::new(),
+            };
             parts.push(format!("{}s: {}", cap, group.join("; ")));
         }
     }
@@ -350,9 +353,12 @@ pub fn find_similar_strong_memories(
             });
         }
         for uuid in tag_set.unwrap_or_default() {
-            candidates
-                .entry(uuid)
-                .or_insert_with(|| get_item_by_uuid(conn, &uuid.to_string()).unwrap());
+            if let std::collections::hash_map::Entry::Vacant(entry) = candidates.entry(uuid) {
+                entry.insert(
+                    get_item_by_uuid(conn, &uuid.to_string())
+                        .with_context(|| format!("loading memory {uuid} for similarity search"))?,
+                );
+            }
         }
     }
 

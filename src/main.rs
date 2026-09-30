@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 #![allow(clippy::too_many_arguments)]
+// Robustness gate (GH #174): under `panic = "abort"` any user-reachable
+// unwrap/expect is a hard crash with no message. Deny them in production code;
+// test builds may still use unwrap/expect freely.
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 mod cli;
 mod commands;

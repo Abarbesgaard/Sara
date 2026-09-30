@@ -25,9 +25,27 @@ fn export_then_import_round_trips_a_dependency_graph() {
     let root = seed(&src, "root task", "origin");
     let dep = seed(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
-    db::add_step(&src, &root.uuid, "do the thing", None, STEP_KIND_STEP, "human", None).unwrap();
-    db::add_annotation_full(&src, &root.uuid, "watch out", "finding", "human", None, None, false)
-        .unwrap();
+    db::add_step(
+        &src,
+        &root.uuid,
+        "do the thing",
+        None,
+        STEP_KIND_STEP,
+        "human",
+        None,
+    )
+    .unwrap();
+    db::add_annotation_full(
+        &src,
+        &root.uuid,
+        "watch out",
+        "finding",
+        "human",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
     db::add_link(&src, &root.uuid, "https://example.com", Some("docs")).unwrap();
     db::set_task_files(&src, &root.uuid, &["src/main.rs".into()]).unwrap();
 
@@ -40,11 +58,18 @@ fn export_then_import_round_trips_a_dependency_graph() {
     let _ = std::fs::remove_file(&path);
 
     let tasks = db::list_tasks(&dst, None).unwrap();
-    assert_eq!(tasks.len(), 2, "both the root and its blocker must be imported");
+    assert_eq!(
+        tasks.len(),
+        2,
+        "both the root and its blocker must be imported"
+    );
 
     let imported_root = find_by_desc(&tasks, "root task");
     let imported_dep = find_by_desc(&tasks, "blocker task");
-    assert_eq!(imported_root.project, "origin", "the project must be preserved");
+    assert_eq!(
+        imported_root.project, "origin",
+        "the project must be preserved"
+    );
 
     let blockers = db::get_blockers(&dst, &imported_root.uuid).unwrap();
     assert_eq!(
@@ -54,12 +79,16 @@ fn export_then_import_round_trips_a_dependency_graph() {
     );
 
     assert_eq!(
-        db::get_steps(&dst, &imported_root.uuid, STEP_KIND_STEP).unwrap().len(),
+        db::get_steps(&dst, &imported_root.uuid, STEP_KIND_STEP)
+            .unwrap()
+            .len(),
         1,
         "the step must survive the round trip"
     );
     assert_eq!(
-        db::get_annotations(&dst, &imported_root.uuid).unwrap().len(),
+        db::get_annotations(&dst, &imported_root.uuid)
+            .unwrap()
+            .len(),
         1,
         "the annotation must survive the round trip"
     );
@@ -88,7 +117,13 @@ fn import_reassigns_every_task_when_project_is_overridden() {
 
     let mut dst = db::open_in_memory_for_test();
     let cfg = Config::default();
-    run(&mut dst, &cfg, Some(path.to_str().unwrap()), Some("relocated")).unwrap();
+    run(
+        &mut dst,
+        &cfg,
+        Some(path.to_str().unwrap()),
+        Some("relocated"),
+    )
+    .unwrap();
     let _ = std::fs::remove_file(&path);
 
     let tasks = db::list_tasks(&dst, None).unwrap();
