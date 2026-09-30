@@ -29,7 +29,7 @@ fn records_cli_invocation() {
     let _g = lock();
     let path = temp_queue("cli");
     let flags = [String::from("--json"), String::from("--tag")];
-    let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()));
+    let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()), None);
     append(&path, &rec).unwrap();
 
     let rows = read_lines(&path);
@@ -63,7 +63,7 @@ fn records_cli_invocation() {
 
     append(
         &path,
-        &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(())),
+        &build_record("iid-1", Source::Cli, "list", &[], 3, &Ok(()), None),
     )
     .unwrap();
     let rows = read_lines(&path);
@@ -76,16 +76,89 @@ fn records_cli_invocation() {
 }
 
 #[test]
+fn span_stamps_trace_correlation_fields() {
+    // A folded sub-op of a composite operation carries its trace context:
+    // the shared `trace_id`, an ordinal `seq`, and an optional outcome count
+    // `n`. Plain records (no span) omit all three, so the allowlist for a
+    // normal invocation is unaffected.
+    let _g = lock();
+    let path = temp_queue("span");
+    let span = Span {
+        trace_id: "trace-xyz",
+        seq: 4,
+        n: Some(3),
+    };
+    let rec = build_record_span(
+        "iid-s",
+        Source::Mcp,
+        "mcp recall",
+        &["via_begin".to_string()],
+        13,
+        &Ok(()),
+        None,
+        Some(span),
+    );
+    append(&path, &rec).unwrap();
+
+    // A record with no span omits the trace fields entirely.
+    let plain = build_record("iid-s", Source::Mcp, "mcp next", &[], 1, &Ok(()), None);
+    append(&path, &plain).unwrap();
+
+    let rows = read_lines(&path);
+    assert_eq!(rows[0]["trace_id"], "trace-xyz");
+    assert_eq!(rows[0]["seq"], 4);
+    assert_eq!(rows[0]["n"], 3);
+    let plain_obj = rows[1].as_object().unwrap();
+    assert!(
+        plain_obj.get("trace_id").is_none()
+            && plain_obj.get("seq").is_none()
+            && plain_obj.get("n").is_none(),
+        "records without a span carry no trace fields: {}",
+        rows[1]
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
 fn records_mcp_invocation() {
     let _g = lock();
     let path = temp_queue("mcp");
-    let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()));
+    let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()), None);
     append(&path, &rec).unwrap();
 
     let rows = read_lines(&path);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["source"], "mcp");
     assert_eq!(rows[0]["name"], "mcp add");
+    // No client info supplied → the origin fields are omitted entirely.
+    assert!(rows[0].as_object().unwrap().get("client").is_none());
+    assert!(rows[0].as_object().unwrap().get("client_version").is_none());
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn records_mcp_client_origin() {
+    let _g = lock();
+    let path = temp_queue("mcp-client");
+    let client = McpClient {
+        name: "claude-ai".into(),
+        version: "0.1.0".into(),
+    };
+    let rec = build_record(
+        "iid-3",
+        Source::Mcp,
+        "mcp recall",
+        &[],
+        4,
+        &Ok(()),
+        Some(&client),
+    );
+    append(&path, &rec).unwrap();
+
+    let rows = read_lines(&path);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["client"], "claude-ai", "records the calling agent");
+    assert_eq!(rows[0]["client_version"], "0.1.0");
     let _ = std::fs::remove_file(&path);
 }
 
@@ -93,16 +166,45 @@ fn records_mcp_invocation() {
 fn extract_cli_flags_names_only_sorted_deduped() {
     let a = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
 
+    // values are excluded; long+short captured; sorted + deduped
     assert_eq!(
         extract_cli_flags(&a("recall --tag herdr -p pling --json")),
         vec!["--json", "--tag", "-p"]
     );
+    // `=value` form keeps only the name; duplicates collapse
     assert_eq!(
         extract_cli_flags(&a("learn --tag=a --tag=b --auto-files")),
         vec!["--auto-files", "--tag"]
     );
+    // bare `--`, negative numbers, and a lone `-` are not flags
     assert!(extract_cli_flags(&a("modify 5 -- -3 -")).is_empty());
+    // no flags at all
     assert!(extract_cli_flags(&a("done 3f45")).is_empty());
+}
+
+#[test]
+fn extract_mcp_params_names_only_sorted_deduped() {
+    use serde_json::json;
+
+    // argument NAMES are captured, sorted; values (a query, a path) are
+    // never included in the output.
+    let args = json!({
+        "query": "how did I fix the auth bug",
+        "project_path": "/Users/secret/repo",
+        "spread": true,
+    });
+    assert_eq!(
+        extract_mcp_params(args.as_object()),
+        vec!["project_path", "query", "spread"]
+    );
+
+    // a key whose value is JSON null counts as absent
+    let with_null = json!({ "id": "3f45", "project_path": null });
+    assert_eq!(extract_mcp_params(with_null.as_object()), vec!["id"]);
+
+    // no arguments at all
+    assert!(extract_mcp_params(None).is_empty());
+    assert!(extract_mcp_params(json!({}).as_object()).is_empty());
 }
 
 #[test]
@@ -128,7 +230,7 @@ fn err_code_is_type_derived() {
     assert_eq!(err_code(&other), "other");
 
     let failed: anyhow::Result<()> = Err(io_err);
-    let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed);
+    let rec = build_record("iid", Source::Cli, "validate", &[], 5, &failed, None);
     assert!(!rec.ok);
     assert_eq!(rec.err_code, Some("io"));
     let json = serde_json::to_string(&rec).unwrap();
@@ -151,7 +253,7 @@ fn disabled_writes_nothing() {
         std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
     }
     assert!(!enabled(&cfg));
-    capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+    capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
     assert!(
         !path.exists(),
         "no queue file created while disabled by env"
@@ -161,7 +263,7 @@ fn disabled_writes_nothing() {
         std::env::remove_var("SARA_NO_TELEMETRY");
     }
     assert!(enabled(&cfg));
-    capture(&cfg, Source::Cli, "recall", &[], 1, &Ok(()));
+    capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
     assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
 
     cfg.telemetry.enabled = false;
@@ -173,6 +275,7 @@ fn disabled_writes_nothing() {
     let _ = std::fs::remove_file(&path);
 }
 
+// ── flush tests ──────────────────────────────────────────────────────────
 use std::io::Read as _;
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -197,12 +300,63 @@ fn write_queue(path: &Path, n: usize) {
     std::fs::write(path, body).unwrap();
 }
 
+/// One-shot HTTP server: returns (url, receiver-of-request-body). `status_line`
+/// e.g. "HTTP/1.1 200 OK" or "HTTP/1.1 500 Internal Server Error".
 fn mock_server(status_line: &'static str) -> (String, mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf: Vec<u8> = Vec::new();
+            let mut tmp = [0u8; 2048];
+            loop {
+                let n = stream.read(&mut tmp).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&tmp[..n]);
+                if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
+                    let clen = headers
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    let body_start = pos + 4;
+                    while buf.len() < body_start + clen {
+                        let n = stream.read(&mut tmp).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                    }
+                    let end = (body_start + clen).min(buf.len());
+                    let body = String::from_utf8_lossy(&buf[body_start..end]).to_string();
+                    let _ = tx.send(body);
+                    break;
+                }
+            }
+            use std::io::Write as _;
+            let resp = format!("{status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    (format!("http://{addr}/insert"), rx)
+}
+
+/// Multi-request mock: handles one connection per entry in `statuses`,
+/// replying with that status line (in order) and forwarding each request
+/// body to the channel. Lets a test assert how a backlog is batched.
+fn mock_server_multi(statuses: Vec<&'static str>) -> (String, mpsc::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        for status_line in statuses {
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
             let mut buf: Vec<u8> = Vec::new();
             let mut tmp = [0u8; 2048];
             loop {
@@ -287,6 +441,86 @@ fn flush_sends_and_truncates_queue() {
 }
 
 #[test]
+fn flush_chunks_oversized_queue_into_sublimit_batches() {
+    let _g = lock();
+    let dir = temp_dir_isolated("chunk");
+    // ~25-byte records; a 100-byte cap forces ~3 records per POST.
+    write_queue(&dir.join("queue.jsonl"), 10);
+    let (url, rx) = mock_server_multi(vec!["HTTP/1.1 200 OK"; 6]);
+    set_flush_env(&dir, &url);
+    unsafe {
+        std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
+    }
+
+    let out = flush(&flush_cfg()).unwrap();
+    assert_eq!(out, FlushOutcome::Sent(10), "whole backlog drains");
+    assert_eq!(
+        super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+        0,
+        "queue fully emptied via multiple sub-cap requests"
+    );
+
+    let mut total = 0usize;
+    let mut requests = 0usize;
+    while let Ok(body) = rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        let n = body.lines().filter(|l| !l.trim().is_empty()).count();
+        assert!(n >= 1);
+        assert!(
+            body.len() <= 100 + 30,
+            "each POST stays near the cap, got {} bytes",
+            body.len()
+        );
+        total += n;
+        requests += 1;
+    }
+    assert_eq!(total, 10, "every record shipped exactly once");
+    assert!(
+        requests >= 3,
+        "oversized backlog split across POSTs, got {requests}"
+    );
+
+    unsafe {
+        std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
+    }
+    clear_flush_env();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
+    let _g = lock();
+    let dir = temp_dir_isolated("chunk-fail");
+    write_queue(&dir.join("queue.jsonl"), 6);
+    // First batch accepted, second rejected (e.g. a 413) — progress is kept
+    // and the unsent tail stays queued, so the queue can never wedge.
+    let (url, rx) = mock_server_multi(vec![
+        "HTTP/1.1 200 OK",
+        "HTTP/1.1 413 Request Entity Too Large",
+    ]);
+    set_flush_env(&dir, &url);
+    unsafe {
+        std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
+    }
+
+    let out = flush(&flush_cfg()).unwrap();
+    assert_eq!(out, FlushOutcome::Sent(3), "only the accepted batch drains");
+    assert_eq!(
+        super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
+        3,
+        "the rejected tail remains queued for a later flush"
+    );
+
+    let first = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    assert_eq!(first.lines().filter(|l| !l.trim().is_empty()).count(), 3);
+
+    unsafe {
+        std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
+    }
+    clear_flush_env();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn flush_leaves_queue_on_failure() {
     let _g = lock();
     let dir = temp_dir_isolated("fail");
@@ -335,6 +569,7 @@ fn flush_min_interval_gates_repeat_sends() {
     let dir = temp_dir_isolated("interval");
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
     set_flush_env(&dir, &url);
+    // A big interval + a fresh last-flush marker means: skip despite data.
     unsafe {
         std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "3600");
     }
@@ -374,6 +609,7 @@ fn flush_single_sender_lock_blocks_second() {
     let _g = lock();
     let dir = temp_dir_isolated("lock");
     set_flush_env(&dir, "http://127.0.0.1:9/insert");
+    // Hold the lock, then a flush attempt must skip rather than double-send.
     let held = FlushLock::try_acquire().unwrap();
     assert!(held.is_some(), "first acquire succeeds");
     write_queue(&dir.join("queue.jsonl"), 1);

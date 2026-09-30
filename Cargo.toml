@@ -60,11 +60,10 @@ nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
 
-# Telemetry flush (nightly): a tiny blocking HTTP client used ONLY by the detached
-# `__telemetry_flush` child to POST the queue to the collector. TLS is disabled on
-# purpose — the collector is reached over plain HTTP (local/tailnet), and pulling in
-# rustls/ring breaks the Windows CI build for no benefit here.
-ureq = { version = "2", default-features = false }
+# Telemetry flush (`telemetry` feature only): a tiny blocking HTTP client used ONLY
+# by the detached `__telemetry_flush` child to POST the queue to the collector. TLS
+# is disabled on purpose — pulling in rustls/ring breaks the Windows CI build.
+ureq = { version = "2", default-features = false, optional = true }
 
 # ── MCP server (`sara mcp`) ──────────────────────────────────────────────────
 # Async runtime is built ONLY inside the `mcp` command; the rest of the CLI stays
@@ -74,8 +73,16 @@ tokio = { version = "1", features = ["rt-multi-thread", "io-util", "macros", "sy
 schemars = "1"
 
 [target.'cfg(unix)'.dependencies]
-# setsid(2) so the detached flush child fully outlives the short-lived CLI process.
-libc = "0.2"
+# setsid(2) so the detached flush child fully outlives the short-lived CLI process
+# (`telemetry` feature only).
+libc = { version = "0.2", optional = true }
+
+# ── Features ─────────────────────────────────────────────────────────────────
+# Usage telemetry is opt-in at COMPILE time: default and release builds contain no
+# telemetry code at all. Nightly builds enable it with `--features telemetry`.
+[features]
+default = []
+telemetry = ["dep:ureq", "dep:libc"]
 
 # ── Release profile ──────────────────────────────────────────────────────────
 # Sara is a short-lived CLI, so the shipped artefact's size matters more than

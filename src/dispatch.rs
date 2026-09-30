@@ -603,6 +603,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             println!("Database: {}", db_path.display());
         }
 
+        #[cfg(feature = "telemetry")]
         Command::Telemetry { action, show, json } => {
             if show {
                 let records = infrastructure::telemetry::read_queue()?;
@@ -653,6 +654,11 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             }
         }
 
+        #[cfg(not(feature = "telemetry"))]
+        Command::Telemetry { .. } => {
+            println!("{}", infrastructure::telemetry::NOT_COMPILED);
+        }
+
         Command::Completions { shell } => {
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
@@ -660,6 +666,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
         }
 
         Command::TelemetryFlush => {
+            #[cfg(feature = "telemetry")]
             let _ = infrastructure::telemetry::flush(&cfg);
         }
     }

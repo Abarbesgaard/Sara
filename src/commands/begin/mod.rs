@@ -5,9 +5,13 @@ use serde_json::{Value, json};
 use crate::commands;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
+use crate::infrastructure::telemetry::Source;
 
 mod render;
+mod trace;
 mod types;
+
+use trace::Folded;
 
 use types::{RECALL_STEP_INTENT, RECALL_STEP_TEXT};
 
@@ -15,6 +19,7 @@ use types::{RECALL_STEP_INTENT, RECALL_STEP_TEXT};
 pub fn begin_value(
     conn: &Connection,
     cfg: &Config,
+    source: Source,
     description: &str,
     tags: &[String],
     files: &[String],
@@ -30,7 +35,9 @@ pub fn begin_value(
     }
 
     let mut warnings: Vec<String> = Vec::new();
+    let mut folded = Folded::new(cfg, source);
 
+    let t = std::time::Instant::now();
     let created = commands::add::run_value(
         conn,
         cfg,
@@ -44,6 +51,7 @@ pub fn begin_value(
         &[],
         &[],
     )?;
+    folded.emit("add", t, None);
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
 
@@ -58,6 +66,7 @@ pub fn begin_value(
             .unwrap_or_default()
             .parse::<uuid::Uuid>()
     {
+        let t = std::time::Instant::now();
         for path in &anchor_files {
             db::add_task_file(
                 conn,
@@ -70,21 +79,27 @@ pub fn begin_value(
                 None,
             )?;
         }
+        folded.emit("files", t, Some(anchor_files.len() as u64));
     }
 
     let assignment_text = assignment
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| description.trim());
+    let t = std::time::Instant::now();
     commands::guide::assignment_value(conn, &id, assignment_text)?;
+    folded.emit("assignment", t, None);
 
     let rationale_text = rationale.map(str::trim).filter(|s| !s.is_empty());
     if let Some(why) = rationale_text {
+        let t = std::time::Instant::now();
         commands::guide::rationale_value(conn, &id, why)?;
+        folded.emit("rationale", t, None);
     }
 
     let acceptance = match check.map(str::trim).filter(|s| !s.is_empty()) {
         Some(text) => {
+            let t = std::time::Instant::now();
             let c = commands::guide::check_value(
                 conn,
                 &id,
@@ -94,6 +109,7 @@ pub fn begin_value(
                 Some("agent"),
                 verify,
             )?;
+            folded.emit("check", t, None);
             if let Some(w) = c["warning"].as_str() {
                 warnings.push(w.to_string());
             }
@@ -109,6 +125,7 @@ pub fn begin_value(
         }
     };
 
+    let t = std::time::Instant::now();
     let recall_step = commands::guide::check_value(
         conn,
         &id,
@@ -119,9 +136,13 @@ pub fn begin_value(
         None,
     )?;
 
-    let next = commands::guide::next_value(conn, &id)?;
+    folded.emit("step", t, None);
 
-    Ok(json!({
+    let t = std::time::Instant::now();
+    let next = commands::guide::next_value(conn, &id)?;
+    folded.emit("next", t, None);
+
+    let mut out = json!({
         "task": id_num,
         "uuid": created["uuid"],
         "project": created["project"],
@@ -132,7 +153,9 @@ pub fn begin_value(
         "recall_step": recall_step,
         "next": next,
         "warnings": warnings,
-    }))
+    });
+    folded.finish(&mut out);
+    Ok(out)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -153,6 +176,7 @@ pub fn run(
     let v = begin_value(
         conn,
         cfg,
+        Source::Cli,
         description,
         tags,
         files,

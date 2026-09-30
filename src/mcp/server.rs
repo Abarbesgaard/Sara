@@ -93,19 +93,62 @@ impl SaraServer {
             .map_err(|_| anyhow::anyhow!("sara database mutex was poisoned"))?;
         let _cwd = CwdGuard::enter(project_path)?;
         db::begin_undo_batch(label);
+        f(&conn, &self.cfg)
+    }
+
+    /// Route a tool call exactly as `#[tool_handler]`'s generated default does.
+    #[cfg(not(feature = "telemetry"))]
+    async fn route_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
+    }
+
+    /// Route a tool call and record it: tool name, argument NAMES (values
+    /// stripped), calling client, duration, and outcome. Wrapping the router
+    /// also captures failures before a handler body runs — parameter
+    /// deserialization errors (`is_error` results) and unknown tools (`Err`).
+    #[cfg(feature = "telemetry")]
+    async fn route_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        use crate::infrastructure::telemetry;
+
+        let tool_name = request.name.to_string();
+        let params = telemetry::extract_mcp_params(request.arguments.as_ref());
+        let client = context.peer.peer_info().map(|info| telemetry::McpClient {
+            name: info.client_info.name.clone(),
+            version: info.client_info.version.clone(),
+        });
+
         let started = std::time::Instant::now();
-        let result = f(&conn, &self.cfg);
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let outcome = self.tool_router.call(tcc).await;
         let elapsed_ms = started.elapsed().as_millis() as u64;
-        crate::infrastructure::telemetry::capture(
+
+        let telem: anyhow::Result<()> = match &outcome {
+            Ok(r) if r.is_error == Some(true) => {
+                Err(anyhow::anyhow!("mcp tool returned an error result"))
+            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!(e.to_string())),
+        };
+        telemetry::capture(
             &self.cfg,
-            crate::infrastructure::telemetry::Source::Mcp,
-            label,
-            &[],
+            telemetry::Source::Mcp,
+            &format!("mcp {tool_name}"),
+            &params,
             elapsed_ms,
-            &result,
+            &telem,
+            client.as_ref(),
         );
-        crate::infrastructure::telemetry::spawn_flush(&self.cfg);
-        result
+        telemetry::spawn_flush(&self.cfg);
+        outcome
     }
 }
 
@@ -125,6 +168,14 @@ impl ServerHandler for SaraServer {
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info = Implementation::new("sara", env!("CARGO_PKG_VERSION"));
         info
+    }
+
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        self.route_tool(request, context).await
     }
 }
 

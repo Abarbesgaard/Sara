@@ -57,7 +57,14 @@ fn run() -> Result<()> {
         .get(1)
         .cloned()
         .unwrap_or_else(|| "unknown".to_string());
-    let cli = Cli::parse_from(args);
+    let cli = match Cli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            #[cfg(feature = "telemetry")]
+            capture_clap_exit(&e, &command_name, &command_flags);
+            e.exit();
+        }
+    };
 
     let cfg = config::load()?;
     let conn = db::open()?;
@@ -74,7 +81,9 @@ fn run() -> Result<()> {
     let started = std::time::Instant::now();
     let result = dispatch::dispatch(command, conn, cfg.clone());
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    if command_name != "__telemetry_flush" {
+    // Commands that only inspect or ship telemetry must not record themselves.
+    let is_telemetry_meta = command_name == "__telemetry_flush" || command_name == "telemetry";
+    if !is_telemetry_meta {
         infrastructure::telemetry::capture(
             &cfg,
             infrastructure::telemetry::Source::Cli,
@@ -82,10 +91,42 @@ fn run() -> Result<()> {
             &command_flags,
             elapsed_ms,
             &result,
+            None,
         );
         infrastructure::telemetry::spawn_flush(&cfg);
     }
     result
+}
+
+/// Record an invocation clap ends itself (usage error, `--help`, `--version`),
+/// which would otherwise leave no telemetry.
+#[cfg(feature = "telemetry")]
+fn capture_clap_exit(e: &clap::Error, command_name: &str, command_flags: &[String]) {
+    use clap::error::ErrorKind;
+    let Ok(cfg) = config::load() else {
+        return;
+    };
+    let ok = matches!(
+        e.kind(),
+        ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    );
+    let res: Result<()> = if ok {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("cli usage error"))
+    };
+    infrastructure::telemetry::capture(
+        &cfg,
+        infrastructure::telemetry::Source::Cli,
+        command_name,
+        command_flags,
+        0,
+        &res,
+        None,
+    );
+    infrastructure::telemetry::spawn_flush(&cfg);
 }
 
 fn main() -> ExitCode {

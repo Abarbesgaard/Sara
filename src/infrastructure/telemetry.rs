@@ -24,6 +24,12 @@ pub struct TelemetryRecord {
     pub ts: String,
     pub source: &'static str,
     pub name: String,
+    /// The named options a call used, stored as a JSON array so a collector can
+    /// `unroll` it for per-name aggregation. For CLI records these are flag
+    /// NAMES (e.g. `["--json","--tag","-p"]`, see [`extract_cli_flags`]); for
+    /// MCP records they are the tool's argument NAMES (e.g.
+    /// `["dry_run","project_path"]`, see [`extract_mcp_params`]). Values are
+    /// never recorded, and the field is omitted entirely when empty.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
     pub duration_ms: u64,
@@ -32,6 +38,50 @@ pub struct TelemetryRecord {
     pub version: &'static str,
     pub os: &'static str,
     pub arch: &'static str,
+    /// For MCP records, the calling client's reported name from the `initialize`
+    /// handshake (e.g. `claude-ai`, `cursor`, `Copilot`) — the *origin* of the
+    /// tool call. `None` for CLI records and for MCP clients that sent no name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// For MCP records, the calling client's reported version, paired with
+    /// [`client`]. `None` for CLI records.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    /// Correlation id shared by every event of one *composite* operation — a
+    /// `begin` and all its folded sub-ops carry the same id — so a collector can
+    /// reconstruct the whole trace deterministically instead of grouping by
+    /// timestamp proximity. Anonymous and ephemeral: a fresh random id per
+    /// composite, never persisted and never derived from content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    /// 0-based ordinal of this event within its [`trace_id`], giving a stable
+    /// total order that survives same-millisecond timestamp collisions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u32>,
+    /// A single non-identifying outcome COUNT for the event — e.g. how many
+    /// prior memories a folded `recall` matched. A metric like `duration_ms`,
+    /// never content: it says *how much*, never *what*.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n: Option<u64>,
+}
+
+/// Trace context for one event of a composite operation. Attached to folded
+/// sub-op telemetry (e.g. inside `begin`) so the events form a correlated,
+/// ordered trace rather than isolated records. Carries only anonymous metrics —
+/// a random `trace_id`, an ordinal `seq`, and an optional outcome count `n`.
+#[derive(Debug, Clone, Copy)]
+pub struct Span<'a> {
+    pub trace_id: &'a str,
+    pub seq: u32,
+    pub n: Option<u64>,
+}
+
+/// Identity of an MCP client, taken from the `initialize` handshake's
+/// `clientInfo`. Used to record *which agent* invoked a tool.
+#[derive(Debug, Clone)]
+pub struct McpClient {
+    pub name: String,
+    pub version: String,
 }
 
 pub fn err_code(err: &anyhow::Error) -> &'static str {
@@ -54,6 +104,13 @@ pub fn err_code(err: &anyhow::Error) -> &'static str {
     "other"
 }
 
+/// Extract flag NAMES (never values) from CLI argv, for telemetry.
+///
+/// Keeps only tokens that begin with `-` (short or long), strips any `=value`
+/// suffix, drops the bare `--` end-of-options marker and negative-number
+/// operands, then returns a sorted, deduplicated list. Value tokens
+/// (`--tag foo`, `-p proj`) are naturally excluded because they do not start
+/// with `-`, so free-text and secrets never reach the collector.
 pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
     let mut flags: Vec<String> = args
         .iter()
@@ -70,6 +127,28 @@ pub fn extract_cli_flags(args: &[String]) -> Vec<String> {
     flags
 }
 
+/// Extract parameter NAMES (never values) from an MCP tool call's raw JSON
+/// arguments, for telemetry. The MCP analog of [`extract_cli_flags`]: returns
+/// the sorted, deduplicated names of the arguments the client actually sent
+/// (e.g. `["dry_run","project_path","tag"]`), with all *values* discarded so
+/// task ids, queries, file paths and bodies never reach the collector. A key
+/// whose value is JSON `null` is treated as absent.
+pub fn extract_mcp_params(
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Vec<String> {
+    let Some(map) = arguments else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = map
+        .iter()
+        .filter(|(_, v)| !v.is_null())
+        .map(|(k, _)| k.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
 pub fn build_record<T>(
     install_id: &str,
     source: Source,
@@ -77,6 +156,32 @@ pub fn build_record<T>(
     flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+) -> TelemetryRecord {
+    build_record_span(
+        install_id,
+        source,
+        name,
+        flags,
+        duration_ms,
+        result,
+        client,
+        None,
+    )
+}
+
+/// Like [`build_record`] but also stamps the [`Span`] trace context
+/// (`trace_id`, `seq`, `n`) when the event is part of a composite operation.
+#[allow(clippy::too_many_arguments)]
+pub fn build_record_span<T>(
+    install_id: &str,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+    span: Option<Span>,
 ) -> TelemetryRecord {
     TelemetryRecord {
         install_id: install_id.to_string(),
@@ -90,6 +195,11 @@ pub fn build_record<T>(
         version: env!("CARGO_PKG_VERSION"),
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
+        client: client.map(|c| c.name.clone()),
+        client_version: client.map(|c| c.version.clone()),
+        trace_id: span.map(|s| s.trace_id.to_string()),
+        seq: span.map(|s| s.seq),
+        n: span.and_then(|s| s.n),
     }
 }
 
@@ -201,6 +311,45 @@ pub fn capture<T>(
     flags: &[String],
     duration_ms: u64,
     result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+) {
+    capture_span(cfg, source, name, flags, duration_ms, result, client, None);
+}
+
+/// Like [`capture`] but attaches [`Span`] trace context, so a folded sub-op of a
+/// composite operation records its `trace_id`/`seq`/`n`. Same test-gating as
+/// [`capture`].
+#[allow(clippy::too_many_arguments)]
+pub fn capture_span<T>(
+    cfg: &Config,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+    span: Option<Span>,
+) {
+    // The test binary must never emit telemetry: seed/setup helpers would
+    // otherwise write bogus records (e.g. "seed") that later flush to the
+    // collector and pollute the dashboards. Unit tests exercise the real
+    // gating/writing path through `capture_impl` directly.
+    if cfg!(test) {
+        return;
+    }
+    capture_impl(cfg, source, name, flags, duration_ms, result, client, span);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn capture_impl<T>(
+    cfg: &Config,
+    source: Source,
+    name: &str,
+    flags: &[String],
+    duration_ms: u64,
+    result: &anyhow::Result<T>,
+    client: Option<&McpClient>,
+    span: Option<Span>,
 ) {
     if !enabled(cfg) {
         return;
@@ -208,17 +357,38 @@ pub fn capture<T>(
     let Ok(path) = queue_path() else {
         return;
     };
-    let rec = build_record(&install_id(), source, name, flags, duration_ms, result);
+    let rec = build_record_span(
+        &install_id(),
+        source,
+        name,
+        flags,
+        duration_ms,
+        result,
+        client,
+        span,
+    );
     let _ = append(&path, &rec);
 }
 
-pub const DEFAULT_ENDPOINT: Option<&str> = Some(
-    "http://100.72.1.121:9428/insert/jsonline\
-     ?_time_field=ts&_msg_field=name&_stream_fields=install_id,source,version",
-);
+// ── Auto-flush (nightly) ─────────────────────────────────────────────────────
+// Capture writes records to the local queue; the flush ships them to a collector
+// and removes exactly the records it sent. It runs in a DETACHED child so the
+// short-lived CLI never blocks, is serialised by a single-sender lock, and is
+// throttled so it does not POST on every invocation.
+
+/// Compiled-in default collector: a public, write-only ingest gateway (hardened
+/// nginx in front of an isolated VictoriaLogs, reachable over HTTPS). This lets
+/// installs that aren't on the maintainer's private network still report anonymous
+/// usage. The gateway accepts only `POST /insert/jsonline`, rate-limits, caps body
+/// size, and forces its own safe query params, so the query string here is
+/// intentionally omitted. Overridable by `SARA_TELEMETRY_ENDPOINT` or
+/// `config.telemetry.endpoint` (e.g. to point at an internal collector).
+pub const DEFAULT_ENDPOINT: Option<&str> =
+    Some("https://sara-ingest.taile3c0c9.ts.net/insert/jsonline");
 
 const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
 
+/// Resolve the collector endpoint: env > config > compiled default.
 pub fn resolve_endpoint(cfg: &Config) -> Option<String> {
     if let Ok(e) = std::env::var("SARA_TELEMETRY_ENDPOINT")
         && !e.is_empty()
@@ -250,12 +420,30 @@ fn flush_interval() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// Cap on the JSONL body of a single flush POST. A backlog larger than this is
+/// shipped in several sub-cap requests so an intermediary (e.g. an nginx
+/// `client_max_body_size`) cannot 413 the whole batch and wedge the queue.
+/// Overridable via `SARA_TELEMETRY_MAX_BATCH_BYTES` (0/invalid falls back).
+const DEFAULT_MAX_BATCH_BYTES: usize = 12 * 1024;
+
+fn max_batch_bytes() -> usize {
+    std::env::var("SARA_TELEMETRY_MAX_BATCH_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_BATCH_BYTES)
+}
+
+/// A file living beside the queue so `SARA_TELEMETRY_QUEUE` redirects it too
+/// (keeping tests off the real data dir).
 fn queue_sibling(name: &str) -> anyhow::Result<PathBuf> {
     let q = queue_path()?;
     let parent = q.parent().unwrap_or_else(|| Path::new("."));
     Ok(parent.join(name))
 }
 
+/// Exclusive single-sender lock. `create_new` is atomic; a lingering lock from a
+/// crashed flush older than the flush interval is treated as stale and stolen.
 struct FlushLock(PathBuf);
 
 impl FlushLock {
@@ -335,6 +523,9 @@ fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     }
 }
 
+/// Drop the first `n` lines, keeping any lines appended after they were read.
+/// Append-only + the single-sender lock guarantee the first `n` lines are exactly
+/// what was sent. Rewrites atomically via temp-file + rename.
 fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
     let remaining = read_lines(path)?;
     let kept = if n >= remaining.len() {
@@ -353,6 +544,8 @@ fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// POST the JSONL body. Ok(true) on HTTP 2xx, Ok(false) on any other status,
+/// Err on a transport failure. Non-2xx and transport failures both leave the queue.
 fn post_jsonl(endpoint: &str, token: Option<&str>, body: &str) -> anyhow::Result<bool> {
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(10))
@@ -378,6 +571,8 @@ pub enum FlushOutcome {
     Failed,
 }
 
+/// Ship the queued records to the collector and remove exactly those sent.
+/// Never panics; every failure mode leaves the queue intact.
 pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
     if !enabled(cfg) {
         return Ok(FlushOutcome::Skipped);
@@ -396,18 +591,39 @@ pub fn flush(cfg: &Config) -> anyhow::Result<FlushOutcome> {
     if lines.is_empty() {
         return Ok(FlushOutcome::Empty);
     }
-    let n = lines.len();
-    let mut body = lines.join("\n");
-    body.push('\n');
-    let sent = post_jsonl(&endpoint, resolve_token(cfg).as_deref(), &body)?;
-    if !sent {
+    let token = resolve_token(cfg);
+    let budget = max_batch_bytes();
+    let total = lines.len();
+    let mut sent_count = 0usize;
+    // Ship in contiguous front-to-back batches, each under the byte budget, so a
+    // large backlog drains incrementally instead of failing as one oversized POST.
+    while sent_count < total {
+        let mut end = sent_count;
+        let mut batch_bytes = 0usize;
+        while end < total {
+            let add = lines[end].len() + 1; // + newline
+            if end > sent_count && batch_bytes + add > budget {
+                break;
+            }
+            batch_bytes += add;
+            end += 1;
+        }
+        let mut body = lines[sent_count..end].join("\n");
+        body.push('\n');
+        if !post_jsonl(&endpoint, token.as_deref(), &body)? {
+            break;
+        }
+        sent_count = end;
+    }
+    if sent_count == 0 {
         return Ok(FlushOutcome::Failed);
     }
-    remove_prefix_lines(&path, n)?;
+    remove_prefix_lines(&path, sent_count)?;
     touch_last_flush();
-    Ok(FlushOutcome::Sent(n))
+    Ok(FlushOutcome::Sent(sent_count))
 }
 
+/// Spawn the flush as a fully-detached child so the caller never blocks.
 pub fn spawn_flush(cfg: &Config) {
     if !enabled(cfg) || resolve_endpoint(cfg).is_none() {
         return;

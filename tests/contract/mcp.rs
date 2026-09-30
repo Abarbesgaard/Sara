@@ -40,6 +40,15 @@ fn begin_learn_recall_payloads() {
             "project_path": project,
         }),
     );
+    #[cfg(feature = "telemetry")]
+    let begin = {
+        let mut begin = begin;
+        let map = begin.as_object_mut().expect("begin returns an object");
+        let folded = map.remove("folded").expect("telemetry builds fold a trace");
+        assert!(folded.as_array().is_some_and(|ops| !ops.is_empty()));
+        assert!(map.remove("begin_id").is_some_and(|id| id.is_string()));
+        begin
+    };
     assert_json_snapshot!("mcp_begin", redact(begin));
 
     let learn = mcp.call_result(

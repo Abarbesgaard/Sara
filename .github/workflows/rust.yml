@@ -42,6 +42,25 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  test-telemetry:
+    name: Test (telemetry feature)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: telemetry
+
+      - name: Run tests
+        run: cargo test --verbose --features telemetry
+
   fmt:
     name: Formatting
     runs-on: ubuntu-latest
@@ -71,8 +90,11 @@ jobs:
         with:
           key: clippy
 
-      - name: Run clippy
+      - name: Run clippy (all features)
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
 
   build:
     name: Build
