@@ -26,6 +26,7 @@ expression: redact(recall)
       "provisional": false,
       "ref_kind": "item_memory",
       "semantic": false,
+      "stale": [],
       "strength": 1.0,
       "superseded_by": [],
       "text": "The payments client takes amounts in minor units"

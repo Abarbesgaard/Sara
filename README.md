@@ -214,6 +214,15 @@ sara recall --semantic "auth bug"       # also match by meaning (embeddings), no
 prefixed `[item_memory]`. If a memory was superseded by a newer one, recall
 shows a `[superseded by: mN]` warning so you don't act on stale knowledge.
 
+**Stale file anchors.** When a memory is bound to files (`--file`/`--auto-files`),
+sara stores a small fingerprint of each file's lines. If an anchored file has
+since been rewritten (≥ 40 % of its fingerprinted lines gone) or deleted, recall
+marks the memory `⚠ may be stale — re-validate: <file> (62% changed)` (JSON:
+`stale[]`). Re-check it against the code, then `sara relearn mN …` to update it
+— that re-fingerprints its files and clears the flag. `sara doctor` lists every
+memory with a stale anchor. The fingerprint ignores git history, so the commit
+or squash-merge that lands the work a memory describes never counts as drift.
+
 **Semantic recall (`--semantic`).** By default recall is lexical (FTS5), so a
 paraphrase with no shared keyword is missed. `sara recall --semantic` also ranks
 memories by embedding cosine using a small model bundled into the binary — no
@@ -250,7 +259,7 @@ sara relearn m7 --tag auth "corrected text"   # edit in place — keeps label, l
 sara promote m14        # accept a provisional auto-memory as permanent
 sara prune-memories --dry-run   # preview low-value memories eligible for archival
 sara prune-memories --apply     # actually archive them
-sara doctor             # health report: embeddings, orphaned links, duplicates, backlog, decay
+sara doctor             # health report: embeddings, orphaned links, duplicates, backlog, decay, stale anchors
 ```
 
 **Strength labels:**
@@ -536,7 +545,7 @@ from reading and planning a task through to completing it:
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
 | `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
-| `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay) with a fix per finding |
+| `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay, stale file anchors) with a fix per finding |
 | `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |
 

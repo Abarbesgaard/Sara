@@ -26,6 +26,7 @@ expression: "redact(s.json(&[\"recall\", \"--json\", \"imports\"]))"
       "provisional": false,
       "ref_kind": "item_memory",
       "semantic": false,
+      "stale": [],
       "strength": 1.0,
       "superseded_by": [],
       "text": "Prefer explicit imports in split modules"

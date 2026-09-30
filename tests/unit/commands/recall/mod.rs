@@ -1517,3 +1517,120 @@ fn cluster_nearest_in_guide_json_only_when_present() {
     ));
     assert!(json[1]["cluster"].get("nearest").is_none());
 }
+
+fn anchored_memory(conn: &Connection, dir: &std::path::Path, tag: &str) -> (Item, String) {
+    let path = dir.join(format!("{tag}.rs"));
+    let body: String = (0..40)
+        .map(|i| format!("let step_{i} = run({i});\n"))
+        .collect();
+    std::fs::write(&path, body).unwrap();
+    let p = path.to_str().unwrap().to_string();
+    let m = seed_memory(
+        conn,
+        &format!("{tag} guidance"),
+        "how it works",
+        &[tag],
+        &[],
+    );
+    db::set_item_files(conn, &m.uuid, std::slice::from_ref(&p)).unwrap();
+    (m, p)
+}
+
+fn rewrite(path: &str) {
+    let body: String = (0..40)
+        .map(|i| format!("fn rewritten_{i}() {{}}\n"))
+        .collect();
+    std::fs::write(path, body).unwrap();
+}
+
+fn hits_for(conn: &Connection, tag: &str) -> Vec<Hit> {
+    collect_hits(
+        conn,
+        "",
+        &[tag.to_string()],
+        &[],
+        &[],
+        20,
+        &SemanticOpts::off(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn stale_not_flagged_when_anchor_unchanged() {
+    let conn = db::open_in_memory_for_test();
+    let dir = tempfile::tempdir().unwrap();
+    anchored_memory(&conn, dir.path(), "calm");
+
+    let hits = hits_for(&conn, "calm");
+    assert!(hits[0].stale.is_empty());
+    assert_eq!(keyword_json(&hits)[0]["stale"], serde_json::json!([]));
+}
+
+#[test]
+fn stale_flags_drifted_anchor_in_json() {
+    let conn = db::open_in_memory_for_test();
+    let dir = tempfile::tempdir().unwrap();
+    let (_m, p) = anchored_memory(&conn, dir.path(), "drift");
+    rewrite(&p);
+
+    let hits = hits_for(&conn, "drift");
+    assert_eq!(hits[0].stale.len(), 1);
+    let stale = &keyword_json(&hits)[0]["stale"][0];
+    assert_eq!(stale["file"], serde_json::json!(p));
+    assert_eq!(stale["reason"], "drifted");
+    assert_eq!(stale["drift"], serde_json::json!(1.0));
+    assert!(stale_text(&hits[0]).contains("(100% changed)"));
+}
+
+#[test]
+fn stale_flags_missing_anchor_on_label_and_recent_paths() {
+    let conn = db::open_in_memory_for_test();
+    let dir = tempfile::tempdir().unwrap();
+    let (m, p) = anchored_memory(&conn, dir.path(), "gone");
+    std::fs::remove_file(&p).unwrap();
+
+    let label = format!("m{}", m.display_id.unwrap());
+    let v = recall_value(&conn, &cfg(), &label, &[], &[], &[], 5, false).unwrap();
+    assert_eq!(v["keyword"][0]["stale"][0]["reason"], "missing");
+
+    let v = recall_value(&conn, &cfg(), "", &[], &[], &[], 5, false).unwrap();
+    assert_eq!(v["keyword"][0]["stale"][0]["reason"], "missing");
+}
+
+#[test]
+fn stale_cleared_by_relearn() {
+    let conn = db::open_in_memory_for_test();
+    let dir = tempfile::tempdir().unwrap();
+    let (m, p) = anchored_memory(&conn, dir.path(), "fixed");
+    rewrite(&p);
+    assert_eq!(hits_for(&conn, "fixed")[0].stale.len(), 1);
+
+    let label = format!("m{}", m.display_id.unwrap());
+    crate::commands::relearn::relearn_value(
+        &conn,
+        &label,
+        Some("re-validated against the rewrite"),
+        &[],
+        &[],
+        false,
+    )
+    .unwrap();
+
+    assert!(hits_for(&conn, "fixed")[0].stale.is_empty());
+}
+
+#[test]
+fn stale_ignores_legacy_anchor_without_fingerprint() {
+    let conn = db::open_in_memory_for_test();
+    let dir = tempfile::tempdir().unwrap();
+    let (m, p) = anchored_memory(&conn, dir.path(), "legacy");
+    conn.execute(
+        "UPDATE item_files SET fingerprint = NULL WHERE item_uuid = ?1",
+        [m.uuid.to_string()],
+    )
+    .unwrap();
+    rewrite(&p);
+
+    assert!(hits_for(&conn, "legacy")[0].stale.is_empty());
+}
