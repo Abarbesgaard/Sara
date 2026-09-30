@@ -513,6 +513,7 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
                 Ok(())
             },
         ),
+        M::up("ALTER TABLE item_files ADD COLUMN fingerprint BLOB;"),
     ]);
     migrations
         .to_latest(conn)

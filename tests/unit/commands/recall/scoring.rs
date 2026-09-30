@@ -32,6 +32,7 @@ fn hit(
         semantic: cosine.is_some(),
         cosine,
         cluster: None,
+        stale: vec![],
     }
 }
 

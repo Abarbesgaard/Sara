@@ -49,7 +49,8 @@ fn empty_store_is_healthy_and_reports_every_check() {
             "duplicates",
             "superseded",
             "provisional_backlog",
-            "decay_outliers"
+            "decay_outliers",
+            "stale_anchors"
         ]
     );
     for c in v["checks"].as_array().unwrap() {
@@ -217,4 +218,45 @@ fn a_memory_recalled_far_above_the_mean_is_over_reinforced() {
     let over = &check(&v, "decay_outliers")["details"]["over_reinforced"];
     assert_eq!(over.as_array().unwrap().len(), 1, "{over}");
     assert_eq!(over[0]["recalls"], 25);
+}
+
+#[test]
+fn stale_anchors_lists_drifted_and_missing_files_as_info() {
+    let conn = fresh();
+    let dir = tempfile::tempdir().unwrap();
+    let write = |name: &str, seed: &str| {
+        let p = dir.path().join(name);
+        let body: String = (0..30).map(|i| format!("{seed}_{i}();\n")).collect();
+        std::fs::write(&p, body).unwrap();
+        p.to_str().unwrap().to_string()
+    };
+    let kept = write("kept.rs", "keep");
+    let drifted = write("drifted.rs", "old");
+    let removed = write("removed.rs", "bye");
+
+    let fresh_mem = memory(&conn, "untouched anchor", 1, true);
+    db::set_item_files(&conn, &fresh_mem, std::slice::from_ref(&kept)).unwrap();
+    let stale_mem = memory(&conn, "rotting anchors", 1, true);
+    db::set_item_files(&conn, &stale_mem, &[drifted.clone(), removed.clone()]).unwrap();
+
+    write("drifted.rs", "new");
+    std::fs::remove_file(&removed).unwrap();
+
+    let v = super::doctor_value(&conn).unwrap();
+    let c = check(&v, "stale_anchors");
+    assert_eq!(c["status"], "info", "{c}");
+    assert_eq!(c["count"], 1, "one memory carries the stale anchors: {c}");
+    assert!(c["fix"].as_str().unwrap().contains("sara relearn"));
+    let details = c["details"].as_array().unwrap();
+    assert_eq!(details.len(), 2, "{c}");
+    let reason_of = |f: &str| {
+        details
+            .iter()
+            .find(|d| d["file"] == f)
+            .map(|d| d["reason"].as_str().unwrap().to_string())
+    };
+    assert_eq!(reason_of(&drifted).as_deref(), Some("drifted"));
+    assert_eq!(reason_of(&removed).as_deref(), Some("missing"));
+    assert_eq!(reason_of(&kept), None);
+    assert_eq!(v["healthy"], true, "stale anchors are advisory: {v}");
 }

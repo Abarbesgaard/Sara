@@ -17,6 +17,17 @@
   canonical and was displaced by it — so callers can open the best-matching
   memory instead of seeing only a `collapsed_here` count. Shown in JSON/MCP and
   as `— nearest mN` in the text cluster tag (#144).
+- **`recall` flags memories whose anchored files drifted or vanished.** When a
+  memory is bound to files, sara now stores a compact line fingerprint of each
+  (bottom-256 line-hash sketch). Recall reports `stale[]` (`drifted` with the
+  share of lines gone, or `missing`) and prints `⚠ may be stale — re-validate`
+  when ≥ 40 % of the fingerprinted lines are gone or the file was deleted.
+  Content-based, so the commit or squash-merge that lands a memory's own work
+  is not drift. `sara relearn` re-fingerprints (re-validates) the anchors, and
+  `sara doctor` gains a `stale_anchors` info check. Anchors recorded before
+  this release have no fingerprint and are only flagged when their file is
+  deleted. Adds a schema migration — older `sara` binaries cannot open the
+  upgraded store (#164).
 
 ### Changed
 

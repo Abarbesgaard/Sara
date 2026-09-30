@@ -5,6 +5,8 @@ use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
+use crate::infrastructure::memory::fingerprint;
+
 pub(crate) fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
     let tags_json: String = row.get(6)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -342,12 +344,53 @@ pub fn set_item_files(conn: &Connection, item_uuid: &Uuid, paths: &[String]) -> 
                 continue;
             }
             conn.execute(
-                "INSERT OR IGNORE INTO item_files (item_uuid, file_path) VALUES (?1, ?2)",
-                rusqlite::params![uuid, trimmed],
+                "INSERT OR IGNORE INTO item_files (item_uuid, file_path, fingerprint) VALUES (?1, ?2, ?3)",
+                rusqlite::params![uuid, trimmed, fingerprint::fingerprint_file(trimmed)],
             )?;
         }
         Ok(())
     })
+}
+
+/// Re-fingerprint every file already anchored to a memory — the memory has been
+/// re-validated against the code as it stands now.
+pub fn refresh_item_file_fingerprints(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
+    let uuid = item_uuid.to_string();
+    for path in get_item_files(conn, item_uuid)? {
+        conn.execute(
+            "UPDATE item_files SET fingerprint = ?3 WHERE item_uuid = ?1 AND file_path = ?2",
+            rusqlite::params![uuid, path, fingerprint::fingerprint_file(&path)],
+        )?;
+    }
+    Ok(())
+}
+
+/// Anchored files of one memory with their stored fingerprint (NULL for anchors
+/// recorded before fingerprinting existed, or for unreadable files).
+pub fn get_item_file_fingerprints(
+    conn: &Connection,
+    item_uuid: &Uuid,
+) -> Result<Vec<(String, Option<Vec<u8>>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT file_path, fingerprint FROM item_files WHERE item_uuid = ?1 ORDER BY file_path",
+    )?;
+    let rows = stmt.query_map([item_uuid.to_string()], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// An anchored file of a memory: (item uuid, path, fingerprint).
+pub type AnchorRow = (String, String, Option<Vec<u8>>);
+
+/// Every anchor of an active or provisional memory.
+pub fn all_active_item_file_fingerprints(conn: &Connection) -> Result<Vec<AnchorRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT f.item_uuid, f.file_path, f.fingerprint
+         FROM item_files f JOIN items i ON i.uuid = f.item_uuid
+         WHERE i.status IN ('active','provisional') AND i.kind = 'memory'
+         ORDER BY f.item_uuid, f.file_path",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 pub fn get_item_files(conn: &Connection, item_uuid: &Uuid) -> Result<Vec<String>> {

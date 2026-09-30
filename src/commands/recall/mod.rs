@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
+use crate::infrastructure::memory::fingerprint::{self, AnchorState};
 use crate::infrastructure::model::{Item, Task};
 use crate::infrastructure::project;
 
@@ -32,6 +33,7 @@ struct Hit {
     semantic: bool,
     cosine: Option<f32>,
     cluster: Option<ClusterInfo>,
+    stale: Vec<(String, AnchorState)>,
 }
 
 #[derive(Clone, Debug)]
@@ -85,7 +87,8 @@ pub fn recall_value(
 
     if let Some(item) = resolve_label_query(conn, query) {
         let _ = db::record_memory_recall(conn, &item.uuid);
-        let hit = item_hit(conn, item, true);
+        let mut hit = item_hit(conn, item, true);
+        mark_stale(conn, std::slice::from_mut(&mut hit));
         let related = spreading_related(conn, std::slice::from_ref(&hit))?;
         let associative = associative_guide(conn, &related);
         let label = hit.label.clone();
@@ -218,9 +221,13 @@ pub fn run(
 
     if !recent && let Some(item) = resolve_label_query(conn, query) {
         let _ = db::record_memory_recall(conn, &item.uuid);
-        let hit = item_hit(conn, item, true);
+        let mut hit = item_hit(conn, item, true);
+        mark_stale(conn, std::slice::from_mut(&mut hit));
         println!("Memory {} (resolved by label):", hit.label);
         println!("  {}", hit.body.trim());
+        if !hit.stale.is_empty() {
+            println!("  ⚠ may be stale — re-validate:{}", stale_text(&hit));
+        }
         let related = spreading_related(conn, std::slice::from_ref(&hit))?;
         if !related.is_empty() {
             println!("\nCluster (recall a label for its full text):");
@@ -322,6 +329,11 @@ pub fn run(
         } else {
             format!(" ⚠ superseded by: {}", h.superseded_by.join(", "))
         };
+        let stale_str = if h.stale.is_empty() {
+            String::new()
+        } else {
+            format!(" ⚠ may be stale — re-validate:{}", stale_text(h))
+        };
         let provisional_str = if h.provisional {
             " [provisional — unreviewed auto-memory]".to_string()
         } else {
@@ -356,7 +368,7 @@ pub fn run(
             None => String::new(),
         };
         println!(
-            "  [{}] {} {} {}: {}{}{}{}{}{}{}{}{}",
+            "  [{}] {} {} {}: {}{}{}{}{}{}{}{}{}{}",
             h.ref_kind,
             marker,
             h.label,
@@ -365,6 +377,7 @@ pub fn run(
             files_str,
             tasks_str,
             superseded_str,
+            stale_str,
             provisional_str,
             canonical_str,
             derived_from_str,
@@ -726,6 +739,7 @@ fn collect_hits(
                     semantic: false,
                     cosine: None,
                     cluster: None,
+                    stale: Vec::new(),
                 });
             }
         }
@@ -745,6 +759,7 @@ fn collect_hits(
 
     let mut hits = collapse_clusters(conn, hits);
     hits.truncate(limit.max(0) as usize);
+    mark_stale(conn, &mut hits);
 
     for h in &hits {
         if let Some(u) = h.item_uuid {
@@ -1005,6 +1020,7 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                         "collapsed_here": c.collapsed_here,
                         "nearest": c.nearest,
                     })),
+                    "stale": stale_json(h),
                     "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                         "id": t.id.unwrap_or(0),
                         "description": t.description,
@@ -1043,6 +1059,9 @@ fn keyword_guide(h: &Hit) -> serde_json::Value {
     if !h.superseded_by.is_empty() {
         map.insert("superseded_by".into(), json!(h.superseded_by));
     }
+    if !h.stale.is_empty() {
+        map.insert("stale".into(), json!(stale_json(h)));
+    }
     if !h.linked_tasks.is_empty() {
         map.insert(
             "linked_tasks".into(),
@@ -1060,10 +1079,54 @@ fn keyword_guide(h: &Hit) -> serde_json::Value {
 fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {
     let mut memories = db::list_memories(conn)?;
     memories.truncate(limit.max(0) as usize);
-    Ok(memories
+    let mut hits: Vec<Hit> = memories
         .into_iter()
         .map(|m| item_hit(conn, m, false))
-        .collect())
+        .collect();
+    mark_stale(conn, &mut hits);
+    Ok(hits)
+}
+
+/// Judge each hit's anchored files against the fingerprints taken when the
+/// memory was learned; only the final, truncated hits are checked.
+fn mark_stale(conn: &Connection, hits: &mut [Hit]) {
+    for h in hits.iter_mut() {
+        let Some(u) = h.item_uuid else { continue };
+        if h.files.is_empty() {
+            continue;
+        }
+        h.stale = db::get_item_file_fingerprints(conn, &u)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(file, fp)| {
+                let state = fingerprint::anchor_state(&file, fp.as_deref());
+                state.is_stale().then_some((file, state))
+            })
+            .collect();
+    }
+}
+
+fn stale_json(h: &Hit) -> Vec<serde_json::Value> {
+    h.stale
+        .iter()
+        .map(|(file, state)| match state {
+            AnchorState::Drifted(d) => {
+                json!({ "file": file, "reason": "drifted", "drift": (d * 100.0).round() / 100.0 })
+            }
+            _ => json!({ "file": file, "reason": "missing" }),
+        })
+        .collect()
+}
+
+fn stale_text(h: &Hit) -> String {
+    h.stale
+        .iter()
+        .map(|(file, state)| match state {
+            AnchorState::Drifted(d) => format!(" {file} ({:.0}% changed)", d * 100.0),
+            _ => format!(" {file} (missing)"),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
@@ -1153,6 +1216,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         semantic: false,
         cosine: None,
         cluster: None,
+        stale: Vec::new(),
     }
 }
 

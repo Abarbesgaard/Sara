@@ -58,6 +58,8 @@ pub fn relearn_value(
             .collect();
         db::set_item_files(conn, &item.uuid, &resolved)?;
         updated.push("files");
+    } else {
+        db::refresh_item_file_fingerprints(conn, &item.uuid)?;
     }
 
     Ok(json!({

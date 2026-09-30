@@ -8,7 +8,7 @@ fn doctor_json_reports_a_healthy_fresh_store() {
     let v = s.json(&["doctor", "--json"]);
     assert_eq!(v["healthy"], true, "{v}");
     assert_eq!(v["summary"]["warn"], 0);
-    assert_eq!(v["checks"].as_array().map(Vec::len), Some(6));
+    assert_eq!(v["checks"].as_array().map(Vec::len), Some(7));
     s.run(&["doctor", "--strict"]);
 }
 

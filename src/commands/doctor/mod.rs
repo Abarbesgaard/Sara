@@ -1,6 +1,6 @@
 //! `sara doctor` — a read-only health report over the memory store. It composes
 //! the existing diagnostics (duplicate detection, the prune evaluation, the
-//! embedding index, link integrity, recall activity) into one checklist, each
+//! embedding index, link integrity, recall activity, anchored-file drift) into one checklist, each
 //! finding paired with the command that fixes it. Nothing here writes.
 
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
+use crate::infrastructure::memory::fingerprint::{self, AnchorState};
 
 mod render;
 
@@ -101,6 +102,7 @@ pub fn doctor_value(conn: &Connection) -> Result<Value> {
         duplicate_check(conn)?,
         superseded_and_backlog_checks(conn)?,
         decay_check(conn, &memories, &label_of)?,
+        stale_anchor_check(conn, &label_of)?,
     ]
     .into_iter()
     .flatten()
@@ -329,6 +331,51 @@ fn decay_check(
             .map(|(l, n)| json!({ "label": l, "recalls": n }))
             .collect::<Vec<_>>(),
     });
+    Ok(vec![c])
+}
+
+fn stale_anchor_check(conn: &Connection, label_of: &dyn Fn(&str) -> String) -> Result<Vec<Check>> {
+    let anchors = db::all_active_item_file_fingerprints(conn)?;
+    let mut stale: Vec<(String, String, AnchorState)> = anchors
+        .into_iter()
+        .filter_map(|(uuid, file, fp)| {
+            let state = fingerprint::anchor_state(&file, fp.as_deref());
+            state.is_stale().then(|| (label_of(&uuid), file, state))
+        })
+        .collect();
+    stale.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    let memories: std::collections::BTreeSet<&str> = stale.iter().map(|s| s.0.as_str()).collect();
+
+    let mut c = Check::new(
+        "stale_anchors",
+        Status::Info,
+        memories.len(),
+        "sara relearn <label> <text> (re-validate) or sara forget <label>",
+    );
+    c.summary = if stale.is_empty() {
+        "no anchored file has drifted or vanished since its memory was learned".to_string()
+    } else {
+        format!(
+            "{} memory(ies) anchored to {} file(s) that drifted or vanished since learn",
+            memories.len(),
+            stale.len()
+        )
+    };
+    c.details = json!(
+        stale
+            .iter()
+            .take(DETAIL_LIMIT)
+            .map(|(label, file, state)| match state {
+                AnchorState::Drifted(d) => json!({
+                    "label": label,
+                    "file": file,
+                    "reason": "drifted",
+                    "drift": (d * 100.0).round() / 100.0,
+                }),
+                _ => json!({ "label": label, "file": file, "reason": "missing" }),
+            })
+            .collect::<Vec<_>>()
+    );
     Ok(vec![c])
 }
 
