@@ -2,51 +2,15 @@ use super::*;
 use std::fs;
 use std::path::Path;
 
-use crate::test_support::env_lock;
+use crate::test_support::{env_guard, temp_dir};
 
-fn temp_home(name: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("sara-test-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&base);
-    fs::create_dir_all(&base).unwrap();
-    base
-}
-
-fn with_home<F: FnOnce()>(name: &str, f: F) {
-    let _guard = env_lock();
-    let home = temp_home(name);
-    let old_home = std::env::var("HOME").ok();
-    let old_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-    let old_data = std::env::var("XDG_DATA_HOME").ok();
-    unsafe {
-        std::env::set_var("HOME", &home);
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
+fn with_home<F: FnOnce()>(f: F) {
+    let mut env = env_guard();
+    let home = temp_dir();
+    env.set("HOME", home.path())
+        .remove("XDG_CONFIG_HOME")
+        .remove("XDG_DATA_HOME");
     f();
-    if let Some(h) = old_home {
-        unsafe {
-            std::env::set_var("HOME", h);
-        }
-    }
-    if let Some(x) = old_xdg {
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", x);
-        }
-    } else {
-        unsafe {
-            std::env::remove_var("XDG_CONFIG_HOME");
-        }
-    }
-    if let Some(d) = old_data {
-        unsafe {
-            std::env::set_var("XDG_DATA_HOME", d);
-        }
-    } else {
-        unsafe {
-            std::env::remove_var("XDG_DATA_HOME");
-        }
-    }
-    let _ = fs::remove_dir_all(&home);
 }
 
 fn tk_config_dir(home: &Path) -> PathBuf {
@@ -60,7 +24,7 @@ fn sara_config_dir(home: &Path) -> PathBuf {
 #[test]
 #[cfg(target_os = "macos")]
 fn migrate_copies_tk_config_and_db_when_sara_missing() {
-    with_home("migrate", || {
+    with_home(|| {
         let home = std::env::var("HOME").unwrap();
         let home = PathBuf::from(home);
 
@@ -85,7 +49,7 @@ fn migrate_copies_tk_config_and_db_when_sara_missing() {
 #[test]
 #[cfg(target_os = "macos")]
 fn migrate_skips_when_sara_already_exists() {
-    with_home("migrate-skip", || {
+    with_home(|| {
         let home = PathBuf::from(std::env::var("HOME").unwrap());
 
         let tk_dir = tk_config_dir(&home);

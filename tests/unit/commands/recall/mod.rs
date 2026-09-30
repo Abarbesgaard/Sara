@@ -246,14 +246,7 @@ fn recall_by_label_drills_into_a_single_memory_in_full() {
         &[],
         &["p"],
     );
-    db::insert_memory_link(
-        &conn,
-        &seed.uuid.to_string(),
-        &neighbour.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, seed.uuid, "similar_to", neighbour.uuid);
     let label = format!("m{}", seed.display_id.unwrap());
 
     let v = recall_value(&conn, &cfg(), &label, &[], &[], &[], 10, false).unwrap();
@@ -380,14 +373,7 @@ fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
         &[],
         &["web-app"],
     );
-    db::insert_memory_link(
-        &conn,
-        &seed.uuid.to_string(),
-        &neighbour.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, seed.uuid, "similar_to", neighbour.uuid);
 
     let v = recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, false).unwrap();
     assert_eq!(v["keyword"].as_array().unwrap().len(), 1);
@@ -457,22 +443,8 @@ fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
         &[],
         &["web-app"],
     );
-    db::insert_memory_link(
-        &conn,
-        &a.uuid.to_string(),
-        &outsider.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
-    db::insert_memory_link(
-        &conn,
-        &b.uuid.to_string(),
-        &outsider.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, a.uuid, "similar_to", outsider.uuid);
+    crate::test_support::link(&conn, b.uuid, "similar_to", outsider.uuid);
 
     let v = recall_value(&conn, &cfg(), "cache", &[], &[], &[], 20, false).unwrap();
     assert!(
@@ -520,14 +492,7 @@ fn recall_bare_tag_lookup_does_not_auto_spread() {
         &[],
         &["web-app"],
     );
-    db::insert_memory_link(
-        &conn,
-        &a.uuid.to_string(),
-        &outsider.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, a.uuid, "similar_to", outsider.uuid);
 
     let v = recall_value(
         &conn,
@@ -566,14 +531,7 @@ fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
         &[],
         &["web-app"],
     );
-    db::insert_memory_link(
-        &conn,
-        &seed.uuid.to_string(),
-        &neighbour.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, seed.uuid, "similar_to", neighbour.uuid);
 
     let hits = collect_hits(&conn, "pgbouncer", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
     assert_eq!(hits.len(), 1, "only the seed matches the query directly");
@@ -614,14 +572,7 @@ fn spread_surfacing_does_not_reinforce_strength() {
         &[],
         &["web-app"],
     );
-    db::insert_memory_link(
-        &conn,
-        &seed.uuid.to_string(),
-        &neighbour.uuid.to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, seed.uuid, "similar_to", neighbour.uuid);
 
     assert_eq!(db::item_strength(&conn, &neighbour), 1.0);
 
@@ -655,14 +606,7 @@ fn associative_output_is_capped_and_normalized() {
     let hub = seed_memory(&conn, "hub topic", "central memory", &["hub"], &["p"]);
     for i in 0..12 {
         let n = seed_memory(&conn, &format!("n{i}"), &format!("body {i}"), &[], &["p"]);
-        db::insert_memory_link(
-            &conn,
-            &hub.uuid.to_string(),
-            &n.uuid.to_string(),
-            "similar_to",
-            1.0,
-        )
-        .unwrap();
+        crate::test_support::link(&conn, hub.uuid, "similar_to", n.uuid);
     }
     let hits = collect_hits(&conn, "central", &[], &[], &[], 20, &SemanticOpts::off()).unwrap();
     let related = spreading_related(&conn, &hits).unwrap();
@@ -1082,14 +1026,7 @@ fn recall_surfaces_recurring_pattern_with_guide() {
         &[],
     );
     for child in [&app_a, &app_b] {
-        db::insert_memory_link(
-            &conn,
-            &child.uuid.to_string(),
-            &canonical.uuid.to_string(),
-            "derived_from",
-            1.0,
-        )
-        .unwrap();
+        crate::test_support::link(&conn, child.uuid, "derived_from", canonical.uuid);
     }
 
     let v = recall_value(
@@ -1181,22 +1118,8 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
         &[],
     );
 
-    db::insert_memory_link(
-        &conn,
-        &derived_a.uuid.to_string(),
-        &canonical.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
-    db::insert_memory_link(
-        &conn,
-        &derived_b.uuid.to_string(),
-        &canonical.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, derived_a.uuid, "derived_from", canonical.uuid);
+    crate::test_support::link(&conn, derived_b.uuid, "derived_from", canonical.uuid);
 
     let canonical_hit = item_hit(&conn, canonical.clone(), true);
     let derived_a_hit = item_hit(&conn, derived_a.clone(), true);
@@ -1275,14 +1198,7 @@ fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
             &["dep"],
             &[],
         );
-        db::insert_memory_link(
-            &conn,
-            &c.uuid.to_string(),
-            &canonical.uuid.to_string(),
-            "derived_from",
-            1.0,
-        )
-        .unwrap();
+        crate::test_support::link(&conn, c.uuid, "derived_from", canonical.uuid);
         children.push(c);
     }
 
@@ -1355,14 +1271,7 @@ fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
         &[],
         &["other-repo"],
     );
-    db::insert_memory_link(
-        &conn,
-        &derived.uuid.to_string(),
-        &canonical.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, derived.uuid, "derived_from", canonical.uuid);
 
     let hits = collect_hits(
         &conn,
@@ -1404,14 +1313,7 @@ fn seed_family(conn: &Connection, children: usize) -> (Item, Vec<Item>) {
     let kids = (0..children)
         .map(|i| {
             let c = seed_memory(conn, &format!("child {i}"), "applied", &["fam"], &[]);
-            db::insert_memory_link(
-                conn,
-                &c.uuid.to_string(),
-                &canonical.uuid.to_string(),
-                "derived_from",
-                1.0,
-            )
-            .unwrap();
+            crate::test_support::link(conn, c.uuid, "derived_from", canonical.uuid);
             c
         })
         .collect();

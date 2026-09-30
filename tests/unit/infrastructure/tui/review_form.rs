@@ -1,5 +1,5 @@
 use super::*;
-use ratatui::{Terminal, backend::TestBackend};
+use crate::test_support::{key, render_to_string};
 
 fn ctx_with_deps() -> FormContext {
     FormContext {
@@ -19,21 +19,6 @@ fn ctx_with_deps() -> FormContext {
     }
 }
 
-fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
-    let buf = terminal.backend().buffer();
-    let area = *buf.area();
-    let mut out = String::new();
-    for y in 0..area.height {
-        let mut line = String::new();
-        for x in 0..area.width {
-            line.push_str(buf[(x, y)].symbol());
-        }
-        out.push_str(line.trim_end());
-        out.push('\n');
-    }
-    out
-}
-
 #[test]
 #[ignore = "capture helper: run with --ignored to (re)write snapshot files"]
 fn write_render_snapshots() {
@@ -44,31 +29,20 @@ fn write_render_snapshots() {
     std::fs::create_dir_all(dir).unwrap();
 
     let mut state = FormState::new(ctx_with_deps());
-    let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
-    std::fs::write(
-        format!("{dir}/review_form_normal.txt"),
-        buffer_to_string(&terminal),
-    )
-    .unwrap();
+    let out = render_to_string(120, 40, |f| render(f, &mut state));
+    std::fs::write(format!("{dir}/review_form_normal.txt"), out).unwrap();
 
     let mut state = FormState::new(ctx_with_deps());
-    let mut terminal = Terminal::new(TestBackend::new(40, 10)).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
-    std::fs::write(
-        format!("{dir}/review_form_small.txt"),
-        buffer_to_string(&terminal),
-    )
-    .unwrap();
+    let out = render_to_string(40, 10, |f| render(f, &mut state));
+    std::fs::write(format!("{dir}/review_form_small.txt"), out).unwrap();
 }
 
 #[test]
 fn render_normal_matches_snapshot() {
     let mut state = FormState::new(ctx_with_deps());
-    let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
+    let out = render_to_string(120, 40, |f| render(f, &mut state));
     assert_eq!(
-        buffer_to_string(&terminal),
+        out,
         include_str!("snapshots/review_form_normal.txt").replace("\r\n", "\n"),
     );
 }
@@ -76,10 +50,9 @@ fn render_normal_matches_snapshot() {
 #[test]
 fn render_small_terminal_matches_snapshot() {
     let mut state = FormState::new(ctx_with_deps());
-    let mut terminal = Terminal::new(TestBackend::new(40, 10)).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
+    let out = render_to_string(40, 10, |f| render(f, &mut state));
     assert_eq!(
-        buffer_to_string(&terminal),
+        out,
         include_str!("snapshots/review_form_small.txt").replace("\r\n", "\n"),
     );
 }
@@ -89,9 +62,7 @@ fn render_with_toggled_dep_does_not_panic() {
     let mut state = FormState::new(ctx_with_deps());
     state.focus = Focus::Dependencies;
     state.toggle_dep();
-    let backend = TestBackend::new(120, 40);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
+    render_to_string(120, 40, |f| render(f, &mut state));
 }
 
 #[test]
@@ -99,24 +70,16 @@ fn render_with_toggled_file_does_not_panic() {
     let mut state = FormState::new(ctx_with_deps());
     state.focus = Focus::Files;
     state.toggle_file();
-    let backend = TestBackend::new(120, 40);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
+    render_to_string(120, 40, |f| render(f, &mut state));
 }
 
 #[test]
 fn render_small_terminal_does_not_panic() {
     let mut state = FormState::new(ctx_with_deps());
-    let backend = TestBackend::new(40, 10);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render(f, &mut state)).unwrap();
+    render_to_string(40, 10, |f| render(f, &mut state));
 }
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, KeyModifiers::NONE)
-}
 
 fn tab_to(state: &mut FormState, target: Focus) {
     for _ in 0..ALL_FIELDS.len() + 1 {

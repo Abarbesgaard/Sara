@@ -26,14 +26,7 @@ fn forget_canonical_lists_derived_children_but_does_not_archive_them() {
     let conn = db::open_in_memory_for_test();
     let canonical = seed(&conn, "canonical pattern", &[]);
     let child = seed(&conn, "derived application", &[]);
-    db::insert_memory_link(
-        &conn,
-        &child.uuid.to_string(),
-        &canonical.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, child.uuid, "derived_from", canonical.uuid);
     let canonical_label = format!("m{}", canonical.display_id.unwrap());
     let child_label = format!("m{}", child.display_id.unwrap());
 
@@ -56,14 +49,7 @@ fn forget_cascade_archives_derived_children_too() {
     let conn = db::open_in_memory_for_test();
     let canonical = seed(&conn, "canonical pattern", &[]);
     let child = seed(&conn, "derived application", &[]);
-    db::insert_memory_link(
-        &conn,
-        &child.uuid.to_string(),
-        &canonical.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, child.uuid, "derived_from", canonical.uuid);
     let canonical_label = format!("m{}", canonical.display_id.unwrap());
     let child_label = format!("m{}", child.display_id.unwrap());
 

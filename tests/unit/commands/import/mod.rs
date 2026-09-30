@@ -3,10 +3,6 @@ use crate::infrastructure::db::STEP_KIND_STEP;
 use crate::infrastructure::model::Task;
 use crate::test_support::seed_task;
 
-fn tmp_path() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("sara-bundle-{}.txt", Uuid::new_v4()))
-}
-
 fn find_by_desc<'a>(tasks: &'a [Task], desc: &str) -> &'a Task {
     tasks
         .iter()
@@ -44,13 +40,13 @@ fn export_then_import_round_trips_a_dependency_graph() {
     db::add_link(&src, &root.uuid, "https://example.com", Some("docs")).unwrap();
     db::set_task_files(&src, &root.uuid, &["src/main.rs".into()]).unwrap();
 
-    let path = tmp_path();
+    let tmp = crate::test_support::temp_dir();
+    let path = tmp.path().join("bundle.txt");
     crate::commands::export::run(&src, &root.uuid.to_string(), Some(path.as_path())).unwrap();
 
     let mut dst = db::open_in_memory_for_test();
     let cfg = Config::default();
     run(&mut dst, &cfg, Some(path.to_str().unwrap()), None).unwrap();
-    let _ = std::fs::remove_file(&path);
 
     let tasks = db::list_tasks(&dst, None).unwrap();
     assert_eq!(
@@ -107,7 +103,8 @@ fn import_reassigns_every_task_when_project_is_overridden() {
     let dep = seed_task(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
 
-    let path = tmp_path();
+    let tmp = crate::test_support::temp_dir();
+    let path = tmp.path().join("bundle.txt");
     crate::commands::export::run(&src, &root.uuid.to_string(), Some(path.as_path())).unwrap();
 
     let mut dst = db::open_in_memory_for_test();
@@ -119,7 +116,6 @@ fn import_reassigns_every_task_when_project_is_overridden() {
         Some("relocated"),
     )
     .unwrap();
-    let _ = std::fs::remove_file(&path);
 
     let tasks = db::list_tasks(&dst, None).unwrap();
     assert_eq!(tasks.len(), 2);

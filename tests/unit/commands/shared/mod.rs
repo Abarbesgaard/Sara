@@ -113,14 +113,7 @@ fn derived_graph_walks_both_directions() {
     let conn = crate::infrastructure::db::open_in_memory_for_test();
     let canon = seed_memory(&conn);
     let child = seed_memory(&conn);
-    crate::infrastructure::db::insert_memory_link(
-        &conn,
-        &child.uuid.to_string(),
-        &canon.uuid.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, child.uuid, "derived_from", canon.uuid);
     assert_eq!(derived_count(&conn, &canon.uuid.to_string()), 1);
     assert_eq!(
         derived_children(&conn, &canon.uuid.to_string())[0].uuid,

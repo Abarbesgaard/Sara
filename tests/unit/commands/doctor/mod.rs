@@ -85,22 +85,8 @@ fn link_to_missing_or_archived_memory_is_orphaned() {
     let conn = fresh();
     let a = memory(&conn, "alpha", 1, true);
     let gone = memory(&conn, "beta", 1, true);
-    db::insert_memory_link(
-        &conn,
-        &a.to_string(),
-        &Uuid::new_v4().to_string(),
-        "similar_to",
-        1.0,
-    )
-    .unwrap();
-    db::insert_memory_link(
-        &conn,
-        &a.to_string(),
-        &gone.to_string(),
-        "derived_from",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, a, "similar_to", Uuid::new_v4());
+    crate::test_support::link(&conn, a, "derived_from", gone);
     db::archive_item(&conn, &gone).unwrap();
 
     let v = super::doctor_value(&conn).unwrap();
@@ -114,14 +100,7 @@ fn archived_target_of_supersedes_is_not_orphaned() {
     let conn = fresh();
     let newer = memory(&conn, "use v2 api", 1, true);
     let older = memory(&conn, "use v1 api", 1, true);
-    db::insert_memory_link(
-        &conn,
-        &newer.to_string(),
-        &older.to_string(),
-        "supersedes",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, newer, "supersedes", older);
     db::archive_item(&conn, &older).unwrap();
     let v = super::doctor_value(&conn).unwrap();
     assert_eq!(check(&v, "orphaned_links")["status"], "ok");
@@ -150,14 +129,7 @@ fn active_superseded_memory_warns_and_doctor_archives_nothing() {
     let conn = fresh();
     let newer = memory(&conn, "use v2 api", 1, true);
     let older = memory(&conn, "use v1 api", 1, true);
-    db::insert_memory_link(
-        &conn,
-        &newer.to_string(),
-        &older.to_string(),
-        "supersedes",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, newer, "supersedes", older);
 
     let v = super::doctor_value(&conn).unwrap();
     let c = check(&v, "superseded");

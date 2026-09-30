@@ -1,16 +1,12 @@
 use super::*;
 use std::io::Write;
 
-use crate::test_support::env_lock;
+use crate::test_support::{env_guard, temp_dir};
 
 #[cfg(unix)]
-fn fake_editor(name: &str, body: &str) -> std::path::PathBuf {
+fn fake_editor(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
-    let path = std::env::temp_dir().join(format!(
-        "sara-fake-editor-{name}-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
+    let path = dir.join("editor.sh");
     let mut f = std::fs::File::create(&path).unwrap();
     writeln!(f, "#!/bin/sh").unwrap();
     writeln!(f, "{body}").unwrap();
@@ -23,31 +19,16 @@ fn fake_editor(name: &str, body: &str) -> std::path::PathBuf {
 
 #[cfg(unix)]
 fn with_editor<F: FnOnce()>(script: &std::path::Path, f: F) {
-    let _guard = env_lock();
-    let old_editor = std::env::var("EDITOR").ok();
-    let old_visual = std::env::var("VISUAL").ok();
-    unsafe {
-        std::env::set_var("EDITOR", script);
-        std::env::remove_var("VISUAL");
-    }
+    let mut env = env_guard();
+    env.set("EDITOR", script).remove("VISUAL");
     f();
-    unsafe {
-        match old_editor {
-            Some(v) => std::env::set_var("EDITOR", v),
-            None => std::env::remove_var("EDITOR"),
-        }
-        match old_visual {
-            Some(v) => std::env::set_var("VISUAL", v),
-            None => std::env::remove_var("VISUAL"),
-        }
-    }
-    let _ = std::fs::remove_file(script);
 }
 
 #[cfg(unix)]
 #[test]
 fn external_editor_returns_edited_content_when_changed() {
-    let script = fake_editor("changed", "echo 'edited text' > \"$1\"");
+    let tmp = temp_dir();
+    let script = fake_editor(tmp.path(), "echo 'edited text' > \"$1\"");
     with_editor(&script, || {
         let result = edit_text_via_external_editor("original text").unwrap();
         assert_eq!(result, Some("edited text\n".to_string()));
@@ -57,7 +38,8 @@ fn external_editor_returns_edited_content_when_changed() {
 #[cfg(unix)]
 #[test]
 fn external_editor_returns_none_when_unchanged() {
-    let script = fake_editor("unchanged", ": leave the file as-is");
+    let tmp = temp_dir();
+    let script = fake_editor(tmp.path(), ": leave the file as-is");
     with_editor(&script, || {
         let result = edit_text_via_external_editor("same text").unwrap();
         assert_eq!(result, None);
@@ -67,7 +49,8 @@ fn external_editor_returns_none_when_unchanged() {
 #[cfg(unix)]
 #[test]
 fn external_editor_returns_none_when_editor_exits_nonzero() {
-    let script = fake_editor("fails", "echo 'should be ignored' > \"$1\"\nexit 1");
+    let tmp = temp_dir();
+    let script = fake_editor(tmp.path(), "echo 'should be ignored' > \"$1\"\nexit 1");
     with_editor(&script, || {
         let result = edit_text_via_external_editor("original").unwrap();
         assert_eq!(result, None);
@@ -77,18 +60,14 @@ fn external_editor_returns_none_when_editor_exits_nonzero() {
 #[cfg(unix)]
 #[test]
 fn external_editor_cleans_up_its_tempfile() {
-    let marker = std::env::temp_dir().join(format!(
-        "sara-test-marker-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
-    let script = fake_editor("cleanup", &format!("echo \"$1\" > {}", marker.display()));
+    let tmp = temp_dir();
+    let marker = tmp.path().join("marker");
+    let script = fake_editor(tmp.path(), &format!("echo \"$1\" > {}", marker.display()));
     with_editor(&script, || {
         let _ = edit_text_via_external_editor("x").unwrap();
     });
     let tempfile_path = std::fs::read_to_string(&marker).unwrap().trim().to_string();
     assert!(!std::path::Path::new(&tempfile_path).exists());
-    let _ = std::fs::remove_file(&marker);
 }
 
 fn link(url: &str) -> db::Link {

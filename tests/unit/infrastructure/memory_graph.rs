@@ -163,7 +163,7 @@ fn explicit_link_and_shared_anchor_sum() {
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["auth"]);
     let b = seed(&conn, &["auth"]);
-    db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "similar_to", 1.0).unwrap();
+    crate::test_support::link(&conn, a, "similar_to", b);
 
     let g = MemoryGraph::build(&conn).unwrap();
     assert!((g.edge_weight(&a, &b).unwrap() - 0.7).abs() < 1e-9);
@@ -416,7 +416,7 @@ fn consolidate_leaves_deliberate_links_untouched() {
     let conn = db::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
-    db::insert_memory_link(&conn, &a.to_string(), &b.to_string(), "similar_to", 1.0).unwrap();
+    crate::test_support::link(&conn, a, "similar_to", b);
     consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
     let links = db::all_memory_links(&conn).unwrap();
     assert_eq!(links.len(), 1);

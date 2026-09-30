@@ -146,14 +146,7 @@ fn linked_memories_do_not_appear_in_diagnose() {
     let uuid_a = insert_memory_with_file(&conn, NEAR_A, "tag-c", &file);
     let uuid_b = insert_memory_with_file(&conn, NEAR_B, "tag-d", &file);
 
-    db::insert_memory_link(
-        &conn,
-        &uuid_a.to_string(),
-        &uuid_b.to_string(),
-        "supersedes",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, uuid_a, "supersedes", uuid_b);
 
     let v = super::diagnose_value(&conn, super::DEFAULT_CONFLICT_THRESHOLD, None, None).unwrap();
     assert_eq!(v["count"].as_u64().unwrap(), 0);

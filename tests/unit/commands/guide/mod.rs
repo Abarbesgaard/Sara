@@ -199,32 +199,19 @@ fn capture_mode_records_stderr_too() {
     assert!(gate.transcript[0].output.contains("OOPS"));
 }
 
-fn init_git_repo() -> (std::path::PathBuf, String) {
-    let dir = std::env::temp_dir().join(format!("sara-gate-git-{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let run = |args: &[&str]| {
-        std::process::Command::new("git")
-            .current_dir(&dir)
-            .args(args)
-            .output()
-            .unwrap();
-    };
-    run(&["init", "-b", "main"]);
-    run(&["config", "user.email", "t@t.com"]);
-    run(&["config", "user.name", "t"]);
-    std::fs::write(dir.join("f.txt"), "hi").unwrap();
-    run(&["add", "-A"]);
-    run(&["commit", "-m", "init"]);
-    let head = crate::infrastructure::git::head_commit(&dir).unwrap();
-    (dir, head)
+fn init_git_repo() -> (tempfile::TempDir, String) {
+    let repo = crate::test_support::git_repo();
+    std::fs::write(repo.path().join("f.txt"), "hi").unwrap();
+    crate::test_support::commit_all(repo.path(), "init");
+    let head = crate::infrastructure::git::head_commit(repo.path()).unwrap();
+    (repo, head)
 }
 
 #[test]
 fn gate_deduplicates_identical_verify_commands() {
     let conn = db::open_in_memory_for_test();
-    let marker = std::env::temp_dir().join(format!("sara-gate-dedup-{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::remove_file(&marker);
+    let tmp = crate::test_support::temp_dir();
+    let marker = tmp.path().join("marker");
     let cmd = format!("echo x >> {}", sh_arg(&marker));
 
     let task = crate::test_support::seed_task(&conn, "dedup", "proj");
@@ -248,19 +235,18 @@ fn gate_deduplicates_identical_verify_commands() {
     assert_eq!(gate.passed, 3, "all three criteria counted green");
     let lines = std::fs::read_to_string(&marker).unwrap().lines().count();
     assert_eq!(lines, 1, "command body ran exactly once");
-    let _ = std::fs::remove_file(&marker);
 }
 
 #[test]
 fn gate_caches_criteria_already_proven_at_head() {
     let conn = db::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
-    let marker = std::env::temp_dir().join(format!("sara-gate-cache-{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::remove_file(&marker);
+    let tmp = crate::test_support::temp_dir();
+    let marker = tmp.path().join("marker");
     let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
     let task = crate::test_support::seed_task(&conn, "cache", "proj");
-    db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
+    db::upsert_project_seen(&conn, "proj", Some(repo.path().to_str().unwrap())).unwrap();
     let sid = db::add_step(
         &conn,
         &task.uuid,
@@ -285,21 +271,18 @@ fn gate_caches_criteria_already_proven_at_head() {
     assert_eq!(gate.cached, 0, "--fresh ignores the cache");
     assert_eq!(gate.ran, 1, "--fresh re-runs the verify command");
     assert!(marker.exists(), "fresh run executes the command");
-
-    let _ = std::fs::remove_file(&marker);
-    let _ = std::fs::remove_dir_all(&repo);
 }
 
 #[test]
 fn gate_bypasses_cache_when_tree_is_dirty() {
     let conn = db::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
-    let marker = std::env::temp_dir().join(format!("sara-gate-dirty-{}", uuid::Uuid::new_v4()));
-    let _ = std::fs::remove_file(&marker);
+    let tmp = crate::test_support::temp_dir();
+    let marker = tmp.path().join("marker");
     let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
     let task = crate::test_support::seed_task(&conn, "dirty", "proj");
-    db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
+    db::upsert_project_seen(&conn, "proj", Some(repo.path().to_str().unwrap())).unwrap();
     let sid = db::add_step(
         &conn,
         &task.uuid,
@@ -312,7 +295,7 @@ fn gate_bypasses_cache_when_tree_is_dirty() {
     .unwrap();
     db::set_step_done(&conn, sid, true, Some("pre"), Some(&head)).unwrap();
 
-    std::fs::write(repo.join("dirty.txt"), "x").unwrap();
+    std::fs::write(repo.path().join("dirty.txt"), "x").unwrap();
 
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -322,9 +305,6 @@ fn gate_bypasses_cache_when_tree_is_dirty() {
         marker.exists(),
         "verify command runs when the tree is dirty"
     );
-
-    let _ = std::fs::remove_file(&marker);
-    let _ = std::fs::remove_dir_all(&repo);
 }
 
 #[test]
