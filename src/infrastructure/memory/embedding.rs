@@ -187,6 +187,12 @@ fn needs_reindex(stored: Option<&str>, current: &str) -> bool {
     stored != Some(current)
 }
 
+/// Whether the stored index was built with the compiled-in embedding scheme.
+pub fn index_is_current(conn: &rusqlite::Connection) -> anyhow::Result<bool> {
+    let stored = crate::infrastructure::db::meta_get(conn, SCHEME_VERSION_KEY)?;
+    Ok(!needs_reindex(stored.as_deref(), &scheme_version()))
+}
+
 pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool> {
     let current = scheme_version();
     let stored = crate::infrastructure::db::meta_get(conn, SCHEME_VERSION_KEY)?;

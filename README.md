@@ -250,6 +250,7 @@ sara relearn m7 --tag auth "corrected text"   # edit in place — keeps label, l
 sara promote m14        # accept a provisional auto-memory as permanent
 sara prune-memories --dry-run   # preview low-value memories eligible for archival
 sara prune-memories --apply     # actually archive them
+sara doctor             # health report: embeddings, orphaned links, duplicates, backlog, decay
 ```
 
 **Strength labels:**
@@ -535,6 +536,7 @@ from reading and planning a task through to completing it:
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
 | `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
+| `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay) with a fix per finding |
 | `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |
 
@@ -967,6 +969,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara link-memory <from> <rel> <to>` | Create a typed edge between memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
 | `sara unlink-memory <from> <rel> <to>` | Remove a typed edge between memories |
 | `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
+| `sara doctor`                      | Read-only memory-store health report with the fix for each finding (`--json`, `--strict` exits 1 on warnings) |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |

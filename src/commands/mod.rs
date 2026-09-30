@@ -7,6 +7,7 @@ pub mod branch;
 pub mod delete;
 pub mod dep;
 pub mod diagnose_memories;
+pub mod doctor;
 pub mod done;
 pub mod dream;
 pub mod export;

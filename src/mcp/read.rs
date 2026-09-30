@@ -355,6 +355,22 @@ impl SaraServer {
     }
 
     #[tool(
+        description = "Read-only health report for the memory store, run it before \
+        trusting recall. Checks embedding coverage, orphaned memory links, \
+        near-duplicate pairs, superseded-but-active memories, the provisional review \
+        backlog, and decay outliers. Each check returns status ok|warn|info, a count, \
+        a summary, and the `fix` command to run. `healthy` is false when any check warns."
+    )]
+    fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, ErrorData> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp doctor", |conn, _cfg| {
+                commands::doctor::doctor_value(conn)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
         description = "Rebuild the semantic embedding index over all memories. \
         Needed after bulk imports, or when `recall`'s semantic pass is missing \
         memories that are obviously relevant. Returns the number embedded."

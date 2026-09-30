@@ -103,6 +103,32 @@ pub fn all_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
     Ok(rows)
 }
 
+/// Links with an endpoint that no longer resolves to a live memory: missing from
+/// `items`, or archived — except the archived *target* of a `supersedes` edge,
+/// which is the expected end state of superseding.
+pub fn orphaned_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
+    let mut stmt = conn.prepare(
+        "SELECT ml.id, ml.from_uuid, ml.to_uuid, ml.relation, ml.weight
+         FROM memory_links ml
+         LEFT JOIN items f ON f.uuid = ml.from_uuid
+         LEFT JOIN items t ON t.uuid = ml.to_uuid
+         WHERE f.uuid IS NULL OR t.uuid IS NULL
+            OR f.status NOT IN ('active','provisional')
+            OR (t.status NOT IN ('active','provisional') AND ml.relation <> 'supersedes')
+         ORDER BY ml.id ASC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(MemoryLink {
+            id: r.get(0)?,
+            from_uuid: r.get(1)?,
+            to_uuid: r.get(2)?,
+            relation: r.get(3)?,
+            weight: r.get(4)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<MemoryLink>> {
     let mut stmt = conn.prepare(
         "SELECT id, from_uuid, to_uuid, relation, weight

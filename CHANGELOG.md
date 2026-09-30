@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`sara doctor` — is my memory store healthy?** One read-only report over
+  the store: embedding coverage (and a stale embedding scheme), orphaned memory
+  links, near-duplicate pairs, superseded memories still active, the provisional
+  review backlog, and decay outliers (never recalled in the 90-day window, or
+  over-reinforced). Each finding names the command that fixes it. `--json` for
+  scripts; `--strict` exits 1 when any check warns so it can gate CI or a
+  pre-commit hook. Also exposed as the MCP `doctor` tool (#173).
+
 ### Changed
 
 - **Telemetry is now a compile-time opt-in (`--features telemetry`).** Default

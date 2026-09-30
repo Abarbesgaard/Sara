@@ -444,6 +444,11 @@ pub(crate) struct DiagnoseMemoriesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct DoctorParams {
+    pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ReindexEmbeddingsParams {
     pub(crate) project_path: Option<String>,
 }

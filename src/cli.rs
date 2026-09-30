@@ -427,6 +427,15 @@ pub enum Command {
         provisional_days: i64,
     },
 
+    /// Read-only health report over the memory store; each finding names its fix.
+    Doctor {
+        #[arg(long)]
+        json: bool,
+        /// Exit non-zero when any check warns (for CI / pre-commit gates).
+        #[arg(long)]
+        strict: bool,
+    },
+
     #[command(name = "diagnose-memories", alias = "conflicts")]
     DiagnoseMemories {
         #[arg(long, default_value_t = crate::commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD)]

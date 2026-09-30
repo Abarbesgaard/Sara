@@ -509,6 +509,10 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             }
         }
 
+        Command::Doctor { json, strict } => {
+            commands::doctor::run(&conn, json, strict)?;
+        }
+
         Command::DiagnoseMemories {
             threshold,
             project,
