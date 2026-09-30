@@ -20,6 +20,7 @@ impl SaraServer {
                 commands::begin::begin_value(
                     conn,
                     cfg,
+                    crate::infrastructure::telemetry::Source::Mcp,
                     &p.description,
                     &tags,
                     &files,

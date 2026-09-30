@@ -4,6 +4,10 @@ pub mod git;
 pub mod memory;
 pub mod model;
 pub mod project;
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+#[cfg(not(feature = "telemetry"))]
+#[path = "telemetry_off.rs"]
 pub mod telemetry;
 pub mod tui;
 pub mod util;

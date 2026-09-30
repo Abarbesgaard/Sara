@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Telemetry is now a compile-time opt-in (`--features telemetry`).** Default
+  and release builds contain no telemetry code at all: nothing is recorded,
+  queued, or sent, and the HTTP client (`ureq`) is not compiled in. In those
+  builds `sara telemetry …` prints "telemetry not compiled into this build".
+  Nightly builds enable the feature, which carries the former `nightly`-branch
+  telemetry: MCP client identity and argument names captured at one central
+  tool-call choke point, per-operation `begin` trace spans (`begin_id` and
+  `folded` in the result), capture of clap usage errors / `--help` /
+  `--version`, and byte-capped flush batches. This retires the long-lived
+  `nightly` fork (#172).
+
 ## [1.7.0] - 2026-09-25
 
 ### Added
