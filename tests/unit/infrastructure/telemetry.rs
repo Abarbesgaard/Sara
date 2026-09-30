@@ -1,10 +1,6 @@
 use super::*;
-use std::sync::{Mutex, MutexGuard, OnceLock};
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-fn lock() -> MutexGuard<'static, ()> {
-    TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
-}
+use crate::test_support::env_lock;
 
 fn temp_queue(name: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!(
@@ -26,7 +22,7 @@ fn read_lines(path: &Path) -> Vec<serde_json::Value> {
 
 #[test]
 fn records_cli_invocation() {
-    let _g = lock();
+    let _g = env_lock();
     let path = temp_queue("cli");
     let flags = [String::from("--json"), String::from("--tag")];
     let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()), None);
@@ -81,7 +77,7 @@ fn span_stamps_trace_correlation_fields() {
     // the shared `trace_id`, an ordinal `seq`, and an optional outcome count
     // `n`. Plain records (no span) omit all three, so the allowlist for a
     // normal invocation is unaffected.
-    let _g = lock();
+    let _g = env_lock();
     let path = temp_queue("span");
     let span = Span {
         trace_id: "trace-xyz",
@@ -121,7 +117,7 @@ fn span_stamps_trace_correlation_fields() {
 
 #[test]
 fn records_mcp_invocation() {
-    let _g = lock();
+    let _g = env_lock();
     let path = temp_queue("mcp");
     let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()), None);
     append(&path, &rec).unwrap();
@@ -138,7 +134,7 @@ fn records_mcp_invocation() {
 
 #[test]
 fn records_mcp_client_origin() {
-    let _g = lock();
+    let _g = env_lock();
     let path = temp_queue("mcp-client");
     let client = McpClient {
         name: "claude-ai".into(),
@@ -209,7 +205,7 @@ fn extract_mcp_params_names_only_sorted_deduped() {
 
 #[test]
 fn err_code_is_type_derived() {
-    let _g = lock();
+    let _g = env_lock();
 
     let io_err: anyhow::Error = anyhow::Error::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,
@@ -242,7 +238,7 @@ fn err_code_is_type_derived() {
 
 #[test]
 fn disabled_writes_nothing() {
-    let _g = lock();
+    let _g = env_lock();
     let path = temp_queue("disabled");
 
     let mut cfg = Config::default();
@@ -420,7 +416,7 @@ fn clear_flush_env() {
 
 #[test]
 fn flush_sends_and_truncates_queue() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("send");
     let (url, rx) = mock_server("HTTP/1.1 200 OK");
     set_flush_env(&dir, &url);
@@ -442,7 +438,7 @@ fn flush_sends_and_truncates_queue() {
 
 #[test]
 fn flush_chunks_oversized_queue_into_sublimit_batches() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("chunk");
     // ~25-byte records; a 100-byte cap forces ~3 records per POST.
     write_queue(&dir.join("queue.jsonl"), 10);
@@ -488,7 +484,7 @@ fn flush_chunks_oversized_queue_into_sublimit_batches() {
 
 #[test]
 fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("chunk-fail");
     write_queue(&dir.join("queue.jsonl"), 6);
     // First batch accepted, second rejected (e.g. a 413) — progress is kept
@@ -522,7 +518,7 @@ fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
 
 #[test]
 fn flush_leaves_queue_on_failure() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("fail");
     let (url, _rx) = mock_server("HTTP/1.1 500 Internal Server Error");
     set_flush_env(&dir, &url);
@@ -542,7 +538,7 @@ fn flush_leaves_queue_on_failure() {
 
 #[test]
 fn flush_respects_optout() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("optout");
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
     set_flush_env(&dir, &url);
@@ -565,7 +561,7 @@ fn flush_respects_optout() {
 
 #[test]
 fn flush_min_interval_gates_repeat_sends() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("interval");
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
     set_flush_env(&dir, &url);
@@ -589,7 +585,7 @@ fn flush_min_interval_gates_repeat_sends() {
 
 #[test]
 fn remove_prefix_lines_keeps_later_appends() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("prefix");
     let path = dir.join("queue.jsonl");
     write_queue(&path, 5);
@@ -606,7 +602,7 @@ fn remove_prefix_lines_keeps_later_appends() {
 
 #[test]
 fn flush_single_sender_lock_blocks_second() {
-    let _g = lock();
+    let _g = env_lock();
     let dir = temp_dir_isolated("lock");
     set_flush_env(&dir, "http://127.0.0.1:9/insert");
     // Hold the lock, then a flush attempt must skip rather than double-send.

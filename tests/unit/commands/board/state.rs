@@ -2,9 +2,7 @@ use super::*;
 use crate::infrastructure::model::Task;
 
 fn task(conn: &Connection, desc: &str) -> Task {
-    let mut t = Task::new(desc.to_string(), "tk".to_string());
-    db::insert_task(conn, &mut t).unwrap();
-    t
+    crate::test_support::seed_task(conn, desc, "tk")
 }
 
 fn complete(conn: &Connection, t: &Task) {

@@ -2,15 +2,12 @@ use super::*;
 use crate::infrastructure::model::Item;
 
 fn seed(conn: &Connection) -> Item {
-    let mut item = Item::new_memory(
-        "old title".to_string(),
-        "old body about frobnicators".to_string(),
-        None,
-    );
-    item.tags = vec!["oldtag".to_string()];
-    item.path = Some(String::new());
-    db::insert_item(conn, &mut item).unwrap();
-    item
+    crate::test_support::seed_memory(
+        conn,
+        "old title",
+        "old body about frobnicators",
+        &["oldtag"],
+    )
 }
 
 #[test]

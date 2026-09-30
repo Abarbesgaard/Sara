@@ -1,17 +1,11 @@
 use super::*;
-use crate::infrastructure::model::Task;
-
-fn seed(conn: &Connection, desc: &str, project: &str) -> Task {
-    let mut task = Task::new(desc.into(), project.into());
-    db::insert_task(conn, &mut task).unwrap();
-    task
-}
+use crate::test_support::seed_task;
 
 #[test]
 fn move_value_rejects_empty_target_project() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
-    seed(&conn, "wanderer", "home");
+    seed_task(&conn, "wanderer", "home");
 
     let err =
         move_value(&conn, &cfg, "1", "   ").expect_err("a blank target project must be refused");
@@ -25,7 +19,7 @@ fn move_value_rejects_empty_target_project() {
 fn move_value_is_a_noop_for_the_same_project() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
-    let task = seed(&conn, "stayer", "home");
+    let task = seed_task(&conn, "stayer", "home");
 
     let v = move_value(&conn, &cfg, "1", "home").unwrap();
     assert_eq!(v["changed"], serde_json::json!(false));
@@ -42,7 +36,7 @@ fn move_value_is_a_noop_for_the_same_project() {
 fn move_value_reassigns_the_project() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
-    let task = seed(&conn, "mover", "home");
+    let task = seed_task(&conn, "mover", "home");
 
     let v = move_value(&conn, &cfg, "1", "work").unwrap();
     assert_eq!(v["changed"], serde_json::json!(true));
@@ -62,7 +56,7 @@ fn move_value_reassigns_the_project() {
 fn move_value_trims_surrounding_whitespace() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
-    let task = seed(&conn, "mover", "home");
+    let task = seed_task(&conn, "mover", "home");
 
     let v = move_value(&conn, &cfg, "1", "  work  ").unwrap();
     assert_eq!(v["to"], serde_json::json!("work"));

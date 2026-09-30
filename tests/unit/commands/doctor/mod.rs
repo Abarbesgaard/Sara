@@ -12,10 +12,9 @@ fn fresh() -> rusqlite::Connection {
 }
 
 fn memory(conn: &rusqlite::Connection, body: &str, age_days: i64, embed: bool) -> Uuid {
-    let mut item = Item::new_memory(body.to_string(), body.to_string(), None);
-    item.path = Some(String::new());
+    let mut item = crate::test_support::memory(body, body);
     item.created = Utc::now() - Duration::days(age_days);
-    db::insert_item(conn, &mut item).unwrap();
+    let item = crate::test_support::insert_memory(conn, item);
     if embed {
         embedding::index_memory(conn, &item);
     }

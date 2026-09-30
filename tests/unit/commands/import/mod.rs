@@ -1,12 +1,7 @@
 use super::*;
 use crate::infrastructure::db::STEP_KIND_STEP;
 use crate::infrastructure::model::Task;
-
-fn seed(conn: &Connection, desc: &str, project: &str) -> Task {
-    let mut task = Task::new(desc.into(), project.into());
-    db::insert_task(conn, &mut task).unwrap();
-    task
-}
+use crate::test_support::seed_task;
 
 fn tmp_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("sara-bundle-{}.txt", Uuid::new_v4()))
@@ -22,8 +17,8 @@ fn find_by_desc<'a>(tasks: &'a [Task], desc: &str) -> &'a Task {
 #[test]
 fn export_then_import_round_trips_a_dependency_graph() {
     let src = db::open_in_memory_for_test();
-    let root = seed(&src, "root task", "origin");
-    let dep = seed(&src, "blocker task", "origin");
+    let root = seed_task(&src, "root task", "origin");
+    let dep = seed_task(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
     db::add_step(
         &src,
@@ -108,8 +103,8 @@ fn export_then_import_round_trips_a_dependency_graph() {
 #[test]
 fn import_reassigns_every_task_when_project_is_overridden() {
     let src = db::open_in_memory_for_test();
-    let root = seed(&src, "root task", "origin");
-    let dep = seed(&src, "blocker task", "origin");
+    let root = seed_task(&src, "root task", "origin");
+    let dep = seed_task(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
 
     let path = tmp_path();

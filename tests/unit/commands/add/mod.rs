@@ -1,11 +1,9 @@
 use super::*;
-use crate::infrastructure::model::Task;
 
 #[test]
 fn duplicate_open_task_detected_case_insensitively_same_project() {
     let conn = db::open_in_memory_for_test();
-    let mut t = Task::new("Implement JWT login for API".into(), "proj".into());
-    db::insert_task(&conn, &mut t).unwrap();
+    crate::test_support::seed_task(&conn, "Implement JWT login for API", "proj");
 
     let dup = find_duplicate_open_task(&conn, "proj", "  implement jwt login for api ");
     assert!(dup.is_some(), "an open same-project task must be flagged");
@@ -19,8 +17,7 @@ fn duplicate_open_task_detected_case_insensitively_same_project() {
 fn completed_task_is_not_a_duplicate() {
     use crate::infrastructure::model::Status;
     let conn = db::open_in_memory_for_test();
-    let mut t = Task::new("Implement JWT login for API".into(), "proj".into());
-    db::insert_task(&conn, &mut t).unwrap();
+    let mut t = crate::test_support::seed_task(&conn, "Implement JWT login for API", "proj");
     t.status = Status::Completed;
     db::update_task(&conn, &t).unwrap();
 

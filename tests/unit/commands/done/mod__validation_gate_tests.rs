@@ -2,8 +2,7 @@ use super::*;
 use crate::infrastructure::model::Task;
 
 fn task_with_criterion(conn: &Connection) -> Task {
-    let mut task = Task::new("prove me".into(), "proj".into());
-    db::insert_task(conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(conn, "prove me", "proj");
     db::add_step(
         conn,
         &task.uuid,
@@ -60,8 +59,7 @@ fn validated_task_closes_cleanly() {
 #[test]
 fn task_without_criteria_closes_with_advisory() {
     let conn = db::open_in_memory_for_test();
-    let mut task = Task::new("no dod".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "no dod", "proj");
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
     assert_eq!(v["status"], "completed");
     assert!(

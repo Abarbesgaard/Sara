@@ -57,20 +57,7 @@ fn char_col_of_any(line: &str, candidates: &[char]) -> usize {
 fn draw(st: &BoardState) -> String {
     let rows = visible_rows(st);
     let (lines, _) = build_lines(st, &rows);
-    let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
-    terminal.draw(|f| render(f, st, &lines)).unwrap();
-    let buf = terminal.backend().buffer();
-    let area = *buf.area();
-    let mut out = String::new();
-    for y in 0..area.height {
-        let mut line = String::new();
-        for x in 0..area.width {
-            line.push_str(buf[(x, y)].symbol());
-        }
-        out.push_str(line.trim_end());
-        out.push('\n');
-    }
-    out
+    crate::test_support::render_to_string(100, 24, |f| render(f, st, &lines))
 }
 
 #[test]

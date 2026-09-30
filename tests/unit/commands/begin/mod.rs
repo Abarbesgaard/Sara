@@ -1,9 +1,7 @@
 use super::*;
 use crate::infrastructure::db;
 
-fn cfg() -> Config {
-    Config::default()
-}
+use crate::test_support::cfg;
 
 #[test]
 fn begin_founds_a_task_with_assignment_and_next_cursor() {

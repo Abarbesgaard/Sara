@@ -1,6 +1,6 @@
 use super::*;
 use crate::infrastructure::config::Config;
-use crate::infrastructure::model::{Item, Task};
+use crate::infrastructure::model::Item;
 
 #[test]
 fn tag_exact_memory_surfaces_with_full_body_as_canonical() {
@@ -42,8 +42,7 @@ fn task_hits_still_surface_as_snippet_pointers() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
 
-    let mut prior = Task::new("fix the flaky payment retry logic".into(), "proj".into());
-    db::insert_task(&conn, &mut prior).unwrap();
+    crate::test_support::seed_task(&conn, "fix the flaky payment retry logic", "proj");
 
     let hits = find_similar(
         &conn,

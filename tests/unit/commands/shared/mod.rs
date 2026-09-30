@@ -96,10 +96,7 @@ fn parse_duration_mins_handles_hours_minutes_and_bare() {
 }
 
 fn seed_memory(conn: &rusqlite::Connection) -> crate::infrastructure::model::Item {
-    let mut item = crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
-    item.path = Some(String::new());
-    crate::infrastructure::db::insert_item(conn, &mut item).unwrap();
-    item
+    crate::test_support::seed_memory(conn, "t", "body", &[])
 }
 
 #[test]

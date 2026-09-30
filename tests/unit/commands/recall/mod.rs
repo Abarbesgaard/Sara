@@ -2,9 +2,7 @@ use super::*;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::model::{Status, Task};
 
-fn cfg() -> Config {
-    Config::default()
-}
+use crate::test_support::cfg;
 
 fn seed_memory(
     conn: &Connection,
@@ -13,10 +11,7 @@ fn seed_memory(
     tags: &[&str],
     projects: &[&str],
 ) -> Item {
-    let mut item = Item::new_memory(title.to_string(), body.to_string(), None);
-    item.tags = tags.iter().map(|t| t.to_string()).collect();
-    item.path = Some(String::new());
-    db::insert_item(conn, &mut item).unwrap();
+    let item = crate::test_support::seed_memory(conn, title, body, tags);
     db::set_item_projects(
         conn,
         &item.uuid,

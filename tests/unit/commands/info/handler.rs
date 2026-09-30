@@ -1,11 +1,7 @@
 use super::*;
 use std::io::Write;
-use std::sync::{Mutex, OnceLock};
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
-}
+use crate::test_support::env_lock;
 
 #[cfg(unix)]
 fn fake_editor(name: &str, body: &str) -> std::path::PathBuf {
@@ -27,7 +23,7 @@ fn fake_editor(name: &str, body: &str) -> std::path::PathBuf {
 
 #[cfg(unix)]
 fn with_editor<F: FnOnce()>(script: &std::path::Path, f: F) {
-    let _guard = test_lock();
+    let _guard = env_lock();
     let old_editor = std::env::var("EDITOR").ok();
     let old_visual = std::env::var("VISUAL").ok();
     unsafe {

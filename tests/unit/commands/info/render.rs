@@ -2,7 +2,6 @@ use super::super::types::TaskTree;
 use super::*;
 use crate::infrastructure::model::{Status, Task};
 use chrono::Utc;
-use ratatui::{Terminal, backend::TestBackend};
 
 fn task() -> Task {
     Task::new("root task".into(), "tk".into())
@@ -93,20 +92,7 @@ fn draw(st: &mut EditState) -> String {
 }
 
 fn draw_at(st: &mut EditState, w: u16, h: u16) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
-    terminal.draw(|f| render(f, st)).unwrap();
-    let buf = terminal.backend().buffer();
-    let area = *buf.area();
-    let mut out = String::new();
-    for y in 0..area.height {
-        let mut line = String::new();
-        for x in 0..area.width {
-            line.push_str(buf[(x, y)].symbol());
-        }
-        out.push_str(line.trim_end());
-        out.push('\n');
-    }
-    out
+    crate::test_support::render_to_string(w, h, |f| render(f, st))
 }
 
 #[test]
