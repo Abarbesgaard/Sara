@@ -8,6 +8,7 @@ use ratatui::{
 };
 
 use super::types::ActivityData;
+use crate::commands::shared::{heat_color, month_abbr};
 
 const CELL: &str = "██";
 
@@ -208,40 +209,6 @@ fn render_legend(f: &mut Frame, max: u32, area: ratatui::layout::Rect) {
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-fn heat_color(count: u32, max: u32) -> Color {
-    if count == 0 {
-        return Color::Rgb(22, 27, 34);
-    }
-    let ratio = count as f64 / max.max(1) as f64;
-    if ratio < 0.25 {
-        Color::Rgb(14, 68, 41)
-    } else if ratio < 0.5 {
-        Color::Rgb(0, 109, 50)
-    } else if ratio < 0.75 {
-        Color::Rgb(38, 166, 65)
-    } else {
-        Color::Rgb(57, 211, 83)
-    }
-}
-
 fn stat_span(label: &str, value: &str) -> Span<'static> {
     Span::raw(format!("{label}: {value}")).style(Style::default().fg(Color::White))
-}
-
-fn month_abbr(m: u32) -> &'static str {
-    match m {
-        1 => "Jan",
-        2 => "Feb",
-        3 => "Mar",
-        4 => "Apr",
-        5 => "May",
-        6 => "Jun",
-        7 => "Jul",
-        8 => "Aug",
-        9 => "Sep",
-        10 => "Oct",
-        11 => "Nov",
-        12 => "Dec",
-        _ => "???",
-    }
 }

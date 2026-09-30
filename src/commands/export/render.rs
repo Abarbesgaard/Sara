@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::commands::shared::plural;
 use anyhow::{Context, Result};
 
 pub(super) fn emit(output: Option<&Path>, blob: &str, root_id: i64, extra: usize) -> Result<()> {
@@ -8,10 +9,7 @@ pub(super) fn emit(output: Option<&Path>, blob: &str, root_id: i64, extra: usize
             std::fs::write(path, format!("{blob}\n"))
                 .with_context(|| format!("writing blob to {}", path.display()))?;
             let dep_note = if extra > 0 {
-                format!(
-                    " (+{extra} dependency task{})",
-                    if extra == 1 { "" } else { "s" }
-                )
+                format!(" (+{extra} dependency task{})", plural(extra))
             } else {
                 String::new()
             };
@@ -22,7 +20,7 @@ pub(super) fn emit(output: Option<&Path>, blob: &str, root_id: i64, extra: usize
             if extra > 0 {
                 eprintln!(
                     "Exported task {root_id} with {extra} dependency task{}. Import with `sara import`.",
-                    if extra == 1 { "" } else { "s" }
+                    plural(extra)
                 );
             } else {
                 eprintln!("Exported task {root_id}. Import with `sara import`.");

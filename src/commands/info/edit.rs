@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{Local, Utc};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::KeyCode;
 use ratatui::{Terminal, backend::Backend};
 use ratatui_textarea::TextArea;
 use rusqlite::Connection;
@@ -18,6 +18,7 @@ use super::handler::{
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
+use crate::commands::shared::{parse_due, parse_duration_mins};
 
 pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
@@ -52,15 +53,9 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
             }
         })?;
 
-        if !event::poll(std::time::Duration::from_millis(100))? {
-            continue;
-        }
-        let Event::Key(key) = event::read()? else {
+        let Some(key) = crate::infrastructure::tui::next_key(100)? else {
             continue;
         };
-        if key.kind == KeyEventKind::Release {
-            continue;
-        }
 
         if showing_help {
             showing_help = false;
@@ -510,7 +505,7 @@ pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &
             if value.trim().is_empty() {
                 task.due = None;
             } else {
-                task.due = crate::commands::add::parse_due(value, cfg);
+                task.due = parse_due(value, cfg);
             }
         }
         EditField::Tags => {
@@ -522,7 +517,7 @@ pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &
         }
         EditField::Priority => {}
         EditField::Estimate => {
-            task.estimate_mins = parse_duration_to_mins(value);
+            task.estimate_mins = parse_duration_mins(value);
         }
         EditField::Recur => {
             let v = value.trim().to_lowercase();
@@ -577,29 +572,6 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
     ));
     detail.tree = build_task_tree(conn, detail.task.uuid);
     Ok(())
-}
-
-pub(super) fn parse_duration_to_mins(s: &str) -> Option<i64> {
-    let s = s.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let s_lower = s.to_lowercase();
-    let rest = s_lower.as_str();
-    if let Some(h_pos) = rest.find('h')
-        && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
-    {
-        let mut total = h * 60;
-        let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
-        if !after_h.is_empty()
-            && let Ok(m) = after_h.parse::<i64>()
-        {
-            total += m;
-        }
-        return Some(total);
-    }
-    let m_part = rest.trim_end_matches('m').trim();
-    m_part.parse::<i64>().ok()
 }
 
 #[cfg(test)]

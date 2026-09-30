@@ -3,6 +3,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+use crate::commands::shared::{guard_branch_mutation, json_strs, project_head};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Status, Task};
@@ -19,11 +20,7 @@ fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
     }
 
     let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
-    let head = db::get_project(conn, &task.project)
-        .ok()
-        .flatten()
-        .and_then(|p| p.path)
-        .and_then(|path| crate::infrastructure::git::head_commit(std::path::Path::new(&path)));
+    let head = project_head(conn, &task.project);
 
     match (validated, head) {
         (None, _) => Ok(DoneGate::Refuse(
@@ -38,7 +35,7 @@ fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
 
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
-    crate::commands::guide::guard_branch_mutation(conn, id_or_uuid, &task, force)?;
+    guard_branch_mutation(conn, id_or_uuid, &task, force)?;
 
     let blockers = db::get_blockers(conn, &task.uuid)?;
     if !blockers.is_empty() && !force {
@@ -157,11 +154,7 @@ pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Re
         println!("🧠 Auto-memory saved: {label} (provisional — review with `sara memories`)");
     }
     if let Some(hyg) = v.get("hygiene").filter(|h| !h.is_null()) {
-        let archived: Vec<&str> = hyg
-            .get("archived")
-            .and_then(|a| a.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-            .unwrap_or_default();
+        let archived: Vec<&str> = json_strs(&hyg["archived"]);
         if !archived.is_empty() {
             println!(
                 "🧹 Auto-archived {} superseded {}: {}",

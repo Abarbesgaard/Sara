@@ -3,9 +3,9 @@ use rusqlite::Connection;
 
 use crate::infrastructure::db;
 use crate::infrastructure::memory::graph::MemoryGraph;
-use crate::infrastructure::model::Item;
 use crate::infrastructure::tui;
 
+use crate::commands::shared::{canonical_labels, derived_from_suffix, item_label};
 use std::collections::HashMap;
 
 mod render;
@@ -14,14 +14,6 @@ use types::{Assoc, Bond, Dir, DreamData, Neighbor, NodeKind, Star, WebData};
 
 const TICK_MS: u64 = 50;
 pub(super) const PULSE_TICKS: u64 = 40;
-
-fn item_label(item: &Item) -> String {
-    format!(
-        "{}{}",
-        item.kind.chars().next().unwrap_or('m'),
-        item.display_id.unwrap_or(0)
-    )
-}
 
 fn navigate_back(conn: &Connection, breadcrumb: &mut Vec<String>) -> Option<DreamData> {
     while let Some(prev) = breadcrumb.pop() {
@@ -480,8 +472,7 @@ fn run_web_plain(conn: &Connection) -> Result<()> {
 fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
     let data = load(conn, handle)?;
     let _ = db::record_memory_recall(conn, &data.item.uuid);
-    let (derived_labels, derived_from_labels) =
-        crate::commands::memories::canonical_labels(conn, &data.item);
+    let (derived_labels, derived_from_labels) = canonical_labels(conn, &data.item);
     let canonical_str = if derived_labels.is_empty() {
         String::new()
     } else {
@@ -491,11 +482,7 @@ fn run_plain(conn: &Connection, handle: &str) -> Result<()> {
             derived_labels.join(", ")
         )
     };
-    let derived_from_str = if derived_from_labels.is_empty() {
-        String::new()
-    } else {
-        format!(" [derived from: {}]", derived_from_labels.join(", "))
-    };
+    let derived_from_str = derived_from_suffix(&derived_from_labels);
     println!(
         "{} — {} ({:.1}){}{}{}",
         data.label,

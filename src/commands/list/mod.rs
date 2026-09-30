@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::commands::shared::print_json;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -73,7 +74,7 @@ pub fn run(
     let dep_info = db::dep_info_by_task(conn).unwrap_or_default();
 
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&tasks_to_value(&tasks))?);
+        print_json(&tasks_to_value(&tasks))?;
         return Ok(());
     }
 

@@ -7,6 +7,7 @@ const SIMILAR_LIMIT: i64 = 5;
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::commands::shared::project_path;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -167,14 +168,10 @@ pub fn run_value(
 }
 
 fn auto_tie_branch(conn: &Connection, task: &Task) -> Option<String> {
-    let path = db::get_project(conn, &task.project).ok().flatten()?.path?;
-    let branch = crate::infrastructure::git::current_branch(std::path::Path::new(&path))?;
+    let path = project_path(conn, &task.project)?;
+    let branch = crate::infrastructure::git::current_branch(&path)?;
     crate::infrastructure::db::set_task_branch(conn, &task.uuid, &branch).ok()?;
     Some(branch)
-}
-
-pub fn parse_due(s: &str, cfg: &Config) -> Option<chrono::DateTime<chrono::Utc>> {
-    crate::infrastructure::util::dates::parse_due(s, &cfg.date_dialect)
 }
 
 fn split_tags(tags: &str) -> Vec<String> {

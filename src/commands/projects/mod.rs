@@ -45,9 +45,7 @@ pub fn run(conn: &Connection, cfg: &Config) -> Result<()> {
             rows,
         };
 
-        let mut terminal = crate::infrastructure::tui::init_terminal()?;
-        let action = render::list_loop(&mut terminal, &mut st)?;
-        crate::infrastructure::tui::restore_terminal()?;
+        let action = crate::infrastructure::tui::with_terminal(|t| render::list_loop(t, &mut st))?;
 
         selected = st.selected;
         scroll = st.scroll;
@@ -88,31 +86,6 @@ fn sort_rows(rows: &mut [ProjectRow]) {
             .cmp(&a.last_activity)
             .then_with(|| a.name.cmp(&b.name))
     });
-}
-
-pub(super) fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('…');
-        out
-    }
-}
-
-pub(super) fn rel_time(dt: DateTime<Utc>) -> String {
-    let secs = (Utc::now() - dt).num_seconds().max(0);
-    const MIN: i64 = 60;
-    const HOUR: i64 = 60 * MIN;
-    const DAY: i64 = 24 * HOUR;
-    match secs {
-        s if s < MIN => "just now".to_string(),
-        s if s < HOUR => format!("{}m ago", s / MIN),
-        s if s < DAY => format!("{}h ago", s / HOUR),
-        s if s < 30 * DAY => format!("{}d ago", s / DAY),
-        s if s < 365 * DAY => format!("{}mo ago", s / (30 * DAY)),
-        s => format!("{}y ago", s / (365 * DAY)),
-    }
 }
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ use super::handler::{
     guide_is_stale, notes_of_kind, typed_notes, verification_rows,
 };
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
+use crate::commands::shared::{heat_color, month_abbr, plural, truncate};
 
 pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     let area = f.area();
@@ -363,7 +364,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         lines.push(Line::from(Span::styled(
             format!(
                 "  {total} AI work note{} ({breakdown})  — the AI's execution workpaper, not usually needed for review  (n to view)",
-                if total == 1 { "" } else { "s" }
+                plural(total)
             ),
             Style::default()
                 .fg(Color::DarkGray)
@@ -1124,7 +1125,7 @@ fn current_task_tree_line(task: &Task) -> Line<'static> {
     Line::from(vec![
         Span::styled(" ▶ ", style),
         Span::styled(format!("{id_str} "), style),
-        Span::styled(truncate_str(&task.description, 30), style),
+        Span::styled(truncate(&task.description, 30), style),
     ])
 }
 
@@ -1197,7 +1198,7 @@ fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'stat
         ),
         Span::styled(format!("{glyph} "), style),
         Span::styled(format!("{id_str} "), style),
-        Span::styled(truncate_str(&node.description, desc_budget.max(6)), style),
+        Span::styled(truncate(&node.description, desc_budget.max(6)), style),
     ];
     if let Some(label) = link_badge_label(node.badge.as_ref()) {
         spans.push(Span::styled(
@@ -1476,7 +1477,7 @@ fn render_mini_heatmap(
             let color = if in_future {
                 Color::Rgb(12, 14, 18)
             } else {
-                heat_color_mini(count, max)
+                heat_color(count, max)
             };
             spans.push(Span::styled("██ ", Style::default().bg(color).fg(color)));
             ws += Duration::weeks(1);
@@ -1506,22 +1507,6 @@ fn render_mini_heatmap(
             ))),
             stats_area,
         );
-    }
-}
-
-fn heat_color_mini(count: u32, max: u32) -> Color {
-    if count == 0 {
-        return Color::Rgb(22, 27, 34);
-    }
-    let ratio = count as f64 / max.max(1) as f64;
-    if ratio < 0.25 {
-        Color::Rgb(14, 68, 41)
-    } else if ratio < 0.5 {
-        Color::Rgb(0, 109, 50)
-    } else if ratio < 0.75 {
-        Color::Rgb(38, 166, 65)
-    } else {
-        Color::Rgb(57, 211, 83)
     }
 }
 
@@ -1629,15 +1614,6 @@ fn wrapped_rows(line: &Line, width: u16) -> usize {
         }
     }
     rows
-}
-
-fn truncate_str(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let t: String = s.chars().take(max - 1).collect();
-        format!("{t}…")
-    }
 }
 
 fn nav_line<'a>(text: &str, color: Color, italic: bool, selected: bool) -> Line<'a> {
@@ -1808,24 +1784,6 @@ fn section(k: &str) -> Line<'static> {
             .add_modifier(Modifier::BOLD)
             .fg(Color::Cyan),
     ))
-}
-
-fn month_abbr(m: u32) -> &'static str {
-    match m {
-        1 => "Jan",
-        2 => "Feb",
-        3 => "Mar",
-        4 => "Apr",
-        5 => "May",
-        6 => "Jun",
-        7 => "Jul",
-        8 => "Aug",
-        9 => "Sep",
-        10 => "Oct",
-        11 => "Nov",
-        12 => "Dec",
-        _ => "???",
-    }
 }
 
 #[cfg(test)]

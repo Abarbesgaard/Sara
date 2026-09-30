@@ -26,10 +26,13 @@ fn scan_slices(needle: &str) -> Vec<String> {
 
 #[test]
 fn test_no_cross_slice_dependencies() {
-    let violations = scan_slices("use crate::commands::");
+    let violations: Vec<String> = scan_slices("use crate::commands::")
+        .into_iter()
+        .filter(|line| !line.contains("use crate::commands::shared"))
+        .collect();
     assert!(
         violations.is_empty(),
-        "Invariant 1 broken — cross-slice imports found:\n{}",
+        "Invariant 1 broken — cross-slice imports found (only crate::commands::shared is allowed):\n{}",
         violations.join("\n")
     );
 }

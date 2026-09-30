@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -8,9 +8,9 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use std::time::Duration;
 
 use super::{ProjectAction, ProjectListState, ProjectRow};
+use crate::commands::shared::{rel_time, truncate};
 
 pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
@@ -19,25 +19,14 @@ pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     loop {
         let size = terminal.size()?;
         let viewport = size.height.saturating_sub(3);
-        let line = st.selected as u16;
-        if line < st.scroll {
-            st.scroll = line;
-        } else if viewport > 0 && line >= st.scroll + viewport {
-            st.scroll = line + 1 - viewport;
-        }
+        crate::infrastructure::tui::scroll_into_view(&mut st.scroll, st.selected as u16, viewport);
 
         let lines = build_lines(st);
         terminal.draw(|f| render(f, st, &lines))?;
 
-        if !event::poll(Duration::from_millis(100))? {
-            continue;
-        }
-        let Event::Key(key) = event::read()? else {
+        let Some(key) = crate::infrastructure::tui::next_key(100)? else {
             continue;
         };
-        if key.kind == KeyEventKind::Release {
-            continue;
-        }
 
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => return Ok(ProjectAction::Quit),
@@ -80,24 +69,20 @@ fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
     let bg = if is_sel { Color::Blue } else { Color::Reset };
     let prefix = if is_sel { " ▶ " } else { "   " };
 
-    let name = format!(
-        "{:<width$}",
-        super::truncate(&r.name, name_w),
-        width = name_w
-    );
+    let name = format!("{:<width$}", truncate(&r.name, name_w), width = name_w);
     let counts = format!("  {:>3} pending · {:>3} done", r.pending, r.done);
 
     let mut meta = String::new();
     if let Some(g) = r.goal.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        meta.push_str(&super::truncate(g, 48));
+        meta.push_str(&truncate(g, 48));
     }
     if let Some(s) = r.stack.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         if !meta.is_empty() {
             meta.push_str(" · ");
         }
-        meta.push_str(&format!("[{}]", super::truncate(s, 24)));
+        meta.push_str(&format!("[{}]", truncate(s, 24)));
     }
-    let activity = r.last_activity.map(super::rel_time).unwrap_or_default();
+    let activity = r.last_activity.map(rel_time).unwrap_or_default();
 
     if is_sel {
         let s = Style::default().fg(Color::White).bg(bg);

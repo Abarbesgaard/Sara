@@ -1,3 +1,4 @@
+use crate::commands::shared::json_strs;
 use serde_json::Value;
 
 pub(super) fn print_learned(v: &Value) {
@@ -6,10 +7,7 @@ pub(super) fn print_learned(v: &Value) {
     let body = v["text"].as_str().unwrap_or("");
 
     let file_suffix = {
-        let fs: Vec<&str> = v["files"]
-            .as_array()
-            .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-            .unwrap_or_default();
+        let fs: Vec<&str> = json_strs(&v["files"]);
         if fs.is_empty() {
             String::new()
         } else {

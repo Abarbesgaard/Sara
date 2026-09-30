@@ -2,21 +2,16 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+use crate::commands::shared::{derived_children, memory_handle};
 use crate::infrastructure::db;
 
 mod render;
 
 pub fn forget_value(conn: &Connection, handle: &str, cascade: bool) -> Result<Value> {
     let item = db::get_item_by_handle(conn, handle)?;
-    let derived: Vec<(String, uuid::Uuid)> = db::get_memory_links_to(conn, &item.uuid.to_string())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|l| l.relation == "derived_from")
-        .filter_map(|l| {
-            db::get_item_by_uuid(conn, &l.from_uuid)
-                .ok()
-                .map(|i| (format!("m{}", i.display_id.unwrap_or(0)), i.uuid))
-        })
+    let derived: Vec<(String, uuid::Uuid)> = derived_children(conn, &item.uuid.to_string())
+        .iter()
+        .map(|i| (memory_handle(i), i.uuid))
         .collect();
 
     db::archive_item(conn, &item.uuid)?;

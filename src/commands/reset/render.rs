@@ -1,5 +1,4 @@
-use std::io::{self, Write};
-
+use crate::commands::shared::prompt_line;
 use anyhow::Result;
 
 pub(super) fn print_nothing_to_reset(name: &str) {
@@ -12,11 +11,8 @@ pub(super) fn confirm(name: &str, task_count: usize) -> Result<bool> {
          • {task_count} task(s) and all their files, links, comments and history\n  \
          • the project profile (you'll need to run `sara init` again)"
     );
-    print!("Type the project name to confirm: ");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    Ok(input.trim() == name)
+    let input = prompt_line("Type the project name to confirm: ")?;
+    Ok(input == name)
 }
 
 pub(super) fn print_aborted() {

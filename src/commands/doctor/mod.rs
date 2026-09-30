@@ -10,6 +10,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+use crate::commands::shared::{print_json, short_handle};
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
 use crate::infrastructure::memory::fingerprint::{self, AnchorState};
@@ -82,10 +83,7 @@ pub fn doctor_value(conn: &Connection) -> Result<Value> {
         .iter()
         .map(|m| {
             let uuid = m.uuid.to_string();
-            let label = m
-                .display_id
-                .map(|id| format!("m{id}"))
-                .unwrap_or_else(|| uuid[..8].to_string());
+            let label = short_handle(m);
             (uuid, label)
         })
         .collect();
@@ -382,7 +380,7 @@ fn stale_anchor_check(conn: &Connection, label_of: &dyn Fn(&str) -> String) -> R
 pub fn run(conn: &Connection, json: bool, strict: bool) -> Result<()> {
     let v = doctor_value(conn)?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
     } else {
         render::print_report(&v);
     }

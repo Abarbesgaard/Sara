@@ -1,7 +1,6 @@
-use std::io::{self, Write};
-
 use anyhow::Result;
 
+use crate::commands::shared::prompt_line;
 use crate::infrastructure::db::ProjectCommands;
 use crate::infrastructure::model::Project;
 
@@ -11,11 +10,7 @@ pub(super) fn prompt(msg: &str, default: Option<&str>) -> Result<String> {
     } else {
         format!("{msg}: ")
     };
-    print!("{prompt_str}");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let trimmed = input.trim().to_string();
+    let trimmed = prompt_line(&prompt_str)?;
     if trimmed.is_empty() {
         Ok(default.unwrap_or("").to_string())
     } else {

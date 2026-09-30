@@ -35,9 +35,7 @@ pub fn run(
     }
 
     loop {
-        let mut terminal = tui::init_terminal()?;
-        let action = render::board_loop(&mut terminal, &mut st)?;
-        tui::restore_terminal()?;
+        let action = tui::with_terminal(|t| render::board_loop(t, &mut st))?;
 
         match action {
             BoardAction::Quit => break,

@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
+use crate::commands::shared::{json_strs, print_json, short_handle};
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
 
@@ -50,10 +51,7 @@ pub fn diagnose_value(
         }
         let uuid = m.uuid.to_string();
         let files = db::get_item_files(conn, &m.uuid).unwrap_or_default();
-        let label = m
-            .display_id
-            .map(|id| format!("m{id}"))
-            .unwrap_or_else(|| uuid[..8].to_string());
+        let label = short_handle(m);
         let tags: Vec<String> = m.tags.iter().map(|t| t.to_lowercase()).collect();
         infos.push(MemInfo {
             uuid,
@@ -209,7 +207,7 @@ pub fn run(
     let total = v["total"].as_u64().unwrap_or(count);
 
     if json_output {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
 
@@ -251,14 +249,8 @@ pub fn run(
                 .map(|c| format!("{c:.2}"))
                 .unwrap_or_else(|| "—".to_string());
 
-            let shared_files: Vec<&str> = c["shared_files"]
-                .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-                .unwrap_or_default();
-            let shared_tags: Vec<&str> = c["shared_tags"]
-                .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-                .unwrap_or_default();
+            let shared_files: Vec<&str> = json_strs(&c["shared_files"]);
+            let shared_tags: Vec<&str> = json_strs(&c["shared_tags"]);
 
             if !shared_files.is_empty() {
                 let names: Vec<&str> = shared_files

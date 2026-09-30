@@ -113,9 +113,7 @@ pub(super) fn resolve(
             suggested_files: vec![],
         };
 
-        let mut terminal = tui::init_terminal()?;
-        let result = run_form(&mut terminal, ctx);
-        tui::restore_terminal()?;
+        let result = tui::with_terminal(|t| run_form(t, ctx));
         result?
     };
 

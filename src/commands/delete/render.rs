@@ -1,17 +1,9 @@
-use std::io::{self, Write};
-
+use crate::commands::shared::prompt_line;
 use anyhow::Result;
 
 pub(super) fn confirm_delete(task_id: i64, description: &str) -> Result<bool> {
-    print!("Delete task {task_id} \"{description}\"? [y/N]: ");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    Ok(input.trim().eq_ignore_ascii_case("y"))
-}
-
-pub(super) fn print_cancelled() {
-    println!("Cancelled.");
+    let input = prompt_line(&format!("Delete task {task_id} \"{description}\"? [y/N]: "))?;
+    Ok(input.eq_ignore_ascii_case("y"))
 }
 
 pub(super) fn warn_unblocked(count: usize) {

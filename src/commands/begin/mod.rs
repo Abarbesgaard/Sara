@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 
 use crate::commands;
+use crate::commands::shared::print_json;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::telemetry::Source;
@@ -189,7 +190,7 @@ pub fn run(
     )?;
 
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
 

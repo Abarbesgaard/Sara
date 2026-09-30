@@ -12,16 +12,7 @@ use crate::infrastructure::tui;
 use super::PULSE_TICKS;
 
 use super::types::{Bond, Dir, DreamData, NodeKind, Star, WebData};
-
-pub(super) fn strength_label(s: f64) -> &'static str {
-    if s >= 2.0 {
-        "Strong"
-    } else if s >= 1.5 {
-        "Linked"
-    } else {
-        "Weak"
-    }
-}
+pub(crate) use crate::commands::shared::strength_label;
 
 pub(super) fn noise(seed: u64) -> u64 {
     let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(1);

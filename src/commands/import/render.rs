@@ -4,6 +4,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use uuid::Uuid;
 
+use crate::commands::shared::{plural, truncate};
 use crate::infrastructure::db;
 use crate::infrastructure::util::portable::Bundle;
 
@@ -37,19 +38,11 @@ pub(super) fn report(
     if extra > 0 {
         println!(
             "  + {extra} dependency task{} (edges remapped)",
-            if extra == 1 { "" } else { "s" }
+            plural(extra)
         );
     }
     if let Some(p) = project_override {
         println!("  reassigned all imported tasks to project '{p}'");
     }
     Ok(())
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let cut: String = s.chars().take(max.saturating_sub(1)).collect();
-    format!("{cut}…")
 }

@@ -11,6 +11,7 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::tui;
 
+use crate::commands::shared::{item_label, item_snippet, print_json, project_head};
 use edit::edit_loop;
 use handler::load_detail;
 use plain::{RenderOpts, render_markdown, render_plain};
@@ -19,11 +20,7 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
     let task = db::resolve_task(conn, id_or_uuid)?;
     let mut guide = db::guide_json(conn, &task.uuid)?;
 
-    let head = db::get_project(conn, &task.project)
-        .ok()
-        .flatten()
-        .and_then(|p| p.path)
-        .and_then(|path| crate::infrastructure::git::head_commit(std::path::Path::new(&path)));
+    let head = project_head(conn, &task.project);
     let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
     let stale = match (&head, &validated) {
         (Some(h), Some(v)) => h != v,
@@ -79,18 +76,8 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
             let similar_json: Vec<serde_json::Value> = similar
                 .iter()
                 .map(|item| {
-                    let label = format!(
-                        "{}{}",
-                        item.kind.chars().next().unwrap_or('m'),
-                        item.display_id.unwrap_or(0)
-                    );
-                    let snippet: String = item
-                        .summary
-                        .clone()
-                        .unwrap_or_else(|| item.body.clone())
-                        .chars()
-                        .take(160)
-                        .collect();
+                    let label = item_label(item);
+                    let snippet = item_snippet(item, 160);
                     serde_json::json!({
                         "label": label,
                         "description": item.title,
@@ -110,10 +97,7 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
 }
 
 pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&guide_value(conn, id_or_uuid)?)?
-    );
+    print_json(&guide_value(conn, id_or_uuid)?)?;
     Ok(())
 }
 
@@ -140,8 +124,5 @@ pub fn run(
         return Ok(());
     }
 
-    let mut terminal = tui::init_terminal()?;
-    let result = edit_loop(&mut terminal, conn, cfg, detail);
-    tui::restore_terminal()?;
-    result.map(|_| ())
+    tui::with_terminal(|t| edit_loop(t, conn, cfg, detail)).map(|_| ())
 }
