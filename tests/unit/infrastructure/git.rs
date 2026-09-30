@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::{commit_all, git, git_repo};
 
 #[test]
 fn default_base_falls_back_gracefully() {
@@ -15,31 +16,18 @@ fn current_branch_in_repo() {
 
 #[test]
 fn is_clean_detects_dirty_and_clean_trees() {
-    let dir = test_dir("is-clean");
-    make_git_repo_with_remote(&dir, None);
+    let repo = repo_with_remote(None);
+    let dir = repo.path();
     std::fs::write(dir.join("a.txt"), "1").unwrap();
-    std::process::Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(&dir)
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args(["commit", "-m", "init"])
-        .current_dir(&dir)
-        .output()
-        .unwrap();
-    assert_eq!(is_clean(&dir), Some(true), "committed tree is clean");
+    commit_all(dir, "init");
+    assert_eq!(is_clean(dir), Some(true), "committed tree is clean");
 
     std::fs::write(dir.join("a.txt"), "changed").unwrap();
-    assert_eq!(is_clean(&dir), Some(false), "modified file → dirty");
+    assert_eq!(is_clean(dir), Some(false), "modified file → dirty");
 
-    std::process::Command::new("git")
-        .args(["checkout", "--", "a.txt"])
-        .current_dir(&dir)
-        .output()
-        .unwrap();
+    git(dir, &["checkout", "--", "a.txt"]);
     std::fs::write(dir.join("new.txt"), "x").unwrap();
-    assert_eq!(is_clean(&dir), Some(false), "untracked file → dirty");
+    assert_eq!(is_clean(dir), Some(false), "untracked file → dirty");
 }
 
 #[test]
@@ -92,64 +80,37 @@ fn rejects_url_with_empty_repo() {
     assert!(parse_github_owner_repo("https://github.com/owner/").is_none());
 }
 
-fn make_git_repo_with_remote(dir: &std::path::Path, remote_url: Option<&str>) {
-    std::process::Command::new("git")
-        .args(["init", "-b", "main"])
-        .current_dir(dir)
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args(["config", "user.email", "test@test.com"])
-        .current_dir(dir)
-        .output()
-        .unwrap();
-    std::process::Command::new("git")
-        .args(["config", "user.name", "Test"])
-        .current_dir(dir)
-        .output()
-        .unwrap();
+fn repo_with_remote(remote_url: Option<&str>) -> tempfile::TempDir {
+    let repo = git_repo();
     if let Some(url) = remote_url {
-        std::process::Command::new("git")
-            .args(["remote", "add", "origin", url])
-            .current_dir(dir)
-            .output()
-            .unwrap();
+        git(repo.path(), &["remote", "add", "origin", url]);
     }
-}
-
-fn test_dir(name: &str) -> std::path::PathBuf {
-    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("test-git-repos")
-        .join(name);
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
-    base
+    repo
 }
 
 #[test]
 fn github_repo_from_remote_resolves_ssh_origin() {
-    let dir = test_dir("gh-remote-ssh");
-    make_git_repo_with_remote(&dir, Some("git@github.com:testowner/testrepo.git"));
-    let (owner, repo) = github_repo_from_remote(&dir).unwrap();
+    let repo = repo_with_remote(Some("git@github.com:testowner/testrepo.git"));
+    let dir = repo.path();
+    let (owner, repo) = github_repo_from_remote(dir).unwrap();
     assert_eq!(owner, "testowner");
     assert_eq!(repo, "testrepo");
 }
 
 #[test]
 fn github_repo_from_remote_resolves_https_origin() {
-    let dir = test_dir("gh-remote-https");
-    make_git_repo_with_remote(&dir, Some("https://github.com/testowner/testrepo.git"));
-    let (owner, repo) = github_repo_from_remote(&dir).unwrap();
+    let repo = repo_with_remote(Some("https://github.com/testowner/testrepo.git"));
+    let dir = repo.path();
+    let (owner, repo) = github_repo_from_remote(dir).unwrap();
     assert_eq!(owner, "testowner");
     assert_eq!(repo, "testrepo");
 }
 
 #[test]
 fn github_repo_from_remote_fails_clearly_when_no_origin() {
-    let dir = test_dir("gh-remote-no-origin");
-    make_git_repo_with_remote(&dir, None);
-    let err = github_repo_from_remote(&dir).unwrap_err();
+    let repo = repo_with_remote(None);
+    let dir = repo.path();
+    let err = github_repo_from_remote(dir).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("No 'origin' remote"), "unexpected: {msg}");
     assert!(msg.contains("Sara needs"), "unexpected: {msg}");
@@ -157,9 +118,9 @@ fn github_repo_from_remote_fails_clearly_when_no_origin() {
 
 #[test]
 fn github_repo_from_remote_fails_clearly_for_non_github_url() {
-    let dir = test_dir("gh-remote-non-github");
-    make_git_repo_with_remote(&dir, Some("https://gitlab.com/user/repo.git"));
-    let err = github_repo_from_remote(&dir).unwrap_err();
+    let repo = repo_with_remote(Some("https://gitlab.com/user/repo.git"));
+    let dir = repo.path();
+    let err = github_repo_from_remote(dir).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("not a recognised GitHub remote"),

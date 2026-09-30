@@ -14,14 +14,7 @@ fn done_auto_archives_superseded() {
     let conn = db::open_in_memory_for_test();
     let old = mem(&conn, "old finding");
     let new = mem(&conn, "new finding replaces old");
-    db::insert_memory_link(
-        &conn,
-        &new.uuid.to_string(),
-        &old.uuid.to_string(),
-        "supersedes",
-        1.0,
-    )
-    .unwrap();
+    crate::test_support::link(&conn, new.uuid, "supersedes", old.uuid);
 
     let task = crate::test_support::seed_task(&conn, "hygiene demo", "proj");
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();

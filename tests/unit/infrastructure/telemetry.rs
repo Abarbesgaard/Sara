@@ -1,16 +1,6 @@
 use super::*;
 
-use crate::test_support::env_lock;
-
-fn temp_queue(name: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "sara-tel-{name}-{}-{:?}.jsonl",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_file(&p);
-    p
-}
+use crate::test_support::{EnvGuard, env_guard, temp_dir};
 
 fn read_lines(path: &Path) -> Vec<serde_json::Value> {
     let text = std::fs::read_to_string(path).unwrap_or_default();
@@ -22,8 +12,9 @@ fn read_lines(path: &Path) -> Vec<serde_json::Value> {
 
 #[test]
 fn records_cli_invocation() {
-    let _g = env_lock();
-    let path = temp_queue("cli");
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
     let flags = [String::from("--json"), String::from("--tag")];
     let rec = build_record("iid-1", Source::Cli, "recall", &flags, 12, &Ok(()), None);
     append(&path, &rec).unwrap();
@@ -68,7 +59,6 @@ fn records_cli_invocation() {
         rows[1].as_object().unwrap().get("flags").is_none(),
         "flags omitted entirely when empty"
     );
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
@@ -77,8 +67,9 @@ fn span_stamps_trace_correlation_fields() {
     // the shared `trace_id`, an ordinal `seq`, and an optional outcome count
     // `n`. Plain records (no span) omit all three, so the allowlist for a
     // normal invocation is unaffected.
-    let _g = env_lock();
-    let path = temp_queue("span");
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
     let span = Span {
         trace_id: "trace-xyz",
         seq: 4,
@@ -112,13 +103,13 @@ fn span_stamps_trace_correlation_fields() {
         "records without a span carry no trace fields: {}",
         rows[1]
     );
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn records_mcp_invocation() {
-    let _g = env_lock();
-    let path = temp_queue("mcp");
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
     let rec = build_record("iid-2", Source::Mcp, "mcp add", &[], 7, &Ok(()), None);
     append(&path, &rec).unwrap();
 
@@ -129,13 +120,13 @@ fn records_mcp_invocation() {
     // No client info supplied → the origin fields are omitted entirely.
     assert!(rows[0].as_object().unwrap().get("client").is_none());
     assert!(rows[0].as_object().unwrap().get("client_version").is_none());
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn records_mcp_client_origin() {
-    let _g = env_lock();
-    let path = temp_queue("mcp-client");
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
     let client = McpClient {
         name: "claude-ai".into(),
         version: "0.1.0".into(),
@@ -155,7 +146,6 @@ fn records_mcp_client_origin() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["client"], "claude-ai", "records the calling agent");
     assert_eq!(rows[0]["client_version"], "0.1.0");
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
@@ -205,7 +195,7 @@ fn extract_mcp_params_names_only_sorted_deduped() {
 
 #[test]
 fn err_code_is_type_derived() {
-    let _g = env_lock();
+    let _env = env_guard();
 
     let io_err: anyhow::Error = anyhow::Error::new(std::io::Error::new(
         std::io::ErrorKind::NotFound,
@@ -238,16 +228,15 @@ fn err_code_is_type_derived() {
 
 #[test]
 fn disabled_writes_nothing() {
-    let _g = env_lock();
-    let path = temp_queue("disabled");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
 
     let mut cfg = Config::default();
     cfg.telemetry.enabled = true;
 
-    unsafe {
-        std::env::set_var("SARA_NO_TELEMETRY", "1");
-        std::env::set_var("SARA_TELEMETRY_QUEUE", &path);
-    }
+    env.set("SARA_NO_TELEMETRY", "1");
+    env.set("SARA_TELEMETRY_QUEUE", &path);
     assert!(!enabled(&cfg));
     capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
     assert!(
@@ -255,9 +244,7 @@ fn disabled_writes_nothing() {
         "no queue file created while disabled by env"
     );
 
-    unsafe {
-        std::env::remove_var("SARA_NO_TELEMETRY");
-    }
+    env.remove("SARA_NO_TELEMETRY");
     assert!(enabled(&cfg));
     capture_impl(&cfg, Source::Cli, "recall", &[], 1, &Ok(()), None, None);
     assert_eq!(read_lines(&path).len(), 1, "capture writes when enabled");
@@ -265,10 +252,7 @@ fn disabled_writes_nothing() {
     cfg.telemetry.enabled = false;
     assert!(!enabled(&cfg));
 
-    unsafe {
-        std::env::remove_var("SARA_TELEMETRY_QUEUE");
-    }
-    let _ = std::fs::remove_file(&path);
+    env.remove("SARA_TELEMETRY_QUEUE");
 }
 
 // ── flush tests ──────────────────────────────────────────────────────────
@@ -276,17 +260,6 @@ use std::io::Read as _;
 use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
-
-fn temp_dir_isolated(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "sara-flush-{name}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
 
 fn write_queue(path: &Path, n: usize) {
     let mut body = String::new();
@@ -396,30 +369,20 @@ fn flush_cfg() -> Config {
     cfg
 }
 
-fn set_flush_env(dir: &Path, endpoint: &str) {
-    unsafe {
-        std::env::remove_var("SARA_NO_TELEMETRY");
-        std::env::set_var("SARA_TELEMETRY_QUEUE", dir.join("queue.jsonl"));
-        std::env::set_var("SARA_TELEMETRY_ENDPOINT", endpoint);
-        std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "0");
-    }
-}
-
-fn clear_flush_env() {
-    unsafe {
-        std::env::remove_var("SARA_TELEMETRY_QUEUE");
-        std::env::remove_var("SARA_TELEMETRY_ENDPOINT");
-        std::env::remove_var("SARA_TELEMETRY_FLUSH_INTERVAL");
-        std::env::remove_var("SARA_NO_TELEMETRY");
-    }
+fn set_flush_env(env: &mut EnvGuard, dir: &Path, endpoint: &str) {
+    env.remove("SARA_NO_TELEMETRY")
+        .set("SARA_TELEMETRY_QUEUE", dir.join("queue.jsonl"))
+        .set("SARA_TELEMETRY_ENDPOINT", endpoint)
+        .set("SARA_TELEMETRY_FLUSH_INTERVAL", "0");
 }
 
 #[test]
 fn flush_sends_and_truncates_queue() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("send");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     let (url, rx) = mock_server("HTTP/1.1 200 OK");
-    set_flush_env(&dir, &url);
+    set_flush_env(&mut env, dir, &url);
     write_queue(&dir.join("queue.jsonl"), 3);
 
     let out = flush(&flush_cfg()).unwrap();
@@ -431,22 +394,18 @@ fn flush_sends_and_truncates_queue() {
         super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
         0
     );
-
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn flush_chunks_oversized_queue_into_sublimit_batches() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("chunk");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     // ~25-byte records; a 100-byte cap forces ~3 records per POST.
     write_queue(&dir.join("queue.jsonl"), 10);
     let (url, rx) = mock_server_multi(vec!["HTTP/1.1 200 OK"; 6]);
-    set_flush_env(&dir, &url);
-    unsafe {
-        std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
-    }
+    set_flush_env(&mut env, dir, &url);
+    env.set("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
 
     let out = flush(&flush_cfg()).unwrap();
     assert_eq!(out, FlushOutcome::Sent(10), "whole backlog drains");
@@ -475,17 +434,14 @@ fn flush_chunks_oversized_queue_into_sublimit_batches() {
         "oversized backlog split across POSTs, got {requests}"
     );
 
-    unsafe {
-        std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
-    }
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
+    env.remove("SARA_TELEMETRY_MAX_BATCH_BYTES");
 }
 
 #[test]
 fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("chunk-fail");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     write_queue(&dir.join("queue.jsonl"), 6);
     // First batch accepted, second rejected (e.g. a 413) — progress is kept
     // and the unsent tail stays queued, so the queue can never wedge.
@@ -493,10 +449,8 @@ fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
         "HTTP/1.1 200 OK",
         "HTTP/1.1 413 Request Entity Too Large",
     ]);
-    set_flush_env(&dir, &url);
-    unsafe {
-        std::env::set_var("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
-    }
+    set_flush_env(&mut env, dir, &url);
+    env.set("SARA_TELEMETRY_MAX_BATCH_BYTES", "100");
 
     let out = flush(&flush_cfg()).unwrap();
     assert_eq!(out, FlushOutcome::Sent(3), "only the accepted batch drains");
@@ -509,19 +463,16 @@ fn flush_keeps_remainder_when_a_later_chunk_is_rejected() {
     let first = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
     assert_eq!(first.lines().filter(|l| !l.trim().is_empty()).count(), 3);
 
-    unsafe {
-        std::env::remove_var("SARA_TELEMETRY_MAX_BATCH_BYTES");
-    }
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
+    env.remove("SARA_TELEMETRY_MAX_BATCH_BYTES");
 }
 
 #[test]
 fn flush_leaves_queue_on_failure() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("fail");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     let (url, _rx) = mock_server("HTTP/1.1 500 Internal Server Error");
-    set_flush_env(&dir, &url);
+    set_flush_env(&mut env, dir, &url);
     write_queue(&dir.join("queue.jsonl"), 4);
 
     let out = flush(&flush_cfg()).unwrap();
@@ -531,21 +482,17 @@ fn flush_leaves_queue_on_failure() {
         4,
         "no records dropped when the collector rejects the push"
     );
-
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn flush_respects_optout() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("optout");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
-    set_flush_env(&dir, &url);
+    set_flush_env(&mut env, dir, &url);
     write_queue(&dir.join("queue.jsonl"), 2);
-    unsafe {
-        std::env::set_var("SARA_NO_TELEMETRY", "1");
-    }
+    env.set("SARA_NO_TELEMETRY", "1");
 
     let out = flush(&flush_cfg()).unwrap();
     assert_eq!(out, FlushOutcome::Skipped);
@@ -554,21 +501,17 @@ fn flush_respects_optout() {
         2,
         "opt-out leaves the queue untouched and sends nothing"
     );
-
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn flush_min_interval_gates_repeat_sends() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("interval");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     let (url, _rx) = mock_server("HTTP/1.1 200 OK");
-    set_flush_env(&dir, &url);
+    set_flush_env(&mut env, dir, &url);
     // A big interval + a fresh last-flush marker means: skip despite data.
-    unsafe {
-        std::env::set_var("SARA_TELEMETRY_FLUSH_INTERVAL", "3600");
-    }
+    env.set("SARA_TELEMETRY_FLUSH_INTERVAL", "3600");
     std::fs::write(dir.join("telemetry-last-flush"), b"1").unwrap();
     write_queue(&dir.join("queue.jsonl"), 2);
 
@@ -578,15 +521,13 @@ fn flush_min_interval_gates_repeat_sends() {
         super::read_lines(&dir.join("queue.jsonl")).unwrap().len(),
         2
     );
-
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn remove_prefix_lines_keeps_later_appends() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("prefix");
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
     let path = dir.join("queue.jsonl");
     write_queue(&path, 5);
 
@@ -596,15 +537,14 @@ fn remove_prefix_lines_keeps_later_appends() {
     assert_eq!(rows.len(), 2, "only the first 3 sent lines are dropped");
     assert!(rows[0].contains("cmd3"));
     assert!(rows[1].contains("cmd4"));
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn flush_single_sender_lock_blocks_second() {
-    let _g = env_lock();
-    let dir = temp_dir_isolated("lock");
-    set_flush_env(&dir, "http://127.0.0.1:9/insert");
+    let mut env = env_guard();
+    let tmp = temp_dir();
+    let dir = tmp.path();
+    set_flush_env(&mut env, dir, "http://127.0.0.1:9/insert");
     // Hold the lock, then a flush attempt must skip rather than double-send.
     let held = FlushLock::try_acquire().unwrap();
     assert!(held.is_some(), "first acquire succeeds");
@@ -614,6 +554,4 @@ fn flush_single_sender_lock_blocks_second() {
     assert_eq!(out, FlushOutcome::Skipped);
 
     drop(held);
-    clear_flush_env();
-    let _ = std::fs::remove_dir_all(&dir);
 }

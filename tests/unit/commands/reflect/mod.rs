@@ -10,7 +10,7 @@ fn insert_memory(conn: &rusqlite::Connection, body: &str, tag: &str) -> Uuid {
 }
 
 fn link(conn: &rusqlite::Connection, from: &Uuid, to: &Uuid, relation: &str) {
-    db::insert_memory_link(conn, &from.to_string(), &to.to_string(), relation, 1.0).unwrap();
+    crate::test_support::link(conn, *from, relation, *to);
 }
 
 fn weighted_link(conn: &rusqlite::Connection, from: &Uuid, to: &Uuid, weight: f64) {
