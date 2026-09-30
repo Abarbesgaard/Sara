@@ -17,8 +17,7 @@ fn server_with(conn: Connection) -> SaraServer {
 }
 
 fn seed_task(conn: &Connection, project: &str, desc: &str) {
-    let mut t = Task::new(desc.to_string(), project.to_string());
-    db::insert_task(conn, &mut t).expect("insert task");
+    crate::test_support::seed_task(conn, desc, project);
 }
 
 #[test]

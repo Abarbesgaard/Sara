@@ -1,13 +1,8 @@
 use super::*;
 use std::fs;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
-}
+use crate::test_support::env_lock;
 
 fn temp_home(name: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!("sara-test-{name}-{}", std::process::id()));
@@ -17,7 +12,7 @@ fn temp_home(name: &str) -> PathBuf {
 }
 
 fn with_home<F: FnOnce()>(name: &str, f: F) {
-    let _guard = test_lock();
+    let _guard = env_lock();
     let home = temp_home(name);
     let old_home = std::env::var("HOME").ok();
     let old_xdg = std::env::var("XDG_CONFIG_HOME").ok();

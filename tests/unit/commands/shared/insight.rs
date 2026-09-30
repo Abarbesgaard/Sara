@@ -3,9 +3,7 @@ use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
 fn seed_task(conn: &Connection) -> Task {
-    let mut task = Task::new("host task".into(), "proj".into());
-    db::insert_task(conn, &mut task).unwrap();
-    task
+    crate::test_support::seed_task(conn, "host task", "proj")
 }
 
 fn add_finding(conn: &Connection, task: &Task, text: &str) -> i64 {

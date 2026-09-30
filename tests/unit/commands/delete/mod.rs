@@ -2,9 +2,7 @@ use super::*;
 use crate::infrastructure::model::{Status, Task};
 
 fn seed(conn: &Connection, desc: &str) -> Task {
-    let mut task = Task::new(desc.into(), "proj".into());
-    db::insert_task(conn, &mut task).unwrap();
-    task
+    crate::test_support::seed_task(conn, desc, "proj")
 }
 
 #[test]

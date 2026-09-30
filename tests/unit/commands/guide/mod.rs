@@ -1,10 +1,7 @@
 use super::*;
-use crate::infrastructure::config::Config;
 use crate::infrastructure::model::Task;
 
-fn cfg() -> Config {
-    Config::default()
-}
+use crate::test_support::cfg;
 
 fn sh_arg(p: &std::path::Path) -> String {
     p.display().to_string().replace('\\', "/")
@@ -79,8 +76,7 @@ fn next_omits_the_block_when_no_memory_matches() {
 #[test]
 fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
     let conn = db::open_in_memory_for_test();
-    let mut task = Task::new("demo".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "demo", "proj");
     db::add_step(
         &conn,
         &task.uuid,
@@ -118,8 +114,7 @@ fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
 }
 
 fn task_with_acceptance(conn: &Connection, verify: Option<&str>) -> Task {
-    let mut task = Task::new("gate demo".into(), "proj".into());
-    db::insert_task(conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(conn, "gate demo", "proj");
     db::add_step(
         conn,
         &task.uuid,
@@ -166,8 +161,7 @@ fn gate_red_when_a_criterion_has_no_verify_command() {
 #[test]
 fn gate_red_when_no_acceptance_criteria_exist() {
     let conn = db::open_in_memory_for_test();
-    let mut task = Task::new("no criteria".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "no criteria", "proj");
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
     assert!(!gate.is_green(), "no definition of done → red");
@@ -233,8 +227,7 @@ fn gate_deduplicates_identical_verify_commands() {
     let _ = std::fs::remove_file(&marker);
     let cmd = format!("echo x >> {}", sh_arg(&marker));
 
-    let mut task = Task::new("dedup".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "dedup", "proj");
     for _ in 0..3 {
         db::add_step(
             &conn,
@@ -266,8 +259,7 @@ fn gate_caches_criteria_already_proven_at_head() {
     let _ = std::fs::remove_file(&marker);
     let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
-    let mut task = Task::new("cache".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "cache", "proj");
     db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
     let sid = db::add_step(
         &conn,
@@ -306,8 +298,7 @@ fn gate_bypasses_cache_when_tree_is_dirty() {
     let _ = std::fs::remove_file(&marker);
     let cmd = format!("echo ran >> {}", sh_arg(&marker));
 
-    let mut task = Task::new("dirty".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "dirty", "proj");
     db::upsert_project_seen(&conn, "proj", Some(repo.to_str().unwrap())).unwrap();
     let sid = db::add_step(
         &conn,
@@ -348,8 +339,7 @@ fn captured_output_is_truncated_on_a_char_boundary() {
 #[test]
 fn step_done_value_reports_activation_on_first_work() {
     let conn = db::open_in_memory_for_test();
-    let mut task = Task::new("demo".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "demo", "proj");
     db::add_step(
         &conn,
         &task.uuid,

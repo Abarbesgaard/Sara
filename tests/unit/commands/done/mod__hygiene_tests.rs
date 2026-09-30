@@ -1,11 +1,8 @@
 use super::*;
-use crate::infrastructure::model::{Item, Task};
+use crate::infrastructure::model::Item;
 
 fn mem(conn: &Connection, title: &str) -> Item {
-    let mut item = Item::new_memory(title.to_string(), format!("body of {title}"), None);
-    item.path = Some(String::new());
-    db::insert_item(conn, &mut item).unwrap();
-    item
+    crate::test_support::seed_memory(conn, title, &format!("body of {title}"), &[])
 }
 
 fn label(item: &Item) -> String {
@@ -26,8 +23,7 @@ fn done_auto_archives_superseded() {
     )
     .unwrap();
 
-    let mut task = Task::new("hygiene demo".into(), "proj".into());
-    db::insert_task(&conn, &mut task).unwrap();
+    let task = crate::test_support::seed_task(&conn, "hygiene demo", "proj");
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
 
     let archived: Vec<&str> = v["hygiene"]["archived"]

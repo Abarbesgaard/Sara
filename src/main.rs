@@ -12,6 +12,10 @@ mod dispatch;
 mod infrastructure;
 mod mcp;
 
+#[cfg(test)]
+#[path = "../tests/unit/support/mod.rs"]
+mod test_support;
+
 use anyhow::Result;
 use clap::CommandFactory;
 use clap::Parser;

@@ -2,11 +2,7 @@ use super::*;
 use crate::infrastructure::model::Item;
 
 fn seed(conn: &Connection, title: &str, tags: &[&str]) -> Item {
-    let mut item = Item::new_memory(title.to_string(), format!("{title} body"), None);
-    item.tags = tags.iter().map(|t| t.to_string()).collect();
-    item.path = Some(String::new());
-    db::insert_item(conn, &mut item).unwrap();
-    item
+    crate::test_support::seed_memory(conn, title, &format!("{title} body"), tags)
 }
 
 fn item_status(conn: &Connection, uuid: &str) -> String {
