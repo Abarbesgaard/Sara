@@ -11,6 +11,12 @@
   over-reinforced). Each finding names the command that fixes it. `--json` for
   scripts; `--strict` exits 1 when any check warns so it can gate CI or a
   pre-commit hook. Also exposed as the MCP `doctor` tool (#173).
+- **`recall` names the nearest collapsed sibling.** When a canonical family is
+  collapsed to one representative, `cluster.nearest` now names the
+  highest-ranked member that was hidden — including a child that outranked the
+  canonical and was displaced by it — so callers can open the best-matching
+  memory instead of seeing only a `collapsed_here` count. Shown in JSON/MCP and
+  as `— nearest mN` in the text cluster tag (#144).
 
 ### Changed
 

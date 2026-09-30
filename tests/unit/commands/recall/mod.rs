@@ -1403,3 +1403,117 @@ fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
     .unwrap();
     assert!(unrelated_hits.is_empty());
 }
+
+fn seed_family(conn: &Connection, children: usize) -> (Item, Vec<Item>) {
+    let canonical = seed_memory(conn, "canonical", "the pattern", &["fam"], &[]);
+    let kids = (0..children)
+        .map(|i| {
+            let c = seed_memory(conn, &format!("child {i}"), "applied", &["fam"], &[]);
+            db::insert_memory_link(
+                conn,
+                &c.uuid.to_string(),
+                &canonical.uuid.to_string(),
+                "derived_from",
+                1.0,
+            )
+            .unwrap();
+            c
+        })
+        .collect();
+    (canonical, kids)
+}
+
+fn hits_in_order(conn: &Connection, items: &[&Item]) -> Vec<Hit> {
+    items
+        .iter()
+        .map(|i| {
+            item_hit(
+                conn,
+                db::get_item_by_uuid(conn, &i.uuid.to_string()).unwrap(),
+                false,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn cluster_nearest_names_child_displaced_by_canonical() {
+    let conn = db::open_in_memory_for_test();
+    let (canonical, kids) = seed_family(&conn, 2);
+
+    let hits = hits_in_order(&conn, &[&kids[0], &kids[1], &canonical]);
+    let top_child = hits[0].label.clone();
+    let out = collapse_clusters(&conn, hits);
+
+    assert_eq!(out.len(), 1);
+    assert_eq!(
+        out[0].description, "canonical",
+        "canonical stays representative"
+    );
+    let c = out[0].cluster.as_ref().unwrap();
+    assert_eq!(c.collapsed_here, 2);
+    assert_eq!(
+        c.nearest.as_deref(),
+        Some(top_child.as_str()),
+        "the displaced top-ranked child is named, not the lower sibling"
+    );
+}
+
+#[test]
+fn cluster_nearest_names_top_collapsed_sibling_when_rep_not_displaced() {
+    let conn = db::open_in_memory_for_test();
+    let (canonical, kids) = seed_family(&conn, 3);
+
+    let hits = hits_in_order(&conn, &[&canonical, &kids[2], &kids[0], &kids[1]]);
+    let first_sibling = hits[1].label.clone();
+    let rep_label = hits[0].label.clone();
+    let out = collapse_clusters(&conn, hits);
+
+    let c = out[0].cluster.as_ref().unwrap();
+    assert_eq!(c.collapsed_here, 3);
+    assert_eq!(c.nearest.as_deref(), Some(first_sibling.as_str()));
+    assert_ne!(c.nearest.as_deref(), Some(rep_label.as_str()));
+}
+
+#[test]
+fn cluster_nearest_is_none_when_nothing_collapsed() {
+    let conn = db::open_in_memory_for_test();
+    let (canonical, _kids) = seed_family(&conn, 2);
+
+    let out = collapse_clusters(&conn, hits_in_order(&conn, &[&canonical]));
+
+    let c = out[0].cluster.as_ref().expect("family of 3 still tagged");
+    assert_eq!(c.collapsed_here, 0);
+    assert_eq!(c.nearest, None);
+}
+
+#[test]
+fn cluster_nearest_emitted_in_json() {
+    let conn = db::open_in_memory_for_test();
+    let (canonical, kids) = seed_family(&conn, 1);
+
+    let hits = hits_in_order(&conn, &[&kids[0], &canonical]);
+    let child = hits[0].label.clone();
+    let out = collapse_clusters(&conn, hits);
+    let json = keyword_json(&out);
+
+    assert_eq!(json[0]["cluster"]["nearest"], serde_json::json!(child));
+}
+
+#[test]
+fn cluster_nearest_in_guide_json_only_when_present() {
+    let conn = db::open_in_memory_for_test();
+    let lead = seed_memory(&conn, "standalone lead", "unrelated", &["fam"], &[]);
+    let (canonical, kids) = seed_family(&conn, 1);
+
+    let hits = hits_in_order(&conn, &[&lead, &kids[0], &canonical]);
+    let child = hits[1].label.clone();
+    let json = keyword_json(&collapse_clusters(&conn, hits));
+    assert_eq!(json[1]["cluster"]["nearest"], serde_json::json!(child));
+
+    let json = keyword_json(&collapse_clusters(
+        &conn,
+        hits_in_order(&conn, &[&lead, &canonical]),
+    ));
+    assert!(json[1]["cluster"].get("nearest").is_none());
+}

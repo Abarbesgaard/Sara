@@ -39,6 +39,7 @@ struct ClusterInfo {
     canonical_label: String,
     size: usize,
     collapsed_here: usize,
+    nearest: Option<String>,
 }
 
 pub fn recall_value(
@@ -340,10 +341,16 @@ pub fn run(
         } else {
             format!(" [derived from: {}]", h.derived_from_labels.join(", "))
         };
+        let nearest_str = h
+            .cluster
+            .as_ref()
+            .and_then(|c| c.nearest.as_deref())
+            .map(|n| format!(" — nearest {n}"))
+            .unwrap_or_default();
         let cluster_str = match &h.cluster {
             Some(c) if c.collapsed_here > 0 => format!(
-                " [cluster {} of {} — {} sibling(s) collapsed]",
-                c.canonical_label, c.size, c.collapsed_here
+                " [cluster {} of {} — {} sibling(s) collapsed{}]",
+                c.canonical_label, c.size, c.collapsed_here, nearest_str
             ),
             Some(c) => format!(" [cluster {} of {}]", c.canonical_label, c.size),
             None => String::new(),
@@ -781,6 +788,8 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
         std::collections::HashMap::new();
     let mut collapsed: std::collections::HashMap<(String, String), usize> =
         std::collections::HashMap::new();
+    let mut nearest: std::collections::HashMap<(String, String), String> =
+        std::collections::HashMap::new();
 
     for h in hits {
         match family_key(&h) {
@@ -793,9 +802,15 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
                         kept.push(h);
                     }
                     Some(idx) => {
-                        *collapsed.entry(key).or_insert(0) += 1;
+                        *collapsed.entry(key.clone()).or_insert(0) += 1;
                         if h.label == fam && kept[idx].label != fam {
-                            kept[idx] = h;
+                            // The displaced representative was the family's
+                            // top-ranked hit, so it outranks any sibling
+                            // folded before it.
+                            let displaced = std::mem::replace(&mut kept[idx], h);
+                            nearest.insert(key, displaced.label);
+                        } else {
+                            nearest.entry(key).or_insert(h.label);
                         }
                     }
                 }
@@ -812,6 +827,7 @@ fn collapse_clusters(conn: &Connection, hits: Vec<Hit>) -> Vec<Hit> {
                     canonical_label: fam.clone(),
                     size,
                     collapsed_here: collapsed.get(&key).copied().unwrap_or(0),
+                    nearest: nearest.get(&key).cloned(),
                 });
             }
         }
@@ -987,6 +1003,7 @@ fn keyword_json(hits: &[Hit]) -> Vec<serde_json::Value> {
                         "canonical": c.canonical_label,
                         "size": c.size,
                         "collapsed_here": c.collapsed_here,
+                        "nearest": c.nearest,
                     })),
                     "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                         "id": t.id.unwrap_or(0),
@@ -1013,14 +1030,15 @@ fn keyword_guide(h: &Hit) -> serde_json::Value {
         map.insert("derived_from".into(), json!(h.derived_from_labels));
     }
     if let Some(c) = h.cluster.as_ref() {
-        map.insert(
-            "cluster".into(),
-            json!({
-                "canonical": c.canonical_label,
-                "size": c.size,
-                "collapsed_here": c.collapsed_here,
-            }),
-        );
+        let mut cluster = json!({
+            "canonical": c.canonical_label,
+            "size": c.size,
+            "collapsed_here": c.collapsed_here,
+        });
+        if let Some(n) = &c.nearest {
+            cluster["nearest"] = json!(n);
+        }
+        map.insert("cluster".into(), cluster);
     }
     if !h.superseded_by.is_empty() {
         map.insert("superseded_by".into(), json!(h.superseded_by));
