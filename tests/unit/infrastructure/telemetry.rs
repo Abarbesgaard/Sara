@@ -1,6 +1,7 @@
 use super::*;
 
-use crate::test_support::{EnvGuard, env_guard, temp_dir};
+use crate::test_support::env::EnvGuard;
+use crate::test_support::{env_guard, temp_dir};
 
 fn read_lines(path: &Path) -> Vec<serde_json::Value> {
     let text = std::fs::read_to_string(path).unwrap_or_default();
