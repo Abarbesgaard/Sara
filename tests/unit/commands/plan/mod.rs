@@ -68,7 +68,11 @@ fn import_raw_carries_steps_acceptance_and_annotations() {
     let steps = db::get_steps(&conn, &base.uuid, STEP_KIND_STEP).unwrap();
     let acceptance = db::get_steps(&conn, &base.uuid, STEP_KIND_ACCEPTANCE).unwrap();
     assert_eq!(steps.len(), 2, "both steps must be imported");
-    assert_eq!(acceptance.len(), 1, "the acceptance criterion must be imported");
+    assert_eq!(
+        acceptance.len(),
+        1,
+        "the acceptance criterion must be imported"
+    );
 
     let annotations = db::get_annotations(&conn, &base.uuid).unwrap();
     let kinds: Vec<&str> = annotations.iter().map(|a| a.kind.as_str()).collect();
