@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(target_os = "macos")]
 use std::fs;
 use std::path::Path;
 
