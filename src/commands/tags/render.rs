@@ -1,3 +1,4 @@
+use crate::commands::shared::print_json;
 use anyhow::Result;
 use serde_json::json;
 
@@ -7,7 +8,7 @@ pub(super) fn print_tags(tags: &[(String, i64)], as_json: bool) -> Result<()> {
             .iter()
             .map(|(tag, count)| json!({ "tag": tag, "count": count }))
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json!({ "tags": v }))?);
+        print_json(&json!({ "tags": v }))?;
         return Ok(());
     }
 

@@ -5,11 +5,8 @@ use uuid::Uuid;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding::{self, Embedder};
 
-mod render;
 mod types;
 
-#[allow(unused_imports)]
-pub use render::print_related_findings;
 pub use types::Related;
 
 const RELATED_THRESHOLD: f32 = 0.55;
@@ -58,6 +55,29 @@ pub fn related_findings_json(related: &[Related]) -> Vec<Value> {
         .collect()
 }
 
+pub fn print_related_json(v: &Value, with_hint: bool) {
+    let Some(related) = v.get("related_findings").and_then(|r| r.as_array()) else {
+        return;
+    };
+    if related.is_empty() {
+        return;
+    }
+    eprintln!("⟳ reconsider — related prior finding(s) on this task:");
+    for r in related {
+        eprintln!(
+            "    (~{:.2}) #{}: {}",
+            r.get("cosine").and_then(|c| c.as_f64()).unwrap_or(0.0),
+            r.get("annotation_id").and_then(|i| i.as_i64()).unwrap_or(0),
+            r.get("text").and_then(|t| t.as_str()).unwrap_or("")
+        );
+    }
+    if with_hint {
+        eprintln!(
+            "  If your new note revises or contradicts one, correct it (denotate / re-annotate)."
+        );
+    }
+}
+
 #[cfg(test)]
-#[path = "../../../tests/unit/commands/insight/mod.rs"]
+#[path = "../../../../tests/unit/commands/shared/insight.rs"]
 mod tests;

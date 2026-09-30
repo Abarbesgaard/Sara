@@ -4,6 +4,7 @@ use crate::infrastructure::db;
 
 use super::handler::{guide_is_stale, notes_of_kind, verification_rows};
 use super::types::Detail;
+use crate::commands::shared::annotation_target;
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct RenderOpts {
@@ -224,10 +225,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
                 w!();
             }
             let date = a.entry.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-            let target = match (&a.target_kind, &a.target_id) {
-                (Some(k), Some(idv)) => format!(" [{k}:{idv}]"),
-                _ => String::new(),
-            };
+            let target = annotation_target(a);
             let flag = if a.request_revision {
                 " (reconsider)"
             } else {

@@ -24,18 +24,3 @@ fn sort_rows_orders_by_recent_activity_then_name() {
     let order: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(order, ["beta", "zeta", "alpha", "gamma"]);
 }
-
-#[test]
-fn rel_time_buckets() {
-    let now = Utc::now();
-    assert_eq!(rel_time(now), "just now");
-    assert_eq!(rel_time(now - chrono::Duration::minutes(5)), "5m ago");
-    assert_eq!(rel_time(now - chrono::Duration::hours(3)), "3h ago");
-    assert_eq!(rel_time(now - chrono::Duration::days(2)), "2d ago");
-}
-
-#[test]
-fn truncate_adds_ellipsis_only_when_needed() {
-    assert_eq!(truncate("short", 10), "short");
-    assert_eq!(truncate("abcdefgh", 4), "abc…");
-}

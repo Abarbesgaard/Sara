@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::json;
 
+use crate::commands::shared::print_json;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -153,7 +154,7 @@ pub fn show_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
 
 pub fn show(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result<()> {
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&show_value(conn, id)?)?);
+        print_json(&show_value(conn, id)?)?;
         return Ok(());
     }
 

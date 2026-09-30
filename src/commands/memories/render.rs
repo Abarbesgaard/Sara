@@ -5,7 +5,9 @@ use rusqlite::Connection;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::canonical_labels;
+use crate::commands::shared::{
+    canonical_labels, derived_from_suffix, item_label, item_snippet, print_json, strength_label,
+};
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
 
@@ -20,11 +22,7 @@ pub(super) fn print_memories(
             .iter()
             .map(|m| {
                 let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
-                let label = format!(
-                    "{}{}",
-                    m.kind.chars().next().unwrap_or('m'),
-                    m.display_id.unwrap_or(0)
-                );
+                let label = item_label(m);
                 let files = db::get_item_files(conn, &m.uuid).unwrap_or_default();
                 let (derived_labels, derived_from_labels) = canonical_labels(conn, m);
                 json!({
@@ -44,10 +42,7 @@ pub(super) fn print_memories(
                 })
             })
             .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({ "memories": v }))?
-        );
+        print_json(&json!({ "memories": v }))?;
         return Ok(());
     }
 
@@ -59,34 +54,20 @@ pub(super) fn print_memories(
     println!("Memories (newest first):");
     for m in memories {
         let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
-        let label = format!(
-            "{}{}",
-            m.kind.chars().next().unwrap_or('m'),
-            m.display_id.unwrap_or(0)
-        );
+        let label = item_label(m);
         let tags_str = if m.tags.is_empty() {
             String::new()
         } else {
             format!(" [{}]", m.tags.join(", "))
         };
-        let snippet: String = m
-            .summary
-            .as_deref()
-            .unwrap_or(&m.body)
-            .chars()
-            .take(100)
-            .collect();
+        let snippet = item_snippet(m, 100);
         let (derived_labels, derived_from_labels) = canonical_labels(conn, m);
         let canonical_str = if derived_labels.is_empty() {
             String::new()
         } else {
             format!(" [canonical, {} derived]", derived_labels.len())
         };
-        let derived_from_str = if derived_from_labels.is_empty() {
-            String::new()
-        } else {
-            format!(" [derived from: {}]", derived_from_labels.join(", "))
-        };
+        let derived_from_str = derived_from_suffix(&derived_from_labels);
         println!(
             "  {} ({}){}{}{} {}{}: {}",
             label,
@@ -104,14 +85,4 @@ pub(super) fn print_memories(
         );
     }
     Ok(())
-}
-
-fn strength_label(s: f64) -> &'static str {
-    if s >= 2.0 {
-        "Strong"
-    } else if s >= 1.5 {
-        "Linked"
-    } else {
-        "Weak"
-    }
 }

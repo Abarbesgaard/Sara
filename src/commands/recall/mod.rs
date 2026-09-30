@@ -4,6 +4,10 @@ use rusqlite::Connection;
 use serde_json::json;
 use std::collections::HashSet;
 
+use crate::commands::shared::{
+    derived_children, derived_count, derived_from_suffix, item_label, item_snippet, print_json,
+    rel_time,
+};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::fingerprint::{self, AnchorState};
@@ -200,12 +204,9 @@ pub fn run(
     as_json: bool,
 ) -> Result<()> {
     if as_json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&recall_value(
-                conn, cfg, query, tags, projects, files, limit, spread
-            )?)?
-        );
+        print_json(&recall_value(
+            conn, cfg, query, tags, projects, files, limit, spread,
+        )?)?;
         return Ok(());
     }
 
@@ -299,7 +300,7 @@ pub fn run(
     }
 
     for h in &hits {
-        let age = h.modified.map(age_str).unwrap_or_default();
+        let age = h.modified.map(rel_time).unwrap_or_default();
         let marker = if h.exact_match {
             "="
         } else if h.semantic {
@@ -348,11 +349,7 @@ pub fn run(
                 h.derived_children.join(", ")
             )
         };
-        let derived_from_str = if h.derived_from_labels.is_empty() {
-            String::new()
-        } else {
-            format!(" [derived from: {}]", h.derived_from_labels.join(", "))
-        };
+        let derived_from_str = derived_from_suffix(&h.derived_from_labels);
         let nearest_str = h
             .cluster
             .as_ref()
@@ -785,14 +782,7 @@ fn family_size(conn: &Connection, rep: &Hit, canonical_label: &str) -> usize {
         return 1 + rep.derived_children.len();
     }
     match db::get_item_by_handle(conn, canonical_label) {
-        Ok(canon) => {
-            let children = db::get_memory_links_to(conn, &canon.uuid.to_string())
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|l| l.relation == "derived_from")
-                .count();
-            1 + children
-        }
+        Ok(canon) => 1 + derived_count(conn, &canon.uuid.to_string()),
         Err(_) => 1,
     }
 }
@@ -855,21 +845,10 @@ const PATTERN_MIN_INSTANCES: usize = 2;
 
 const PATTERN_TEXT_CAP: usize = 4000;
 
-fn label_of(item: &Item) -> String {
-    format!(
-        "{}{}",
-        item.kind.chars().next().unwrap_or('m'),
-        item.display_id.unwrap_or(0)
-    )
-}
-
 fn derived_child_labels(conn: &Connection, uuid: &str) -> Vec<String> {
-    db::get_memory_links_to(conn, uuid)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|l| l.relation == "derived_from")
-        .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
-        .map(|i| label_of(&i))
+    derived_children(conn, uuid)
+        .iter()
+        .map(item_label)
         .collect()
 }
 
@@ -921,7 +900,7 @@ fn detect_patterns(conn: &Connection, hits: &[Hit]) -> Vec<serde_json::Value> {
         .into_values()
         .filter(|a| a.instances.len() >= PATTERN_MIN_INSTANCES)
         .map(|a| {
-            let label = label_of(&a.item);
+            let label = item_label(&a.item);
             let occurrences = a.instances.len();
             let title = a.item.title.trim().to_string();
             let text: String = a.item.body.chars().take(PATTERN_TEXT_CAP).collect();
@@ -1130,18 +1109,8 @@ fn stale_text(h: &Hit) -> String {
 }
 
 fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
-    let handle = format!(
-        "{}{}",
-        item.kind.chars().next().unwrap_or('m'),
-        item.display_id.unwrap_or(0)
-    );
-    let snippet: String = item
-        .summary
-        .clone()
-        .unwrap_or_else(|| item.body.clone())
-        .chars()
-        .take(160)
-        .collect();
+    let handle = item_label(&item);
+    let snippet = item_snippet(&item, 160);
     let files = db::get_item_files(conn, &item.uuid).unwrap_or_default();
     let linked_tasks = db::get_item_task_links(conn, &item.uuid).unwrap_or_default();
     let superseded_by: Vec<String> = db::get_memory_links_to(conn, &item.uuid.to_string())
@@ -1151,13 +1120,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .map(|l| {
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
-                .map(|i| {
-                    format!(
-                        "{}{}",
-                        i.kind.chars().next().unwrap_or('m'),
-                        i.display_id.unwrap_or(0)
-                    )
-                })
+                .map(|i| item_label(&i))
                 .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -1168,13 +1131,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .map(|l| {
             db::get_item_by_uuid(conn, &l.to_uuid)
                 .ok()
-                .map(|i| {
-                    format!(
-                        "{}{}",
-                        i.kind.chars().next().unwrap_or('m'),
-                        i.display_id.unwrap_or(0)
-                    )
-                })
+                .map(|i| item_label(&i))
                 .unwrap_or_else(|| l.to_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -1185,13 +1142,7 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         .map(|l| {
             db::get_item_by_uuid(conn, &l.from_uuid)
                 .ok()
-                .map(|i| {
-                    format!(
-                        "{}{}",
-                        i.kind.chars().next().unwrap_or('m'),
-                        i.display_id.unwrap_or(0)
-                    )
-                })
+                .map(|i| item_label(&i))
                 .unwrap_or_else(|| l.from_uuid.chars().take(8).collect::<String>())
         })
         .collect();
@@ -1217,21 +1168,6 @@ fn item_hit(conn: &Connection, item: Item, exact_match: bool) -> Hit {
         cosine: None,
         cluster: None,
         stale: Vec::new(),
-    }
-}
-
-fn age_str(dt: DateTime<Utc>) -> String {
-    let secs = (Utc::now() - dt).num_seconds().max(0);
-    const MIN: i64 = 60;
-    const HOUR: i64 = 60 * MIN;
-    const DAY: i64 = 24 * HOUR;
-    match secs {
-        s if s < MIN => "just now".to_string(),
-        s if s < HOUR => format!("{}m ago", s / MIN),
-        s if s < DAY => format!("{}h ago", s / HOUR),
-        s if s < 30 * DAY => format!("{}d ago", s / DAY),
-        s if s < 365 * DAY => format!("{}mo ago", s / (30 * DAY)),
-        s => format!("{}y ago", s / (365 * DAY)),
     }
 }
 

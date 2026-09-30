@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -16,6 +16,7 @@ use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::{BoardAction, BoardState, IssueNode};
+use crate::commands::shared::truncate;
 
 const FIXED_OVERHEAD: u16 = 10;
 
@@ -54,11 +55,7 @@ pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
         let rows = visible_rows(st);
         let (lines, row_line) = build_lines(st, &rows);
         if let Some(&line) = row_line.get(st.selected) {
-            if line < st.scroll {
-                st.scroll = line;
-            } else if viewport > 0 && line >= st.scroll + viewport {
-                st.scroll = line + 1 - viewport;
-            }
+            crate::infrastructure::tui::scroll_into_view(&mut st.scroll, line, viewport);
         }
 
         terminal.draw(|f| {
@@ -68,15 +65,9 @@ pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
             }
         })?;
 
-        if !event::poll(std::time::Duration::from_millis(100))? {
-            continue;
-        }
-        let Event::Key(key) = event::read()? else {
+        let Some(key) = crate::infrastructure::tui::next_key(100)? else {
             continue;
         };
-        if key.kind == KeyEventKind::Release {
-            continue;
-        }
 
         if showing_help {
             showing_help = false;
@@ -719,16 +710,6 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
         ])),
         chunks[6],
     );
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('…');
-        out
-    }
 }
 
 #[cfg(test)]

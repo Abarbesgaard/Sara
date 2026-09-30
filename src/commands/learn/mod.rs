@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use crate::commands::shared::{derived_children, derived_count, memory_handle, plural, summarize};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
@@ -95,12 +96,9 @@ pub fn learn_value(
                             .unwrap_or_else(|| handle.clone());
                         if relation == "supersedes" {
                             let derived: Vec<String> =
-                                db::get_memory_links_to(conn, &target.uuid.to_string())
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .filter(|l| l.relation == "derived_from")
-                                    .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
-                                    .map(|i| format!("m{}", i.display_id.unwrap_or(0)))
+                                derived_children(conn, &target.uuid.to_string())
+                                    .iter()
+                                    .map(memory_handle)
                                     .collect();
                             if !derived.is_empty() {
                                 eprintln!(
@@ -144,7 +142,7 @@ pub fn learn_value(
             .collect();
         for u in &auto_canonical {
             if let Ok(target) = db::get_item_by_uuid(conn, &u.to_string()) {
-                let label = format!("m{}", target.display_id.unwrap_or(0));
+                let label = memory_handle(&target);
                 if already.contains(&label) || auto_derived_labels.contains(&label) {
                     continue;
                 }
@@ -168,7 +166,7 @@ pub fn learn_value(
         .collect();
 
     Ok(json!({
-        "label": format!("m{}", item.display_id.unwrap_or(0)),
+        "label": memory_handle(&item),
         "uuid": &new_uuid[..8],
         "text": summarize(text),
         "tags": item.tags,
@@ -195,11 +193,7 @@ pub(crate) fn partial_overlap_suggestion(label: &str) -> String {
 }
 
 pub(crate) fn canonical_derived_count(conn: &Connection, uuid: &uuid::Uuid) -> usize {
-    db::get_memory_links_to(conn, &uuid.to_string())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|l| l.relation == "derived_from")
-        .count()
+    derived_count(conn, &uuid.to_string())
 }
 
 pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
@@ -207,7 +201,7 @@ pub(crate) fn canonical_hint(label: &str, derived_count: usize) -> String {
         "→ {label} is a canonical pattern memory with {derived_count} derived application{} — \
          consider `sara learn --derived-from {label}` to register this as another application, \
          or `sara relearn {label}` to enrich the canonical instead of creating a new memory.",
-        if derived_count == 1 { "" } else { "s" }
+        plural(derived_count)
     )
 }
 
@@ -351,7 +345,7 @@ pub(crate) fn check_overlap(
         let mut canonical_hit: Option<(String, usize)> = None;
         for u in &all_dupes {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
-                let label = format!("m{}", item.display_id.unwrap_or(0));
+                let label = memory_handle(&item);
                 let snippet: String = item.body.chars().take(80).collect();
                 let derived_count = canonical_derived_count(conn, u);
                 let suffix = if derived_count > 0 {
@@ -386,7 +380,7 @@ pub(crate) fn check_overlap(
         let mut labels: Vec<String> = Vec::new();
         for u in &plain_partial {
             if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
-                let label = format!("m{}", item.display_id.unwrap_or(0));
+                let label = memory_handle(&item);
                 let snippet: String = item.body.chars().take(80).collect();
                 eprintln!("  {} — {}", label, snippet.trim());
                 labels.push(label);
@@ -411,7 +405,7 @@ pub(crate) fn check_overlap(
             );
             for (path, u) in &file_overlap {
                 if let Ok(item) = db::get_item_by_uuid(conn, &u.to_string()) {
-                    let label = format!("m{}", item.display_id.unwrap_or(0));
+                    let label = memory_handle(&item);
                     let snippet: String = item.body.chars().take(80).collect();
                     let short_path = std::path::Path::new(path)
                         .file_name()
@@ -578,17 +572,6 @@ fn save(
     }
 
     Ok(item)
-}
-
-fn summarize(text: &str) -> String {
-    const MAX: usize = 80;
-    let trimmed = text.trim();
-    if trimmed.chars().count() <= MAX {
-        trimmed.to_string()
-    } else {
-        let truncated: String = trimmed.chars().take(MAX).collect();
-        format!("{}…", truncated.trim_end())
-    }
 }
 
 #[cfg(test)]

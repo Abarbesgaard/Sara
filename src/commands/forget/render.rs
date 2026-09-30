@@ -1,3 +1,4 @@
+use crate::commands::shared::json_strs;
 use serde_json::Value;
 
 pub(super) fn print_forgotten(v: &Value, handle: &str, cascade: bool) {
@@ -5,14 +6,8 @@ pub(super) fn print_forgotten(v: &Value, handle: &str, cascade: bool) {
         "Forgot {}: archived.",
         v["label"].as_str().unwrap_or(handle),
     );
-    let derived: Vec<&str> = v["derived"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-        .unwrap_or_default();
-    let cascaded: Vec<&str> = v["cascaded"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-        .unwrap_or_default();
+    let derived: Vec<&str> = json_strs(&v["derived"]);
+    let cascaded: Vec<&str> = json_strs(&v["cascaded"]);
     if !derived.is_empty() {
         if cascade {
             println!(

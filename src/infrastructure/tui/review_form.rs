@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -492,15 +492,10 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
     loop {
         terminal.draw(|f| render(f, &mut state))?;
 
-        if !event::poll(std::time::Duration::from_millis(100))? {
+        let Some(key) = crate::infrastructure::tui::next_key(100)? else {
             continue;
-        }
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Release {
-                continue;
-            }
-            state.handle_key(key);
-        }
+        };
+        state.handle_key(key);
 
         if state.fzf_requested {
             state.fzf_requested = false;

@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 
+use crate::commands::shared::print_cancelled;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Status;
 
@@ -11,7 +12,7 @@ pub fn run(conn: &Connection, id_or_uuid: &str, yes: bool) -> Result<()> {
     let mut task = db::resolve_task(conn, id_or_uuid)?;
 
     if !yes && !render::confirm_delete(task.id.unwrap_or(0), &task.description)? {
-        render::print_cancelled();
+        print_cancelled();
         return Ok(());
     }
 

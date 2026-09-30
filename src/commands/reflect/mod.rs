@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
+use crate::commands::shared::{json_strs, print_json};
 use crate::infrastructure::db;
 use crate::infrastructure::memory::graph::MemoryGraph;
 
@@ -339,7 +340,7 @@ pub fn run(
     if apply {
         let v = apply_value(conn, min_weight, max_cluster)?;
         if json_output {
-            println!("{}", serde_json::to_string_pretty(&v)?);
+            print_json(&v)?;
             return Ok(());
         }
         let applied = v["applied"].as_u64().unwrap_or(0);
@@ -379,7 +380,7 @@ pub fn run(
     let count = v["count"].as_u64().unwrap_or(0);
 
     if json_output {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
 
@@ -395,14 +396,8 @@ pub fn run(
     if let Some(clusters) = v["clusters"].as_array() {
         for c in clusters {
             let canonical = c["suggested_canonical"].as_str().unwrap_or("?");
-            let members: Vec<&str> = c["members"]
-                .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-                .unwrap_or_default();
-            let tags: Vec<&str> = c["shared_tags"]
-                .as_array()
-                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
-                .unwrap_or_default();
+            let members: Vec<&str> = json_strs(&c["members"]);
+            let tags: Vec<&str> = json_strs(&c["shared_tags"]);
 
             let tag_str = if tags.is_empty() {
                 String::new()

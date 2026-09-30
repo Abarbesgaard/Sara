@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use rusqlite::Connection;
 
+use crate::commands::shared::{plural, truncate};
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Priority, Task};
 
@@ -182,7 +183,7 @@ pub(super) fn print_table(
     let summary = format!(
         "Showing {} task{}{}",
         tasks.len(),
-        if tasks.len() == 1 { "" } else { "s" },
+        plural(tasks.len()),
         filter
             .map(|p| format!(" for project '{p}'"))
             .unwrap_or_default()
@@ -246,22 +247,8 @@ fn fmt_id_list(ids: &[i64]) -> String {
 fn dep_column_text(dep: Option<&db::DepInfo>) -> String {
     match dep {
         Some(d) if d.is_blocked() => format!("blocked by {}", fmt_id_list(&d.blocked_by)),
-        Some(d) if d.blocking > 0 => format!(
-            "blocks {} task{}",
-            d.blocking,
-            if d.blocking == 1 { "" } else { "s" }
-        ),
+        Some(d) if d.blocking > 0 => format!("blocks {} task{}", d.blocking, plural(d.blocking)),
         _ => String::new(),
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max - 1).collect();
-        out.push('…');
-        out
     }
 }
 

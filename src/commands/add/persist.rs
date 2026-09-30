@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::commands::shared::parse_due;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -27,7 +28,7 @@ pub(super) fn save(
     task.recur = recur;
 
     if !form.due.is_empty() {
-        task.due = super::parse_due(&form.due, cfg);
+        task.due = parse_due(&form.due, cfg);
     }
 
     task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);

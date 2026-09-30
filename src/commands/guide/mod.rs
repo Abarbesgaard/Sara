@@ -2,54 +2,15 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
+use crate::commands::shared::{
+    annotation_target, guard_branch_mutation, insight, item_snippet, memory_handle, print_json,
+    project_head,
+};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
 mod types;
 pub use types::{AcceptanceGate, GateOutput, GateRun};
-
-fn project_head(conn: &Connection, project: &str) -> Option<String> {
-    let proj = db::get_project(conn, project).ok().flatten()?;
-    let path = proj.path?;
-    crate::infrastructure::git::head_commit(std::path::Path::new(&path))
-}
-
-pub fn guard_branch_mutation(
-    conn: &Connection,
-    id_input: &str,
-    task: &crate::infrastructure::model::Task,
-    force: bool,
-) -> Result<()> {
-    if force || id_input.parse::<i64>().is_err() {
-        return Ok(());
-    }
-    let Some(rec) = db::get_task_branch(conn, &task.uuid) else {
-        return Ok(());
-    };
-    let Some(path) = db::get_project(conn, &task.project)
-        .ok()
-        .flatten()
-        .and_then(|p| p.path)
-    else {
-        return Ok(());
-    };
-    let Some(current) = crate::infrastructure::git::current_branch(std::path::Path::new(&path))
-    else {
-        return Ok(());
-    };
-    if current != rec.branch {
-        anyhow::bail!(
-            "refusing to act on task {} by display id — it is tied to branch '{}' but the \
-             project is currently on '{}'. Recycled display ids can point at a different task \
-             after recompaction. Re-run with the stable uuid `{}` (or pass --force).",
-            task.id.unwrap_or(0),
-            rec.branch,
-            current,
-            &task.uuid.to_string()[..8]
-        );
-    }
-    Ok(())
-}
 
 fn kind_arg(kind: Option<&str>) -> &str {
     match kind {
@@ -69,14 +30,8 @@ fn relevant_memories(
         .into_iter()
         .take(NEXT_MEMORY_LIMIT)
         .map(|item| {
-            let label = format!("m{}", item.display_id.unwrap_or(0));
-            let snippet: String = item
-                .summary
-                .clone()
-                .unwrap_or_else(|| item.body.clone())
-                .chars()
-                .take(160)
-                .collect();
+            let label = memory_handle(&item);
+            let snippet = item_snippet(&item, 160);
             (label, snippet.trim().to_string())
         })
         .collect()
@@ -115,7 +70,7 @@ pub fn next_value(conn: &Connection, id: &str) -> Result<serde_json::Value> {
 
 pub fn next(conn: &Connection, _cfg: &Config, id: &str, as_json: bool) -> Result<()> {
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&next_value(conn, id)?)?);
+        print_json(&next_value(conn, id)?)?;
         return Ok(());
     }
 
@@ -182,10 +137,7 @@ pub fn steps(
     as_json: bool,
 ) -> Result<()> {
     if as_json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&steps_value(conn, id, until)?)?
-        );
+        print_json(&steps_value(conn, id, until)?)?;
         return Ok(());
     }
 
@@ -241,9 +193,7 @@ pub fn step_done_value(
     db::set_step_done(conn, step_id, true, result, commit.as_deref())?;
     let activated = db::ensure_started(conn, &task.uuid)?;
     let related = match result {
-        Some(r) if !r.trim().is_empty() => {
-            crate::commands::insight::related_findings(conn, &task.uuid, r, None)
-        }
+        Some(r) if !r.trim().is_empty() => insight::related_findings(conn, &task.uuid, r, None),
         _ => Vec::new(),
     };
     Ok(json!({
@@ -254,7 +204,7 @@ pub fn step_done_value(
         "done": true,
         "commit": commit,
         "activated": activated,
-        "related_findings": crate::commands::insight::related_findings_json(&related),
+        "related_findings": insight::related_findings_json(&related),
     }))
 }
 
@@ -295,7 +245,7 @@ pub fn step_done(
 ) -> Result<()> {
     let v = step_done_value(conn, id, n, result, kind)?;
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
     let commit_suffix = v
@@ -310,19 +260,7 @@ pub fn step_done(
         v.get("task").and_then(|t| t.as_i64()).unwrap_or(0),
         commit_suffix
     );
-    if let Some(related) = v.get("related_findings").and_then(|r| r.as_array())
-        && !related.is_empty()
-    {
-        eprintln!("⟳ reconsider — related prior finding(s) on this task:");
-        for r in related {
-            eprintln!(
-                "    (~{:.2}) #{}: {}",
-                r.get("cosine").and_then(|c| c.as_f64()).unwrap_or(0.0),
-                r.get("annotation_id").and_then(|i| i.as_i64()).unwrap_or(0),
-                r.get("text").and_then(|t| t.as_str()).unwrap_or("")
-            );
-        }
-    }
+    insight::print_related_json(&v, false);
     Ok(())
 }
 
@@ -360,7 +298,7 @@ pub fn step_undone(
 ) -> Result<()> {
     let v = step_undone_value(conn, id, n, kind)?;
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
     println!(
@@ -413,7 +351,7 @@ pub fn step_remove(
 ) -> Result<()> {
     let v = step_remove_value(conn, id, n, kind)?;
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        print_json(&v)?;
         return Ok(());
     }
     println!(
@@ -961,10 +899,7 @@ pub fn feedback_value(conn: &Connection, id: &str) -> Result<serde_json::Value> 
 
 pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
     if as_json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&feedback_value(conn, id)?)?
-        );
+        print_json(&feedback_value(conn, id)?)?;
         return Ok(());
     }
 
@@ -976,10 +911,7 @@ pub fn feedback(conn: &Connection, id: &str, as_json: bool) -> Result<()> {
         return Ok(());
     }
     for a in &fb {
-        let target = match (&a.target_kind, &a.target_id) {
-            (Some(k), Some(idv)) => format!(" [{k}:{idv}]"),
-            _ => String::new(),
-        };
+        let target = annotation_target(a);
         let flag = if a.request_revision { " ⟳" } else { "" };
         println!("#{}{}{}: {}", a.id, target, flag, a.text);
     }

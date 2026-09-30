@@ -35,6 +35,34 @@ pub fn restore_terminal() -> Result<()> {
     Ok(())
 }
 
+pub fn with_terminal<T>(
+    f: impl FnOnce(&mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<T>,
+) -> Result<T> {
+    let mut terminal = init_terminal()?;
+    let result = f(&mut terminal);
+    restore_terminal()?;
+    result
+}
+
+pub fn next_key(timeout_ms: u64) -> Result<Option<crossterm::event::KeyEvent>> {
+    use crossterm::event::{self, Event, KeyEventKind};
+    if !event::poll(std::time::Duration::from_millis(timeout_ms))? {
+        return Ok(None);
+    }
+    match event::read()? {
+        Event::Key(key) if key.kind != KeyEventKind::Release => Ok(Some(key)),
+        _ => Ok(None),
+    }
+}
+
+pub fn scroll_into_view(scroll: &mut u16, line: u16, viewport: u16) {
+    if line < *scroll {
+        *scroll = line;
+    } else if viewport > 0 && line >= *scroll + viewport {
+        *scroll = line + 1 - viewport;
+    }
+}
+
 pub fn suspend() -> Result<()> {
     disable_raw_mode()?;
     execute!(io::stdout(), LeaveAlternateScreen)?;

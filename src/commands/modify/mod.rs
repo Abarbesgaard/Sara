@@ -3,6 +3,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+use crate::commands::shared::{parse_due, parse_duration_mins, print_cancelled};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -97,12 +98,10 @@ pub fn run(
         suggested_files: vec![],
     };
 
-    let mut terminal = tui::init_terminal()?;
-    let result = run_form(&mut terminal, ctx);
-    tui::restore_terminal()?;
+    let result = tui::with_terminal(|t| run_form(t, ctx));
 
     let Some(form) = result? else {
-        render::print_cancelled();
+        print_cancelled();
         return Ok(());
     };
 
@@ -121,7 +120,7 @@ pub fn run(
     if form.due.is_empty() {
         updated.due = None;
     } else {
-        updated.due = crate::commands::add::parse_due(&form.due, cfg);
+        updated.due = parse_due(&form.due, cfg);
     }
 
     updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
@@ -237,29 +236,6 @@ fn apply_fields(
     Ok(())
 }
 
-fn parse_estimate_mins(s: &str) -> Option<i64> {
-    let s = s.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let s_lower = s.to_lowercase();
-    let rest = s_lower.as_str();
-    if let Some(h_pos) = rest.find('h')
-        && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
-    {
-        let mut total = h * 60;
-        let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
-        if !after_h.is_empty()
-            && let Ok(m) = after_h.parse::<i64>()
-        {
-            total += m;
-        }
-        return Some(total);
-    }
-    let m_part = rest.trim_end_matches('m').trim();
-    m_part.parse::<i64>().ok()
-}
-
 #[allow(clippy::too_many_arguments)]
 fn merge_task_fields(
     task: Task,
@@ -301,7 +277,7 @@ fn merge_task_fields(
     if clear_due {
         updated.due = None;
     } else if let Some(d) = due {
-        match crate::commands::add::parse_due(d, cfg) {
+        match parse_due(d, cfg) {
             Some(dt) => updated.due = Some(dt),
             None => anyhow::bail!("Could not parse due date: {d}"),
         }
@@ -310,7 +286,7 @@ fn merge_task_fields(
     if clear_estimate {
         updated.estimate_mins = None;
     } else if let Some(e) = estimate {
-        match parse_estimate_mins(e) {
+        match parse_duration_mins(e) {
             Some(mins) => updated.estimate_mins = Some(mins),
             None => anyhow::bail!(
                 "Could not parse estimate: {e} (expected e.g. \"90m\", \"2h\", \"2h30m\")"

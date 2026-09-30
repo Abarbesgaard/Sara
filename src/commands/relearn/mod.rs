@@ -2,6 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+use crate::commands::shared::summarize;
 use crate::infrastructure::db;
 
 mod render;
@@ -82,17 +83,6 @@ pub fn run(
     let v = relearn_value(conn, handle, text, tags, files, force)?;
     render::print_relearned(&v, handle);
     Ok(())
-}
-
-fn summarize(text: &str) -> String {
-    const MAX: usize = 80;
-    let trimmed = text.trim();
-    if trimmed.chars().count() <= MAX {
-        trimmed.to_string()
-    } else {
-        let truncated: String = trimmed.chars().take(MAX).collect();
-        format!("{}…", truncated.trim_end())
-    }
 }
 
 #[cfg(test)]
