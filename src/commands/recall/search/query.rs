@@ -1,8 +1,8 @@
 use rusqlite::Connection;
 
+use crate::commands::shared::{normalize_list, resolve_files};
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
-use crate::infrastructure::project;
 
 pub(in crate::commands::recall) struct RecallInput<'a> {
     pub query: &'a str,
@@ -15,12 +15,9 @@ impl<'a> RecallInput<'a> {
     pub fn new(query: &'a str, tags: &[String], projects: &[String], files: &[String]) -> Self {
         Self {
             query: query.trim(),
-            tags: normalize(tags),
-            projects: normalize(projects),
-            files: normalize(files)
-                .iter()
-                .map(|p| project::resolve_file_link_here(p))
-                .collect(),
+            tags: normalize_list(tags),
+            projects: normalize_list(projects),
+            files: resolve_files(&normalize_list(files)),
         }
     }
 
@@ -30,14 +27,6 @@ impl<'a> RecallInput<'a> {
             && self.projects.is_empty()
             && self.files.is_empty()
     }
-}
-
-pub(in crate::commands::recall) fn normalize(values: &[String]) -> Vec<String> {
-    values
-        .iter()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .collect()
 }
 
 pub(in crate::commands::recall) fn resolve_label_query(

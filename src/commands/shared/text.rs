@@ -32,3 +32,24 @@ pub fn strength_label(s: f64) -> &'static str {
         "Weak"
     }
 }
+
+pub fn split_csv(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn normalize_list(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn short_id(s: &str) -> String {
+    s.chars().take(8).collect()
+}

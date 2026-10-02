@@ -3,7 +3,9 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
-use crate::commands::shared::{parse_due, parse_duration_mins, print_cancelled};
+use crate::commands::shared::{
+    normalize_list, parse_due, parse_duration_mins, print_cancelled, split_csv,
+};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -109,12 +111,7 @@ pub fn run(
     updated.description = form.description;
     updated.project = form.project.clone();
     updated.priority = form.priority;
-    updated.tags = form
-        .tags
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    updated.tags = split_csv(&form.tags);
     updated.modified = Utc::now();
 
     if form.due.is_empty() {
@@ -267,11 +264,7 @@ fn merge_task_fields(
     if clear_tags {
         updated.tags = vec![];
     } else if !tags.is_empty() {
-        updated.tags = tags
-            .iter()
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .collect();
+        updated.tags = normalize_list(tags);
     }
 
     if clear_due {

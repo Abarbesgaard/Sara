@@ -15,9 +15,9 @@ pub use memory_graph::{
     canonical_labels, derived_children, derived_count, derived_from_suffix, item_label,
     item_snippet, memory_handle, short_handle,
 };
-pub use project::{guard_branch_mutation, parse_due, project_head, project_path};
+pub use project::{guard_branch_mutation, parse_due, project_head, project_path, resolve_files};
 pub use prompt::{print_cancelled, prompt_line};
-pub use text::{plural, strength_label, summarize, truncate};
+pub use text::{normalize_list, plural, short_id, split_csv, strength_label, summarize, truncate};
 pub use time::{month_abbr, parse_duration_mins, rel_time};
 
 #[cfg(test)]

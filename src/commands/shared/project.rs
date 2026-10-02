@@ -56,3 +56,10 @@ pub fn guard_branch_mutation(
     }
     Ok(())
 }
+
+pub fn resolve_files(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|p| crate::infrastructure::project::resolve_file_link_here(p))
+        .collect()
+}

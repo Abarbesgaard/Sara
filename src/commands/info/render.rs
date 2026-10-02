@@ -16,7 +16,7 @@ use super::handler::{
     guide_is_stale, notes_of_kind, typed_notes, verification_rows,
 };
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
-use crate::commands::shared::{heat_color, month_abbr, plural, truncate};
+use crate::commands::shared::{heat_color, month_abbr, plural, short_id, truncate};
 
 pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     let area = f.area();
@@ -661,10 +661,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     let commit = item
                         .done_commit
                         .as_deref()
-                        .map(|c| {
-                            let short: String = c.chars().take(8).collect();
-                            format!("@ {short}")
-                        })
+                        .map(|c| format!("@ {}", short_id(c)))
                         .unwrap_or_default();
                     let when = item
                         .done_at

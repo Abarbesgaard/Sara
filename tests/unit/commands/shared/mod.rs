@@ -171,3 +171,30 @@ fn scroll_into_view_keeps_line_visible() {
     scroll_into_view(&mut s, 15, 10);
     assert_eq!(s, 11);
 }
+
+#[test]
+fn split_csv_trims_and_drops_empty_entries() {
+    assert_eq!(split_csv(" a , ,b ,"), ["a", "b"]);
+    assert!(split_csv("").is_empty());
+}
+
+#[test]
+fn normalize_list_trims_and_drops_empty_entries() {
+    let input = [" a ".to_string(), "  ".to_string(), "b".to_string()];
+    assert_eq!(normalize_list(&input), ["a", "b"]);
+}
+
+#[test]
+fn short_id_takes_eight_chars_not_bytes() {
+    assert_eq!(short_id("0123456789abcdef"), "01234567");
+    assert_eq!(short_id("åbc"), "åbc");
+    assert_eq!(short_id("ååååååååå"), "åååååååå");
+}
+
+#[test]
+fn resolve_files_keeps_order_and_length() {
+    let input = ["b.rs".to_string(), "a.rs".to_string()];
+    let out = resolve_files(&input);
+    assert_eq!(out.len(), 2);
+    assert!(out[0].ends_with("b.rs") && out[1].ends_with("a.rs"));
+}

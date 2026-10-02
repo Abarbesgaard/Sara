@@ -4,11 +4,14 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::commands::shared::{derived_children, derived_count, memory_handle, plural, summarize};
+use crate::commands::shared::{
+    derived_children, derived_count, memory_handle, normalize_list, plural, resolve_files,
+    summarize,
+};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
-use crate::infrastructure::project::{detect_current_project, resolve_file_link_here};
+use crate::infrastructure::project::detect_current_project;
 
 mod render;
 
@@ -209,10 +212,9 @@ pub(crate) fn canonical_overlap_candidates(
     conn: &Connection,
     tags: &[String],
 ) -> Result<Vec<uuid::Uuid>> {
-    let normalized: Vec<String> = tags
+    let normalized: Vec<String> = normalize_list(tags)
         .iter()
-        .map(|t| t.trim().to_lowercase())
-        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
         .collect();
     if normalized.is_empty() {
         return Ok(vec![]);
@@ -263,10 +265,9 @@ pub(crate) fn check_overlap(
     files: &[String],
     current_project: Option<&str>,
 ) -> Result<()> {
-    let normalized: Vec<String> = tags
+    let normalized: Vec<String> = normalize_list(tags)
         .iter()
-        .map(|t| t.trim().to_lowercase())
-        .filter(|t| !t.is_empty())
+        .map(|t| t.to_lowercase())
         .collect();
 
     let mut any_union: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
@@ -440,7 +441,7 @@ pub(crate) fn file_overlaps(
 }
 
 fn collect_files(explicit: &[String], auto_files: bool) -> Result<Vec<String>> {
-    let mut paths: Vec<String> = explicit.iter().map(|p| resolve_file_link_here(p)).collect();
+    let mut paths: Vec<String> = resolve_files(explicit);
 
     if auto_files {
         match find_git_root(&std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))) {

@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
-use crate::commands::shared::summarize;
+use crate::commands::shared::{resolve_files, summarize};
 use crate::infrastructure::db;
 
 mod render;
@@ -53,10 +53,7 @@ pub fn relearn_value(
     }
 
     if !files.is_empty() {
-        let resolved: Vec<String> = files
-            .iter()
-            .map(|p| crate::infrastructure::project::resolve_file_link_here(p))
-            .collect();
+        let resolved = resolve_files(files);
         db::set_item_files(conn, &item.uuid, &resolved)?;
         updated.push("files");
     } else {

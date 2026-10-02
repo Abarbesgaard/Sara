@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::commands::shared::parse_due;
+use crate::commands::shared::{parse_due, split_csv};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -19,12 +19,7 @@ pub(super) fn save(
 ) -> Result<Task> {
     let mut task = Task::new(form.description, form.project.clone());
     task.priority = form.priority;
-    task.tags = form
-        .tags
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    task.tags = split_csv(&form.tags);
     task.recur = recur;
 
     if !form.due.is_empty() {
