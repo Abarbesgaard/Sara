@@ -64,9 +64,6 @@ pub(in crate::commands::recall) fn collapse_clusters(
                 let family = o.into_mut();
                 family.collapsed += 1;
                 if promote {
-                    // The displaced representative was the family's
-                    // top-ranked hit, so it outranks any sibling
-                    // folded before it.
                     let displaced = std::mem::replace(&mut kept[family.rep], h);
                     family.nearest = Some(displaced.label);
                 } else if family.nearest.is_none() {
