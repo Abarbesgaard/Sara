@@ -18,7 +18,7 @@ use super::handler::{
 };
 use super::render::render;
 use super::types::{Detail, EditField, EditState, Focusable};
-use crate::commands::shared::{parse_due, parse_duration_mins};
+use crate::commands::shared::{parse_due, parse_duration_mins, split_csv};
 
 pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
@@ -509,11 +509,7 @@ pub(super) fn apply_field(task: &mut Task, field: EditField, value: &str, cfg: &
             }
         }
         EditField::Tags => {
-            task.tags = value
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
+            task.tags = split_csv(value);
         }
         EditField::Priority => {}
         EditField::Estimate => {

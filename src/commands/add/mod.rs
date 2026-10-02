@@ -7,7 +7,7 @@ const SIMILAR_LIMIT: i64 = 5;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::commands::shared::project_path;
+use crate::commands::shared::{project_path, split_csv};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -45,7 +45,7 @@ pub fn run(
         conn,
         cfg,
         &form.description,
-        &split_tags(&form.tags),
+        &split_csv(&form.tags),
         &form.project,
         SIMILAR_LIMIT,
     ) {
@@ -129,7 +129,7 @@ pub fn run_value(
         conn,
         cfg,
         &form.description,
-        &split_tags(&form.tags),
+        &split_csv(&form.tags),
         &form.project,
         SIMILAR_LIMIT,
     )
@@ -172,13 +172,6 @@ fn auto_tie_branch(conn: &Connection, task: &Task) -> Option<String> {
     let branch = crate::infrastructure::git::current_branch(&path)?;
     crate::infrastructure::db::set_task_branch(conn, &task.uuid, &branch).ok()?;
     Some(branch)
-}
-
-fn split_tags(tags: &str) -> Vec<String> {
-    tags.split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
 }
 
 fn find_duplicate_open_task(conn: &Connection, project: &str, description: &str) -> Option<Task> {

@@ -4,7 +4,7 @@ use crate::infrastructure::db;
 
 use super::handler::{guide_is_stale, notes_of_kind, verification_rows};
 use super::types::Detail;
-use crate::commands::shared::annotation_target;
+use crate::commands::shared::{annotation_target, short_id};
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct RenderOpts {
@@ -131,10 +131,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
                 let commit = s
                     .done_commit
                     .as_deref()
-                    .map(|c| {
-                        let short: String = c.chars().take(8).collect();
-                        format!("@ {short} ")
-                    })
+                    .map(|c| format!("@ {} ", short_id(c)))
                     .unwrap_or_default();
                 let when = s.done_at.as_deref().unwrap_or("");
                 w!("        done:   {commit}{when}");

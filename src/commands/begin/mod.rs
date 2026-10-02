@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 
 use crate::commands;
-use crate::commands::shared::print_json;
+use crate::commands::shared::{normalize_list, print_json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::telemetry::Source;
@@ -56,11 +56,7 @@ pub fn begin_value(
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();
 
-    let anchor_files: Vec<&str> = files
-        .iter()
-        .map(|f| f.trim())
-        .filter(|f| !f.is_empty())
-        .collect();
+    let anchor_files = normalize_list(files);
     if !anchor_files.is_empty()
         && let Ok(uuid) = created["uuid"]
             .as_str()

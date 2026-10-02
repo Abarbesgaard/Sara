@@ -3,7 +3,7 @@ use rusqlite::Connection;
 
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::types::Hit;
-use crate::commands::shared::{item_label, item_snippet};
+use crate::commands::shared::{item_label, item_snippet, short_id};
 use crate::infrastructure::db;
 use crate::infrastructure::model::Item;
 
@@ -82,7 +82,7 @@ fn linked_labels<'a>(conn: &Connection, uuids: impl Iterator<Item = &'a str>) ->
             db::get_item_by_uuid(conn, u)
                 .ok()
                 .map(|i| item_label(&i))
-                .unwrap_or_else(|| u.chars().take(8).collect())
+                .unwrap_or_else(|| short_id(u))
         })
         .collect()
 }

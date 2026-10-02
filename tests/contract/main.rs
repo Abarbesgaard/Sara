@@ -8,4 +8,5 @@ mod doctor;
 mod mcp;
 mod recall;
 mod reflect;
+mod tag_parsing;
 mod telemetry;

@@ -83,13 +83,7 @@ where
         where
             E: serde::de::Error,
         {
-            let items: Vec<String> = v
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect();
-            Ok(Some(items))
+            Ok(Some(crate::commands::shared::split_csv(v)))
         }
         fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
         where

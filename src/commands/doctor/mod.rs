@@ -10,7 +10,7 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
-use crate::commands::shared::{print_json, short_handle};
+use crate::commands::shared::{print_json, short_handle, short_id};
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
 use crate::infrastructure::memory::fingerprint::{self, AnchorState};
@@ -87,12 +87,7 @@ pub fn doctor_value(conn: &Connection) -> Result<Value> {
             (uuid, label)
         })
         .collect();
-    let label_of = |uuid: &str| {
-        labels
-            .get(uuid)
-            .cloned()
-            .unwrap_or_else(|| uuid.chars().take(8).collect())
-    };
+    let label_of = |uuid: &str| labels.get(uuid).cloned().unwrap_or_else(|| short_id(uuid));
 
     let checks = vec![
         embedding_check(conn, &memories, &label_of)?,
