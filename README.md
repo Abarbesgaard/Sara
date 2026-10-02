@@ -602,7 +602,8 @@ args = ["mcp"]
 
 Once connected, the tools show up in the client automatically, and the server
 sends usage **`instructions`** on `initialize` — the `project_path` model, UUID
-targeting, and the execution loop through to the PR/completion discipline. Clients
+targeting, the `begin` → `next` → `step_done` → `validate` execution loop, the
+recall/learn memory discipline, and the PR/completion rule. Clients
 like Claude Code surface those to the model, so often no extra prompting is needed.
 
 For stronger, always-on steering, add a short rule to your agent's own persistent

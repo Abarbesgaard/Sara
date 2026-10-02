@@ -14,19 +14,31 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
 pub(crate) const INSTRUCTIONS: &str = "\
-sara is a folder-aware task manager: a git repo == a project, and each task carries \
-a rich guide (ordered steps, acceptance criteria, notes, links, dependencies) meant \
-for an agent to execute. This server exposes the whole non-interactive task \
-lifecycle as typed tools — read, plan, guide, edit, track, and complete; nothing \
-opens a TUI or blocks on stdin.\n\n\
+sara is a folder-aware task manager with a long-term memory: a git repo == a \
+project, and each task carries a rich guide (ordered steps, acceptance criteria, \
+notes, links, dependencies) meant for an agent to execute. This server exposes the \
+whole non-interactive task lifecycle and the memory store as typed tools — begin, \
+plan, guide, track, verify, remember, and complete; nothing opens a TUI or blocks \
+on stdin.\n\n\
 Because the server is long-running and has no per-call working directory, EVERY \
 tool takes an optional `project_path` — set it to the absolute path of the target \
 git repo so the tool resolves/creates tasks there; omit it to use the directory the \
 server was launched in. Target tasks by their 8-char UUID prefix (stable), not the \
 recycled numeric display id. Never read the sara SQLite DB directly.\n\n\
-Typical execution loop: list/info to load a task → next for the current step → do \
-the work → step_done (with a result) → verify. To finish, link the PR (link) and \
-call done only once that PR has merged — opening a PR is not completion.";
+Execution loop: start new work with `begin` (or `list`/`info` to resume a task). \
+`begin` seeds a first step to recall prior art — decide what knowledge bears on the \
+task and call `recall` yourself. Lay out the work with `check` (steps, or \
+acceptance criteria with kind=\"acceptance\" and a `verify` command), then repeat: \
+`next` for the current step → do the work → `step_done` with a result. Record \
+findings and decisions with `annotate`. `validate` runs every acceptance \
+criterion's verify command and stamps the guide green at git HEAD.\n\n\
+Memory: `recall` before solving (heed its `patterns`, `confidence`, and `stale` \
+flags); `learn` one distilled insight when you finish, tagged and bound to its \
+files; `relearn`/`forget` to correct or retire memories, `reflect` and `doctor` to \
+keep the store healthy.\n\n\
+A failed tool call returns a result with isError set and the reason as text — read \
+it and correct the call. To finish, link the PR (`link`) and call `done` only once \
+that PR has merged — opening a PR is not completion.";
 
 pub(crate) struct CwdGuard {
     prev: Option<PathBuf>,
@@ -152,11 +164,14 @@ impl SaraServer {
     }
 }
 
-pub(crate) fn mcp_err(e: anyhow::Error) -> ErrorData {
-    ErrorData::internal_error(e.to_string(), None)
+/// Tool failures are returned as `Err(String)`, which rmcp turns into a
+/// `CallToolResult` with `isError: true` so the model can see and recover from
+/// them; `ErrorData` would surface as a JSON-RPC protocol error instead.
+pub(crate) fn mcp_err(e: anyhow::Error) -> String {
+    e.to_string()
 }
 
-pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, ErrorData> {
+pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, String> {
     serde_json::to_string_pretty(&v).map_err(|e| mcp_err(e.into()))
 }
 

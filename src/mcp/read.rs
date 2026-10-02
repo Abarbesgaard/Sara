@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};
 
 use crate::commands;
@@ -10,7 +9,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = read_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(description = "List pending tasks for a project (or all projects).")]
-    fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, ErrorData> {
+    fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp list", |conn, cfg| {
                 commands::list::list_value(conn, cfg, p.all.unwrap_or(false), p.project.as_deref())
@@ -22,7 +21,7 @@ impl SaraServer {
     #[tool(
         description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting."
     )]
-    fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp info", |conn, _cfg| {
                 commands::info::guide_value(conn, &p.id)
@@ -32,7 +31,7 @@ impl SaraServer {
     }
 
     #[tool(description = "The execution cursor: the first not-done step of a task.")]
-    fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp next", |conn, _cfg| {
                 commands::guide::next_value(conn, &p.id)
@@ -42,7 +41,7 @@ impl SaraServer {
     }
 
     #[tool(description = "Ordered steps of a task (optionally only up to step `until`).")]
-    fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, ErrorData> {
+    fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp steps", |conn, _cfg| {
                 commands::guide::steps_value(conn, &p.id, p.until)
@@ -54,7 +53,7 @@ impl SaraServer {
     #[tool(
         description = "Read-only: the verification commands + acceptance criteria for a task (does NOT run them)."
     )]
-    fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, ErrorData> {
+    fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp verify", |conn, _cfg| {
                 commands::guide::verify_value(conn, &p.id, p.step)
@@ -66,7 +65,7 @@ impl SaraServer {
     #[tool(
         description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array. Also returns a `patterns` array: recurring problem-solving patterns (canonical memories the hits belong to, with prior-application `instances`) — when present, prefer turning a pattern's `text` into a task via `add` (using it as the step guide) over re-deriving the solution, then `learn` the outcome and link it `derived_from` the canonical."
     )]
-    fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
+    fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
                 commands::recall::recall_value(
@@ -85,7 +84,7 @@ impl SaraServer {
     }
 
     #[tool(description = "List a task's open human feedback (items awaiting a response).")]
-    fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
                 commands::guide::feedback_value(conn, &p.id)
@@ -97,7 +96,7 @@ impl SaraServer {
     #[tool(
         description = "Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by)."
     )]
-    fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp plan_show", |conn, _cfg| {
                 commands::plan::show_value(conn, &p.id)
@@ -107,7 +106,7 @@ impl SaraServer {
     }
 
     #[tool(description = "List all tag vocabulary with usage counts across active memories.")]
-    fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, ErrorData> {
+    fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp tags", |conn, _cfg| {
                 let counts = crate::infrastructure::db::list_tags_with_counts(conn)?;
@@ -125,7 +124,7 @@ impl SaraServer {
     #[tool(
         description = "Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`."
     )]
-    fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, ErrorData> {
+    fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
                 let items = crate::infrastructure::db::list_memories(conn)?;
@@ -170,7 +169,7 @@ impl SaraServer {
     #[tool(
         description = "List all known projects with their metadata, task counts, and last activity."
     )]
-    fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, ErrorData> {
+    fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp projects", |conn, _cfg| {
                 let names = crate::infrastructure::db::project_names(conn)?;
@@ -200,10 +199,7 @@ impl SaraServer {
         `used_in` (memory references a context/file). \
         The superseding memory surfaces alongside the stale one in recall output. \
         Use this to invalidate outdated memories rather than deleting them.")]
-    fn link_memory(
-        &self,
-        Parameters(p): Parameters<LinkMemoryParams>,
-    ) -> Result<String, ErrorData> {
+    fn link_memory(&self, Parameters(p): Parameters<LinkMemoryParams>) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -226,7 +222,7 @@ impl SaraServer {
     fn unlink_memory(
         &self,
         Parameters(p): Parameters<UnlinkMemoryParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -246,7 +242,7 @@ impl SaraServer {
     fn prune_memories(
         &self,
         Parameters(p): Parameters<PruneMemoriesParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         use crate::commands::prune_memories::{DEFAULT_PROVISIONAL_DAYS, DEFAULT_WEAK_DAYS};
         let v = self
             .with_project(
@@ -274,10 +270,7 @@ impl SaraServer {
         away. This is what makes related memories surface together in future recalls, \
         so run it periodically. Returns the number of synapses in the learned wiring."
     )]
-    fn consolidate(
-        &self,
-        Parameters(p): Parameters<ConsolidateParams>,
-    ) -> Result<String, ErrorData> {
+    fn consolidate(&self, Parameters(p): Parameters<ConsolidateParams>) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -305,7 +298,7 @@ impl SaraServer {
         non-canonical member -> the canonical one); links that would trip the \
         cycle guard are skipped and reported."
     )]
-    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, ErrorData> {
+    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, String> {
         let min_weight = p
             .min_weight
             .unwrap_or(crate::commands::reflect::DEFAULT_MIN_WEIGHT);
@@ -333,7 +326,7 @@ impl SaraServer {
     fn diagnose_memories(
         &self,
         Parameters(p): Parameters<DiagnoseMemoriesParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let threshold = p
             .threshold
             .unwrap_or(commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD);
@@ -361,7 +354,7 @@ impl SaraServer {
         backlog, and decay outliers. Each check returns status ok|warn|info, a count, \
         a summary, and the `fix` command to run. `healthy` is false when any check warns."
     )]
-    fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, ErrorData> {
+    fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp doctor", |conn, _cfg| {
                 commands::doctor::doctor_value(conn)
@@ -378,7 +371,7 @@ impl SaraServer {
     fn reindex_embeddings(
         &self,
         Parameters(p): Parameters<ReindexEmbeddingsParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
