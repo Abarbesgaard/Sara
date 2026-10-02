@@ -1,4 +1,6 @@
 use rusqlite::Connection;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::commands::recall::types::{ClusterInfo, Hit};
 use crate::commands::shared::derived_count;
@@ -28,58 +30,68 @@ pub(in crate::commands::recall) fn family_size(
     }
 }
 
+struct Family {
+    rep: usize,
+    collapsed: usize,
+    nearest: Option<String>,
+}
+
 pub(in crate::commands::recall) fn collapse_clusters(
     conn: &Connection,
     hits: Vec<Hit>,
 ) -> Vec<Hit> {
     let mut kept: Vec<Hit> = Vec::with_capacity(hits.len());
-    let mut rep_of: std::collections::HashMap<(String, String), usize> =
-        std::collections::HashMap::new();
-    let mut collapsed: std::collections::HashMap<(String, String), usize> =
-        std::collections::HashMap::new();
-    let mut nearest: std::collections::HashMap<(String, String), String> =
-        std::collections::HashMap::new();
+    let mut families: HashMap<(String, String), Family> = HashMap::new();
 
     for h in hits {
-        match family_key(&h) {
-            None => kept.push(h),
-            Some(fam) => {
-                let key = (fam.clone(), hit_project_sig(conn, &h));
-                match rep_of.get(&key).copied() {
-                    None => {
-                        rep_of.insert(key, kept.len());
-                        kept.push(h);
-                    }
-                    Some(idx) => {
-                        *collapsed.entry(key.clone()).or_insert(0) += 1;
-                        if h.label == fam && kept[idx].label != fam {
-                            // The displaced representative was the family's
-                            // top-ranked hit, so it outranks any sibling
-                            // folded before it.
-                            let displaced = std::mem::replace(&mut kept[idx], h);
-                            nearest.insert(key, displaced.label);
-                        } else {
-                            nearest.entry(key).or_insert(h.label);
-                        }
-                    }
+        let Some(fam) = family_key(&h) else {
+            kept.push(h);
+            continue;
+        };
+        let sig = hit_project_sig(conn, &h);
+        match families.entry((fam, sig)) {
+            Entry::Vacant(v) => {
+                v.insert(Family {
+                    rep: kept.len(),
+                    collapsed: 0,
+                    nearest: None,
+                });
+                kept.push(h);
+            }
+            Entry::Occupied(o) => {
+                let canonical = &o.key().0;
+                let promote = h.label == *canonical && kept[o.get().rep].label != *canonical;
+                let family = o.into_mut();
+                family.collapsed += 1;
+                if promote {
+                    // The displaced representative was the family's
+                    // top-ranked hit, so it outranks any sibling
+                    // folded before it.
+                    let displaced = std::mem::replace(&mut kept[family.rep], h);
+                    family.nearest = Some(displaced.label);
+                } else if family.nearest.is_none() {
+                    family.nearest = Some(h.label);
                 }
             }
         }
     }
 
     for h in kept.iter_mut() {
-        if let Some(fam) = family_key(h) {
-            let key = (fam.clone(), hit_project_sig(conn, h));
-            let size = family_size(conn, h, &fam);
-            if size > 1 {
-                h.cluster = Some(ClusterInfo {
-                    canonical_label: fam.clone(),
-                    size,
-                    collapsed_here: collapsed.get(&key).copied().unwrap_or(0),
-                    nearest: nearest.get(&key).cloned(),
-                });
-            }
+        let Some(fam) = family_key(h) else { continue };
+        let size = family_size(conn, h, &fam);
+        if size <= 1 {
+            continue;
         }
+        let key = (fam, hit_project_sig(conn, h));
+        let family = families.get(&key);
+        let collapsed_here = family.map_or(0, |f| f.collapsed);
+        let nearest = family.and_then(|f| f.nearest.clone());
+        h.cluster = Some(ClusterInfo {
+            canonical_label: key.0,
+            size,
+            collapsed_here,
+            nearest,
+        });
     }
 
     kept
