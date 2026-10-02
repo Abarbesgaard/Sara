@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-02
+
 ### Added
 
 - **MCP tool annotations.** Every tool now advertises `readOnlyHint`,
