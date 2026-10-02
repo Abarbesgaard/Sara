@@ -1,0 +1,5 @@
+---
+source: tests/contract/reflect.rs
+expression: "s.run(&[\"reflect\"])"
+---
+Nothing to consolidate — no un-linked related clusters above the weight threshold.
