@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use super::types::UnionFind;
+use crate::commands::reflect::types::UnionFind;
 
-pub(super) fn split_component(
+pub(in crate::commands::reflect) fn split_component(
     members: Vec<usize>,
     edges: &[(usize, usize, f64)],
     max: usize,

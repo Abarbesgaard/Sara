@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::infrastructure::db;
 
-pub(super) fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, HashSet<String>>> {
+pub(in crate::commands::reflect) fn projects_by_uuid(
+    conn: &Connection,
+) -> Result<HashMap<String, HashSet<String>>> {
     let mut map: HashMap<String, HashSet<String>> = HashMap::new();
     for (uuid, project) in db::all_item_projects(conn)? {
         map.entry(uuid).or_default().insert(project);
@@ -12,7 +14,7 @@ pub(super) fn projects_by_uuid(conn: &Connection) -> Result<HashMap<String, Hash
     Ok(map)
 }
 
-pub(super) fn pair_key(a: &str, b: &str) -> (String, String) {
+pub(in crate::commands::reflect) fn pair_key(a: &str, b: &str) -> (String, String) {
     if a <= b {
         (a.to_string(), b.to_string())
     } else {
@@ -20,7 +22,9 @@ pub(super) fn pair_key(a: &str, b: &str) -> (String, String) {
     }
 }
 
-pub(super) fn deliberate_links(conn: &Connection) -> Result<HashSet<(String, String)>> {
+pub(in crate::commands::reflect) fn deliberate_links(
+    conn: &Connection,
+) -> Result<HashSet<(String, String)>> {
     let mut set = HashSet::new();
     for link in db::all_memory_links(conn).unwrap_or_default() {
         if link.relation == "co_activated" {
@@ -31,7 +35,7 @@ pub(super) fn deliberate_links(conn: &Connection) -> Result<HashSet<(String, Str
     Ok(set)
 }
 
-pub(super) fn shares_project(
+pub(in crate::commands::reflect) fn shares_project(
     a: &str,
     b: &str,
     projects_by_uuid: &HashMap<String, HashSet<String>>,

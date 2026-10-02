@@ -3,10 +3,10 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
-use super::consolidated::is_already_consolidated;
-use super::eligibility::{deliberate_links, pair_key, projects_by_uuid, shares_project};
-use super::split::split_component;
-use super::tags::shared_tags;
+use super::cluster::consolidated::is_already_consolidated;
+use super::cluster::eligibility::{deliberate_links, pair_key, projects_by_uuid, shares_project};
+use super::cluster::split::split_component;
+use super::cluster::tags::shared_tags;
 use super::types::{Cluster, UnionFind};
 use crate::infrastructure::db;
 use crate::infrastructure::memory::graph::MemoryGraph;

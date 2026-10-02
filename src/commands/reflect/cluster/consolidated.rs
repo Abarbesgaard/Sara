@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn is_already_consolidated(
+pub(in crate::commands::reflect) fn is_already_consolidated(
     uuids: &[String],
     derived_parents: &HashMap<String, HashSet<String>>,
 ) -> bool {

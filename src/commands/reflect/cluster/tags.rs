@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn shared_tags(
+pub(in crate::commands::reflect) fn shared_tags(
     uuids: &[String],
     tags_by_uuid: &HashMap<String, Vec<String>>,
 ) -> Vec<String> {

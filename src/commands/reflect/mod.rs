@@ -4,12 +4,9 @@ use rusqlite::Connection;
 use crate::commands::shared::print_json;
 
 mod apply;
-mod consolidated;
-mod eligibility;
+mod cluster;
 mod propose;
 mod render;
-mod split;
-mod tags;
 mod types;
 
 pub use apply::apply_value;
