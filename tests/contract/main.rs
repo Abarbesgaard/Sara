@@ -7,4 +7,5 @@ mod cli_json;
 mod doctor;
 mod mcp;
 mod recall;
+mod reflect;
 mod telemetry;

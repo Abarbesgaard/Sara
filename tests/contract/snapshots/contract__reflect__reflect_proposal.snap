@@ -1,0 +1,12 @@
+---
+source: tests/contract/reflect.rs
+expression: "s.run(&[\"reflect\"])"
+---
+1 consolidation candidate(s) — related memories with no shared canonical:
+
+  3 members, canonical -> m1  [shared tags: dependabot]
+    cluster: m1, m2, m3
+    sara link-memory m2 derived_from m1
+    sara link-memory m3 derived_from m1
+
+Review each cluster, then run the printed `sara link-memory` lines to consolidate.

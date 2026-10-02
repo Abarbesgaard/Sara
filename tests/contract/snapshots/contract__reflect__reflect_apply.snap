@@ -1,0 +1,7 @@
+---
+source: tests/contract/reflect.rs
+expression: "s.run(&[\"reflect\", \"--apply\"])"
+---
+Consolidated 2 link(s) across 1 cluster(s):
+  m2 derived_from m1
+  m3 derived_from m1
