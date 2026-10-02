@@ -2,17 +2,17 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::commands::recall::enrich::confidence::match_confidence;
-use crate::commands::recall::enrich::hit::{item_hit, recent_hits};
+use crate::commands::recall::enrich::hit::{item_hit, recent_hits, record_recalled};
 use crate::commands::recall::enrich::spread::{should_auto_spread, spreading_related};
 use crate::commands::recall::enrich::stale::{mark_stale, stale_text};
 use crate::commands::recall::render::hit_line::hit_line;
 use crate::commands::recall::search::collect::collect_hits;
-use crate::commands::recall::search::query::{normalize, resolve_label_query};
+use crate::commands::recall::search::query::{RecallInput, resolve_label_query};
 use crate::commands::recall::search::semantic::SemanticOpts;
 
+use crate::commands::shared::{item_snippet, memory_handle};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::project;
 
 pub(in crate::commands::recall) fn print(
     conn: &Connection,
@@ -24,15 +24,14 @@ pub(in crate::commands::recall) fn print(
     limit: i64,
     spread: bool,
 ) -> Result<()> {
-    let query = query.trim();
-    let tags = normalize(tags);
-    let projects = normalize(projects);
-    let files: Vec<String> = normalize(files)
-        .iter()
-        .map(|p| project::resolve_file_link_here(p))
-        .collect();
-
-    let recent = query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty();
+    let input = RecallInput::new(query, tags, projects, files);
+    let recent = input.is_recent();
+    let RecallInput {
+        query,
+        tags,
+        projects,
+        files,
+    } = input;
 
     if !recent && let Some(item) = resolve_label_query(conn, query) {
         let _ = db::record_memory_recall(conn, &item.uuid);
@@ -47,15 +46,8 @@ pub(in crate::commands::recall) fn print(
         if !related.is_empty() {
             println!("\nCluster (recall a label for its full text):");
             for r in &related {
-                let label = format!("m{}", r.item.display_id.unwrap_or(0));
-                let snippet: String = r
-                    .item
-                    .summary
-                    .clone()
-                    .unwrap_or_else(|| r.item.body.clone())
-                    .chars()
-                    .take(100)
-                    .collect();
+                let label = memory_handle(&r.item);
+                let snippet = item_snippet(&r.item, 100);
                 println!("  ~{label} ({:.2}): {}", r.activation, snippet.trim());
                 let _ = db::record_memory_surfaced(conn, &r.item.uuid);
             }
@@ -99,11 +91,7 @@ pub(in crate::commands::recall) fn print(
     }
 
     if recent {
-        for h in &hits {
-            if let Some(u) = h.item_uuid {
-                let _ = db::record_memory_recall(conn, &u);
-            }
-        }
+        record_recalled(conn, &hits);
         println!("Recent memories (no query given):");
     } else {
         let (_, caveat) = match_confidence(query, &tags, &hits);
@@ -128,15 +116,8 @@ pub(in crate::commands::recall) fn print(
             };
             println!("\n{header}");
             for r in &related {
-                let label = format!("m{}", r.item.display_id.unwrap_or(0));
-                let snippet: String = r
-                    .item
-                    .summary
-                    .clone()
-                    .unwrap_or_else(|| r.item.body.clone())
-                    .chars()
-                    .take(100)
-                    .collect();
+                let label = memory_handle(&r.item);
+                let snippet = item_snippet(&r.item, 100);
                 let via = if r.path.len() > 1 {
                     format!("  [via {}]", r.path[..r.path.len() - 1].join(" → "))
                 } else {

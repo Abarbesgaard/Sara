@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::recall::enrich::confidence::match_confidence;
-use crate::commands::recall::enrich::hit::{item_hit, recent_hits};
+use crate::commands::recall::enrich::hit::{item_hit, recent_hits, record_recalled};
 use crate::commands::recall::enrich::patterns::detect_patterns;
 use crate::commands::recall::enrich::spread::{
     associative_guide, should_auto_spread, spreading_related,
@@ -11,11 +11,10 @@ use crate::commands::recall::enrich::spread::{
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::render::keyword::keyword_json;
 use crate::commands::recall::search::collect::collect_hits;
-use crate::commands::recall::search::query::{normalize, resolve_label_query};
+use crate::commands::recall::search::query::{RecallInput, resolve_label_query};
 use crate::commands::recall::search::semantic::SemanticOpts;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::project;
 
 pub fn recall_value(
     conn: &Connection,
@@ -27,21 +26,18 @@ pub fn recall_value(
     limit: i64,
     spread: bool,
 ) -> Result<serde_json::Value> {
-    let query = query.trim();
-    let tags = normalize(tags);
-    let projects = normalize(projects);
-    let files: Vec<String> = normalize(files)
-        .iter()
-        .map(|p| project::resolve_file_link_here(p))
-        .collect();
+    let input = RecallInput::new(query, tags, projects, files);
+    let recent = input.is_recent();
+    let RecallInput {
+        query,
+        tags,
+        projects,
+        files,
+    } = input;
 
-    if query.is_empty() && tags.is_empty() && projects.is_empty() && files.is_empty() {
+    if recent {
         let hits = recent_hits(conn, limit)?;
-        for h in &hits {
-            if let Some(u) = h.item_uuid {
-                let _ = db::record_memory_recall(conn, &u);
-            }
-        }
+        record_recalled(conn, &hits);
         let keyword = keyword_json(&hits);
         let patterns = detect_patterns(conn, &hits);
         return Ok(json!({

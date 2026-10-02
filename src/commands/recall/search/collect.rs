@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::collections::HashSet;
 
 use crate::commands::recall::enrich::clusters::collapse_clusters;
-use crate::commands::recall::enrich::hit::item_hit;
+use crate::commands::recall::enrich::hit::{item_hit, record_recalled};
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::search::filters::exact_uuids;
 use crate::commands::recall::search::fts;
@@ -117,11 +117,7 @@ pub(in crate::commands::recall) fn collect_hits(
     hits.truncate(limit.max(0) as usize);
     mark_stale(conn, &mut hits);
 
-    for h in &hits {
-        if let Some(u) = h.item_uuid {
-            let _ = db::record_memory_recall(conn, &u);
-        }
-    }
+    record_recalled(conn, &hits);
 
     Ok(hits)
 }
