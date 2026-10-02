@@ -4,6 +4,7 @@ use serde_json::json;
 use std::collections::HashSet;
 
 use crate::commands::recall::types::{Hit, Related};
+use crate::commands::shared::{item_snippet, memory_handle};
 use crate::infrastructure::db;
 
 pub(in crate::commands::recall) const ASSOCIATIVE_CAP: usize = 5;
@@ -62,8 +63,8 @@ pub(in crate::commands::recall) fn associative_guide(
         .map(|r| {
             let _ = db::record_memory_surfaced(conn, &r.item.uuid);
             json!({
-                "label": format!("m{}", r.item.display_id.unwrap_or(0)),
-                "preview": r.item.summary.clone().unwrap_or_else(|| r.item.body.clone()).chars().take(160).collect::<String>(),
+                "label": memory_handle(&r.item),
+                "preview": item_snippet(&r.item, 160),
                 "activation": r.activation,
                 "strength": db::item_strength(conn, &r.item),
                 "via": r.path,
