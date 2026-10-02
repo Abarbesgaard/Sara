@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};
 
 use crate::commands;
@@ -10,9 +9,15 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened."
+        description = "Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
-    fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, ErrorData> {
+    fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
                 commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
@@ -21,8 +26,16 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Attach a URL (e.g. a PR or issue link) to a task.")]
-    fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "Attach a URL (e.g. a PR or issue link) to a task.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp link", |conn, _cfg| {
                 commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref())
@@ -32,9 +45,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off."
+        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
-    fn dep(&self, Parameters(p): Parameters<DepParams>) -> Result<String, ErrorData> {
+    fn dep(&self, Parameters(p): Parameters<DepParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp dep", |conn, cfg| {
                 match p.action.as_str() {
@@ -64,9 +83,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs each acceptance criterion's verify command and refuses (errors) unless all are present and pass. Criteria already proven at the current commit with a clean working tree are reused from cache (skipped); identical verify commands run once. Errors if the project is not a git repo."
+        description = "Prove a task green then stamp its guide as validated against the project's current git HEAD. Fail-closed: runs each acceptance criterion's verify command and refuses (errors) unless all are present and pass. Criteria already proven at the current commit with a clean working tree are reused from cache (skipped); identical verify commands run once. Errors if the project is not a git repo.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
     )]
-    fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
                 commands::guide::validate_value(
@@ -82,9 +107,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set."
+        description = "Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
-    fn modify(&self, Parameters(p): Parameters<ModifyParams>) -> Result<String, ErrorData> {
+    fn modify(&self, Parameters(p): Parameters<ModifyParams>) -> Result<String, String> {
         let tags = p.tags.clone().unwrap_or_default();
         let v = self
             .with_project(p.project_path.as_deref(), "mcp modify", |conn, cfg| {
@@ -109,9 +140,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id). Optionally cite the `run_id` (from `record_run`) that addressed it."
+        description = "Resolve a feedback item by its `feedback_id` (the annotation id from the `feedback`/`info` output — NOT a task id). Optionally cite the `run_id` (from `record_run`) that addressed it.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
-    fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, ErrorData> {
+    fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp resolve", |conn, _cfg| {
                 commands::guide::resolve_value(conn, p.feedback_id, p.run_id)
@@ -121,9 +158,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`."
+        description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
-    fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, ErrorData> {
+    fn record_run(&self, Parameters(p): Parameters<RecordRunParams>) -> Result<String, String> {
         let total = p
             .total_tokens
             .or_else(|| p.prompt_tokens.zip(p.completion_tokens).map(|(a, b)| a + b));
@@ -147,9 +190,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove a link from a task by its sequential link id (shown in `sara info`)."
+        description = "Remove a link from a task by its sequential link id (shown in `sara info`).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
-    fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, ErrorData> {
+    fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp unlink", |conn, _cfg| {
                 commands::annotate::unlink_value(conn, p.link_id)
@@ -159,9 +208,15 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`)."
+        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
-    fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, ErrorData> {
+    fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp denotate", |conn, _cfg| {
                 commands::annotate::denotate_value(conn, p.annotation_id)
@@ -170,8 +225,16 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Move a task to a different project.")]
-    fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "Move a task to a different project.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {
                 commands::move_task::move_value(conn, cfg, &p.id, &p.project)

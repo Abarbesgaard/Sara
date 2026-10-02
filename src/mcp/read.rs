@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::ErrorData;
 use rmcp::{tool, tool_router};
 
 use crate::commands;
@@ -9,8 +8,11 @@ use super::server::{SaraServer, mcp_err, ok_json};
 
 #[tool_router(router = read_router, vis = "pub(crate)")]
 impl SaraServer {
-    #[tool(description = "List pending tasks for a project (or all projects).")]
-    fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "List pending tasks for a project (or all projects).",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp list", |conn, cfg| {
                 commands::list::list_value(conn, cfg, p.all.unwrap_or(false), p.project.as_deref())
@@ -20,9 +22,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting."
+        description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp info", |conn, _cfg| {
                 commands::info::guide_value(conn, &p.id)
@@ -31,8 +34,11 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "The execution cursor: the first not-done step of a task.")]
-    fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "The execution cursor: the first not-done step of a task.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp next", |conn, _cfg| {
                 commands::guide::next_value(conn, &p.id)
@@ -41,8 +47,11 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Ordered steps of a task (optionally only up to step `until`).")]
-    fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "Ordered steps of a task (optionally only up to step `until`).",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp steps", |conn, _cfg| {
                 commands::guide::steps_value(conn, &p.id, p.until)
@@ -52,9 +61,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Read-only: the verification commands + acceptance criteria for a task (does NOT run them)."
+        description = "Read-only: the verification commands + acceptance criteria for a task (does NOT run them).",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, ErrorData> {
+    fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp verify", |conn, _cfg| {
                 commands::guide::verify_value(conn, &p.id, p.step)
@@ -64,9 +74,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array. Also returns a `patterns` array: recurring problem-solving patterns (canonical memories the hits belong to, with prior-application `instances`) — when present, prefer turning a pattern's `text` into a task via `add` (using it as the step guide) over re-deriving the solution, then `learn` the outcome and link it `derived_from` the canonical."
+        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array. Also returns a `patterns` array: recurring problem-solving patterns (canonical memories the hits belong to, with prior-application `instances`) — when present, prefer turning a pattern's `text` into a task via `add` (using it as the step guide) over re-deriving the solution, then `learn` the outcome and link it `derived_from` the canonical.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, ErrorData> {
+    fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
                 commands::recall::recall_value(
@@ -84,8 +95,11 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "List a task's open human feedback (items awaiting a response).")]
-    fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "List a task's open human feedback (items awaiting a response).",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
                 commands::guide::feedback_value(conn, &p.id)
@@ -95,9 +109,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by)."
+        description = "Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by).",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, ErrorData> {
+    fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp plan_show", |conn, _cfg| {
                 commands::plan::show_value(conn, &p.id)
@@ -106,8 +121,11 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "List all tag vocabulary with usage counts across active memories.")]
-    fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, ErrorData> {
+    #[tool(
+        description = "List all tag vocabulary with usage counts across active memories.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp tags", |conn, _cfg| {
                 let counts = crate::infrastructure::db::list_tags_with_counts(conn)?;
@@ -123,9 +141,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`."
+        description = "Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, ErrorData> {
+    fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
                 let items = crate::infrastructure::db::list_memories(conn)?;
@@ -168,9 +187,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "List all known projects with their metadata, task counts, and last activity."
+        description = "List all known projects with their metadata, task counts, and last activity.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, ErrorData> {
+    fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp projects", |conn, _cfg| {
                 let names = crate::infrastructure::db::project_names(conn)?;
@@ -194,16 +214,21 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Create a typed directed link between two memories. \
+    #[tool(
+        description = "Create a typed directed link between two memories. \
         Relations: `supersedes` (new replaces old; old shows ⚠ superseded-by in recall), \
         `similar_to` (bidirectional affinity), `derived_from` (this was built on top of that), \
         `used_in` (memory references a context/file). \
         The superseding memory surfaces alongside the stale one in recall output. \
-        Use this to invalidate outdated memories rather than deleting them.")]
-    fn link_memory(
-        &self,
-        Parameters(p): Parameters<LinkMemoryParams>,
-    ) -> Result<String, ErrorData> {
+        Use this to invalidate outdated memories rather than deleting them.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn link_memory(&self, Parameters(p): Parameters<LinkMemoryParams>) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -222,11 +247,19 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Remove a typed directed link between two memories.")]
+    #[tool(
+        description = "Remove a typed directed link between two memories.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
     fn unlink_memory(
         &self,
         Parameters(p): Parameters<UnlinkMemoryParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -237,16 +270,24 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Evaluate and optionally archive low-value memories. \
+    #[tool(
+        description = "Evaluate and optionally archive low-value memories. \
         Three signals: (1) superseded — has incoming `supersedes` edge, \
         (2) provisional + old — auto-generated on `done` but not reviewed within `provisional_days`, \
         (3) weak + old — no task link and older than `weak_days`. \
         Set dry_run=true (default) to preview without archiving. Set dry_run=false to apply. \
-        Archived memories are NOT deleted — they can be inspected via direct DB query.")]
+        Archived memories are NOT deleted — they can be inspected via direct DB query.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
     fn prune_memories(
         &self,
         Parameters(p): Parameters<PruneMemoriesParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         use crate::commands::prune_memories::{DEFAULT_PROVISIONAL_DAYS, DEFAULT_WEAK_DAYS};
         let v = self
             .with_project(
@@ -272,12 +313,15 @@ impl SaraServer {
         often they co-fired. The learned wiring is recomputed from the window on each \
         run, so it is idempotent and synapses whose co-firings have aged out decay \
         away. This is what makes related memories surface together in future recalls, \
-        so run it periodically. Returns the number of synapses in the learned wiring."
+        so run it periodically. Returns the number of synapses in the learned wiring.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
-    fn consolidate(
-        &self,
-        Parameters(p): Parameters<ConsolidateParams>,
-    ) -> Result<String, ErrorData> {
+    fn consolidate(&self, Parameters(p): Parameters<ConsolidateParams>) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),
@@ -303,9 +347,15 @@ impl SaraServer {
         cluster. Read-only by default — returns the proposal so you can review it. \
         Pass apply=true to create the proposed `derived_from` edges (each \
         non-canonical member -> the canonical one); links that would trip the \
-        cycle guard are skipped and reported."
+        cycle guard are skipped and reported.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
-    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, ErrorData> {
+    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, String> {
         let min_weight = p
             .min_weight
             .unwrap_or(crate::commands::reflect::DEFAULT_MIN_WEIGHT);
@@ -328,12 +378,13 @@ impl SaraServer {
         description = "Health report for the memory graph: surfaces unlinked pairs that \
         both co-occur (shared file or identical tag set) AND are semantically close, \
         worst-first by cosine. Read-only — archives nothing. Use it to decide what to \
-        `relearn`, `forget` or `prune_memories`."
+        `relearn`, `forget` or `prune_memories`.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn diagnose_memories(
         &self,
         Parameters(p): Parameters<DiagnoseMemoriesParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let threshold = p
             .threshold
             .unwrap_or(commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD);
@@ -359,9 +410,10 @@ impl SaraServer {
         trusting recall. Checks embedding coverage, orphaned memory links, \
         near-duplicate pairs, superseded-but-active memories, the provisional review \
         backlog, and decay outliers. Each check returns status ok|warn|info, a count, \
-        a summary, and the `fix` command to run. `healthy` is false when any check warns."
+        a summary, and the `fix` command to run. `healthy` is false when any check warns.",
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
-    fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, ErrorData> {
+    fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp doctor", |conn, _cfg| {
                 commands::doctor::doctor_value(conn)
@@ -373,12 +425,18 @@ impl SaraServer {
     #[tool(
         description = "Rebuild the semantic embedding index over all memories. \
         Needed after bulk imports, or when `recall`'s semantic pass is missing \
-        memories that are obviously relevant. Returns the number embedded."
+        memories that are obviously relevant. Returns the number embedded.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     fn reindex_embeddings(
         &self,
         Parameters(p): Parameters<ReindexEmbeddingsParams>,
-    ) -> Result<String, ErrorData> {
+    ) -> Result<String, String> {
         let v = self
             .with_project(
                 p.project_path.as_deref(),

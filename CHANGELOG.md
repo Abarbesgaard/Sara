@@ -4,6 +4,11 @@
 
 ### Added
 
+- **MCP tool annotations.** Every tool now advertises `readOnlyHint`,
+  `destructiveHint`, `idempotentHint` and `openWorldHint`, so clients can
+  auto-approve the 13 read-only tools (`list`, `info`, `recall`, …) and warn
+  before destructive ones (`done`, `forget`, `step_remove`, …).
+
 - **`sara doctor` — is my memory store healthy?** One read-only report over
   the store: embedding coverage (and a stale embedding scheme), orphaned memory
   links, near-duplicate pairs, superseded memories still active, the provisional
@@ -29,6 +34,14 @@
   deleted. Adds a schema migration — older `sara` binaries cannot open the
   upgraded store (#164).
 
+### Fixed
+
+- **MCP tool failures are now tool results, not protocol errors.** A tool that
+  fails in the domain (unknown task id, blocked `done`, failing `validate`, …)
+  now returns a `CallToolResult` with `isError: true` and the reason as text,
+  as the MCP spec requires, instead of a JSON-RPC `-32603` error — so the model
+  sees the message and can correct its call.
+
 ### Changed
 
 - **Telemetry is now a compile-time opt-in (`--features telemetry`).** Default
@@ -41,6 +54,10 @@
   `folded` in the result), capture of clap usage errors / `--help` /
   `--version`, and byte-capped flush batches. This retires the long-lived
   `nightly` fork (#172).
+- **MCP server `instructions` refreshed** to the current surface: start work
+  with `begin` and its seeded recall step, acceptance criteria + `validate`,
+  the memory tools (`recall`/`learn`/`relearn`/`forget`/`reflect`/`doctor`),
+  and how failed calls are reported.
 
 ## [1.7.0] - 2026-09-25
 

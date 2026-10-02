@@ -734,3 +734,62 @@ fn step_done_by_step_id_ticks_the_right_item() {
     assert_eq!(done["index"].as_u64(), Some(2));
     assert_eq!(done["done"], true);
 }
+
+#[test]
+fn tools_carry_annotations() {
+    const READ_ONLY: &[&str] = &[
+        "list",
+        "info",
+        "next",
+        "steps",
+        "verify",
+        "recall",
+        "feedback",
+        "plan_show",
+        "tags",
+        "memories",
+        "projects",
+        "doctor",
+        "diagnose_memories",
+    ];
+    const DESTRUCTIVE: &[&str] = &[
+        "done",
+        "forget",
+        "step_remove",
+        "unlink",
+        "denotate",
+        "unlink_memory",
+        "prune_memories",
+        "modify",
+        "relearn",
+        "dep",
+        "assignment",
+        "rationale",
+    ];
+    let tools = SaraServer::all_router().list_all();
+    assert_eq!(tools.len(), 44);
+    for t in &tools {
+        let name = t.name.as_ref();
+        let a = t
+            .annotations
+            .as_ref()
+            .unwrap_or_else(|| panic!("tool `{name}` has no annotations"));
+        let read_only = READ_ONLY.contains(&name);
+        assert_eq!(a.read_only_hint, Some(read_only), "`{name}` readOnlyHint");
+        assert_eq!(
+            a.open_world_hint,
+            Some(name == "validate"),
+            "`{name}` openWorldHint"
+        );
+        if read_only {
+            assert_eq!(a.destructive_hint, None, "`{name}` is read-only");
+        } else {
+            assert_eq!(
+                a.destructive_hint,
+                Some(DESTRUCTIVE.contains(&name)),
+                "`{name}` destructiveHint"
+            );
+            assert!(a.idempotent_hint.is_some(), "`{name}` idempotentHint");
+        }
+    }
+}

@@ -26,6 +26,27 @@ fn tool_response_envelope_is_wellformed() {
 }
 
 #[test]
+fn tool_failure_is_an_is_error_result_not_a_protocol_error() {
+    let s = Sara::new();
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+
+    let env = mcp.call("info", json!({"id": "zzzzzzzz", "project_path": project}));
+    assert!(
+        env.get("error").is_none(),
+        "a domain failure must not be a JSON-RPC error: {env}",
+    );
+    assert_eq!(env["result"]["isError"], true, "{env}");
+    let text = env["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.contains("zzzzzzzz"),
+        "error text reaches the model: {env}"
+    );
+}
+
+#[test]
 fn begin_learn_recall_payloads() {
     let s = Sara::new();
     let project = s.project().to_string_lossy().to_string();
