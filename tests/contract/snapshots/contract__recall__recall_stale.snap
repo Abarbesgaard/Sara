@@ -1,0 +1,7 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"unicode\"])"
+---
+Note: Keyword-match only (literal FTS). Paraphrased or conceptually similar content with different wording may not appear.
+Keyword matches:
+  [item_memory] ~ m7 the parser handles unicode identifiers: the parser handles unicode identifiers [files: [PROJECT]/parser.rs] ⚠ may be stale — re-validate: [PROJECT]/parser.rs (100% changed) (just now)

@@ -1,0 +1,10 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"m1\"])"
+---
+Memory m1 (resolved by label):
+  dependabot bumped serde in repo a and broke the build
+
+Cluster (recall a label for its full text):
+  ~m3 (1.00): dependabot bumped serde in repo c and broke the build
+  ~m2 (1.00): dependabot bumped serde in repo b and broke the build

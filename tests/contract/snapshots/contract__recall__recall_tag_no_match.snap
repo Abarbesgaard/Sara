@@ -1,0 +1,5 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"--tag\", \"nope\"])"
+---
+No matches for the given --tag/--project filters.

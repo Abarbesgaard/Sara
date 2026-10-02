@@ -1,0 +1,7 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"--tag\", \"style\"])"
+---
+Keyword matches:
+  [item_memory] = m6 prefer early returns and guard clauses over deep nesting: prefer early returns and guard clauses over deep nesting (just now)
+  [item_memory] = m5 prefer early returns over nesting: prefer early returns over nesting ⚠ superseded by: m6 (just now)
