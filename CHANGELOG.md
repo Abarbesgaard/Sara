@@ -4,6 +4,11 @@
 
 ### Added
 
+- **MCP tool annotations.** Every tool now advertises `readOnlyHint`,
+  `destructiveHint`, `idempotentHint` and `openWorldHint`, so clients can
+  auto-approve the 13 read-only tools (`list`, `info`, `recall`, …) and warn
+  before destructive ones (`done`, `forget`, `step_remove`, …).
+
 - **`sara doctor` — is my memory store healthy?** One read-only report over
   the store: embedding coverage (and a stale embedding scheme), orphaned memory
   links, near-duplicate pairs, superseded memories still active, the provisional

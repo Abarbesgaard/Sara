@@ -549,6 +549,11 @@ from reading and planning a task through to completing it:
 | `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |
 
+Every tool carries MCP **annotations** (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint`): the read/report tools are marked read-only and
+the ones that delete or overwrite (`done`, `forget`, `step_remove`, `modify`, …)
+destructive, so clients can auto-approve reads and confirm the rest.
+
 Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
 `activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
 blocks on stdin. So do a few niche/destructive/setup commands (`init`, `move`,

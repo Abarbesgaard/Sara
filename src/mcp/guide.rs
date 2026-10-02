@@ -9,7 +9,13 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = guide_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Start a task in one call: create it, set its assignment/why, register an optional acceptance criterion, and seed the FIRST step — an explicit, agent-run recall of prior art. Returns the task, its criteria, the seeded recall step, and the next cursor (which points AT that recall step). Use this to BEGIN work. begin does NOT recall for you: it directs you to decide what prior knowledge bears on the task and call `recall` yourself as your first step, so prior art is early yet purposeful. An acceptance criterion is optional (a warning is returned if omitted)."
+        description = "Start a task in one call: create it, set its assignment/why, register an optional acceptance criterion, and seed the FIRST step — an explicit, agent-run recall of prior art. Returns the task, its criteria, the seeded recall step, and the next cursor (which points AT that recall step). Use this to BEGIN work. begin does NOT recall for you: it directs you to decide what prior knowledge bears on the task and call `recall` yourself as your first step, so prior art is early yet purposeful. An acceptance criterion is optional (a warning is returned if omitted).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn begin(&self, Parameters(p): Parameters<BeginParams>) -> Result<String, String> {
         let tags = p.tags.clone().unwrap_or_default();
@@ -35,7 +41,15 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Create a task (never opens the TUI). Returns the new task's id/uuid.")]
+    #[tool(
+        description = "Create a task (never opens the TUI). Returns the new task's id/uuid.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
     fn add(&self, Parameters(p): Parameters<AddParams>) -> Result<String, String> {
         let words = vec![p.description.clone()];
         let tags = p.tags.clone().unwrap_or_default();
@@ -64,7 +78,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Mark a step DONE (ticks the box), recording a result and the current git commit. With neither `n` nor `step_id`, it completes the current step — the first not-done one that `next` returns — so a `next` -> `step_done` round-trip needs no position tracking. Address a specific item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" (with its 1-based `n`, or none to tick the first outstanding one). Do NOT call `check` to tick — check only adds."
+        description = "Mark a step DONE (ticks the box), recording a result and the current git commit. With neither `n` nor `step_id`, it completes the current step — the first not-done one that `next` returns — so a `next` -> `step_done` round-trip needs no position tracking. Address a specific item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" (with its 1-based `n`, or none to tick the first outstanding one). Do NOT call `check` to tick — check only adds.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, String> {
         let v = self
@@ -93,7 +113,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Add a comment / note to a task (optionally anchored, or an ai finding/decision)."
+        description = "Add a comment / note to a task (optionally anchored, or an ai finding/decision).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<String, String> {
         let words = vec![p.text.clone()];
@@ -114,7 +140,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Bulk-ingest a task graph from an inline JSON plan; wires dependencies by plan-local key."
+        description = "Bulk-ingest a task graph from an inline JSON plan; wires dependencies by plan-local key.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn plan_import(&self, Parameters(p): Parameters<PlanImportParams>) -> Result<String, String> {
         let v = self
@@ -126,7 +158,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "ADD a new checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command. This APPENDS a new item — it does NOT tick an existing one; to mark an item satisfied use `step_done`. Returns the new item's `step_id` (rowid) and `index` (1-based position) — pass either back to step_done/step_remove."
+        description = "ADD a new checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command. This APPENDS a new item — it does NOT tick an existing one; to mark an item satisfied use `step_done`. Returns the new item's `step_id` (rowid) and `index` (1-based position) — pass either back to step_done/step_remove.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, String> {
         let v = self
@@ -146,7 +184,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Reopen a previously-completed step (or acceptance criterion) of a task. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns)."
+        description = "Reopen a previously-completed step (or acceptance criterion) of a task. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
         let v = self
@@ -169,7 +213,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns)."
+        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
         let v = self
@@ -191,7 +241,15 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Set a task's assignment (the originating prompt / what to build).")]
+    #[tool(
+        description = "Set a task's assignment (the originating prompt / what to build).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
     fn assignment(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp assignment", |conn, _cfg| {
@@ -201,7 +259,15 @@ impl SaraServer {
         ok_json(v)
     }
 
-    #[tool(description = "Set a task's rationale (why it exists / the reasoning behind it).")]
+    #[tool(
+        description = "Set a task's rationale (why it exists / the reasoning behind it).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
     fn rationale(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp rationale", |conn, _cfg| {
@@ -212,7 +278,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`."
+        description = "Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn attach(&self, Parameters(p): Parameters<AttachParams>) -> Result<String, String> {
         let v = self
@@ -232,7 +304,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary. If the new memory's tags place it inside an established canonical pattern (same-project near-duplicate, or ≥50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from` — so patterns strengthen as instances are learned. An explicit `derived_from`/`supersedes`/`similar_to` to the same memory overrides the auto-link."
+        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary. If the new memory's tags place it inside an established canonical pattern (same-project near-duplicate, or ≥50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from` — so patterns strengthen as instances are learned. An explicit `derived_from`/`supersedes`/`similar_to` to the same memory overrides the auto-link.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     fn learn(&self, Parameters(p): Parameters<LearnParams>) -> Result<String, String> {
         let tags = p.tags.unwrap_or_default();
@@ -261,7 +339,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong. If it's canonical (has derived_from children), they're listed for review, and archived too when cascade=true."
+        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong. If it's canonical (has derived_from children), they're listed for review, and archived too when cascade=true.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, String> {
         let v = self
@@ -273,7 +357,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place."
+        description = "Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     fn promote(&self, Parameters(p): Parameters<PromoteParams>) -> Result<String, String> {
         let v = self
@@ -285,7 +375,13 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn."
+        description = "Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     fn relearn(&self, Parameters(p): Parameters<RelearnParams>) -> Result<String, String> {
         let v = self
