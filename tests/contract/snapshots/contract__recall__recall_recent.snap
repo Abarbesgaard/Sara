@@ -1,0 +1,12 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[])"
+---
+Recent memories (no query given):
+  [item_memory] ~ m7 the parser handles unicode identifiers: the parser handles unicode identifiers [files: [PROJECT]/parser.rs] ⚠ may be stale — re-validate: [PROJECT]/parser.rs (100% changed) (just now)
+  [item_memory] ~ m6 prefer early returns and guard clauses over deep nesting: prefer early returns and guard clauses over deep nesting (just now)
+  [item_memory] ~ m5 prefer early returns over nesting: prefer early returns over nesting ⚠ superseded by: m6 (just now)
+  [item_memory] ~ m4 flaky build was caused by a tokio timeout in the integration harness: flaky build was caused by a tokio timeout in the integration harness [via tasks: #1 Fix flaky build (explicit)] (just now)
+  [item_memory] ~ m3 dependabot bumped serde in repo c and broke the build: dependabot bumped serde in repo c and broke the build [derived from: m1] (just now)
+  [item_memory] ~ m2 dependabot bumped serde in repo b and broke the build: dependabot bumped serde in repo b and broke the build [derived from: m1] (just now)
+  [item_memory] ~ m1 dependabot bumped serde in repo a and broke the build: dependabot bumped serde in repo a and broke the build [canonical, 2 derived: m2, m3] (just now)

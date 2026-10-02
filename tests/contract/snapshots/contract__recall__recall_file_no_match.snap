@@ -1,0 +1,5 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"--file\", \"missing.rs\"])"
+---
+No memories tied to the given file(s).

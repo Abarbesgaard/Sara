@@ -1,0 +1,11 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"--spread\", \"dependabot\"])"
+---
+Note: Keyword-match only (literal FTS). Paraphrased or conceptually similar content with different wording may not appear.
+Keyword matches:
+  [item_memory] ~ m1 dependabot bumped serde in repo a and broke the build: dependabot bumped serde in repo a and broke the build [canonical, 2 derived: m2, m3] [cluster m1 of 3 — 2 sibling(s) collapsed — nearest m2] (just now)
+
+Associatively related (spreading activation):
+  ~m3 (1.00): dependabot bumped serde in repo c and broke the build  [via m1]
+  ~m2 (1.00): dependabot bumped serde in repo b and broke the build  [via m1]

@@ -1,0 +1,11 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"serde quantum\"])"
+---
+Note: Loose match: only SOME query terms overlapped (token-OR fallback). Results may be tangential and the best match need not be first — refine the query or use --tag to narrow.
+Keyword matches:
+  [item_memory] ≈ m1 dependabot bumped serde in repo a and broke the build: dependabot bumped serde in repo a and broke the build [canonical, 2 derived: m2, m3] [cluster m1 of 3 — 2 sibling(s) collapsed — nearest m2] (just now)
+
+Associatively related (auto-spread — literal hits were thin):
+  ~m3 (1.00): dependabot bumped serde in repo c and broke the build  [via m1]
+  ~m2 (1.00): dependabot bumped serde in repo b and broke the build  [via m1]

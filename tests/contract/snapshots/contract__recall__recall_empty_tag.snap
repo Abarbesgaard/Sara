@@ -1,0 +1,5 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"--tag\", \"nope\"])"
+---
+No memories recorded yet. Use `sara learn "..."` to save one.

@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use super::Hit;
+use crate::commands::recall::types::Hit;
 
-pub(super) fn compare(a: &Hit, b: &Hit) -> Ordering {
+pub(in crate::commands::recall) fn compare(a: &Hit, b: &Hit) -> Ordering {
     b.exact_match
         .cmp(&a.exact_match)
         .then(
@@ -24,11 +24,11 @@ pub(super) fn compare(a: &Hit, b: &Hit) -> Ordering {
         .then(b.modified.cmp(&a.modified))
 }
 
-pub(super) fn rank(mut hits: Vec<Hit>) -> Vec<Hit> {
+pub(in crate::commands::recall) fn rank(mut hits: Vec<Hit>) -> Vec<Hit> {
     hits.sort_by(compare);
     hits
 }
 
 #[cfg(test)]
-#[path = "../../../tests/unit/commands/recall/scoring.rs"]
+#[path = "../../../../tests/unit/commands/recall/scoring.rs"]
 mod tests;

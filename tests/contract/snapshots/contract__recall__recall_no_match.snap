@@ -1,0 +1,6 @@
+---
+source: tests/contract/recall.rs
+expression: "recall(&s, &[\"zzzqqqxxv\"])"
+---
+No matches for "zzzqqqxxv".
+Note: Sara uses literal keyword search only — paraphrased or conceptually related content may not surface. Try --tag or different keywords.
