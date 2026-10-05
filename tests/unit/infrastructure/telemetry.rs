@@ -556,3 +556,25 @@ fn flush_single_sender_lock_blocks_second() {
 
     drop(held);
 }
+
+#[test]
+fn post_jsonl_can_speak_https() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut hello = [0u8; 1024];
+            let _ = stream.read(&mut hello);
+        }
+    });
+
+    // The peer is not a TLS server, so the send fails — but it must fail in the
+    // handshake, not because this build has no TLS backend for the https default.
+    let err = post_jsonl(&format!("https://{addr}/insert"), None, "{}\n")
+        .expect_err("a non-TLS peer cannot complete an https POST");
+    let msg = format!("{err:#}").to_lowercase();
+    assert!(
+        !msg.contains("no tls"),
+        "built without a TLS backend: {msg}"
+    );
+}

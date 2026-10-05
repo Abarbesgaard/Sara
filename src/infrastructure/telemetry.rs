@@ -276,10 +276,10 @@ pub fn maybe_show_notice(cfg: &Config) {
         return;
     }
     eprintln!(
-        "sara records anonymous local usage telemetry (command name, duration, \
-         ok/error — never arguments, paths or content). Inspect it with \
-         `sara telemetry --show`; disable with `sara telemetry off` or \
-         SARA_NO_TELEMETRY=1."
+        "sara collects anonymous usage telemetry (command name, duration, \
+         ok/error — never arguments, paths or content) and sends it to the \
+         sara maintainer's collector. Inspect it with `sara telemetry --show`; \
+         disable with `sara telemetry off` or SARA_NO_TELEMETRY=1."
     );
     if let Some(parent) = marker.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -547,18 +547,19 @@ fn remove_prefix_lines(path: &Path, n: usize) -> std::io::Result<()> {
 /// POST the JSONL body. Ok(true) on HTTP 2xx, Ok(false) on any other status,
 /// Err on a transport failure. Non-2xx and transport failures both leave the queue.
 fn post_jsonl(endpoint: &str, token: Option<&str>, body: &str) -> anyhow::Result<bool> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(10))
-        .build();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .http_status_as_error(false)
+        .build()
+        .into();
     let mut req = agent
         .post(endpoint)
-        .set("Content-Type", "application/stream+json");
+        .header("Content-Type", "application/stream+json");
     if let Some(t) = token {
-        req = req.set("Authorization", &format!("Bearer {t}"));
+        req = req.header("Authorization", format!("Bearer {t}"));
     }
-    match req.send_string(body) {
-        Ok(resp) => Ok((200..300).contains(&resp.status())),
-        Err(ureq::Error::Status(code, _)) => Ok((200..300).contains(&code)),
+    match req.send(body) {
+        Ok(resp) => Ok(resp.status().is_success()),
         Err(e) => Err(anyhow::anyhow!("telemetry transport error: {e}")),
     }
 }

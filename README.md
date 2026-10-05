@@ -353,10 +353,12 @@ source ~/.zshrc
 sara --version
 ```
 
-**Telemetry is off unless you compile it in.** Default and release builds
-contain no telemetry code, so nothing is recorded or sent. Build with
-`cargo install --path . --features telemetry` to opt in; without the feature,
-`sara telemetry …` prints "telemetry not compiled into this build".
+**Anonymous usage telemetry is on by default.** Sara records the command or
+MCP tool name, duration, ok/error and version — never arguments, paths, task
+text or memory content — and sends it to the maintainer's collector over HTTPS.
+`sara telemetry --show` prints exactly what is queued. Turn it off with
+`sara telemetry off` or `SARA_NO_TELEMETRY=1`, or build without it entirely:
+`cargo install --path . --no-default-features`.
 
 ---
 
@@ -996,7 +998,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara reflect`                     | Cluster memories recalled together and nominate a canonical (`--min-weight`, `--max-cluster`, `--apply` writes `derived_from`, `--json`) |
 | `sara consolidate`                 | Recompute links between memories recalled together (`--window-days`, `--bucket-secs`, `--delta`, `--max-bucket`) |
 | `sara reindex-embeddings`          | Rebuild the semantic index over all memories |
-| `sara telemetry [action]`          | Telemetry controls (`--show`, `--json`); only in builds with `--features telemetry` |
+| `sara telemetry [action]`          | Telemetry controls: `on`, `off`, `status` (default), `--show` (`--json`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |

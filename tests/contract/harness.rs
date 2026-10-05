@@ -54,13 +54,34 @@ impl Sara {
     }
 
     pub fn mcp(&self) -> Mcp {
-        let mut child = Command::new(bin())
-            .arg("mcp")
+        self.spawn_mcp(None)
+    }
+
+    /// An MCP server with telemetry ON, capturing into `queue`. The collector
+    /// endpoint is a refused local port, so records stay in the queue to be read.
+    pub fn mcp_with_telemetry(&self, queue: &Path) -> Mcp {
+        self.spawn_mcp(Some(queue))
+    }
+
+    fn spawn_mcp(&self, telemetry_queue: Option<&Path>) -> Mcp {
+        let mut cmd = Command::new(bin());
+        cmd.arg("mcp")
             .current_dir(&self.project)
             .env("HOME", self.home.path())
             .env("XDG_DATA_HOME", self.home.path().join("data"))
-            .env("XDG_CONFIG_HOME", self.home.path().join("config"))
-            .env("SARA_NO_TELEMETRY", "1")
+            .env("XDG_CONFIG_HOME", self.home.path().join("config"));
+        match telemetry_queue {
+            Some(queue) => {
+                cmd.env_remove("SARA_NO_TELEMETRY")
+                    .env("SARA_TELEMETRY_QUEUE", queue)
+                    .env("SARA_TELEMETRY_ENDPOINT", "http://127.0.0.1:9/insert")
+                    .env("SARA_TELEMETRY_FLUSH_INTERVAL", "86400");
+            }
+            None => {
+                cmd.env("SARA_NO_TELEMETRY", "1");
+            }
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

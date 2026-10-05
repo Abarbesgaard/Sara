@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Telemetry is on by default.** The `telemetry` Cargo feature is now a
+  default feature, so `cargo install`, the install script and release binaries
+  record anonymous usage (command/tool name, duration, ok/error, version — never
+  arguments, paths or content) and send it to the maintainer's collector. It is
+  opt-out at runtime with `sara telemetry off` or `SARA_NO_TELEMETRY=1`; build
+  with `--no-default-features` for a binary without any telemetry code. The
+  first-run notice now says the data is sent, not only recorded locally.
+
+### Fixed
+
+- **Telemetry can reach the default HTTPS collector.** ureq was built without a
+  TLS backend, so every flush to the compiled-in `https://` endpoint failed and
+  records only piled up in the local queue. Sara now uses ureq 3 with rustls on
+  the *ring* provider (no NASM needed on Windows).
+
 ## [1.8.1] - 2026-10-05
 
 ### Changed
