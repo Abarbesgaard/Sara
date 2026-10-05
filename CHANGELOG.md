@@ -11,6 +11,11 @@
   output is unchanged (verified against the 1.8.0 binary) (#200).
 - `sara add` now prints similar tasks/memories after the task is saved.
 - `sara learn --auto-files` resolves the git root via `git rev-parse`.
+- **Sharper MCP tool descriptions.** 40 tool descriptions were corrected
+  against the code (e.g. `recall`'s confidence levels and semantic/stale/cluster
+  output, `doctor`'s stale-anchor check, `learn` no longer advertising link
+  parameters it does not take), and parameters now carry schema descriptions
+  (formats, defaults, allowed values).
 
 ### Fixed
 

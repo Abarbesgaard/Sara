@@ -556,7 +556,7 @@ from reading and planning a task through to completing it:
 | `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
 | `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay, stale file anchors) with a fix per finding |
-| `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
+| `diagnose_memories` | Conflict report: unlinked memory pairs that share a file or tag set and are semantically close |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |
 
 Every tool carries MCP **annotations** (`readOnlyHint`, `destructiveHint`,
@@ -992,7 +992,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara plan import <file\|->`       | Bulk-create a task graph from JSON |
 | `sara plan show <id>`              | Dependency-ordered briefing for a task and its blockers |
 | `sara sync`                        | Import GitHub issues assigned to you as tasks (token from `GH_TOKEN`, `GITHUB_TOKEN` or `gh auth token`) |
-| `sara diagnose-memories`           | Report orphaned, contradictory, duplicate and never-recalled memories (`--threshold`, `-p`, `--limit`, `--json`) |
+| `sara diagnose-memories`           | Report unlinked memory pairs that share a file or tag set and are semantically close (`--threshold`, `-p`, `--limit`, `--json`) |
 | `sara reflect`                     | Cluster memories recalled together and nominate a canonical (`--min-weight`, `--max-cluster`, `--apply` writes `derived_from`, `--json`) |
 | `sara consolidate`                 | Recompute links between memories recalled together (`--window-days`, `--bucket-secs`, `--delta`, `--max-bucket`) |
 | `sara reindex-embeddings`          | Rebuild the semantic index over all memories |
