@@ -39,19 +39,15 @@ pub fn begin_value(
     let mut folded = Folded::new(cfg, source);
 
     let t = std::time::Instant::now();
-    let created = commands::add::run_value(
-        conn,
-        cfg,
-        &[description.to_string()],
+    let words = [description.to_string()];
+    let req = commands::add::AddRequest {
+        words: &words,
         project,
         priority,
         tags,
-        None,
-        &[],
-        &[],
-        &[],
-        &[],
-    )?;
+        ..Default::default()
+    };
+    let created = commands::add::run_value(conn, cfg, &req)?;
     folded.emit("add", t, None);
     let id_num = created["id"].as_i64().unwrap_or_default();
     let id = id_num.to_string();

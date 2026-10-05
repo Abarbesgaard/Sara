@@ -32,6 +32,17 @@ pub(super) struct DreamData {
     pub(super) recall_total_30d: u64,
 }
 
+impl DreamData {
+    pub(super) fn memory_label_at(&self, i: usize) -> Option<&str> {
+        match self.neighbors.get(i) {
+            Some(Neighbor {
+                kind: NodeKind::Memory { label, .. },
+            }) => Some(label),
+            _ => None,
+        }
+    }
+}
+
 pub(super) struct Star {
     pub(super) label: String,
     pub(super) title: String,

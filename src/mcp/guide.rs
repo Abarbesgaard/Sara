@@ -59,19 +59,18 @@ impl SaraServer {
         let depends_on = p.depends_on.clone().unwrap_or_default();
         let v = self
             .with_project(p.project_path.as_deref(), "mcp add", |conn, cfg| {
-                commands::add::run_value(
-                    conn,
-                    cfg,
-                    &words,
-                    p.project.as_deref(),
-                    p.priority.as_deref(),
-                    &tags,
-                    p.recur.as_deref(),
-                    &annotations,
-                    &links,
-                    &checks,
-                    &depends_on,
-                )
+                let req = commands::add::AddRequest {
+                    words: &words,
+                    project: p.project.as_deref(),
+                    priority: p.priority.as_deref(),
+                    tags: &tags,
+                    recur: p.recur.as_deref(),
+                    annotations: &annotations,
+                    links: &links,
+                    checks: &checks,
+                    depends_on: &depends_on,
+                };
+                commands::add::run_value(conn, cfg, &req)
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -322,16 +321,15 @@ impl SaraServer {
                 commands::learn::learn_value(
                     conn,
                     cfg,
-                    &p.text,
-                    &tags,
-                    &projects,
-                    &tasks,
-                    &files,
-                    false,
-                    p.force.unwrap_or(false),
-                    &[],
-                    &[],
-                    &[],
+                    &commands::learn::LearnRequest {
+                        text: &p.text,
+                        tags: &tags,
+                        projects: &projects,
+                        tasks: &tasks,
+                        files: &files,
+                        force: p.force.unwrap_or(false),
+                        ..Default::default()
+                    },
                 )
             })
             .map_err(mcp_err)?;

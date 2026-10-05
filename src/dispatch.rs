@@ -77,20 +77,18 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             if words.is_empty() {
                 anyhow::bail!("Task description cannot be empty");
             }
-            commands::add::run(
-                &conn,
-                &cfg,
-                &words,
-                project.as_deref(),
-                priority.as_deref(),
-                &tag,
-                yes,
-                every.as_deref(),
-                &annotation,
-                &link,
-                &check,
-                &depends_on,
-            )?;
+            let req = commands::add::AddRequest {
+                words: &words,
+                project: project.as_deref(),
+                priority: priority.as_deref(),
+                tags: &tag,
+                recur: every.as_deref(),
+                annotations: &annotation,
+                links: &link,
+                checks: &check,
+                depends_on: &depends_on,
+            };
+            commands::add::run(&conn, &cfg, &req, yes)?;
         }
 
         Command::Begin {
@@ -366,16 +364,18 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             commands::learn::run(
                 &conn,
                 &cfg,
-                &text.join(" "),
-                &tag,
-                &project,
-                &task,
-                &file,
-                auto_files,
-                force,
-                &supersedes,
-                &derived_from,
-                &similar_to,
+                &commands::learn::LearnRequest {
+                    text: &text.join(" "),
+                    tags: &tag,
+                    projects: &project,
+                    tasks: &task,
+                    files: &file,
+                    auto_files,
+                    force,
+                    supersedes: &supersedes,
+                    derived_from: &derived_from,
+                    similar_to: &similar_to,
+                },
             )?;
         }
 

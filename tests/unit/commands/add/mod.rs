@@ -1,4 +1,5 @@
 use super::*;
+use crate::infrastructure::db;
 
 #[test]
 fn duplicate_open_task_detected_case_insensitively_same_project() {
