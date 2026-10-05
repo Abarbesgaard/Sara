@@ -1,7 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::commands::shared::{parse_due, split_csv};
+use super::types::AddRequest;
+use crate::commands::shared::{parse_due, project_path, split_csv};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
@@ -12,10 +13,7 @@ pub(super) fn save(
     cfg: &Config,
     form: FormInput,
     recur: Option<String>,
-    annotations: &[String],
-    links: &[String],
-    checks: &[String],
-    depends_on: &[String],
+    req: &AddRequest,
 ) -> Result<Task> {
     let mut task = Task::new(form.description, form.project.clone());
     task.priority = form.priority;
@@ -43,7 +41,7 @@ pub(super) fn save(
         }
     }
 
-    for prefix in depends_on {
+    for prefix in req.depends_on {
         match db::get_task_by_uuid_prefix(conn, prefix) {
             Ok(Some(dep)) => {
                 if let Err(e) = db::add_dependency(conn, &task.uuid, &dep.uuid) {
@@ -61,23 +59,30 @@ pub(super) fn save(
 
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
 
-    for text in annotations {
+    for text in req.annotations {
         if let Err(e) =
             db::add_annotation_full(conn, &task.uuid, text, "comment", "ai", None, None, false)
         {
             eprintln!("Warning: could not add annotation: {e}");
         }
     }
-    for url in links {
+    for url in req.links {
         if let Err(e) = db::add_link(conn, &task.uuid, url, None) {
             eprintln!("Warning: could not add link: {e}");
         }
     }
-    for text in checks {
+    for text in req.checks {
         if let Err(e) = db::add_step(conn, &task.uuid, text, None, "step", "human", None) {
             eprintln!("Warning: could not add step: {e}");
         }
     }
 
     Ok(task)
+}
+
+pub(super) fn tie_branch(conn: &Connection, task: &Task) -> Option<String> {
+    let path = project_path(conn, &task.project)?;
+    let branch = crate::infrastructure::git::current_branch(&path)?;
+    db::set_task_branch(conn, &task.uuid, &branch).ok()?;
+    Some(branch)
 }

@@ -1,6 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use super::types::AddRequest;
+
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Priority, Project};
@@ -11,27 +13,24 @@ use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 pub(super) fn resolve(
     conn: &Connection,
     cfg: &Config,
-    words: &[String],
-    project_override: Option<&str>,
-    priority_override: Option<&str>,
-    extra_tags: &[String],
+    req: &AddRequest,
     yes: bool,
-    recur_override: Option<&str>,
 ) -> Result<Option<(FormInput, Option<String>)>> {
+    let words = req.words;
     let mut parsed = parse_add_tokens(words);
 
     if parsed.description.trim().is_empty() {
         anyhow::bail!("Task description cannot be empty");
     }
 
-    if let Some(p) = project_override {
+    if let Some(p) = req.project {
         parsed.project = Some(p.to_string());
     }
-    if let Some(p) = priority_override {
+    if let Some(p) = req.priority {
         parsed.priority = Some(p.to_uppercase());
     }
-    parsed.tags.extend_from_slice(extra_tags);
-    if let Some(r) = recur_override {
+    parsed.tags.extend_from_slice(req.tags);
+    if let Some(r) = req.recur {
         parsed.recur = Some(r.to_string());
     }
 

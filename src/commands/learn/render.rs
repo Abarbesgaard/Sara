@@ -36,35 +36,19 @@ pub(super) fn print_learned(v: &Value) {
     };
 
     println!("Learned {label} ({uuid}): {body}{file_suffix}{task_suffix}");
-    if let Some(links) = v["superseded"].as_array() {
-        for link in links {
-            if let Some(old_label) = link.as_str() {
-                println!("  ↳ supersedes {old_label}");
-            }
-        }
+    for old in json_strs(&v["superseded"]) {
+        println!("  ↳ supersedes {old}");
     }
-    if let Some(links) = v["derived_from"].as_array() {
-        for link in links {
-            if let Some(canon_label) = link.as_str() {
-                println!("  ↳ derived from {canon_label}");
-            }
-        }
+    for canon in json_strs(&v["derived_from"]) {
+        println!("  ↳ derived from {canon}");
     }
-    if let Some(links) = v["auto_derived_from"].as_array() {
-        for link in links {
-            if let Some(canon_label) = link.as_str() {
-                println!(
-                    "  ↳ auto-linked as an application of canonical pattern {canon_label} \
-                     (unlink with `sara unlink-memory {label} derived_from {canon_label}`)"
-                );
-            }
-        }
+    for canon in json_strs(&v["auto_derived_from"]) {
+        println!(
+            "  ↳ auto-linked as an application of canonical pattern {canon} \
+             (unlink with `sara unlink-memory {label} derived_from {canon}`)"
+        );
     }
-    if let Some(links) = v["similar_to"].as_array() {
-        for link in links {
-            if let Some(other_label) = link.as_str() {
-                println!("  ↳ similar to {other_label}");
-            }
-        }
+    for other in json_strs(&v["similar_to"]) {
+        println!("  ↳ similar to {other}");
     }
 }

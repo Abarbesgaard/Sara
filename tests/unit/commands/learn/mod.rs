@@ -1,3 +1,4 @@
+use super::LearnRequest;
 use crate::infrastructure::util::safety;
 
 #[test]
@@ -71,16 +72,13 @@ fn learn_task_prefers_display_id_over_uuid_collision() {
     let v = super::learn_value(
         &conn,
         &cfg,
-        "finding tied to task A",
-        &["tag-r".to_string()],
-        &[],
-        &[a_id.to_string()],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "finding tied to task A",
+            tags: &["tag-r".to_string()],
+            tasks: &[a_id.to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -104,21 +102,17 @@ fn file_overlaps_detects_tagless_memory_sharing_a_file() {
     super::learn_value(
         &conn,
         &cfg,
-        "auth finding",
-        &[],
-        &[],
-        &[],
-        std::slice::from_ref(&path),
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "auth finding",
+            files: std::slice::from_ref(&path),
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
 
     let overlaps =
-        super::file_overlaps(&conn, std::slice::from_ref(&path), &HashSet::new()).unwrap();
+        super::overlap::file_overlaps(&conn, std::slice::from_ref(&path), &HashSet::new()).unwrap();
     assert_eq!(
         overlaps.len(),
         1,
@@ -136,16 +130,12 @@ fn learn_value_supersedes_inserts_link() {
     let old = super::learn_value(
         &conn,
         &cfg,
-        "old finding",
-        &["tag-a".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "old finding",
+            tags: &["tag-a".to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let old_label = old["label"].as_str().unwrap().to_string();
@@ -153,16 +143,13 @@ fn learn_value_supersedes_inserts_link() {
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "new finding supersedes old",
-        &["tag-a".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        std::slice::from_ref(&old_label),
-        &[],
-        &[],
+        &LearnRequest {
+            text: "new finding supersedes old",
+            tags: &["tag-a".to_string()],
+            force: true,
+            supersedes: std::slice::from_ref(&old_label),
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -180,16 +167,12 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     let canonical = super::learn_value(
         &conn,
         &cfg,
-        "canonical pattern",
-        &["pat".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "canonical pattern",
+            tags: &["pat".to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let canonical_label = canonical["label"].as_str().unwrap().to_string();
@@ -197,20 +180,16 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     super::learn_value(
         &conn,
         &cfg,
-        "an application of the pattern",
-        &[],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        std::slice::from_ref(&canonical_label),
-        &[],
+        &LearnRequest {
+            text: "an application of the pattern",
+            force: true,
+            derived_from: std::slice::from_ref(&canonical_label),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(
-        super::canonical_derived_count(
+        super::overlap::canonical_derived_count(
             &conn,
             &db::get_item_by_handle(&conn, &canonical_label)
                 .unwrap()
@@ -223,16 +202,13 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "corrected canonical pattern",
-        &["pat".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        std::slice::from_ref(&canonical_label),
-        &[],
-        &[],
+        &LearnRequest {
+            text: "corrected canonical pattern",
+            tags: &["pat".to_string()],
+            force: true,
+            supersedes: std::slice::from_ref(&canonical_label),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(
@@ -249,21 +225,16 @@ fn canonical_derived_count_zero_for_a_plain_memory() {
     let v = super::learn_value(
         &conn,
         &cfg,
-        "plain note",
-        &[],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "plain note",
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let label = v["label"].as_str().unwrap();
     let uuid = db::get_item_by_handle(&conn, label).unwrap().uuid;
-    assert_eq!(super::canonical_derived_count(&conn, &uuid), 0);
+    assert_eq!(super::overlap::canonical_derived_count(&conn, &uuid), 0);
 }
 
 #[test]
@@ -277,20 +248,17 @@ fn check_overlap_warns_on_file_overlap() {
     super::learn_value(
         &conn,
         &cfg,
-        "first memory about this file",
-        &["tag-x".to_string()],
-        &[],
-        &[],
-        std::slice::from_ref(&file_path),
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "first memory about this file",
+            tags: &["tag-x".to_string()],
+            files: std::slice::from_ref(&file_path),
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
 
-    let result = super::check_overlap(
+    let result = super::overlap::check_overlap(
         &conn,
         &["tag-y".to_string()],
         std::slice::from_ref(&file_path),
@@ -311,16 +279,12 @@ fn learn_creates_typed_links() {
     let canon = super::learn_value(
         &conn,
         &cfg,
-        "canonical pattern",
-        &["pat".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "canonical pattern",
+            tags: &["pat".to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let canon_label = canon["label"].as_str().unwrap().to_string();
@@ -328,16 +292,12 @@ fn learn_creates_typed_links() {
     let sibling = super::learn_value(
         &conn,
         &cfg,
-        "sibling note",
-        &["side".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "sibling note",
+            tags: &["side".to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let sibling_label = sibling["label"].as_str().unwrap().to_string();
@@ -345,16 +305,14 @@ fn learn_creates_typed_links() {
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "applied specialisation of the pattern",
-        &["apply".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        std::slice::from_ref(&canon_label),
-        std::slice::from_ref(&sibling_label),
+        &LearnRequest {
+            text: "applied specialisation of the pattern",
+            tags: &["apply".to_string()],
+            force: true,
+            derived_from: std::slice::from_ref(&canon_label),
+            similar_to: std::slice::from_ref(&sibling_label),
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -390,16 +348,13 @@ fn learn_unresolvable_link_warns_not_aborts() {
     let v = super::learn_value(
         &conn,
         &cfg,
-        "a memory with a dangling link",
-        &["solo".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &["m9999".to_string()],
-        &[],
+        &LearnRequest {
+            text: "a memory with a dangling link",
+            tags: &["solo".to_string()],
+            force: true,
+            derived_from: &["m9999".to_string()],
+            ..Default::default()
+        },
     );
     assert!(
         v.is_ok(),
@@ -411,7 +366,7 @@ fn learn_unresolvable_link_warns_not_aborts() {
 
 #[test]
 fn overlap_suggests_typed_link() {
-    let near = super::near_dupe_suggestion("m26");
+    let near = super::overlap::near_dupe_suggestion("m26");
     assert!(
         near.contains("--derived-from m26"),
         "near-dupe offers --derived-from: {near}"
@@ -421,7 +376,7 @@ fn overlap_suggests_typed_link() {
         "near-dupe offers --supersedes: {near}"
     );
 
-    let partial = super::partial_overlap_suggestion("m30");
+    let partial = super::overlap::partial_overlap_suggestion("m30");
     assert!(
         partial.contains("--similar-to m30"),
         "partial offers --similar-to: {partial}"
@@ -431,7 +386,7 @@ fn overlap_suggests_typed_link() {
 
 #[test]
 fn canonical_hint_names_derived_from_and_relearn() {
-    let hint = super::canonical_hint("m7", 3);
+    let hint = super::overlap::canonical_hint("m7", 3);
     assert!(hint.contains("m7"));
     assert!(hint.contains("3 derived applications"));
     assert!(hint.contains("--derived-from m7"));
@@ -447,16 +402,12 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
     let canonical = super::learn_value(
         &conn,
         &cfg,
-        "CodeQL config pattern",
-        &["codeql".into(), "config".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "CodeQL config pattern",
+            tags: &["codeql".into(), "config".into()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let canonical_label = canonical["label"].as_str().unwrap().to_string();
@@ -464,27 +415,30 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
         .unwrap()
         .uuid;
 
-    assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 0);
+    assert_eq!(
+        super::overlap::canonical_derived_count(&conn, &canonical_uuid),
+        0
+    );
 
     super::learn_value(
         &conn,
         &cfg,
-        "applied CodeQL config to repo X",
-        &["codeql".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        std::slice::from_ref(&canonical_label),
-        &[],
+        &LearnRequest {
+            text: "applied CodeQL config to repo X",
+            tags: &["codeql".into()],
+            force: true,
+            derived_from: std::slice::from_ref(&canonical_label),
+            ..Default::default()
+        },
     )
     .unwrap();
 
-    assert_eq!(super::canonical_derived_count(&conn, &canonical_uuid), 1);
+    assert_eq!(
+        super::overlap::canonical_derived_count(&conn, &canonical_uuid),
+        1
+    );
 
-    super::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
+    super::overlap::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
 }
 
 #[test]
@@ -496,16 +450,12 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     let canonical = super::learn_value(
         &conn,
         &cfg,
-        "CANONICAL nsubstitute dependabot restore fix",
-        &["nsubstitute".into(), "ci".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "CANONICAL nsubstitute dependabot restore fix",
+            tags: &["nsubstitute".into(), "ci".into()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let canon_label = canonical["label"].as_str().unwrap().to_string();
@@ -514,33 +464,28 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     super::learn_value(
         &conn,
         &cfg,
-        "applied the nsubstitute pin to repo A",
-        &["nsubstitute".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        std::slice::from_ref(&canon_label),
-        &[],
+        &LearnRequest {
+            text: "applied the nsubstitute pin to repo A",
+            tags: &["nsubstitute".into()],
+            force: true,
+            derived_from: std::slice::from_ref(&canon_label),
+            ..Default::default()
+        },
     )
     .unwrap();
-    assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 1);
+    assert_eq!(
+        super::overlap::canonical_derived_count(&conn, &canon_uuid),
+        1
+    );
 
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "applied the nsubstitute pin to repo B under warnings-as-errors",
-        &["nsubstitute".into(), "ci".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        false,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "applied the nsubstitute pin to repo B under warnings-as-errors",
+            tags: &["nsubstitute".into(), "ci".into()],
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -555,7 +500,7 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
         "new instance must auto-attach to canonical, got {auto:?}"
     );
     assert_eq!(
-        super::canonical_derived_count(&conn, &canon_uuid),
+        super::overlap::canonical_derived_count(&conn, &canon_uuid),
         2,
         "canonical should now count the auto-attached instance"
     );
@@ -570,16 +515,12 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
     let canonical = super::learn_value(
         &conn,
         &cfg,
-        "CANONICAL pattern",
-        &["p".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "CANONICAL pattern",
+            tags: &["p".into()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
     let canon_label = canonical["label"].as_str().unwrap().to_string();
@@ -587,32 +528,25 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
     super::learn_value(
         &conn,
         &cfg,
-        "seed application",
-        &["p".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        std::slice::from_ref(&canon_label),
-        &[],
+        &LearnRequest {
+            text: "seed application",
+            tags: &["p".into()],
+            force: true,
+            derived_from: std::slice::from_ref(&canon_label),
+            ..Default::default()
+        },
     )
     .unwrap();
 
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "another application, explicitly linked",
-        &["p".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        false,
-        &[],
-        std::slice::from_ref(&canon_label),
-        &[],
+        &LearnRequest {
+            text: "another application, explicitly linked",
+            tags: &["p".into()],
+            derived_from: std::slice::from_ref(&canon_label),
+            ..Default::default()
+        },
     )
     .unwrap();
     let explicit: Vec<String> = new_v["derived_from"]
@@ -626,7 +560,10 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
         new_v["auto_derived_from"].as_array().unwrap().is_empty(),
         "explicit derived_from must suppress the auto-link for the same canonical"
     );
-    assert_eq!(super::canonical_derived_count(&conn, &canon_uuid), 2);
+    assert_eq!(
+        super::overlap::canonical_derived_count(&conn, &canon_uuid),
+        2
+    );
 }
 
 #[test]
@@ -638,32 +575,23 @@ fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
     super::learn_value(
         &conn,
         &cfg,
-        "a plain finding",
-        &["solo".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "a plain finding",
+            tags: &["solo".into()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
 
     let new_v = super::learn_value(
         &conn,
         &cfg,
-        "another finding on the same topic",
-        &["solo".into()],
-        &[],
-        &[],
-        &[],
-        false,
-        false,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "another finding on the same topic",
+            tags: &["solo".into()],
+            ..Default::default()
+        },
     )
     .unwrap();
     assert!(
@@ -685,16 +613,12 @@ fn learn_always_embeds_even_with_default_config() {
     let v = super::learn_value(
         &conn,
         &cfg,
-        "dependabot bump broke the restore step; pin the lockfile version",
-        &["ci".to_string()],
-        &[],
-        &[],
-        &[],
-        false,
-        true,
-        &[],
-        &[],
-        &[],
+        &LearnRequest {
+            text: "dependabot bump broke the restore step; pin the lockfile version",
+            tags: &["ci".to_string()],
+            force: true,
+            ..Default::default()
+        },
     )
     .unwrap();
 

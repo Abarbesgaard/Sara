@@ -1,5 +1,8 @@
+use super::gate::{run_acceptance_gate, tail_limited};
 use super::*;
+use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
+use rusqlite::Connection;
 
 use crate::test_support::cfg;
 

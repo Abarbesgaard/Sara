@@ -149,19 +149,14 @@ fn test_sql_query_ownership() {
 
 #[test]
 fn test_acceptance_gate_never_prints_directly() {
-    let src = std::fs::read_to_string("src/commands/guide/mod.rs")
-        .expect("src/commands/guide/mod.rs must exist");
+    let src = std::fs::read_to_string("src/commands/guide/gate.rs")
+        .expect("src/commands/guide/gate.rs must exist");
+    assert!(
+        src.contains("fn run_acceptance_gate"),
+        "run_acceptance_gate must live in the gate module"
+    );
 
-    let start = src
-        .find("fn run_acceptance_gate")
-        .expect("run_acceptance_gate must exist");
-
-    let body: Vec<&str> = src[start..]
-        .lines()
-        .enumerate()
-        .take_while(|(n, l)| *n == 0 || !l.starts_with('}'))
-        .map(|(_, l)| l)
-        .collect();
+    let body: Vec<&str> = src.lines().collect();
 
     let violations: Vec<String> = body
         .iter()
@@ -172,7 +167,7 @@ fn test_acceptance_gate_never_prints_directly() {
                 && !t.contains("eprintln!")
                 && (t.contains("println!") || t.contains("print!"))
         })
-        .map(|(n, l)| format!("  run_acceptance_gate + {n} lines: {}", l.trim()))
+        .map(|(n, l)| format!("  gate.rs:{}: {}", n + 1, l.trim()))
         .collect();
 
     assert!(
