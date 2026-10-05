@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-10-05
+
+### Changed
+
+- **Internal restructuring of command slices.** `add`, `diagnose_memories`,
+  `doctor`, `dream`, `guide` and `learn` are split into focused submodules;
+  output is unchanged (verified against the 1.8.0 binary) (#200).
+- `sara add` now prints similar tasks/memories after the task is saved.
+- `sara learn --auto-files` resolves the git root via `git rev-parse`.
+
+### Fixed
+
+- The `sara dream` TUI restores the terminal when reading input fails.
+
 ## [1.8.0] - 2026-10-02
 
 ### Added
