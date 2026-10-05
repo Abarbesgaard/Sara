@@ -61,9 +61,10 @@ interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
 
 # Telemetry flush (`telemetry` feature only): a tiny blocking HTTP client used ONLY
-# by the detached `__telemetry_flush` child to POST the queue to the collector. TLS
-# is disabled on purpose — pulling in rustls/ring breaks the Windows CI build.
-ureq = { version = "2", default-features = false, optional = true }
+# by the detached `__telemetry_flush` child to POST the queue to the collector. The
+# default collector is HTTPS, so TLS is required. ureq 3's `rustls` feature uses the
+# *ring* provider only; ureq 2 pulled in aws-lc-rs, which needs NASM on Windows.
+ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
 
 # ── MCP server (`sara mcp`) ──────────────────────────────────────────────────
 # Async runtime is built ONLY inside the `mcp` command; the rest of the CLI stays
@@ -78,10 +79,11 @@ schemars = "1"
 libc = { version = "0.2", optional = true }
 
 # ── Features ─────────────────────────────────────────────────────────────────
-# Usage telemetry is opt-in at COMPILE time: default and release builds contain no
-# telemetry code at all. Nightly builds enable it with `--features telemetry`.
+# Usage telemetry is compiled into default and release builds and is opt-out at
+# runtime (`sara telemetry off` / SARA_NO_TELEMETRY=1). Build with
+# `--no-default-features` for a binary that contains no telemetry code at all.
 [features]
-default = []
+default = ["telemetry"]
 telemetry = ["dep:ureq", "dep:libc"]
 
 # ── Release profile ──────────────────────────────────────────────────────────

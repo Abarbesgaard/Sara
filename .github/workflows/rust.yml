@@ -42,8 +42,8 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  test-telemetry:
-    name: Test (telemetry feature)
+  test-no-telemetry:
+    name: Test (no telemetry)
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -56,10 +56,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: telemetry
+          key: no-telemetry
 
       - name: Run tests
-        run: cargo test --verbose --features telemetry
+        run: cargo test --verbose --no-default-features
 
   fmt:
     name: Formatting
@@ -90,11 +90,11 @@ jobs:
         with:
           key: clippy
 
-      - name: Run clippy (all features)
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
       - name: Run clippy (default features)
         run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run clippy (no default features)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
 
   build:
     name: Build
