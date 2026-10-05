@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-05
+
 ### Changed
 
 - **Telemetry is on by default.** The `telemetry` Cargo feature is now a
