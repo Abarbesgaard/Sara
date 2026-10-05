@@ -9,7 +9,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Mark a task complete (finalizes its timer, repacks ids, spawns the next recurrence). Errors if the task is blocked unless force=true. A task is done only when its PR is merged — do not call this just because a PR was opened.",
+        description = "Mark a task complete: stops its timer, renumbers display ids (keep using the UUID), and spawns the next occurrence of a recurring task. Errors if the task is blocked by unfinished dependencies, or if it is targeted by display id from a different git branch than it is tied to; force=true overrides both. Call it only once the task's PR has merged, not when the PR is opened.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -27,7 +27,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Attach a URL (e.g. a PR or issue link) to a task.",
+        description = "Attach a URL, such as a PR or issue, to a task. `label` is optional display text.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -45,7 +45,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off.",
+        description = "Manage task dependencies. action=\"on\": `id` becomes blocked by `other`; \"off\": remove that edge; \"list\": show the task's blockers and what it blocks. `other` is required for on/off; edges that would form a cycle are refused.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -107,7 +107,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Set task fields non-interactively (never opens the TUI). At least one field is required. `tags` REPLACES the whole tag set.",
+        description = "Set task fields without opening the TUI; pass at least one. `tags` REPLACES the whole tag set. Clear fields with `clear_due`, `clear_tags`, `clear_estimate` or `clear_recur`.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -158,7 +158,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Record an AI/LLM interaction against a task (an audit-trail entry shown in `sara info`'s AI activity section). Returns a `run_id` you can later cite in `resolve`.",
+        description = "Record an AI/LLM interaction against a task as an audit-trail entry (shown in the task's AI activity). `kind` is required; model, provider, prompt, response and token counts are optional. Returns a `run_id` you can cite in `resolve`.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -190,7 +190,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove a link from a task by its sequential link id (shown in `sara info`).",
+        description = "Remove a link from a task by its link id (shown in `info`).",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -208,7 +208,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove an annotation from a task by its sequential annotation id (shown in `sara info`).",
+        description = "Remove an annotation from a task by its annotation id (shown in `info`).",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -226,7 +226,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Move a task to a different project.",
+        description = "Move a task to another project, given the target project's name.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

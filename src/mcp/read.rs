@@ -9,7 +9,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = read_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "List pending tasks for a project (or all projects).",
+        description = "List pending tasks, ranked by urgency, for the project at `project_path`. Pass `project` to list another project by name, or `all: true` to list every project.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, String> {
@@ -22,7 +22,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Full task guide as JSON: description, steps, acceptance, notes, links, freshness, open feedback. When Strong memories (strength>=2.0) matching the task's description or tags exist, a `similar_work` array is included automatically — check it before starting.",
+        description = "Full task guide as JSON: description, steps, acceptance criteria, notes, links, freshness and open feedback. Includes a `similar_work` array when Strong memories (strength >= 2.0) match the task's description or tags; read it before starting.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
@@ -35,7 +35,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "The execution cursor: the first not-done step of a task.",
+        description = "The execution cursor: the first not-done step of a task (steps only, not acceptance criteria), with its 1-based `index`, `total`, `text`, `intent` and `verify_cmd`. Returns `done: true` once every step is done. Includes `relevant_memories` when Strong memories match the task. Call `step_done` without `n` to complete this step.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
@@ -48,7 +48,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Ordered steps of a task (optionally only up to step `until`).",
+        description = "List a task's ordered steps (not acceptance criteria) with their 1-based `index`. `until` returns only steps 1..until.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, String> {
@@ -61,7 +61,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Read-only: the verification commands + acceptance criteria for a task (does NOT run them).",
+        description = "Read-only: list a task's verify commands and acceptance criteria without running them. `step` limits it to one step. To run them and stamp the task green, use `validate`.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, String> {
@@ -74,7 +74,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Cross-task keyword search over descriptions, notes, and code anchors, plus exact --tag/--project lookups and --files filter over learned memories. Returns `confidence` (high/medium/none) and a `caveat` string — always read these: `none` with a caveat means FTS found nothing but that does NOT mean no similar work exists (literal keyword search only, no stemming or semantics). Set `spread: true` to also radiate across the memory graph and return associatively-related memories (sharing no keyword) in an `associative` array. Also returns a `patterns` array: recurring problem-solving patterns (canonical memories the hits belong to, with prior-application `instances`) — when present, prefer turning a pattern's `text` into a task via `add` (using it as the step guide) over re-deriving the solution, then `learn` the outcome and link it `derived_from` the canonical.",
+        description = "Search memories and tasks for prior work. `query` is full-text keyword search (FTS5) over task descriptions, notes, steps, links and memories; `tag`, `project` and `files` filter memories exactly (a `files` entry ending in `/` matches everything under it). With no arguments it returns the most recent memories; `limit` defaults to 10. When `[recall] semantic = true` is set in config.toml, memories are also matched by meaning (embeddings). Always read `confidence` (high|medium|low|semantic|none) and `caveat`: `none` only means no keyword matched, not that no related work exists. `spread: true` also returns graph-related memories that share no keyword, in `associative` (recall also does this by itself when hits are weak). Hits may carry `stale` (an anchored file changed or was deleted: re-check, then `relearn`) and `cluster` (a canonical family collapsed to one hit; `nearest` names the best-matching hidden member). `patterns` lists recurring solutions with their prior `instances`: reuse a pattern's `text` as the task's steps rather than re-deriving it, then `learn` the outcome and `link_memory` it `derived_from` the canonical.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
@@ -96,7 +96,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "List a task's open human feedback (items awaiting a response).",
+        description = "List a task's open human feedback: annotations still awaiting a response. Pass an item's id to `resolve` as `feedback_id`.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
@@ -109,7 +109,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Dependency-ordered briefing for a task: each task's full guide in dependency order (the task plus everything it is blocked by).",
+        description = "Dependency-ordered briefing: the full guide of the task and of every task it is blocked by, in dependency order.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
@@ -122,7 +122,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "List all tag vocabulary with usage counts across active memories.",
+        description = "List every tag on active memories with how many memories use it. Check it before `learn` so you reuse existing tags instead of creating near-duplicates (`service-a` vs `serviceA`).",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, String> {
@@ -141,7 +141,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Browse all saved memories newest-first with strength labels (Strong/Linked/Weak). Use to audit what recall trusts or to find a memory label for `forget`.",
+        description = "List every active and provisional memory, newest first, with its label (e.g. m3), body, tags, files, `strength` and `strength_label` (Strong >= 2.0, Linked >= 1.5, otherwise Weak). Use it to audit what recall trusts or to find a label for `relearn`, `promote` or `forget`.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, String> {
@@ -187,7 +187,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "List all known projects with their metadata, task counts, and last activity.",
+        description = "List every known project with its goal, stack, pending and done task counts, and last activity.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, String> {
@@ -215,12 +215,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Create a typed directed link between two memories. \
-        Relations: `supersedes` (new replaces old; old shows ⚠ superseded-by in recall), \
-        `similar_to` (bidirectional affinity), `derived_from` (this was built on top of that), \
-        `used_in` (memory references a context/file). \
-        The superseding memory surfaces alongside the stale one in recall output. \
-        Use this to invalidate outdated memories rather than deleting them.",
+        description = "Create a typed, directed link from memory `from` to memory `to` (labels such as m3). Relations: `supersedes` (from replaces to; recall flags to as superseded and `prune_memories` can archive it), `derived_from` (from applies or builds on to, usually a canonical pattern), `similar_to` (related content), `used_in` (from was used in to's context). `weight` defaults to 1.0. A memory cannot link to itself, and `supersedes`/`derived_from` links that would form a cycle are refused. To retire an outdated memory, prefer `supersedes` over `forget` so the history stays traceable.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -248,7 +243,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove a typed directed link between two memories.",
+        description = "Remove the `relation` link from memory `from` to memory `to`. Returns `removed` (0 if no such link existed).",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -271,12 +266,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Evaluate and optionally archive low-value memories. \
-        Three signals: (1) superseded — has incoming `supersedes` edge, \
-        (2) provisional + old — auto-generated on `done` but not reviewed within `provisional_days`, \
-        (3) weak + old — no task link and older than `weak_days`. \
-        Set dry_run=true (default) to preview without archiving. Set dry_run=false to apply. \
-        Archived memories are NOT deleted — they can be inspected via direct DB query.",
+        description = "Find and optionally archive low-value memories: (1) superseded, i.e. targeted by a `supersedes` link; (2) provisional and not reviewed within `provisional_days`; (3) weak (no task link) and older than `weak_days`. `dry_run` defaults to true and only previews; pass dry_run=false to archive. Archived memories are hidden from recall but not deleted.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -307,13 +297,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Hebbian consolidation: sweep the last `window_days` of recall \
-        history and set a `co_activated` synapse between every pair of memories that \
-        fired together (recalled within `bucket_secs` of each other), weighted by how \
-        often they co-fired. The learned wiring is recomputed from the window on each \
-        run, so it is idempotent and synapses whose co-firings have aged out decay \
-        away. This is what makes related memories surface together in future recalls, \
-        so run it periodically. Returns the number of synapses in the learned wiring.",
+        description = "Hebbian consolidation: sweep the last `window_days` of recall history and set a `co_activated` link between every pair of memories recalled within `bucket_secs` of each other, weighted by how often they co-fired. The wiring is recomputed from the window on every run, so it is idempotent and pairs that no longer co-fire decay away. This is what makes related memories surface together, so run it periodically. Returns `reinforced`: the number of co_activated links.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -342,12 +326,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Reflect over the memory graph: cluster memories that keep \
-        firing together but are not yet tidied, and nominate a canonical memory per \
-        cluster. Read-only by default — returns the proposal so you can review it. \
-        Pass apply=true to create the proposed `derived_from` edges (each \
-        non-canonical member -> the canonical one); links that would trip the \
-        cycle guard are skipped and reported.",
+        description = "Find clusters of memories that keep being recalled together but are not yet linked, and nominate a canonical memory for each. Read-only by default: returns the proposal for review. Pass apply=true to create the proposed `derived_from` links (each other member -> the canonical); links that would form a cycle are skipped and reported.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -375,10 +354,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Health report for the memory graph: surfaces unlinked pairs that \
-        both co-occur (shared file or identical tag set) AND are semantically close, \
-        worst-first by cosine. Read-only — archives nothing. Use it to decide what to \
-        `relearn`, `forget` or `prune_memories`.",
+        description = "Read-only conflict report: unlinked memory pairs that share a file or have identical tag sets AND are semantically close (cosine >= `threshold`), worst first. Archives nothing. Use it to decide what to `relearn`, `link_memory`, `forget` or `prune_memories`.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn diagnose_memories(
@@ -406,11 +382,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Read-only health report for the memory store, run it before \
-        trusting recall. Checks embedding coverage, orphaned memory links, \
-        near-duplicate pairs, superseded-but-active memories, the provisional review \
-        backlog, and decay outliers. Each check returns status ok|warn|info, a count, \
-        a summary, and the `fix` command to run. `healthy` is false when any check warns.",
+        description = "Read-only health report for the memory store; run it before trusting recall. Checks embedding coverage, orphaned memory links, near-duplicate pairs, superseded memories still active, the provisional review backlog, decay outliers and stale file anchors. Each check returns status ok|warn|info, a count, a summary and the `fix` command to run. `healthy` is false when any check warns.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, String> {
@@ -423,9 +395,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Rebuild the semantic embedding index over all memories. \
-        Needed after bulk imports, or when `recall`'s semantic pass is missing \
-        memories that are obviously relevant. Returns the number embedded.",
+        description = "Rebuild the semantic embedding index over all memories. Needed after enabling semantic recall, after bulk imports, or when semantic recall misses obviously relevant memories. Returns `embedded`: the number of memories indexed.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

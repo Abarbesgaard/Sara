@@ -42,7 +42,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Create a task (never opens the TUI). Returns the new task's id/uuid.",
+        description = "Create a task without opening the TUI. Before saving, it searches for similar tasks and memories and returns them in `similar` (memory hits carry the full body: read them first, they often hold the answer), plus `duplicate` when an open task with the same description already exists; the task is created either way. The task is tied to the current git branch (`branch`). Returns its `id` and `uuid`. To start work you are about to do, prefer `begin`.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -112,7 +112,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Add a comment / note to a task (optionally anchored, or an ai finding/decision).",
+        description = "Add a note to a task. `kind` labels it (default `comment`; e.g. finding, decision, constraint, risk, assumption, open_question). `on` anchors it to `step:N`, `acceptance:N`, `anchor:ID` or `note:ID`. `author` defaults to `human`. `reconsider: true` flags it for reconsideration. A `finding` also returns `related_findings`: similar earlier findings on the task; correct any your new note contradicts.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -139,7 +139,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Bulk-ingest a task graph from an inline JSON plan; wires dependencies by plan-local key.",
+        description = "Create a task graph in one call from `plan_json`: {\"project\"?, \"tasks\": [{\"key\", \"description\", \"assignment\", \"rationale\", \"priority\", \"tags\", \"steps\", \"acceptance\", \"findings\", \"constraints\", \"files\": [{\"path\", \"reason\", \"symbol\", \"line_start\", \"line_end\"}], \"depends_on\"}]}. Only `description` is required. `depends_on` entries are other tasks' `key` in the same plan or existing task ids/UUID prefixes. Runs in one transaction.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -157,7 +157,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "ADD a new checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an intent note and a verify command. This APPENDS a new item — it does NOT tick an existing one; to mark an item satisfied use `step_done`. Returns the new item's `step_id` (rowid) and `index` (1-based position) — pass either back to step_done/step_remove.",
+        description = "ADD a new checklist step (or an acceptance criterion with kind=\"acceptance\") to a task's guide, optionally with an `intent` note and a `verify` command. This APPENDS an item; it does NOT tick one off (use `step_done`). Give acceptance criteria a `verify` command, or `validate` will refuse (a `warning` is returned). Returns the new item's `step_id` and 1-based `index`; pass either to step_done/step_undone/step_remove.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -183,7 +183,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Reopen a previously-completed step (or acceptance criterion) of a task. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns).",
+        description = "Reopen a completed step (or acceptance criterion with kind=\"acceptance\"). Address it by `n` (1-based `index` from steps/check) OR by `step_id` (from check).",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -212,7 +212,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Delete step N (or acceptance criterion N) from a task's guide; remaining items renumber. Address by `n` (1-based, the `index` from steps) OR by `step_id` (the rowid check returns).",
+        description = "Delete a step (or acceptance criterion with kind=\"acceptance\") from a task's guide; later items are renumbered. Address it by `n` (1-based `index` from steps/check) OR by `step_id` (from check).",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -241,7 +241,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Set a task's assignment (the originating prompt / what to build).",
+        description = "Set (replace) a task's assignment: the originating request, in the requester's words.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -259,7 +259,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Set a task's rationale (why it exists / the reasoning behind it).",
+        description = "Set (replace) a task's rationale: why the task exists.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -277,7 +277,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Attach a file or code anchor to a task (a URL is stored as a link). Anchor metadata: `reason`, `symbol`, `lines` (\"10:57\"), `source`.",
+        description = "Attach a file or code anchor to a task; a URL is stored as a link instead. Optional anchor metadata: `reason`, `symbol`, `lines` as \"start:end\" (e.g. \"10:57\") and `source` (`ai` marks it as suggested; default human).",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -303,7 +303,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Save a distilled memory (one key insight, ≤2000 chars). Always run `recall` first to avoid duplicates. Tag memories for reliable retrieval — `tags` shows the existing vocabulary. If the new memory's tags place it inside an established canonical pattern (same-project near-duplicate, or ≥50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from` — so patterns strengthen as instances are learned. An explicit `derived_from`/`supersedes`/`similar_to` to the same memory overrides the auto-link.",
+        description = "Save one distilled insight as a memory. Bodies over 2000 characters or that look like secrets are refused; force=true skips those checks and the canonical auto-link below. Run `recall` first and check `tags` to reuse existing tag names. `files` binds the memory to files (relative paths resolve against `project_path`) so later edits can flag it stale; `tasks` links tasks by id or UUID prefix; `projects` scopes it. If its tags place it inside an established canonical pattern (a same-project near-duplicate, or >= 50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from`. Returns the new memory's `label`. To mark it as superseding or related to an existing memory, call `link_memory` afterwards.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -337,7 +337,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Archive (forget) a memory by its label, e.g. \"m3\". Use when a memory is stale or wrong. If it's canonical (has derived_from children), they're listed for review, and archived too when cascade=true.",
+        description = "Archive (forget) a memory by its label, e.g. \"m3\", when it is stale or wrong; it is hidden from recall but not deleted. If it is a canonical with derived_from children, they are listed for review, and archived too when cascade=true. To correct a memory instead, use `relearn`.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -355,7 +355,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Promote a provisional (auto-synthesised) memory to active after review, e.g. \"m14\". Preserves tags, files, and task links in place.",
+        description = "Promote a provisional memory (auto-created by `done`) to active after you have reviewed it, e.g. \"m14\". Keeps its tags, files and task links.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -373,7 +373,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Edit a memory in place by label (body/tags/files each optional; tags and files REPLACE the existing set). Preserves label, created date, task links, and memory links — use instead of forget + learn.",
+        description = "Edit a memory in place by label: pass at least one of `text`, `tags`, `files`. Given `tags` or `files` REPLACE the existing set; omitted ones are kept. Keeps the label, created date, task links and memory links, and re-fingerprints the memory's files (clearing a `stale` flag). Prefer this over forget + learn.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,

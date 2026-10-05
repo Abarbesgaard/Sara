@@ -213,6 +213,9 @@ sara recall --semantic "auth bug"       # also match by meaning (embeddings), no
 `recall` searches both memories **and** tasks in one pass — memory hits are
 prefixed `[item_memory]`. If a memory was superseded by a newer one, recall
 shows a `[superseded by: mN]` warning so you don't act on stale knowledge.
+When a canonical memory and the memories derived from it all match, recall
+shows only one representative and names the best-matching hidden sibling
+(`— nearest mN`; JSON: `cluster.nearest`) so you can open it directly.
 
 **Stale file anchors.** When a memory is bound to files (`--file`/`--auto-files`),
 sara stores a small fingerprint of each file's lines. If an anchored file has
@@ -349,6 +352,11 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
 source ~/.zshrc
 sara --version
 ```
+
+**Telemetry is off unless you compile it in.** Default and release builds
+contain no telemetry code, so nothing is recorded or sent. Build with
+`cargo install --path . --features telemetry` to opt in; without the feature,
+`sara telemetry …` prints "telemetry not compiled into this build".
 
 ---
 
@@ -510,6 +518,7 @@ from reading and planning a task through to completing it:
 | `projects` | List every registered project |
 | `move_task` | Move a task to another project |
 | `info` | Full task guide: steps, acceptance, notes, links, freshness, feedback |
+| `begin` | Start work: create the task, set assignment/rationale, add an optional acceptance criterion, recall related memories and attach them as a finding |
 | `add` | Create a task (never opens the review form) |
 | `next` | The execution cursor — first not-done step |
 | `steps` | Ordered steps (optionally up to step N) |
@@ -539,20 +548,26 @@ from reading and planning a task through to completing it:
 | `assignment` | Set the task's assignment (the originating prompt / what to build) |
 | `rationale` | Set the task's rationale (why it exists) |
 | `modify` | Set task fields non-interactively (never opens the review form; at least one field required) |
-| `validate` | Stamp the guide as validated against the project's current git HEAD |
+| `validate` | Run every acceptance criterion's verify command and stamp the guide against git HEAD only if all pass (fails closed) |
 | `feedback` | List a task's open human feedback |
 | `resolve` | Resolve a feedback item by its id |
+| `record_run` | Log an AI/LLM interaction against a task; returns a `run_id` that `resolve` can cite |
 | `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
 | `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
 | `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
 | `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay, stale file anchors) with a fix per finding |
-| `diagnose_memories` | Health report: orphaned, contradictory, duplicate, never-recalled |
+| `diagnose_memories` | Conflict report: unlinked memory pairs that share a file or tag set and are semantically close |
 | `reindex_embeddings` | Rebuild the semantic index over all memories |
 
 Every tool carries MCP **annotations** (`readOnlyHint`, `destructiveHint`,
 `idempotentHint`, `openWorldHint`): the read/report tools are marked read-only and
 the ones that delete or overwrite (`done`, `forget`, `step_remove`, `modify`, …)
 destructive, so clients can auto-approve reads and confirm the rest.
+
+When a tool fails for a domain reason (unknown task id, blocked `done`, failing
+`validate`, …) it returns a normal tool result with `isError: true` and the
+reason as text, not a JSON-RPC error, so the model can read the message and
+correct its call.
 
 Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
 `activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
@@ -958,7 +973,30 @@ Run `sara paths` to see the exact locations on your machine.
 | Command                            | Description                                              |
 |------------------------------------|----------------------------------------------------------|
 | `sara init`                        | Initialize/update the current folder as a project (`--goal`, `--stack`, `--conventions`, `--notes`, `-y`) |
+| `sara begin <desc>`                | Start work: create the task, recall related memories and attach them (`-t`, `--file`, `--assignment`, `--why`, `--check`, `--verify`, `--priority`, `--json`) |
 | `sara add <desc> [tokens]`         | Add a task (`--yes`, `-p`, `--priority`, `-t`, `--every`, `--annotation`, `--link`, `--check`, `--depends-on`) |
+| `sara next <id>`                   | Execution cursor: the first step not yet done (`--json`) |
+| `sara steps <id>`                  | List the task's ordered steps (`--until N`, `--json`) |
+| `sara verify <id>`                 | Show verify commands and acceptance criteria (`--step N`; `--run` executes them, `--tick-on-pass` ticks the ones that pass) |
+| `sara validate <id>`               | Run every acceptance criterion's verify command; stamp the guide only if all pass (`--fresh` ignores cached passes, `--no-run` stamps without running) |
+| `sara assignment <id> <text>`      | Set what was asked (the originating prompt) |
+| `sara rationale <id> <text>`       | Set why the task exists |
+| `sara feedback <id>`               | List the task's open human feedback (`--json`) |
+| `sara resolve <feedback-id>`       | Resolve a feedback item (`--run <run-id>` cites the run that fixed it) |
+| `sara record-run <id> --kind <k>`  | Log an AI/LLM interaction on a task (`--model`, `--provider`, `--prompt`, `--response`) |
+| `sara denotate <annotation-id>`    | Remove an annotation (alias `uncomment`) |
+| `sara unlink <link-id>`            | Remove a link from a task |
+| `sara move <id> <project>`         | Move a task to another project (alias `mv`) |
+| `sara projects`                    | Browse every registered project |
+| `sara board`                       | Interactive board of tasks across projects (`-p` to scope, `--finished` to include done) |
+| `sara plan import <file\|->`       | Bulk-create a task graph from JSON |
+| `sara plan show <id>`              | Dependency-ordered briefing for a task and its blockers |
+| `sara sync`                        | Import GitHub issues assigned to you as tasks (token from `GH_TOKEN`, `GITHUB_TOKEN` or `gh auth token`) |
+| `sara diagnose-memories`           | Report unlinked memory pairs that share a file or tag set and are semantically close (`--threshold`, `-p`, `--limit`, `--json`) |
+| `sara reflect`                     | Cluster memories recalled together and nominate a canonical (`--min-weight`, `--max-cluster`, `--apply` writes `derived_from`, `--json`) |
+| `sara consolidate`                 | Recompute links between memories recalled together (`--window-days`, `--bucket-secs`, `--delta`, `--max-bucket`) |
+| `sara reindex-embeddings`          | Rebuild the semantic index over all memories |
+| `sara telemetry [action]`          | Telemetry controls (`--show`, `--json`); only in builds with `--features telemetry` |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
