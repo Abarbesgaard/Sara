@@ -213,6 +213,11 @@ pub(crate) struct StepDoneParams {
     pub(crate) result: Option<String>,
     #[schemars(description = "step (default) or acceptance.")]
     pub(crate) kind: Option<String>,
+    #[schemars(
+        description = "Memory labels (e.g. [\"m12\"]) that actually helped. Records them as cited by this task, the strongest signal that a memory is useful. Every label must name an active memory, or the call fails and nothing is changed."
+    )]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) used: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -298,6 +303,11 @@ pub(crate) struct DoneParams {
     pub(crate) id: String,
     #[schemars(description = "Complete even if blocked or targeted from a different branch.")]
     pub(crate) force: Option<bool>,
+    #[schemars(
+        description = "Memory labels (e.g. [\"m12\"]) that actually helped. Records them as cited by this task, the strongest signal that a memory is useful. Every label must name an active memory, or the call fails and nothing is changed."
+    )]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) used: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

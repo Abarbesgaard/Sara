@@ -3,7 +3,9 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
-use crate::commands::shared::{guard_branch_mutation, json_strs, project_head};
+use crate::commands::shared::{
+    guard_branch_mutation, json_strs, print_cited, project_head, with_citation,
+};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Status, Task};
@@ -133,13 +135,22 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     }))
 }
 
-pub fn run(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<()> {
-    let v = done_value(conn, cfg, id_or_uuid, force)?;
+pub fn run(
+    conn: &Connection,
+    cfg: &Config,
+    id_or_uuid: &str,
+    force: bool,
+    used: &[String],
+) -> Result<()> {
+    let v = with_citation(conn, id_or_uuid, used, || {
+        done_value(conn, cfg, id_or_uuid, force)
+    })?;
     println!(
         "Done: [{}] {}",
         v["project"].as_str().unwrap_or_default(),
         v["description"].as_str().unwrap_or_default()
     );
+    print_cited(&v);
     if let Some(rec) = v.get("recurrence").filter(|r| !r.is_null()) {
         println!(
             "♺  Next recurrence: #{} due {}",

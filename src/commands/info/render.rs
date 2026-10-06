@@ -389,6 +389,14 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         }
     }
 
+    if !d.cited.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(section("Cited memories"));
+        for c in &d.cited {
+            lines.push(Line::from(format!("  {c}")));
+        }
+    }
+
     if !d.links.is_empty() {
         lines.push(Line::from(""));
         lines.push(section("Links"));

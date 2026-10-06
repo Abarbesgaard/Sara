@@ -198,3 +198,93 @@ fn resolve_files_keeps_order_and_length() {
     assert_eq!(out.len(), 2);
     assert!(out[0].ends_with("b.rs") && out[1].ends_with("a.rs"));
 }
+
+mod cite {
+    use crate::commands::shared::{cited_memories, with_citation};
+    use crate::infrastructure::db;
+    use crate::infrastructure::model::{Item, Task};
+
+    fn task(conn: &rusqlite::Connection) -> Task {
+        let mut t = Task::new("ship it".to_string(), "Sara".to_string());
+        db::insert_task(conn, &mut t).unwrap();
+        t
+    }
+
+    fn label(item: &Item, prefix: char) -> String {
+        format!("{prefix}{}", item.display_id.unwrap())
+    }
+
+    #[test]
+    fn cite_records_each_memory_once_and_reports_handles() {
+        let conn = db::open_in_memory_for_test();
+        let t = task(&conn);
+        let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
+        let h = label(&m, 'm');
+
+        let v = with_citation(&conn, &t.uuid.to_string(), &[h.clone(), h.clone()], || {
+            Ok(serde_json::json!({}))
+        })
+        .unwrap();
+
+        assert_eq!(v["cited"], serde_json::json!([h]));
+        let cited = cited_memories(&conn, &t.uuid);
+        assert_eq!(
+            cited.iter().map(|i| i.uuid).collect::<Vec<_>>(),
+            vec![m.uuid]
+        );
+    }
+
+    #[test]
+    fn cite_rejects_a_non_memory_label_before_running_the_command() {
+        let conn = db::open_in_memory_for_test();
+        let t = task(&conn);
+        let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
+        let mut note = Item::new_note("a note".to_string(), "not a memory".to_string());
+        note.path = Some(String::new());
+        db::insert_item(&conn, &mut note).unwrap();
+
+        let mut ran = false;
+        let err = with_citation(
+            &conn,
+            &t.uuid.to_string(),
+            &[label(&m, 'm'), label(&note, 'n'), "m9999".to_string()],
+            || {
+                ran = true;
+                Ok(serde_json::json!({}))
+            },
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(!ran, "the command must not run on a bad label");
+        assert!(
+            err.contains(&label(&note, 'n')) && err.contains("m9999"),
+            "{err}"
+        );
+        assert!(
+            cited_memories(&conn, &t.uuid).is_empty(),
+            "nothing is recorded"
+        );
+    }
+
+    #[test]
+    fn cite_records_nothing_when_the_command_fails() {
+        let conn = db::open_in_memory_for_test();
+        let t = task(&conn);
+        let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
+
+        let res = with_citation(&conn, &t.uuid.to_string(), &[label(&m, 'm')], || {
+            anyhow::bail!("step out of range")
+        });
+
+        assert!(res.is_err());
+        assert!(cited_memories(&conn, &t.uuid).is_empty());
+    }
+
+    #[test]
+    fn cite_without_labels_is_a_no_op() {
+        let conn = db::open_in_memory_for_test();
+        let v = with_citation(&conn, "does-not-matter", &[], || Ok(serde_json::json!({}))).unwrap();
+        assert!(v.get("cited").is_none());
+    }
+}

@@ -9,7 +9,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Mark a task complete: stops its timer, renumbers display ids (keep using the UUID), and spawns the next occurrence of a recurring task. Errors if the task is blocked by unfinished dependencies, or if it is targeted by display id from a different git branch than it is tied to; force=true overrides both. Call it only once the task's PR has merged, not when the PR is opened.",
+        description = "Mark a task complete: stops its timer, renumbers display ids (keep using the UUID), and spawns the next occurrence of a recurring task. Errors if the task is blocked by unfinished dependencies, or if it is targeted by display id from a different git branch than it is tied to; force=true overrides both. Call it only once the task's PR has merged, not when the PR is opened. Pass `used` with the memory labels that helped the task, to cite them; an unknown label fails the call before the task is closed.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -20,7 +20,10 @@ impl SaraServer {
     fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
-                commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
+                let used = p.used.as_deref().unwrap_or(&[]);
+                commands::shared::with_citation(conn, &p.id, used, || {
+                    commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
+                })
             })
             .map_err(mcp_err)?;
         ok_json(v)

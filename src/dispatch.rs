@@ -203,8 +203,8 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             commands::list::run(&conn, &cfg, all, project.as_deref(), json, by_issue)?;
         }
 
-        Command::Done { id, force } => {
-            commands::done::run(&conn, &cfg, &id, force)?;
+        Command::Done { id, force, used } => {
+            commands::done::run(&conn, &cfg, &id, force, &used)?;
         }
 
         Command::Modify {
@@ -320,6 +320,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
                 n,
                 result,
                 kind,
+                used,
                 json,
             } => {
                 commands::guide::step_done(
@@ -329,6 +330,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
                     n,
                     result.as_deref(),
                     kind.as_deref(),
+                    &used,
                     json,
                 )?;
             }

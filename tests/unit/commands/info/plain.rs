@@ -114,6 +114,7 @@ fn detail(
         task: task(),
         blocked_by: vec![],
         blocking: vec![],
+        cited: vec![],
         depends_on_ids: vec![],
         manual_files: vec![],
         suggested_files: vec![],

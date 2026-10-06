@@ -6,6 +6,7 @@ expression: "redact(s.json(&[\"info\", \"1\", \"--json\"]))"
   "ai_runs": [],
   "assignment": null,
   "blocked_by": [],
+  "cited": [],
   "description": "First task",
   "due": null,
   "entry": "[redacted]",
