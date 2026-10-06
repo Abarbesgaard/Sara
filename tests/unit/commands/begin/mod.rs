@@ -236,3 +236,47 @@ fn begin_output_has_no_trace_without_the_telemetry_feature() {
         "default builds keep begin's result free of trace keys: {v}"
     );
 }
+
+#[test]
+fn begin_records_surfaced_use_against_the_new_task() {
+    use crate::infrastructure::model::{Item, Status, Task};
+    let conn = db::open_in_memory_for_test();
+    let mut src = Task::new("source work".into(), "proj".into());
+    src.status = Status::Completed;
+    db::insert_task(&conn, &mut src).unwrap();
+    let mut mem = Item::new_memory(
+        "dependabot bump restore pattern".into(),
+        "dependabot bump broke restore; align versions".into(),
+        Some(src.uuid),
+    );
+    mem.tags = vec!["dependabot".into()];
+    mem.path = Some(String::new());
+    db::insert_item(&conn, &mut mem).unwrap();
+    db::set_item_tags(&conn, &mem.uuid, &["dependabot".into()]).unwrap();
+
+    let v = begin_value(
+        &conn,
+        &cfg(),
+        Source::Cli,
+        "do the dependabot bump",
+        &["dependabot".to_string()],
+        &[],
+        Some("proj"),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("begin succeeds");
+
+    assert!(
+        v["next"]["relevant_memories"].is_array(),
+        "fixture must surface the memory through begin's next: {v}"
+    );
+    let task_uuid = uuid::Uuid::parse_str(v["uuid"].as_str().unwrap()).unwrap();
+    let uses = db::memory_uses_for_task(&conn, &task_uuid).unwrap();
+    assert_eq!(uses.len(), 1, "{uses:?}");
+    assert_eq!(uses[0].item_uuid, mem.uuid);
+    assert_eq!(uses[0].kind, db::MemoryUseKind::Surfaced);
+}
