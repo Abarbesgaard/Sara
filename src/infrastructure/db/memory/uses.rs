@@ -181,3 +181,104 @@ pub fn memory_use_counts_all(conn: &Connection) -> HashMap<Uuid, MemoryUseCounts
     }
     map
 }
+
+/// A memory's track record across tasks, counted in distinct non-deleted
+/// tasks. `ignored` counts completed tasks that recalled or surfaced the
+/// memory but never cited it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct MemoryProvenance {
+    pub cited_verified: u64,
+    pub cited: u64,
+    pub recalled_in_tasks: u64,
+    pub surfaced_in_tasks: u64,
+    pub ignored: u64,
+}
+
+impl MemoryProvenance {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// e.g. `✓ cited in 3 verified tasks · cited in 1 · surfaced in 7`.
+    pub fn summary(&self) -> String {
+        let tasks = |n: u64| if n == 1 { "task" } else { "tasks" };
+        let mut parts = Vec::new();
+        if self.cited_verified > 0 {
+            parts.push(format!(
+                "✓ cited in {} verified {}",
+                self.cited_verified,
+                tasks(self.cited_verified)
+            ));
+        }
+        let unverified = self.cited - self.cited_verified;
+        if unverified > 0 {
+            parts.push(format!("cited in {unverified} {}", tasks(unverified)));
+        }
+        if self.recalled_in_tasks > 0 {
+            parts.push(format!("recalled in {}", self.recalled_in_tasks));
+        }
+        if self.surfaced_in_tasks > 0 {
+            parts.push(format!("surfaced in {}", self.surfaced_in_tasks));
+        }
+        if self.ignored > 0 {
+            parts.push(format!("ignored in {}", self.ignored));
+        }
+        parts.join(" · ")
+    }
+}
+
+const PROVENANCE_SQL: &str = "
+    SELECT u.item_uuid,
+      COUNT(DISTINCT CASE WHEN u.kind = 'cited'
+            AND t.status = 'completed' AND t.validated_commit IS NOT NULL
+            THEN u.task_uuid END),
+      COUNT(DISTINCT CASE WHEN u.kind = 'cited' THEN u.task_uuid END),
+      COUNT(DISTINCT CASE WHEN u.kind = 'recalled' THEN u.task_uuid END),
+      COUNT(DISTINCT CASE WHEN u.kind = 'surfaced' THEN u.task_uuid END),
+      COUNT(DISTINCT CASE WHEN u.kind IN ('recalled', 'surfaced')
+            AND t.status = 'completed'
+            AND NOT EXISTS (SELECT 1 FROM memory_uses c
+                            WHERE c.item_uuid = u.item_uuid AND c.task_uuid = u.task_uuid
+                              AND c.kind = 'cited')
+            THEN u.task_uuid END)
+    FROM memory_uses u JOIN tasks t ON t.uuid = u.task_uuid
+    WHERE t.status != 'deleted' AND (?1 IS NULL OR u.item_uuid = ?1)
+    GROUP BY u.item_uuid";
+
+fn provenance_rows(conn: &Connection, item: Option<String>) -> HashMap<Uuid, MemoryProvenance> {
+    let mut out = HashMap::new();
+    let Ok(mut stmt) = conn.prepare(PROVENANCE_SQL) else {
+        return out;
+    };
+    let rows = stmt.query_map([item], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            MemoryProvenance {
+                cited_verified: r.get::<_, i64>(1)? as u64,
+                cited: r.get::<_, i64>(2)? as u64,
+                recalled_in_tasks: r.get::<_, i64>(3)? as u64,
+                surfaced_in_tasks: r.get::<_, i64>(4)? as u64,
+                ignored: r.get::<_, i64>(5)? as u64,
+            },
+        ))
+    });
+    if let Ok(rows) = rows {
+        for (uuid, p) in rows.flatten() {
+            if let Ok(uuid) = Uuid::parse_str(&uuid) {
+                out.insert(uuid, p);
+            }
+        }
+    }
+    out
+}
+
+pub fn memory_provenance(conn: &Connection, item_uuid: &Uuid) -> MemoryProvenance {
+    provenance_rows(conn, Some(item_uuid.to_string()))
+        .remove(item_uuid)
+        .unwrap_or_default()
+}
+
+/// Batched twin of [`memory_provenance`]: one query for every memory with uses.
+pub fn memory_provenance_all(conn: &Connection) -> HashMap<Uuid, MemoryProvenance> {
+    provenance_rows(conn, None)
+}

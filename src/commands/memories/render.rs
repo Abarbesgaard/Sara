@@ -8,13 +8,14 @@ use uuid::Uuid;
 use crate::commands::shared::{
     canonical_labels, derived_from_suffix, item_label, item_snippet, print_json, strength_label,
 };
-use crate::infrastructure::db;
+use crate::infrastructure::db::{self, MemoryProvenance};
 use crate::infrastructure::model::Item;
 
 pub(super) fn print_memories(
     conn: &Connection,
     memories: &[Item],
     strengths: &HashMap<Uuid, f64>,
+    provenance: &HashMap<Uuid, MemoryProvenance>,
     as_json: bool,
 ) -> Result<()> {
     if as_json {
@@ -22,6 +23,7 @@ pub(super) fn print_memories(
             .iter()
             .map(|m| {
                 let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
+                let track = provenance.get(&m.uuid).copied().unwrap_or_default();
                 let label = item_label(m);
                 let files = db::get_item_files(conn, &m.uuid).unwrap_or_default();
                 let (derived_labels, derived_from_labels) = canonical_labels(conn, m);
@@ -39,6 +41,7 @@ pub(super) fn print_memories(
                     "canonical": !derived_labels.is_empty(),
                     "derived_count": derived_labels.len(),
                     "derived_from": derived_from_labels,
+                    "provenance": track,
                 })
             })
             .collect();
@@ -68,8 +71,14 @@ pub(super) fn print_memories(
             format!(" [canonical, {} derived]", derived_labels.len())
         };
         let derived_from_str = derived_from_suffix(&derived_from_labels);
+        let track = provenance.get(&m.uuid).copied().unwrap_or_default();
+        let track_str = if track.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", track.summary())
+        };
         println!(
-            "  {} ({}){}{}{} {}{}: {}",
+            "  {} ({}){}{}{}{} {}{}: {}",
             label,
             strength_label(strength),
             if m.status == "provisional" {
@@ -79,6 +88,7 @@ pub(super) fn print_memories(
             },
             canonical_str,
             derived_from_str,
+            track_str,
             m.title,
             tags_str,
             snippet.trim()

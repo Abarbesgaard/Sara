@@ -741,6 +741,13 @@ cites the memories that actually helped. Citations are the strongest signal
 that a memory is useful, and `sara info` lists them under *Cited*. Every label
 must name an active memory, or the command fails and nothing changes.
 
+Each memory then carries a **track record**: `sara recall` and `sara memories`
+show how many tasks cited it (and how many of those were validated), recalled
+or surfaced it, and *ignored* it (completed without citing it), e.g.
+`✓ cited in 3 verified tasks · cited in 1 task · surfaced in 7 · ignored in 2`.
+The JSON and MCP output carry the counts as `provenance`. Deleted tasks are not
+counted.
+
 Add `--kind acceptance` to any `sara step …` command to act on the task's
 acceptance criteria instead of its steps. Toggle items with `Space` in `sara info`.
 

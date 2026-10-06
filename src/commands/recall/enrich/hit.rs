@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::types::Hit;
 use crate::commands::shared::{item_label, item_snippet, short_id};
@@ -15,6 +16,7 @@ pub(in crate::commands::recall) fn recent_hits(conn: &Connection, limit: i64) ->
         .map(|m| item_hit(conn, m, false))
         .collect();
     mark_stale(conn, &mut hits);
+    mark_provenance(conn, &mut hits);
     Ok(hits)
 }
 
@@ -73,6 +75,7 @@ pub(in crate::commands::recall) fn item_hit(
         cosine: None,
         cluster: None,
         stale: Vec::new(),
+        provenance: Default::default(),
     }
 }
 

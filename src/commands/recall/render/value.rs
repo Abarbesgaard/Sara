@@ -5,6 +5,7 @@ use serde_json::json;
 use crate::commands::recall::enrich::confidence::match_confidence;
 use crate::commands::recall::enrich::hit::{item_hit, recent_hits, record_recalled};
 use crate::commands::recall::enrich::patterns::detect_patterns;
+use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::spread::{
     associative_guide, should_auto_spread, spreading_related,
 };
@@ -58,6 +59,7 @@ pub fn recall_value(
         let _ = db::record_memory_recall(conn, &item.uuid);
         let mut hit = item_hit(conn, item, true);
         mark_stale(conn, std::slice::from_mut(&mut hit));
+        mark_provenance(conn, std::slice::from_mut(&mut hit));
         let related = spreading_related(conn, std::slice::from_ref(&hit))?;
         let associative = associative_guide(conn, &related);
         let label = hit.label.clone();

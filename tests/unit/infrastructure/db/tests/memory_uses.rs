@@ -158,3 +158,92 @@ fn memory_use_kind_round_trips() {
     }
     assert_eq!(MemoryUseKind::parse("used"), None);
 }
+
+fn set_status(conn: &Connection, task: &mut Task, status: Status) {
+    task.status = status;
+    update_task(conn, task).unwrap();
+}
+
+/// a: cited by a verified-completed task, cited by a completed-unverified
+/// task, recalled+surfaced but not cited by a completed task (ignored),
+/// surfaced by a pending task, and cited by a deleted task (excluded).
+/// b: recalled by a pending task only.
+fn provenance_fixture() -> (Connection, Item, Item) {
+    use MemoryUseKind::*;
+    let (conn, a, b, mut verified, mut unverified) = seeded();
+    let mut ignoring = seed_task(&conn);
+    let pending = seed_task(&conn);
+    let mut deleted = seed_task(&conn);
+    set_status(&conn, &mut verified, Status::Completed);
+    set_validated(&conn, &verified.uuid, "abc1234").unwrap();
+    set_status(&conn, &mut unverified, Status::Completed);
+    set_status(&conn, &mut ignoring, Status::Completed);
+    set_status(&conn, &mut deleted, Status::Deleted);
+
+    for (task, kind) in [
+        (&verified, Cited),
+        (&verified, Recalled),
+        (&unverified, Cited),
+        (&ignoring, Recalled),
+        (&ignoring, Surfaced),
+        (&pending, Surfaced),
+        (&deleted, Cited),
+    ] {
+        record_memory_use(&conn, &a.uuid, &task.uuid, kind).unwrap();
+    }
+    record_memory_use(&conn, &b.uuid, &pending.uuid, Recalled).unwrap();
+    (conn, a, b)
+}
+
+#[test]
+fn provenance_counts_verified_unverified_and_ignored() {
+    let (conn, a, b) = provenance_fixture();
+
+    assert_eq!(
+        memory_provenance(&conn, &a.uuid),
+        MemoryProvenance {
+            cited_verified: 1,
+            cited: 2,
+            recalled_in_tasks: 2,
+            surfaced_in_tasks: 2,
+            ignored: 1,
+        }
+    );
+    assert_eq!(
+        memory_provenance(&conn, &b.uuid),
+        MemoryProvenance {
+            recalled_in_tasks: 1,
+            ..Default::default()
+        },
+        "a pending task's recall is not yet ignored"
+    );
+}
+
+#[test]
+fn provenance_batched_twin_matches_per_item() {
+    let (conn, a, b) = provenance_fixture();
+    let mut unused = make_memory("gamma", &[]);
+    insert_item(&conn, &mut unused).unwrap();
+
+    let all = memory_provenance_all(&conn);
+    for item in [&a, &b, &unused] {
+        assert_eq!(
+            all.get(&item.uuid).copied().unwrap_or_default(),
+            memory_provenance(&conn, &item.uuid),
+            "twin drift for {}",
+            item.title
+        );
+    }
+    assert!(memory_provenance(&conn, &unused.uuid).is_empty());
+}
+
+#[test]
+fn provenance_summary_shows_only_nonzero_parts() {
+    let (conn, a, b) = provenance_fixture();
+    assert_eq!(
+        memory_provenance(&conn, &a.uuid).summary(),
+        "✓ cited in 1 verified task · cited in 1 task · recalled in 2 · surfaced in 2 · ignored in 1"
+    );
+    assert_eq!(memory_provenance(&conn, &b.uuid).summary(), "recalled in 1");
+    assert_eq!(MemoryProvenance::default().summary(), "");
+}

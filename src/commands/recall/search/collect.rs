@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use crate::commands::recall::enrich::clusters::collapse_clusters;
 use crate::commands::recall::enrich::hit::{item_hit, record_recalled};
+use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::search::filters::exact_uuids;
 use crate::commands::recall::search::fts;
@@ -96,6 +97,7 @@ pub(in crate::commands::recall) fn collect_hits(
                     cosine: None,
                     cluster: None,
                     stale: Vec::new(),
+                    provenance: Default::default(),
                 });
             }
         }
@@ -116,6 +118,7 @@ pub(in crate::commands::recall) fn collect_hits(
     let mut hits = collapse_clusters(conn, hits);
     hits.truncate(limit.max(0) as usize);
     mark_stale(conn, &mut hits);
+    mark_provenance(conn, &mut hits);
 
     record_recalled(conn, &hits);
 

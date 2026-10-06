@@ -33,6 +33,7 @@ fn hit(
         cosine,
         cluster: None,
         stale: vec![],
+        provenance: Default::default(),
     }
 }
 

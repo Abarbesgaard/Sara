@@ -4,5 +4,6 @@ pub(super) mod clusters;
 pub(super) mod confidence;
 pub(super) mod hit;
 pub(super) mod patterns;
+pub(super) mod provenance;
 pub(super) mod spread;
 pub(super) mod stale;
