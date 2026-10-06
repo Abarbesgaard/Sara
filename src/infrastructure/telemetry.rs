@@ -63,6 +63,10 @@ pub struct TelemetryRecord {
     /// never content: it says *how much*, never *what*.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<u64>,
+    /// Only on `outcome` records: whether the completed task had a validated
+    /// commit. A flag, never the commit itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified: Option<bool>,
 }
 
 /// Trace context for one event of a composite operation. Attached to folded
@@ -200,7 +204,27 @@ pub fn build_record_span<T>(
         trace_id: span.map(|s| s.trace_id.to_string()),
         seq: span.map(|s| s.seq),
         n: span.and_then(|s| s.n),
+        verified: None,
     }
+}
+
+/// The anonymous outcome of a completed task, recorded beside the `done` call:
+/// `n` is how many memories that existed before the task it cited or recalled,
+/// `verified` whether it closed with a validated commit. Counts only, no ids.
+pub fn build_outcome_record(
+    install_id: &str,
+    source: Source,
+    n: u64,
+    verified: bool,
+) -> TelemetryRecord {
+    let name = match source {
+        Source::Cli => "outcome",
+        Source::Mcp => "mcp outcome",
+    };
+    let mut rec = build_record(install_id, source, name, &[], 0, &Ok(()), None);
+    rec.n = Some(n);
+    rec.verified = Some(verified);
+    rec
 }
 
 pub fn append(queue_path: &Path, rec: &TelemetryRecord) -> std::io::Result<()> {
@@ -338,6 +362,20 @@ pub fn capture_span<T>(
         return;
     }
     capture_impl(cfg, source, name, flags, duration_ms, result, client, span);
+}
+
+/// Record a completed task's anonymous outcome. Same gating as [`capture`].
+pub fn capture_outcome(cfg: &Config, source: Source, n: u64, verified: bool) {
+    if cfg!(test) || !enabled(cfg) {
+        return;
+    }
+    let Ok(path) = queue_path() else {
+        return;
+    };
+    let _ = append(
+        &path,
+        &build_outcome_record(&install_id(), source, n, verified),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]

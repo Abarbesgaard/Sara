@@ -25,6 +25,12 @@
   cited-only share, for the current project and for all projects. It reads
   "insufficient data" below 5 verified tasks and never affects `healthy`.
   Part of the Outcome Loop (#204).
+- **Anonymous outcome telemetry.** Completing a task (CLI `done`, MCP `done`)
+  also records an `outcome` telemetry event carrying only `n` (how many
+  memories that existed before the task it cited or recalled) and `verified`
+  (whether it closed with a validated commit), so the knowledge-reuse measure
+  can be seen across installs. No labels, ids or text; the usual opt-outs
+  apply. Part of the Outcome Loop (#204).
 
 ## [2.0.0] - 2026-10-05
 

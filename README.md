@@ -370,6 +370,10 @@ sara --version
 **Anonymous usage telemetry is on by default.** Sara records the command or
 MCP tool name, duration, ok/error and version — never arguments, paths, task
 text or memory content — and sends it to the maintainer's collector over HTTPS.
+When a task is completed, it also records an `outcome` event with two values:
+`n`, how many memories that existed before the task it cited or recalled, and
+`verified`, whether it closed with a validated commit. These are counts, never
+labels or ids, and they measure whether Sara's memory helps across installs.
 `sara telemetry --show` prints exactly what is queued. Turn it off with
 `sara telemetry off` or `SARA_NO_TELEMETRY=1`, or build without it entirely:
 `cargo install --path . --no-default-features`.

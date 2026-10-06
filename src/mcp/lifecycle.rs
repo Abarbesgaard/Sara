@@ -2,6 +2,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 
 use crate::commands;
+use crate::infrastructure::telemetry::Source;
 
 use super::params::*;
 use super::server::{SaraServer, mcp_err, ok_json};
@@ -21,9 +22,11 @@ impl SaraServer {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
                 let used = p.used.as_deref().unwrap_or(&[]);
-                commands::shared::with_citation(conn, &p.id, used, || {
+                let v = commands::shared::with_citation(conn, &p.id, used, || {
                     commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
-                })
+                })?;
+                commands::done::report_outcome(conn, cfg, Source::Mcp, &v);
+                Ok(v)
             })
             .map_err(mcp_err)?;
         ok_json(v)

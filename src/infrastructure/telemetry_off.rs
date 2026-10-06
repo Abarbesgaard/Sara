@@ -42,4 +42,6 @@ pub fn capture<T>(
 ) {
 }
 
+pub fn capture_outcome(_cfg: &Config, _source: Source, _n: u64, _verified: bool) {}
+
 pub fn spawn_flush(_cfg: &Config) {}

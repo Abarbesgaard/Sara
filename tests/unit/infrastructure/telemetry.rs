@@ -578,3 +578,44 @@ fn post_jsonl_can_speak_https() {
         "built without a TLS backend: {msg}"
     );
 }
+
+#[test]
+fn outcome_record_is_counts_only() {
+    let _env = env_guard();
+    let tmp = temp_dir();
+    let path = tmp.path().join("queue.jsonl");
+    append(&path, &build_outcome_record("iid-o", Source::Mcp, 3, true)).unwrap();
+    append(&path, &build_outcome_record("iid-o", Source::Cli, 0, false)).unwrap();
+
+    let rows = read_lines(&path);
+    assert_eq!(rows[0]["name"], "mcp outcome");
+    assert_eq!(rows[0]["n"], 3);
+    assert_eq!(rows[0]["verified"], true);
+    assert_eq!(rows[0]["ok"], true);
+    assert_eq!(rows[1]["name"], "outcome");
+    assert_eq!(rows[1]["n"], 0);
+    assert_eq!(rows[1]["verified"], false);
+    let keys: std::collections::BTreeSet<&str> = rows[0]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let expected: std::collections::BTreeSet<&str> = [
+        "install_id",
+        "ts",
+        "source",
+        "name",
+        "duration_ms",
+        "ok",
+        "err_code",
+        "version",
+        "os",
+        "arch",
+        "n",
+        "verified",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(keys, expected, "outcome payload is exactly the allowlist");
+}

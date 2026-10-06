@@ -303,8 +303,8 @@ pub fn knowledge_reuse(
     let prior = |kinds: &str| {
         format!(
             "EXISTS (SELECT 1 FROM memory_uses u JOIN items i ON i.uuid = u.item_uuid
-                     WHERE u.task_uuid = t.uuid AND u.kind IN ({kinds})
-                       AND i.created < t.entry)"
+                     WHERE u.task_uuid = t.uuid AND {})",
+            prior_use(kinds)
         )
     };
     let sql = format!(
@@ -326,4 +326,22 @@ pub fn knowledge_reuse(
             })
         })?,
     )
+}
+
+/// A use (alias `u`, memory `i`, task `t`) of a memory that existed before the
+/// task began: the "prior knowledge" both the KPI and telemetry count.
+fn prior_use(kinds: &str) -> String {
+    format!("u.kind IN ({kinds}) AND i.created < t.entry")
+}
+
+/// How many distinct memories created before the task began it cited or recalled.
+pub fn prior_knowledge_used(conn: &Connection, task_uuid: &Uuid) -> Result<u64> {
+    let sql = format!(
+        "SELECT COUNT(DISTINCT u.item_uuid)
+         FROM memory_uses u JOIN items i ON i.uuid = u.item_uuid
+                            JOIN tasks t ON t.uuid = u.task_uuid
+         WHERE t.uuid = ?1 AND {}",
+        prior_use("'cited', 'recalled'")
+    );
+    Ok(conn.query_row(&sql, [task_uuid.to_string()], |r| r.get::<_, i64>(0))? as u64)
 }
