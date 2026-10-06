@@ -32,7 +32,7 @@ fn check<'a>(v: &'a Value, id: &str) -> &'a Value {
 
 #[test]
 fn empty_store_is_healthy_and_reports_every_check() {
-    let v = super::doctor_value(&fresh()).unwrap();
+    let v = super::doctor_value(&fresh(), None).unwrap();
     assert_eq!(v["healthy"], true, "{v}");
     let ids: Vec<&str> = v["checks"]
         .as_array()
@@ -62,7 +62,7 @@ fn empty_store_is_healthy_and_reports_every_check() {
 fn memory_without_a_vector_warns_with_reindex_fix() {
     let conn = fresh();
     memory(&conn, "retries need jitter", 1, false);
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "embedding_coverage");
     assert_eq!(c["status"], "warn");
     assert_eq!(c["count"], 1);
@@ -74,7 +74,7 @@ fn memory_without_a_vector_warns_with_reindex_fix() {
 fn stale_embedding_scheme_warns() {
     let conn = db::open_in_memory_for_test();
     db::meta_set(&conn, "embedding_scheme_version", "old-model|text0").unwrap();
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "embedding_coverage");
     assert_eq!(c["status"], "warn", "{c}");
     assert_eq!(c["details"]["scheme_current"], false);
@@ -89,7 +89,7 @@ fn link_to_missing_or_archived_memory_is_orphaned() {
     crate::test_support::link(&conn, a, "derived_from", gone);
     db::archive_item(&conn, &gone).unwrap();
 
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "orphaned_links");
     assert_eq!(c["status"], "warn");
     assert_eq!(c["count"], 2, "{c}");
@@ -102,7 +102,7 @@ fn archived_target_of_supersedes_is_not_orphaned() {
     let older = memory(&conn, "use v1 api", 1, true);
     crate::test_support::link(&conn, newer, "supersedes", older);
     db::archive_item(&conn, &older).unwrap();
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     assert_eq!(check(&v, "orphaned_links")["status"], "ok");
 }
 
@@ -117,7 +117,7 @@ fn near_duplicates_are_flagged_via_diagnose() {
         let u = memory(&conn, body, 1, true);
         db::set_item_files(&conn, &u, std::slice::from_ref(&file)).unwrap();
     }
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "duplicates");
     assert_eq!(c["status"], "warn", "{c}");
     assert_eq!(c["count"], 1);
@@ -131,7 +131,7 @@ fn active_superseded_memory_warns_and_doctor_archives_nothing() {
     let older = memory(&conn, "use v1 api", 1, true);
     crate::test_support::link(&conn, newer, "supersedes", older);
 
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "superseded");
     assert_eq!(c["status"], "warn", "{c}");
     assert_eq!(c["fix"], "sara prune-memories --apply");
@@ -152,7 +152,7 @@ fn stale_provisional_memory_is_backlog() {
     db::insert_item(&conn, &mut item).unwrap();
     embedding::index_memory(&conn, &item);
 
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "provisional_backlog");
     assert_eq!(c["status"], "warn", "{c}");
     assert_eq!(c["count"], 1);
@@ -166,7 +166,7 @@ fn unrecalled_old_memory_is_info_and_stays_healthy() {
     let recent = memory(&conn, "fresh insight", 1, true);
     db::record_memory_recall(&conn, &recent).unwrap();
 
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "decay_outliers");
     assert_eq!(c["status"], "info", "{c}");
     assert_eq!(c["details"]["dead_weight"].as_array().unwrap().len(), 2);
@@ -185,7 +185,7 @@ fn a_memory_recalled_far_above_the_mean_is_over_reinforced() {
         let m = memory(&conn, &format!("occasional note {i}"), 1, true);
         db::record_memory_recall(&conn, &m).unwrap();
     }
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let over = &check(&v, "decay_outliers")["details"]["over_reinforced"];
     assert_eq!(over.as_array().unwrap().len(), 1, "{over}");
     assert_eq!(over[0]["recalls"], 25);
@@ -213,7 +213,7 @@ fn stale_anchors_lists_drifted_and_missing_files_as_info() {
     write("drifted.rs", "new");
     std::fs::remove_file(&removed).unwrap();
 
-    let v = super::doctor_value(&conn).unwrap();
+    let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "stale_anchors");
     assert_eq!(c["status"], "info", "{c}");
     assert_eq!(c["count"], 1, "one memory carries the stale anchors: {c}");
@@ -230,4 +230,64 @@ fn stale_anchors_lists_drifted_and_missing_files_as_info() {
     assert_eq!(reason_of(&removed).as_deref(), Some("missing"));
     assert_eq!(reason_of(&kept), None);
     assert_eq!(v["healthy"], true, "stale anchors are advisory: {v}");
+}
+
+fn verified_tasks(conn: &rusqlite::Connection, project: &str, n: usize, cite: Option<Uuid>) {
+    use crate::infrastructure::model::{Status, Task};
+    for _ in 0..n {
+        let mut t = Task::new("demo".into(), project.into());
+        t.entry = Utc::now() - Duration::days(2);
+        db::insert_task(conn, &mut t).unwrap();
+        t.status = Status::Completed;
+        t.end = Some(Utc::now() - Duration::days(1));
+        db::update_task(conn, &t).unwrap();
+        db::set_validated(conn, &t.uuid, "abc1234").unwrap();
+        if let Some(m) = cite {
+            db::record_memory_use(conn, &m, &t.uuid, db::MemoryUseKind::Cited).unwrap();
+        }
+    }
+}
+
+#[test]
+fn knowledge_reuse_reports_insufficient_data_below_five_tasks() {
+    let conn = fresh();
+    verified_tasks(&conn, "p", 4, None);
+    let v = super::doctor_value(&conn, Some("p")).unwrap();
+    let kpi = &v["knowledge_reuse"];
+    assert_eq!(kpi["window_days"], 30, "{kpi}");
+    assert_eq!(kpi["global"]["verified"], 4, "{kpi}");
+    assert_eq!(kpi["global"]["sufficient"], false, "{kpi}");
+    assert!(kpi["global"]["share"].is_null(), "{kpi}");
+    assert_eq!(kpi["project"]["name"], "p", "{kpi}");
+    assert_eq!(
+        super::reuse::scope_line(&kpi["global"]),
+        "insufficient data (4 of 5 verified tasks)"
+    );
+    assert_eq!(v["healthy"], true, "the KPI never affects health: {v}");
+}
+
+#[test]
+fn knowledge_reuse_reports_shares_per_scope() {
+    let conn = fresh();
+    let m = memory(&conn, "retries back off exponentially", 100, true);
+    verified_tasks(&conn, "here", 3, Some(m));
+    verified_tasks(&conn, "here", 2, None);
+    verified_tasks(&conn, "elsewhere", 5, None);
+    let v = super::doctor_value(&conn, Some("here")).unwrap();
+    let kpi = &v["knowledge_reuse"];
+    assert_eq!(kpi["project"]["share"], 0.6, "{kpi}");
+    assert_eq!(kpi["project"]["cited_share"], 0.6, "{kpi}");
+    assert_eq!(kpi["global"]["verified"], 10, "{kpi}");
+    assert_eq!(kpi["global"]["share"], 0.3, "{kpi}");
+    assert_eq!(
+        super::reuse::scope_line(&kpi["project"]),
+        "60% drew on prior memory · 60% cited it (5 verified tasks)"
+    );
+}
+
+#[test]
+fn knowledge_reuse_without_a_project_reports_global_only() {
+    let v = super::doctor_value(&fresh(), None).unwrap();
+    assert!(v["knowledge_reuse"]["project"].is_null(), "{v}");
+    assert_eq!(v["knowledge_reuse"]["global"]["verified"], 0, "{v}");
 }

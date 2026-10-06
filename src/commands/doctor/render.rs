@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use super::reuse::{WINDOW_DAYS, scope_line};
+
 pub(super) fn print_report(v: &Value) {
     let color = std::env::var("NO_COLOR").is_err();
     let paint = |code: &str, s: &str| {
@@ -30,6 +32,13 @@ pub(super) fn print_report(v: &Value) {
             println!("      fix: {fix}");
         }
     }
+    let kpi = &v["knowledge_reuse"];
+    println!("\nKnowledge reuse (verified tasks, last {WINDOW_DAYS} days):");
+    if let Some(name) = kpi["project"]["name"].as_str() {
+        println!("  {:<12} {}", name, scope_line(&kpi["project"]));
+    }
+    println!("  {:<12} {}", "all projects", scope_line(&kpi["global"]));
+
     let s = &v["summary"];
     println!(
         "\n{} ok, {} warn, {} info — {}",

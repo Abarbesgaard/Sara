@@ -391,8 +391,9 @@ impl SaraServer {
     )]
     fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp doctor", |conn, _cfg| {
-                commands::doctor::doctor_value(conn)
+            .with_project(p.project_path.as_deref(), "mcp doctor", |conn, cfg| {
+                let project = commands::doctor::current_project(conn, cfg);
+                commands::doctor::doctor_value(conn, project.as_deref())
             })
             .map_err(mcp_err)?;
         ok_json(v)

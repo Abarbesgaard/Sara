@@ -19,6 +19,12 @@
   memory, how many of those were validated, how many recalled or surfaced it,
   and how many completed without citing it (*ignored*). Deleted tasks are not
   counted. Ranking is unchanged. Part of the Outcome Loop (#204).
+- **`sara doctor` reports knowledge reuse.** A new section (JSON:
+  `knowledge_reuse`) shows the share of verified tasks in the last 30 days that
+  cited or recalled a memory created before the task began, and the stricter
+  cited-only share, for the current project and for all projects. It reads
+  "insufficient data" below 5 verified tasks and never affects `healthy`.
+  Part of the Outcome Loop (#204).
 
 ## [2.0.0] - 2026-10-05
 

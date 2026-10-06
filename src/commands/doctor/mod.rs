@@ -1,11 +1,15 @@
 //! `sara doctor` — a read-only health report over the memory store. It composes
 //! the existing diagnostics (duplicate detection, the prune evaluation, the
 //! embedding index, link integrity, recall activity, anchored-file drift) into one checklist, each
-//! finding paired with the command that fixes it. Nothing here writes.
+//! finding paired with the command that fixes it, plus the knowledge-reuse KPI.
+//! Nothing here writes.
 
 mod checks;
 mod render;
+mod reuse;
 mod types;
+
+pub use reuse::current_project;
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -16,7 +20,7 @@ use crate::infrastructure::db;
 use checks::{anchors, decay, duplicates, embedding, hygiene, orphans};
 use types::{Check, Labels, Status};
 
-pub fn doctor_value(conn: &Connection) -> Result<Value> {
+pub fn doctor_value(conn: &Connection, project: Option<&str>) -> Result<Value> {
     let memories = db::list_memories(conn)?;
     let labels = Labels::new(&memories);
 
@@ -39,11 +43,12 @@ pub fn doctor_value(conn: &Connection) -> Result<Value> {
         "memories": memories.len(),
         "summary": { "ok": tally(Status::Ok), "warn": warn, "info": tally(Status::Info) },
         "checks": checks.iter().map(Check::to_json).collect::<Vec<_>>(),
+        "knowledge_reuse": reuse::knowledge_reuse_json(conn, project)?,
     }))
 }
 
-pub fn run(conn: &Connection, json: bool, strict: bool) -> Result<()> {
-    let v = doctor_value(conn)?;
+pub fn run(conn: &Connection, project: Option<&str>, json: bool, strict: bool) -> Result<()> {
+    let v = doctor_value(conn, project)?;
     if json {
         print_json(&v)?;
     } else {

@@ -247,3 +247,123 @@ fn provenance_summary_shows_only_nonzero_parts() {
     assert_eq!(memory_provenance(&conn, &b.uuid).summary(), "recalled in 1");
     assert_eq!(MemoryProvenance::default().summary(), "");
 }
+
+fn days_ago(n: i64) -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now() - chrono::Duration::days(n)
+}
+
+fn old_memory(conn: &Connection, title: &str, created_days_ago: i64) -> Item {
+    let mut m = make_memory(title, &[]);
+    m.created = days_ago(created_days_ago);
+    insert_item(conn, &mut m).unwrap();
+    m
+}
+
+/// A completed task that began 2 days before it ended.
+fn finished_task(conn: &Connection, project: &str, ended_days_ago: i64, verified: bool) -> Task {
+    let mut t = Task::new("demo".into(), project.into());
+    t.entry = days_ago(ended_days_ago + 2);
+    insert_task(conn, &mut t).unwrap();
+    t.status = Status::Completed;
+    t.end = Some(days_ago(ended_days_ago));
+    update_task(conn, &t).unwrap();
+    if verified {
+        set_validated(conn, &t.uuid, "abc1234").unwrap();
+    }
+    t
+}
+
+fn reuse(conn: &Connection, project: Option<&str>) -> ReuseStats {
+    knowledge_reuse(conn, project, &days_ago(30)).unwrap()
+}
+
+#[test]
+fn knowledge_reuse_is_zero_when_no_verified_task_drew_on_memory() {
+    let conn = mem();
+    old_memory(&conn, "alpha", 100);
+    finished_task(&conn, "p", 1, true);
+    finished_task(&conn, "p", 1, true);
+    assert_eq!(
+        reuse(&conn, None),
+        ReuseStats {
+            verified: 2,
+            used_prior: 0,
+            cited_prior: 0
+        }
+    );
+}
+
+#[test]
+fn knowledge_reuse_counts_cited_and_recalled_but_only_verified_recent_tasks() {
+    use MemoryUseKind::*;
+    let conn = mem();
+    let m = old_memory(&conn, "alpha", 100);
+    let cited = finished_task(&conn, "p", 1, true);
+    let recalled = finished_task(&conn, "p", 1, true);
+    let surfaced_only = finished_task(&conn, "p", 1, true);
+    let unverified = finished_task(&conn, "p", 1, false);
+    let too_old = finished_task(&conn, "p", 40, true);
+    for (t, kind) in [
+        (&cited, Cited),
+        (&recalled, Recalled),
+        (&surfaced_only, Surfaced),
+        (&unverified, Cited),
+        (&too_old, Cited),
+    ] {
+        record_memory_use(&conn, &m.uuid, &t.uuid, kind).unwrap();
+    }
+    assert_eq!(
+        reuse(&conn, None),
+        ReuseStats {
+            verified: 3,
+            used_prior: 2,
+            cited_prior: 1
+        }
+    );
+}
+
+#[test]
+fn knowledge_reuse_is_full_when_every_verified_task_cited() {
+    let conn = mem();
+    let m = old_memory(&conn, "alpha", 100);
+    for _ in 0..3 {
+        let t = finished_task(&conn, "p", 1, true);
+        record_memory_use(&conn, &m.uuid, &t.uuid, MemoryUseKind::Cited).unwrap();
+    }
+    assert_eq!(
+        reuse(&conn, None),
+        ReuseStats {
+            verified: 3,
+            used_prior: 3,
+            cited_prior: 3
+        }
+    );
+}
+
+#[test]
+fn knowledge_reuse_ignores_memories_created_after_the_task_began() {
+    let conn = mem();
+    let t = finished_task(&conn, "p", 1, true);
+    let learned_during = old_memory(&conn, "learned during the task", 2);
+    record_memory_use(&conn, &learned_during.uuid, &t.uuid, MemoryUseKind::Cited).unwrap();
+    assert_eq!(reuse(&conn, None).used_prior, 0);
+}
+
+#[test]
+fn knowledge_reuse_scopes_to_a_project() {
+    let conn = mem();
+    let m = old_memory(&conn, "alpha", 100);
+    let here = finished_task(&conn, "here", 1, true);
+    finished_task(&conn, "elsewhere", 1, true);
+    record_memory_use(&conn, &m.uuid, &here.uuid, MemoryUseKind::Recalled).unwrap();
+    assert_eq!(
+        reuse(&conn, Some("here")),
+        ReuseStats {
+            verified: 1,
+            used_prior: 1,
+            cited_prior: 0
+        }
+    );
+    assert_eq!(reuse(&conn, Some("elsewhere")).used_prior, 0);
+    assert_eq!(reuse(&conn, None).verified, 2);
+}

@@ -514,7 +514,8 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
         }
 
         Command::Doctor { json, strict } => {
-            commands::doctor::run(&conn, json, strict)?;
+            let project = commands::doctor::current_project(&conn, &cfg);
+            commands::doctor::run(&conn, project.as_deref(), json, strict)?;
         }
 
         Command::DiagnoseMemories {

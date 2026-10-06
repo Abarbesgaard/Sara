@@ -53,3 +53,19 @@ fn doctor_mcp_tool_returns_the_cli_report() {
     let v = mcp.call_result("doctor", serde_json::json!({ "project_path": project }));
     assert_eq!(v, cli);
 }
+
+#[test]
+fn doctor_knowledge_reuse_scopes_to_the_current_project() {
+    let s = Sara::new();
+    let v = s.json(&["doctor", "--json"]);
+    let kpi = &v["knowledge_reuse"];
+    assert_eq!(kpi["global"]["sufficient"], false, "{v}");
+    assert!(kpi["project"]["name"].is_string(), "{v}");
+
+    let out = s.run(&["doctor"]);
+    assert!(out.contains("Knowledge reuse"), "{out}");
+    assert!(
+        out.contains("insufficient data (0 of 5 verified tasks)"),
+        "{out}"
+    );
+}
