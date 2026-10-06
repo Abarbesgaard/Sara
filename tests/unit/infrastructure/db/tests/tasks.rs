@@ -127,6 +127,57 @@ fn resolve_task_errors_on_ambiguous_uuid_prefix() {
     assert!(resolve_task(&conn, "ab12").is_err());
 }
 
+fn task_with_uuid(conn: &Connection, uuid: &str, desc: &str) -> Task {
+    let mut t = Task::new(desc.into(), "proj".into());
+    t.uuid = uuid::Uuid::parse_str(uuid).unwrap();
+    insert_task(conn, &mut t).unwrap();
+    t
+}
+
+#[test]
+fn resolve_task_stale_display_id_reports_display_id_not_uuid_ambiguity() {
+    let conn = mem();
+    task_with_uuid(&conn, "88cc62e9-0000-0000-0000-00000000000a", "a");
+    task_with_uuid(&conn, "88a0e813-0000-0000-0000-00000000000b", "b");
+
+    let err = resolve_task(&conn, "88").unwrap_err().to_string();
+    assert!(err.contains("display id 88"), "{err}");
+    assert!(!err.contains("Ambiguous"), "{err}");
+}
+
+#[test]
+fn resolve_task_stale_display_id_never_matches_a_uuid_prefix() {
+    let conn = mem();
+    task_with_uuid(&conn, "88cc62e9-0000-0000-0000-00000000000a", "unrelated");
+
+    assert!(resolve_task(&conn, "88").is_err());
+}
+
+#[test]
+fn resolve_task_accepts_an_all_digit_uuid_prefix_of_eight_chars() {
+    let conn = mem();
+    let t = task_with_uuid(&conn, "12345678-0000-0000-0000-00000000000a", "digits");
+
+    assert_eq!(resolve_task(&conn, "12345678").unwrap().uuid, t.uuid);
+}
+
+#[test]
+fn ambiguous_uuid_prefix_error_lists_the_candidates() {
+    let conn = mem();
+    task_with_uuid(&conn, "ab120000-0000-0000-0000-00000000000a", "first task");
+    task_with_uuid(&conn, "ab121111-0000-0000-0000-00000000000b", "second task");
+
+    let err = resolve_task(&conn, "ab12").unwrap_err().to_string();
+    assert!(
+        err.contains("ab120000") && err.contains("first task"),
+        "{err}"
+    );
+    assert!(
+        err.contains("ab121111") && err.contains("second task"),
+        "{err}"
+    );
+}
+
 #[test]
 fn get_task_by_uuid_prefix_treats_underscore_as_literal() {
     let conn = mem();

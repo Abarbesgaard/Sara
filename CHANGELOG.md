@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A stale numeric display id (e.g. `88` after ids were renumbered) no longer falls through to uuid-prefix matching and reports a misleading "Ambiguous task uuid prefix" error. Short numeric input is now treated as a display id only, and the error explains that display ids are renumbered and points to the uuid prefix.
+- The ambiguous uuid-prefix error now lists the matching candidates (short uuid, status, description).
+
 ## [2.1.0] - 2026-10-06
 
 ### Added
