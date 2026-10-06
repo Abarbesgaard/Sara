@@ -55,6 +55,31 @@ impl MemoryUseCounts {
     }
 }
 
+thread_local! {
+    static USE_TASK: std::cell::Cell<Option<Uuid>> = const { std::cell::Cell::new(None) };
+}
+
+struct UseTaskGuard(Option<Uuid>);
+
+impl Drop for UseTaskGuard {
+    fn drop(&mut self) {
+        USE_TASK.with(|c| c.set(self.0));
+    }
+}
+
+/// Runs `f` with every memory recall/surfacing inside it also recorded as a
+/// use against `task`, so an explicit `recall --task` credits that task.
+pub fn with_use_attribution<T>(task: Option<Uuid>, f: impl FnOnce() -> T) -> T {
+    let _guard = UseTaskGuard(USE_TASK.with(|c| c.replace(task)));
+    f()
+}
+
+pub(crate) fn attribute_use(conn: &Connection, item_uuid: &Uuid, kind: MemoryUseKind) {
+    if let Some(task) = USE_TASK.with(|c| c.get()) {
+        let _ = record_memory_use(conn, item_uuid, &task, kind);
+    }
+}
+
 /// Idempotent: a repeat of the same (memory, task, kind) keeps the first `at`.
 pub fn record_memory_use(
     conn: &Connection,

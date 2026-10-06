@@ -16,7 +16,7 @@ expression: redact(begin)
   "description": "Wire up the payments client",
   "next": {
     "index": 1,
-    "intent": "Before investigating or editing, decide what prior knowledge bears on this task — the patterns, prior fixes, gotchas, and conventions it might repeat — then call `recall` with a query aimed at exactly that. Record which memories apply (or are deliberately rejected, and why) when you close this step. Do this first so prior art shapes the work rather than being consulted after the fact.",
+    "intent": "Before investigating or editing, decide what prior knowledge bears on this task — the patterns, prior fixes, gotchas, and conventions it might repeat — then call `recall` with a query aimed at exactly that, passing this task as `task` so the memories it uses are credited when it succeeds. Record which memories apply (or are deliberately rejected, and why) when you close this step. Do this first so prior art shapes the work rather than being consulted after the fact.",
     "source": "sara",
     "task": 1,
     "text": "Recall prior art before doing anything else",

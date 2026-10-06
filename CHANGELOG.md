@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`recall` can be made for a task.** `sara recall --task <id>` and the MCP
+  `recall` tool's `task` parameter record the returned memories as used by that
+  task: direct hits as *recalled*, associative hits as *surfaced*. An unknown
+  task id is an error. The seeded "Recall prior art" step and the MCP
+  instructions now ask agents to pass it. Part of the Outcome Loop (#204).
+
 ## [2.0.0] - 2026-10-05
 
 ### Changed
