@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-06
+
 ### Added
 
+- **Memory use ledger.** Sara now records which memories each task used: shown
+  by `next`/`begin` (*surfaced*), returned by a task's `recall` (*recalled*),
+  or credited by the agent (*cited*). A database migration adds the table, so
+  older binaries cannot open a 2.1.0 database. Part of the Outcome Loop (#204).
 - **`recall` can be made for a task.** `sara recall --task <id>` and the MCP
   `recall` tool's `task` parameter record the returned memories as used by that
   task: direct hits as *recalled*, associative hits as *surfaced*. An unknown
