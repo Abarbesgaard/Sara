@@ -77,7 +77,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Mark a step DONE (ticks the box), recording a result and the current git commit. With neither `n` nor `step_id`, it completes the current step — the first not-done one that `next` returns — so a `next` -> `step_done` round-trip needs no position tracking. Address a specific item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" (with its 1-based `n`, or none to tick the first outstanding one). Do NOT call `check` to tick — check only adds.",
+        description = "Mark a step DONE (ticks the box), recording a result and the current git commit. With neither `n` nor `step_id`, it completes the current step — the first not-done one that `next` returns — so a `next` -> `step_done` round-trip needs no position tracking. Address a specific item by `n` (the `index` returned by check/steps) OR by `step_id` (the rowid check returns). This is how you satisfy an acceptance criterion: pass kind=\"acceptance\" (with its 1-based `n`, or none to tick the first outstanding one). Do NOT call `check` to tick — check only adds. Pass `used` with the memory labels (e.g. [\"m12\"]) that actually helped, to cite them; an unknown label fails the whole call and nothing changes.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -88,24 +88,27 @@ impl SaraServer {
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp step_done", |conn, _cfg| {
-                if let Some(step_id) = p.step_id {
-                    commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
-                } else if let Some(n) = p.n {
-                    commands::guide::step_done_value(
-                        conn,
-                        &p.id,
-                        n,
-                        p.result.as_deref(),
-                        p.kind.as_deref(),
-                    )
-                } else {
-                    commands::guide::step_done_current_value(
-                        conn,
-                        &p.id,
-                        p.result.as_deref(),
-                        p.kind.as_deref(),
-                    )
-                }
+                let used = p.used.as_deref().unwrap_or(&[]);
+                commands::shared::with_citation(conn, &p.id, used, || {
+                    if let Some(step_id) = p.step_id {
+                        commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
+                    } else if let Some(n) = p.n {
+                        commands::guide::step_done_value(
+                            conn,
+                            &p.id,
+                            n,
+                            p.result.as_deref(),
+                            p.kind.as_deref(),
+                        )
+                    } else {
+                        commands::guide::step_done_current_value(
+                            conn,
+                            &p.id,
+                            p.result.as_deref(),
+                            p.kind.as_deref(),
+                        )
+                    }
+                })
             })
             .map_err(mcp_err)?;
         ok_json(v)

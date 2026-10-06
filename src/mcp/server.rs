@@ -29,7 +29,7 @@ Execution loop: start new work with `begin` (or `list`/`info` to resume a task).
 `begin` seeds a first step to recall prior art — decide what knowledge bears on the \
 task and call `recall` yourself, passing the task as `task`. Lay out the work with `check` (steps, or \
 acceptance criteria with kind=\"acceptance\" and a `verify` command), then repeat: \
-`next` for the current step → do the work → `step_done` with a result. Record \
+`next` for the current step → do the work → `step_done` with a result (and `used`: the memories that helped). Record \
 findings and decisions with `annotate`. `validate` runs every acceptance \
 criterion's verify command and stamps the guide green at git HEAD.\n\n\
 Memory: `recall` before solving, with `task` set when it serves a task (heed its `patterns`, `confidence`, and `stale` \

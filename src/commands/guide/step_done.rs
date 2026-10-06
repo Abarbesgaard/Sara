@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use super::support::kind_arg;
-use crate::commands::shared::{insight, print_json, project_head};
+use crate::commands::shared::{insight, print_cited, print_json, project_head, with_citation};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
@@ -69,9 +69,12 @@ pub fn step_done(
     n: usize,
     result: Option<&str>,
     kind: Option<&str>,
+    used: &[String],
     as_json: bool,
 ) -> Result<()> {
-    let v = step_done_value(conn, id, n, result, kind)?;
+    let v = with_citation(conn, id, used, || {
+        step_done_value(conn, id, n, result, kind)
+    })?;
     if as_json {
         print_json(&v)?;
         return Ok(());
@@ -88,6 +91,7 @@ pub fn step_done(
         v.get("task").and_then(|t| t.as_i64()).unwrap_or(0),
         commit_suffix
     );
+    print_cited(&v);
     insight::print_related_json(&v, false);
     Ok(())
 }

@@ -11,7 +11,9 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::tui;
 
-use crate::commands::shared::{item_label, item_snippet, print_json, project_head};
+use crate::commands::shared::{
+    cited_memories, item_label, item_snippet, memory_handle, print_json, project_head,
+};
 use edit::edit_loop;
 use handler::load_detail;
 use plain::{RenderOpts, render_markdown, render_plain};
@@ -55,6 +57,11 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
             "needs_revision".to_string(),
             serde_json::Value::Bool(needs_revision),
         );
+        let cited: Vec<serde_json::Value> = cited_memories(conn, &task.uuid)
+            .iter()
+            .map(|m| serde_json::json!({ "memory": memory_handle(m), "title": m.title }))
+            .collect();
+        obj.insert("cited".to_string(), serde_json::Value::Array(cited));
 
         let description = obj
             .get("description")

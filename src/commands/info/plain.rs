@@ -201,6 +201,9 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     for b in &d.blocking {
         w!("{:<14}{}", "Blocking", b);
     }
+    for c in &d.cited {
+        w!("{:<14}{}", "Cited", c);
+    }
     for link in &d.links {
         w!(
             "{:<14}[{}] {}  {}",
@@ -443,6 +446,14 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         w!();
         for b in &d.blocking {
             w!("- {b}");
+        }
+    }
+    if !d.cited.is_empty() {
+        w!();
+        w!("## Cited memories");
+        w!();
+        for c in &d.cited {
+            w!("- {c}");
         }
     }
 

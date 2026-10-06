@@ -182,6 +182,9 @@ pub enum Command {
         id: String,
         #[arg(long)]
         force: bool,
+        /// A memory (e.g. m12) that helped complete the task; repeatable.
+        #[arg(long)]
+        used: Vec<String>,
     },
 
     Modify {
@@ -555,6 +558,9 @@ pub enum StepAction {
         result: Option<String>,
         #[arg(long)]
         kind: Option<String>,
+        /// A memory (e.g. m12) that helped with this step; repeatable.
+        #[arg(long)]
+        used: Vec<String>,
         #[arg(long)]
         json: bool,
     },

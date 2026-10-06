@@ -731,9 +731,15 @@ sara check 1 "draft the schema"
 sara check 1 "write the migration"
 
 sara step done 1 1                  # tick step 1 (records the commit, if any)
+sara step done 1 2 --used m12       # …and cite the memory that helped
 sara step undone 1 1               # reopen it
 sara step remove 1 2              # delete step 2 (alias: sara step rm); later steps shift up
 ```
+
+`--used <label>` (repeatable, on `sara step done` and `sara done`; MCP: `used`)
+cites the memories that actually helped. Citations are the strongest signal
+that a memory is useful, and `sara info` lists them under *Cited*. Every label
+must name an active memory, or the command fails and nothing changes.
 
 Add `--kind acceptance` to any `sara step …` command to act on the task's
 acceptance criteria instead of its steps. Toggle items with `Space` in `sara info`.
@@ -1008,11 +1014,11 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
 | `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
-| `sara done <id>`                   | Complete a task (`--force` if blocked)                   |
+| `sara done <id>`                   | Complete a task (`--force` if blocked, `--used mN` to cite memories) |
 | `sara delete <id>`                 | Soft-delete a task (`-y` to skip confirmation)           |
 | `sara dep <id> on\|off\|list` / `sara dep chain <id>...` | Manage dependencies, or wire a linear chain in one command |
 | `sara check <id> <text>`           | Add a checklist item                                     |
-| `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`, `--json`)|
+| `sara step done\|undone\|remove <id> <n>` | Tick / reopen / delete step n (`--kind acceptance`, `--json`; `done` takes `--used mN`)|
 | `sara annotate <id> <text>`        | Add a comment (alias `comment`); `sara denotate <n>` removes |
 | `sara link <id> <url>`             | Add a link; `sara unlink <n>` removes                    |
 | `sara attach <id> <path>`          | Attach a file path (alias `pr`)                          |

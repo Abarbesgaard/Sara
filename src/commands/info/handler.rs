@@ -75,6 +75,7 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         depends_on_ids: dep_ids(conn, &blockers),
         blocked_by: resolve_ids(blockers.clone()),
         blocking: resolve_ids(blocking_tasks.clone()),
+        cited: crate::commands::shared::cited_labels(conn, &task.uuid),
         manual_files,
         suggested_files,
         links: db::get_links(conn, &task.uuid)?,

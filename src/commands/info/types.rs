@@ -32,6 +32,7 @@ pub(super) struct Detail {
     pub(super) task: Task,
     pub(super) blocked_by: Vec<String>,
     pub(super) blocking: Vec<String>,
+    pub(super) cited: Vec<String>,
     pub(super) depends_on_ids: Vec<i64>,
     pub(super) manual_files: Vec<String>,
     pub(super) suggested_files: Vec<String>,

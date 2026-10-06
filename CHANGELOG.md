@@ -9,6 +9,11 @@
   task: direct hits as *recalled*, associative hits as *surfaced*. An unknown
   task id is an error. The seeded "Recall prior art" step and the MCP
   instructions now ask agents to pass it. Part of the Outcome Loop (#204).
+- **Cite the memories that helped.** `sara step done … --used m12` and
+  `sara done … --used m12` (MCP: `used` on `step_done` and `done`) record the
+  memories as *cited* by the task, the strongest signal that a memory is useful.
+  Every label must name an active memory; otherwise the call fails and nothing
+  changes. `sara info` (and MCP `info`'s `cited`) lists a task's citations.
 
 ## [2.0.0] - 2026-10-05
 
