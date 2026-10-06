@@ -277,7 +277,7 @@ cited or recalled a memory created before the task began, plus the stricter
 cited-only share. It is shown for the current project and for all projects, and
 reads "insufficient data" until 5 verified tasks qualify. In `--json` it is the
 `knowledge_reuse` object. It does not affect `healthy` or `--strict`. Memory uses are
-only recorded by releases after 2.0.0, so earlier tasks count as not reusing.
+only recorded from 2.1.0 onwards, so earlier tasks count as not reusing.
 
 **Strength labels:**
 - **Strong** — frequently recalled; the most trusted memories.
