@@ -5,6 +5,7 @@ use serde_json::json;
 use crate::commands::shared::{item_snippet, memory_handle, print_json};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
+use crate::infrastructure::db::MemoryUseKind;
 use crate::infrastructure::model::Task;
 
 const NEXT_MEMORY_LIMIT: usize = 3;
@@ -15,6 +16,7 @@ fn relevant_memories(conn: &Connection, task: &Task) -> Vec<(String, String)> {
         .into_iter()
         .take(NEXT_MEMORY_LIMIT)
         .map(|item| {
+            let _ = db::record_memory_use(conn, &item.uuid, &task.uuid, MemoryUseKind::Surfaced);
             let label = memory_handle(&item);
             let snippet = item_snippet(&item, 160);
             (label, snippet.trim().to_string())

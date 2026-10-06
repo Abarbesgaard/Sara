@@ -354,3 +354,71 @@ fn step_done_value_reports_activation_on_first_work() {
     let v2 = step_done_value(&conn, &id, 2, None, None).unwrap();
     assert_eq!(v2["activated"], false);
 }
+
+fn strong_dependabot_memory(conn: &Connection) -> crate::infrastructure::model::Item {
+    use crate::infrastructure::model::Item;
+    let mut src = Task::new("source work".into(), "proj".into());
+    src.status = crate::infrastructure::model::Status::Completed;
+    db::insert_task(conn, &mut src).unwrap();
+    let mut mem = Item::new_memory(
+        "dependabot bump restore pattern".into(),
+        "dependabot bump broke restore; align versions".into(),
+        Some(src.uuid),
+    );
+    mem.tags = vec!["dependabot".into()];
+    mem.path = Some(String::new());
+    db::insert_item(conn, &mut mem).unwrap();
+    db::set_item_tags(conn, &mem.uuid, &["dependabot".into()]).unwrap();
+    mem
+}
+
+fn task_with_step(conn: &Connection, desc: &str, tag: &str) -> Task {
+    let mut task = Task::new(desc.into(), "proj".into());
+    task.tags = vec![tag.into()];
+    db::insert_task(conn, &mut task).unwrap();
+    db::add_step(
+        conn,
+        &task.uuid,
+        "step one",
+        None,
+        db::STEP_KIND_STEP,
+        "human",
+        None,
+    )
+    .unwrap();
+    task
+}
+
+#[test]
+fn next_records_a_surfaced_use_for_each_memory_shown() {
+    let conn = db::open_in_memory_for_test();
+    let mem = strong_dependabot_memory(&conn);
+    let task = task_with_step(&conn, "do the dependabot bump", "dependabot");
+
+    next_value(&conn, &task.uuid.to_string()).unwrap();
+    next_value(&conn, &task.uuid.to_string()).unwrap();
+
+    let uses = db::memory_uses_for_task(&conn, &task.uuid).unwrap();
+    assert_eq!(
+        uses.len(),
+        1,
+        "one row per memory, idempotent across calls: {uses:?}"
+    );
+    assert_eq!(uses[0].item_uuid, mem.uuid);
+    assert_eq!(uses[0].kind, db::MemoryUseKind::Surfaced);
+}
+
+#[test]
+fn next_records_no_surfaced_use_when_nothing_matches() {
+    let conn = db::open_in_memory_for_test();
+    strong_dependabot_memory(&conn);
+    let task = task_with_step(&conn, "unrelated task", "nothing-matches-this");
+
+    next_value(&conn, &task.uuid.to_string()).unwrap();
+
+    assert!(
+        db::memory_uses_for_task(&conn, &task.uuid)
+            .unwrap()
+            .is_empty()
+    );
+}
