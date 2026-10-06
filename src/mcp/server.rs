@@ -27,12 +27,12 @@ server was launched in. Target tasks by their 8-char UUID prefix (stable), not t
 recycled numeric display id. Never read the sara SQLite DB directly.\n\n\
 Execution loop: start new work with `begin` (or `list`/`info` to resume a task). \
 `begin` seeds a first step to recall prior art — decide what knowledge bears on the \
-task and call `recall` yourself. Lay out the work with `check` (steps, or \
+task and call `recall` yourself, passing the task as `task`. Lay out the work with `check` (steps, or \
 acceptance criteria with kind=\"acceptance\" and a `verify` command), then repeat: \
 `next` for the current step → do the work → `step_done` with a result. Record \
 findings and decisions with `annotate`. `validate` runs every acceptance \
 criterion's verify command and stamps the guide green at git HEAD.\n\n\
-Memory: `recall` before solving (heed its `patterns`, `confidence`, and `stale` \
+Memory: `recall` before solving, with `task` set when it serves a task (heed its `patterns`, `confidence`, and `stale` \
 flags); `learn` one distilled insight when you finish, tagged and bound to its \
 files; `relearn`/`forget` to correct or retire memories, `reflect` and `doctor` to \
 keep the store healthy.\n\n\

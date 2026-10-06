@@ -1,5 +1,7 @@
 use insta::assert_snapshot;
 
+use serde_json::json;
+
 use crate::harness::Sara;
 
 fn seed(s: &Sara) {
@@ -109,5 +111,74 @@ fn recall_text_covers_every_output_branch() {
     assert_snapshot!(
         "recall_file_no_match",
         recall(&s, &["--file", "missing.rs"])
+    );
+}
+
+#[test]
+fn recall_task_cli_records_uses_only_when_a_task_is_given() {
+    let s = Sara::new();
+    seed(&s);
+
+    s.run(&["recall", "dependabot serde"]);
+    assert!(s.memory_uses().is_empty(), "no --task records no use");
+
+    s.run(&["recall", "--task", "1", "dependabot serde"]);
+    assert_credited_to_task_one(&s.memory_uses());
+}
+
+#[test]
+fn recall_task_cli_rejects_an_unknown_task_before_recording() {
+    let s = Sara::new();
+    seed(&s);
+
+    let out = s
+        .cmd()
+        .args(["recall", "--task", "999", "dependabot serde"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "an unknown task must fail");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("999"),
+        "the error names the task"
+    );
+    assert!(out.stdout.is_empty(), "no recall output on an unknown task");
+    assert!(s.memory_uses().is_empty());
+}
+
+#[test]
+fn recall_task_mcp_records_uses_and_rejects_an_unknown_task() {
+    let s = Sara::new();
+    seed(&s);
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+
+    mcp.call_result(
+        "recall",
+        json!({"query": "dependabot serde", "project_path": project}),
+    );
+    assert!(s.memory_uses().is_empty(), "no task records no use");
+
+    mcp.call_result(
+        "recall",
+        json!({"query": "dependabot serde", "task": "1", "project_path": project}),
+    );
+    assert_credited_to_task_one(&s.memory_uses());
+
+    let env = mcp.call(
+        "recall",
+        json!({"query": "dependabot serde", "task": "999", "project_path": project}),
+    );
+    assert_eq!(env["result"]["isError"], true, "{env}");
+}
+
+fn assert_credited_to_task_one(uses: &[(i64, String)]) {
+    assert!(
+        uses.iter().any(|(_, kind)| kind == "recalled"),
+        "direct hits are recorded as recalled: {uses:?}"
+    );
+    assert!(
+        uses.iter()
+            .all(|(task, kind)| *task == 1 && (kind == "recalled" || kind == "surfaced")),
+        "every use belongs to the given task and is recalled or surfaced: {uses:?}"
     );
 }

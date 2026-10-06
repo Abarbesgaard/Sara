@@ -208,7 +208,13 @@ sara recall "refresh token"             # full-text keyword search
 sara recall --file src/auth/login.rs    # everything linked to a specific file
 sara recall --file src/ --top 5         # most recent memories for any file under src/
 sara recall --semantic "auth bug"       # also match by meaning (embeddings), not just keywords
+sara recall --task 3f2a91c0 "retry"     # record the hits as used by this task (MCP: `task`)
 ```
+
+Pass `--task` (MCP: `task`) when you recall while working on a task. Direct
+hits are recorded as *recalled* and associative hits as *surfaced* by that
+task, so the memories that helped can be credited when it succeeds. An unknown
+task id is an error. Without it, recall records no use.
 
 `recall` searches both memories **and** tasks in one pass — memory hits are
 prefixed `[item_memory]`. If a memory was superseded by a newer one, recall

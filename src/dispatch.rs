@@ -388,6 +388,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             limit,
             spread,
             semantic,
+            task,
             json,
         } => {
             let effective_limit = top.unwrap_or(limit);
@@ -402,6 +403,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
                 &file,
                 effective_limit,
                 spread,
+                task.as_deref(),
                 json,
             )?;
         }

@@ -49,6 +49,22 @@ impl Sara {
         String::from_utf8(out.stdout).expect("utf8 stdout")
     }
 
+    /// `(task display id, kind)` rows of the memory-use ledger, sorted.
+    pub fn memory_uses(&self) -> Vec<(i64, String)> {
+        let db = find_file(self.home.path(), "tasks.db").expect("sara database exists");
+        let conn = rusqlite::Connection::open(db).expect("open sara database");
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.id, u.kind FROM memory_uses u
+                 JOIN tasks t ON t.uuid = u.task_uuid ORDER BY t.id, u.kind",
+            )
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
     pub fn json(&self, args: &[&str]) -> Value {
         serde_json::from_str(&self.run(args)).expect("stdout is valid json")
     }
@@ -181,6 +197,20 @@ impl Drop for Mcp {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file(&path, name) {
+                return Some(found);
+            }
+        } else if path.file_name().is_some_and(|n| n == name) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 const VOLATILE: &[&str] = &[

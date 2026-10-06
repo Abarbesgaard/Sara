@@ -1531,3 +1531,79 @@ fn stale_ignores_legacy_anchor_without_fingerprint() {
 
     assert!(hits_for(&conn, "legacy")[0].stale.is_empty());
 }
+
+fn ledger_task(conn: &Connection) -> Task {
+    let mut task = Task::new("use the cache notes".to_string(), "Sara".to_string());
+    db::insert_task(conn, &mut task).unwrap();
+    task
+}
+
+#[test]
+fn recall_task_records_direct_hits_as_recalled_and_spread_as_surfaced() {
+    let conn = db::open_in_memory_for_test();
+    let seed = seed_memory(
+        &conn,
+        "redis eviction policy",
+        "set maxmemory-policy allkeys-lru",
+        &[],
+        &[],
+    );
+    let neighbour = seed_memory(
+        &conn,
+        "cache stampede guard",
+        "add a mutex around cold-cache fills",
+        &[],
+        &[],
+    );
+    crate::test_support::link(&conn, seed.uuid, "similar_to", neighbour.uuid);
+    let task = ledger_task(&conn);
+
+    let use_task = use_task(&conn, Some(&task.uuid.to_string()[..8])).unwrap();
+    db::with_use_attribution(use_task, || {
+        recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, true).unwrap()
+    });
+
+    let uses = db::memory_uses_for_task(&conn, &task.uuid).unwrap();
+    let kinds: Vec<_> = uses.iter().map(|u| (u.item_uuid, u.kind)).collect();
+    assert!(
+        kinds.contains(&(seed.uuid, db::MemoryUseKind::Recalled)),
+        "{kinds:?}"
+    );
+    assert!(
+        kinds.contains(&(neighbour.uuid, db::MemoryUseKind::Surfaced)),
+        "{kinds:?}"
+    );
+    assert!(
+        !kinds.contains(&(neighbour.uuid, db::MemoryUseKind::Recalled)),
+        "an associative hit is never a recall"
+    );
+}
+
+#[test]
+fn recall_task_absent_records_no_use_and_the_scope_does_not_leak() {
+    let conn = db::open_in_memory_for_test();
+    let memory = seed_memory(
+        &conn,
+        "redis eviction policy",
+        "set maxmemory-policy allkeys-lru",
+        &[],
+        &[],
+    );
+    let task = ledger_task(&conn);
+
+    db::with_use_attribution(Some(task.uuid), || {});
+    recall_value(&conn, &cfg(), "maxmemory-policy", &[], &[], &[], 20, false).unwrap();
+
+    assert!(
+        db::memory_uses_for_item(&conn, &memory.uuid)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn recall_task_unknown_id_is_an_error() {
+    let conn = db::open_in_memory_for_test();
+    assert!(use_task(&conn, Some("zzzzzzzz")).is_err());
+    assert_eq!(use_task(&conn, None).unwrap(), None);
+}

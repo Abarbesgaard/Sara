@@ -251,6 +251,10 @@ pub(crate) struct RecallParams {
     pub(crate) limit: Option<i64>,
     #[schemars(description = "Also return graph-related memories that share no keyword.")]
     pub(crate) spread: Option<bool>,
+    #[schemars(
+        description = "Task UUID prefix or display id this recall is for. Records the returned memories as recalled (direct hits) or surfaced (associative) by that task, so they earn credit when it succeeds. Pass it whenever you recall while working on a task; an unknown id is an error."
+    )]
+    pub(crate) task: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

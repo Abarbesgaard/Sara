@@ -2,6 +2,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 
 use crate::commands;
+use crate::infrastructure::db;
 
 use super::params::*;
 use super::server::{SaraServer, mcp_err, ok_json};
@@ -80,16 +81,19 @@ impl SaraServer {
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
-                commands::recall::recall_value(
-                    conn,
-                    cfg,
-                    &p.query,
-                    p.tag.as_deref().unwrap_or(&[]),
-                    p.project.as_deref().unwrap_or(&[]),
-                    p.files.as_deref().unwrap_or(&[]),
-                    p.limit.unwrap_or(10),
-                    p.spread.unwrap_or(false),
-                )
+                let task = commands::recall::use_task(conn, p.task.as_deref())?;
+                db::with_use_attribution(task, || {
+                    commands::recall::recall_value(
+                        conn,
+                        cfg,
+                        &p.query,
+                        p.tag.as_deref().unwrap_or(&[]),
+                        p.project.as_deref().unwrap_or(&[]),
+                        p.files.as_deref().unwrap_or(&[]),
+                        p.limit.unwrap_or(10),
+                        p.spread.unwrap_or(false),
+                    )
+                })
             })
             .map_err(mcp_err)?;
         ok_json(v)

@@ -334,6 +334,9 @@ pub enum Command {
         spread: bool,
         #[arg(long)]
         semantic: bool,
+        /// Record the recalled memories as used by this task (id or UUID prefix).
+        #[arg(long)]
+        task: Option<String>,
         #[arg(long)]
         json: bool,
     },
