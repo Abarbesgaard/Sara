@@ -282,3 +282,48 @@ pub fn memory_provenance(conn: &Connection, item_uuid: &Uuid) -> MemoryProvenanc
 pub fn memory_provenance_all(conn: &Connection) -> HashMap<Uuid, MemoryProvenance> {
     provenance_rows(conn, None)
 }
+
+/// How many verified tasks drew on prior knowledge: the vision's KPI.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReuseStats {
+    /// Completed tasks with a validated commit, ended since the cutoff.
+    pub verified: u64,
+    /// ...of which cited or recalled a memory created before the task began.
+    pub used_prior: u64,
+    /// ...of which cited such a memory (the stricter measure).
+    pub cited_prior: u64,
+}
+
+/// Counts verified tasks ended at or after `since`, optionally in one project.
+pub fn knowledge_reuse(
+    conn: &Connection,
+    project: Option<&str>,
+    since: &DateTime<Utc>,
+) -> Result<ReuseStats> {
+    let prior = |kinds: &str| {
+        format!(
+            "EXISTS (SELECT 1 FROM memory_uses u JOIN items i ON i.uuid = u.item_uuid
+                     WHERE u.task_uuid = t.uuid AND u.kind IN ({kinds})
+                       AND i.created < t.entry)"
+        )
+    };
+    let sql = format!(
+        "SELECT COUNT(*),
+                COALESCE(SUM(CASE WHEN {} THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN {} THEN 1 ELSE 0 END), 0)
+         FROM tasks t
+         WHERE t.status = 'completed' AND t.validated_commit IS NOT NULL
+           AND t.end >= ?1 AND (?2 IS NULL OR t.project = ?2)",
+        prior("'cited', 'recalled'"),
+        prior("'cited'"),
+    );
+    Ok(
+        conn.query_row(&sql, rusqlite::params![since.to_rfc3339(), project], |r| {
+            Ok(ReuseStats {
+                verified: r.get::<_, i64>(0)? as u64,
+                used_prior: r.get::<_, i64>(1)? as u64,
+                cited_prior: r.get::<_, i64>(2)? as u64,
+            })
+        })?,
+    )
+}

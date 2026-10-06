@@ -271,6 +271,14 @@ sara prune-memories --apply     # actually archive them
 sara doctor             # health report: embeddings, orphaned links, duplicates, backlog, decay, stale anchors
 ```
 
+**Knowledge reuse:** `sara doctor` ends with Sara's headline measure: the share
+of verified tasks (completed with a validated commit in the last 30 days) that
+cited or recalled a memory created before the task began, plus the stricter
+cited-only share. It is shown for the current project and for all projects, and
+reads "insufficient data" until 5 verified tasks qualify. In `--json` it is the
+`knowledge_reuse` object. It does not affect `healthy` or `--strict`. Memory uses are
+only recorded by releases after 2.0.0, so earlier tasks count as not reusing.
+
 **Strength labels:**
 - **Strong** — frequently recalled; the most trusted memories.
 - **Linked** — tied to tasks or files; reliable context.
@@ -1043,7 +1051,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara link-memory <from> <rel> <to>` | Create a typed edge between memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
 | `sara unlink-memory <from> <rel> <to>` | Remove a typed edge between memories |
 | `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
-| `sara doctor`                      | Read-only memory-store health report with the fix for each finding (`--json`, `--strict` exits 1 on warnings) |
+| `sara doctor`                      | Read-only memory-store health report with the fix for each finding, plus the knowledge-reuse share (`--json`, `--strict` exits 1 on warnings) |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |
