@@ -9,6 +9,7 @@ use crate::commands::shared::{
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::{Status, Task};
+use crate::infrastructure::telemetry::{self, Source};
 
 mod types;
 use types::DoneGate;
@@ -135,6 +136,22 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     }))
 }
 
+/// Send the anonymous outcome of the task `done` just closed (`v` is its
+/// result): how many prior memories it used and whether it was validated.
+pub fn report_outcome(conn: &Connection, cfg: &Config, source: Source, v: &Value) {
+    let Some(uuid) = v["uuid"]
+        .as_str()
+        .and_then(|u| uuid::Uuid::parse_str(u).ok())
+    else {
+        return;
+    };
+    let n = db::prior_knowledge_used(conn, &uuid).unwrap_or(0);
+    let verified = db::get_guide_fields(conn, &uuid)
+        .map(|g| g.validated_commit.is_some())
+        .unwrap_or(false);
+    telemetry::capture_outcome(cfg, source, n, verified);
+}
+
 pub fn run(
     conn: &Connection,
     cfg: &Config,
@@ -145,6 +162,7 @@ pub fn run(
     let v = with_citation(conn, id_or_uuid, used, || {
         done_value(conn, cfg, id_or_uuid, force)
     })?;
+    report_outcome(conn, cfg, Source::Cli, &v);
     println!(
         "Done: [{}] {}",
         v["project"].as_str().unwrap_or_default(),

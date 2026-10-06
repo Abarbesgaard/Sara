@@ -367,3 +367,28 @@ fn knowledge_reuse_scopes_to_a_project() {
     assert_eq!(reuse(&conn, Some("elsewhere")).used_prior, 0);
     assert_eq!(reuse(&conn, None).verified, 2);
 }
+
+#[test]
+fn outcome_prior_knowledge_used_counts_distinct_prior_memories() {
+    use MemoryUseKind::*;
+    let conn = mem();
+    let old_a = old_memory(&conn, "alpha", 100);
+    let old_b = old_memory(&conn, "beta", 100);
+    let surfaced = old_memory(&conn, "gamma", 100);
+    let t = finished_task(&conn, "p", 1, true);
+    let during = old_memory(&conn, "learned during", 2);
+    for (m, kind) in [
+        (&old_a, Cited),
+        (&old_a, Recalled),
+        (&old_b, Recalled),
+        (&surfaced, Surfaced),
+        (&during, Cited),
+    ] {
+        record_memory_use(&conn, &m.uuid, &t.uuid, kind).unwrap();
+    }
+    assert_eq!(prior_knowledge_used(&conn, &t.uuid).unwrap(), 2);
+    assert_eq!(
+        prior_knowledge_used(&conn, &finished_task(&conn, "p", 1, true).uuid).unwrap(),
+        0
+    );
+}

@@ -87,3 +87,85 @@ fn telemetry_status_honours_the_env_opt_out() {
         "SARA_NO_TELEMETRY=1 must switch telemetry off: {out}"
     );
 }
+
+#[cfg(feature = "telemetry")]
+fn queued(queue: &std::path::Path, name: &str) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(queue)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("queue line is json"))
+        .filter(|r| r["name"] == name)
+        .collect()
+}
+
+/// Two memories learned before the task; the task recalls one and cites both.
+#[cfg(feature = "telemetry")]
+fn seed_outcome(s: &Sara) {
+    s.run(&["learn", "--tag", "retry", "retries back off exponentially"]);
+    s.run(&[
+        "learn",
+        "--force",
+        "--tag",
+        "retry",
+        "idempotency keys make retries safe",
+    ]);
+    s.run(&["add", "Ship the retry policy"]);
+    s.run(&["recall", "m1", "--task", "1"]);
+}
+
+#[cfg(feature = "telemetry")]
+#[test]
+fn outcome_cli_done_records_prior_memory_count() {
+    let s = Sara::new();
+    seed_outcome(&s);
+    let queue = s.project().join("telemetry-queue.jsonl");
+    let out = s
+        .cmd()
+        .args(["done", "1", "--used", "m2"])
+        .env_remove("SARA_NO_TELEMETRY")
+        .env("SARA_TELEMETRY_QUEUE", &queue)
+        .env("SARA_TELEMETRY_ENDPOINT", "http://127.0.0.1:9/insert")
+        .env("SARA_TELEMETRY_FLUSH_INTERVAL", "86400")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+
+    let outcome = queued(&queue, "outcome");
+    assert_eq!(outcome.len(), 1, "{outcome:#?}");
+    assert_eq!(outcome[0]["n"], 2, "{outcome:#?}");
+    assert_eq!(outcome[0]["verified"], false, "{outcome:#?}");
+    assert_eq!(
+        queued(&queue, "done").len(),
+        1,
+        "the done call is still captured"
+    );
+}
+
+#[cfg(feature = "telemetry")]
+#[test]
+fn outcome_mcp_done_records_prior_memory_count() {
+    use serde_json::json;
+
+    let s = Sara::new();
+    seed_outcome(&s);
+    let project = s.project().to_string_lossy().to_string();
+    let queue = s.project().join("telemetry-queue.jsonl");
+    let mut mcp = s.mcp_with_telemetry(&queue);
+    let r = mcp.call(
+        "done",
+        json!({"id": "1", "used": ["m1"], "project_path": project}),
+    );
+    assert!(r["result"]["isError"] != true, "{r}");
+    drop(mcp);
+
+    let outcome = queued(&queue, "mcp outcome");
+    assert_eq!(outcome.len(), 1, "{outcome:#?}");
+    assert_eq!(outcome[0]["n"], 1, "{outcome:#?}");
+    assert_eq!(outcome[0]["verified"], false, "{outcome:#?}");
+    assert_eq!(
+        queued(&queue, "mcp done").len(),
+        1,
+        "the tool call is still captured"
+    );
+}
