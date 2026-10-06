@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+use crate::infrastructure::db::MemoryProvenance;
 use crate::infrastructure::memory::fingerprint::AnchorState;
 use crate::infrastructure::model::{Item, Task};
 
@@ -25,6 +26,7 @@ pub(super) struct Hit {
     pub(super) cosine: Option<f32>,
     pub(super) cluster: Option<ClusterInfo>,
     pub(super) stale: Vec<(String, AnchorState)>,
+    pub(super) provenance: MemoryProvenance,
 }
 
 #[derive(Clone, Debug)]

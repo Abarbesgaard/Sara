@@ -34,6 +34,7 @@ pub(in crate::commands::recall) fn keyword_json(hits: &[Hit]) -> Vec<serde_json:
                         "nearest": c.nearest,
                     })),
                     "stale": stale_json(h),
+                    "provenance": h.provenance,
                     "linked_tasks": h.linked_tasks.iter().map(|(t, src)| json!({
                         "id": t.id.unwrap_or(0),
                         "description": t.description,
@@ -74,6 +75,9 @@ pub(in crate::commands::recall) fn keyword_guide(h: &Hit) -> serde_json::Value {
     }
     if !h.stale.is_empty() {
         map.insert("stale".into(), json!(stale_json(h)));
+    }
+    if !h.provenance.is_empty() {
+        map.insert("provenance".into(), json!(h.provenance));
     }
     if !h.linked_tasks.is_empty() {
         map.insert(

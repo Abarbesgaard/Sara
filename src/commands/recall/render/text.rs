@@ -3,6 +3,7 @@ use rusqlite::Connection;
 
 use crate::commands::recall::enrich::confidence::match_confidence;
 use crate::commands::recall::enrich::hit::{item_hit, recent_hits, record_recalled};
+use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::spread::{should_auto_spread, spreading_related};
 use crate::commands::recall::enrich::stale::{mark_stale, stale_text};
 use crate::commands::recall::render::hit_line::hit_line;
@@ -37,10 +38,14 @@ pub(in crate::commands::recall) fn print(
         let _ = db::record_memory_recall(conn, &item.uuid);
         let mut hit = item_hit(conn, item, true);
         mark_stale(conn, std::slice::from_mut(&mut hit));
+        mark_provenance(conn, std::slice::from_mut(&mut hit));
         println!("Memory {} (resolved by label):", hit.label);
         println!("  {}", hit.body.trim());
         if !hit.stale.is_empty() {
             println!("  ⚠ may be stale — re-validate:{}", stale_text(&hit));
+        }
+        if !hit.provenance.is_empty() {
+            println!("  Track record: {}", hit.provenance.summary());
         }
         let related = spreading_related(conn, std::slice::from_ref(&hit))?;
         if !related.is_empty() {

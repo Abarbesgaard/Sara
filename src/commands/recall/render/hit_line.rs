@@ -38,6 +38,11 @@ pub(in crate::commands::recall) fn hit_line(h: &Hit) -> String {
     } else {
         format!(" ⚠ may be stale — re-validate:{}", stale_text(h))
     };
+    let provenance_str = if h.provenance.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", h.provenance.summary())
+    };
     let provisional_str = if h.provisional {
         " [provisional — unreviewed auto-memory]".to_string()
     } else {
@@ -68,7 +73,7 @@ pub(in crate::commands::recall) fn hit_line(h: &Hit) -> String {
         None => String::new(),
     };
     format!(
-        "  [{}] {} {} {}: {}{}{}{}{}{}{}{}{}{}",
+        "  [{}] {} {} {}: {}{}{}{}{}{}{}{}{}{}{}",
         h.ref_kind,
         marker,
         h.label,
@@ -78,6 +83,7 @@ pub(in crate::commands::recall) fn hit_line(h: &Hit) -> String {
         tasks_str,
         superseded_str,
         stale_str,
+        provenance_str,
         provisional_str,
         canonical_str,
         derived_from_str,

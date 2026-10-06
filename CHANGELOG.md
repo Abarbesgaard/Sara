@@ -14,6 +14,11 @@
   memories as *cited* by the task, the strongest signal that a memory is useful.
   Every label must name an active memory; otherwise the call fails and nothing
   changes. `sara info` (and MCP `info`'s `cited`) lists a task's citations.
+- **Memories show their track record.** `sara recall` and `sara memories` (and
+  their JSON/MCP output, as `provenance`) show how many distinct tasks cited a
+  memory, how many of those were validated, how many recalled or surfaced it,
+  and how many completed without citing it (*ignored*). Deleted tasks are not
+  counted. Ranking is unchanged. Part of the Outcome Loop (#204).
 
 ## [2.0.0] - 2026-10-05
 

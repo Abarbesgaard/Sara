@@ -23,6 +23,13 @@ expression: redact(recall)
       "loose": false,
       "modified": "[redacted]",
       "preview": "The payments client takes amounts in minor units",
+      "provenance": {
+        "cited": 0,
+        "cited_verified": 0,
+        "ignored": 0,
+        "recalled_in_tasks": 0,
+        "surfaced_in_tasks": 0
+      },
       "provisional": false,
       "ref_kind": "item_memory",
       "semantic": false,
