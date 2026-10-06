@@ -514,6 +514,18 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
             },
         ),
         M::up("ALTER TABLE item_files ADD COLUMN fingerprint BLOB;"),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS memory_uses (
+                item_uuid TEXT NOT NULL,
+                task_uuid TEXT NOT NULL,
+                kind      TEXT NOT NULL CHECK (kind IN ('surfaced', 'recalled', 'cited')),
+                at        TEXT NOT NULL,
+                PRIMARY KEY (item_uuid, task_uuid, kind),
+                FOREIGN KEY (item_uuid) REFERENCES items(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_memory_uses_task ON memory_uses(task_uuid);",
+        ),
     ]);
     migrations
         .to_latest(conn)

@@ -1,0 +1,160 @@
+use super::*;
+use uuid::Uuid;
+
+fn table_exists(conn: &Connection, name: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+        [name],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
+fn seeded() -> (Connection, Item, Item, Task, Task) {
+    let conn = mem();
+    let mut a = make_memory("alpha", &[]);
+    insert_item(&conn, &mut a).unwrap();
+    let mut b = make_memory("beta", &[]);
+    insert_item(&conn, &mut b).unwrap();
+    let t1 = seed_task(&conn);
+    let t2 = seed_task(&conn);
+    (conn, a, b, t1, t2)
+}
+
+#[test]
+fn memory_uses_table_exists_on_fresh_db() {
+    assert!(table_exists(&mem(), "memory_uses"));
+}
+
+#[test]
+fn memory_uses_migration_applies_on_upgraded_db() {
+    let mut conn = mem();
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    conn.execute_batch("DROP TABLE memory_uses;").unwrap();
+    conn.pragma_update(None, "user_version", version - 1)
+        .unwrap();
+
+    super::super::migrations::apply_migrations(&mut conn).unwrap();
+    assert!(table_exists(&conn, "memory_uses"));
+
+    // A DB already at a high watermark with the table present must not abort (m433).
+    conn.pragma_update(None, "user_version", version - 1)
+        .unwrap();
+    super::super::migrations::apply_migrations(&mut conn).unwrap();
+}
+
+#[test]
+fn memory_uses_record_is_idempotent_and_keeps_first_at() {
+    let (conn, a, _, t1, _) = seeded();
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Recalled).unwrap();
+    let first = memory_uses_for_task(&conn, &t1.uuid).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Recalled).unwrap();
+    let second = memory_uses_for_task(&conn, &t1.uuid).unwrap();
+
+    assert_eq!(first.len(), 1);
+    assert_eq!(
+        first, second,
+        "repeat record must not add a row or move `at`"
+    );
+}
+
+#[test]
+fn memory_uses_distinct_kinds_are_separate_rows() {
+    let (conn, a, _, t1, _) = seeded();
+    for kind in MemoryUseKind::ALL {
+        record_memory_use(&conn, &a.uuid, &t1.uuid, kind).unwrap();
+    }
+    let kinds: Vec<_> = memory_uses_for_task(&conn, &t1.uuid)
+        .unwrap()
+        .into_iter()
+        .map(|u| u.kind)
+        .collect();
+    assert_eq!(kinds.len(), 3);
+    for kind in MemoryUseKind::ALL {
+        assert!(kinds.contains(&kind), "missing {kind:?}");
+    }
+}
+
+#[test]
+fn memory_uses_for_task_and_item_filter_correctly() {
+    let (conn, a, b, t1, t2) = seeded();
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Surfaced).unwrap();
+    record_memory_use(&conn, &b.uuid, &t1.uuid, MemoryUseKind::Cited).unwrap();
+    record_memory_use(&conn, &a.uuid, &t2.uuid, MemoryUseKind::Recalled).unwrap();
+
+    let for_t1 = memory_uses_for_task(&conn, &t1.uuid).unwrap();
+    assert_eq!(for_t1.len(), 2);
+    assert!(for_t1.iter().all(|u| u.task_uuid == t1.uuid));
+
+    let for_a = memory_uses_for_item(&conn, &a.uuid).unwrap();
+    assert_eq!(for_a.len(), 2);
+    assert!(for_a.iter().all(|u| u.item_uuid == a.uuid));
+    assert!(
+        memory_uses_for_item(&conn, &Uuid::new_v4())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn memory_use_counts_batch_matches_per_item() {
+    let (conn, a, b, t1, t2) = seeded();
+    let mut idle = make_memory("idle", &[]);
+    insert_item(&conn, &mut idle).unwrap();
+
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Surfaced).unwrap();
+    record_memory_use(&conn, &a.uuid, &t2.uuid, MemoryUseKind::Surfaced).unwrap();
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Cited).unwrap();
+    record_memory_use(&conn, &b.uuid, &t2.uuid, MemoryUseKind::Recalled).unwrap();
+
+    let batch = memory_use_counts_all(&conn);
+    for item in [&a, &b, &idle] {
+        let per_item = memory_use_counts(&conn, &item.uuid);
+        let batched = batch.get(&item.uuid).copied().unwrap_or_default();
+        assert_eq!(per_item, batched, "{} disagreed", item.title);
+    }
+    assert_eq!(
+        batch[&a.uuid],
+        MemoryUseCounts {
+            surfaced: 2,
+            recalled: 0,
+            cited: 1
+        }
+    );
+    assert!(!batch.contains_key(&idle.uuid), "no uses -> absent");
+}
+
+#[test]
+fn memory_uses_cascade_on_item_and_task_delete() {
+    let (conn, a, b, t1, t2) = seeded();
+    record_memory_use(&conn, &a.uuid, &t1.uuid, MemoryUseKind::Cited).unwrap();
+    record_memory_use(&conn, &b.uuid, &t2.uuid, MemoryUseKind::Cited).unwrap();
+
+    conn.execute("DELETE FROM items WHERE uuid=?1", [a.uuid.to_string()])
+        .unwrap();
+    assert!(memory_uses_for_task(&conn, &t1.uuid).unwrap().is_empty());
+
+    conn.execute("DELETE FROM tasks WHERE uuid=?1", [t2.uuid.to_string()])
+        .unwrap();
+    assert!(memory_uses_for_item(&conn, &b.uuid).unwrap().is_empty());
+}
+
+#[test]
+fn memory_uses_reject_unknown_task() {
+    let (conn, a, _, _, _) = seeded();
+    assert!(
+        record_memory_use(&conn, &a.uuid, &Uuid::new_v4(), MemoryUseKind::Cited).is_err(),
+        "FK to tasks must refuse an unknown task"
+    );
+}
+
+#[test]
+fn memory_use_kind_round_trips() {
+    for kind in MemoryUseKind::ALL {
+        assert_eq!(MemoryUseKind::parse(kind.as_str()), Some(kind));
+    }
+    assert_eq!(MemoryUseKind::parse("used"), None);
+}

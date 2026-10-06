@@ -12,6 +12,7 @@ mod memory;
 mod memory_links;
 mod memory_maintenance;
 mod memory_strength;
+mod memory_uses;
 mod migrations;
 mod projects;
 mod tasks;
