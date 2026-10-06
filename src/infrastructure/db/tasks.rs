@@ -228,24 +228,41 @@ pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option
     let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
         "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur
-         FROM tasks WHERE uuid LIKE ?1 ESCAPE '\\' LIMIT 2",
+         FROM tasks WHERE uuid LIKE ?1 ESCAPE '\\' ORDER BY status='pending' DESC, uuid LIMIT 6",
     )?;
     let mut tasks = stmt
         .query_map([pattern], row_to_task)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if tasks.len() > 1 {
+        let candidates = tasks
+            .iter()
+            .take(5)
+            .map(|t| {
+                let short: String = t.uuid.to_string().chars().take(8).collect();
+                format!("  {short} [{}] {}", t.status, t.description)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let more = if tasks.len() > 5 { "\n  …" } else { "" };
         return Err(anyhow::anyhow!(
-            "Ambiguous task uuid prefix '{prefix}' matches multiple tasks — use a longer prefix or the display id"
+            "Ambiguous task uuid prefix '{prefix}' matches multiple tasks — use a longer prefix:\n{candidates}{more}"
         ));
     }
     Ok(tasks.pop())
 }
 
+const MIN_NUMERIC_UUID_PREFIX: usize = 8;
+
 pub fn resolve_task(conn: &Connection, id_or_uuid: &str) -> Result<Task> {
-    if let Ok(n) = id_or_uuid.parse::<i64>()
-        && let Some(t) = get_task_by_id(conn, n)?
-    {
-        return Ok(t);
+    if let Ok(n) = id_or_uuid.parse::<i64>() {
+        if let Some(t) = get_task_by_id(conn, n)? {
+            return Ok(t);
+        }
+        if id_or_uuid.len() < MIN_NUMERIC_UUID_PREFIX {
+            return Err(anyhow::anyhow!(
+                "No pending task with display id {n} — display ids are renumbered when tasks complete; target the task by its uuid prefix instead"
+            ));
+        }
     }
     if let Some(t) = get_task_by_uuid_prefix(conn, id_or_uuid)? {
         return Ok(t);
