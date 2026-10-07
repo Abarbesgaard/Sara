@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `begin`'s telemetry trace is now nested as `trace: { id, ops }` instead of top-level `begin_id`/`folded`. Agents were mistaking the uuid-shaped `begin_id` for the task uuid and passing it to `link`/`recall`, which failed with "No pending task". Use `uuid` to target the task.
+
 ### Fixed
 
 - A stale numeric display id (e.g. `88` after ids were renumbered) no longer falls through to uuid-prefix matching and reports a misleading "Ambiguous task uuid prefix" error. Short numeric input is now treated as a display id only, and the error explains that display ids are renumbered and points to the uuid prefix.

@@ -122,7 +122,7 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
     // With assignment, rationale and check all supplied, every folded
     // operation is recorded, in composition order. The seeded recall `step`
     // replaces the former `recall`/`annotate` ops.
-    let ops: Vec<String> = v["folded"]
+    let ops: Vec<String> = v["trace"]["ops"]
         .as_array()
         .expect("folded event log is an array")
         .iter()
@@ -134,7 +134,7 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
         "every folded internal operation that ran is logged in order: {ops:?}"
     );
     // Each event carries a duration.
-    for e in v["folded"].as_array().unwrap() {
+    for e in v["trace"]["ops"].as_array().unwrap() {
         assert!(
             e["duration_ms"].is_u64(),
             "each folded event records its duration: {e}"
@@ -145,11 +145,11 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
     // contiguous 0-based `seq`, so the fan-out reconstructs as one ordered
     // trace rather than timestamp-adjacent records.
     assert!(
-        v["begin_id"].as_str().is_some_and(|s| !s.is_empty()),
+        v["trace"]["id"].as_str().is_some_and(|s| !s.is_empty()),
         "begin returns a trace/correlation id: {}",
-        v["begin_id"]
+        v["trace"]
     );
-    let seqs: Vec<u64> = v["folded"]
+    let seqs: Vec<u64> = v["trace"]["ops"]
         .as_array()
         .unwrap()
         .iter()
@@ -161,7 +161,7 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
         "folded events carry a contiguous 0-based ordinal: {seqs:?}"
     );
     // The seeded recall step is folded in as a `step` op.
-    let step = v["folded"]
+    let step = v["trace"]["ops"]
         .as_array()
         .unwrap()
         .iter()
@@ -170,6 +170,10 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
     assert!(
         step["duration_ms"].is_u64(),
         "the folded step reports its own duration: {step}"
+    );
+    assert!(
+        v.get("begin_id").is_none() && v.get("folded").is_none(),
+        "trace data is nested under `trace`, never top-level beside the task uuid: {v}"
     );
 }
 
@@ -196,7 +200,7 @@ fn begin_folded_log_skips_operations_that_did_not_run() {
     )
     .expect("begin succeeds without acceptance");
 
-    let ops: Vec<String> = v["folded"]
+    let ops: Vec<String> = v["trace"]["ops"]
         .as_array()
         .expect("folded event log is an array")
         .iter()
@@ -232,7 +236,7 @@ fn begin_output_has_no_trace_without_the_telemetry_feature() {
     )
     .expect("begin succeeds");
     assert!(
-        v.get("folded").is_none() && v.get("begin_id").is_none(),
+        v.get("trace").is_none() && v.get("folded").is_none() && v.get("begin_id").is_none(),
         "default builds keep begin's result free of trace keys: {v}"
     );
 }
