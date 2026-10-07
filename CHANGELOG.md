@@ -9,6 +9,8 @@
   in `config.toml` or the `SARA_THEME` environment variable. Retro falls back to
   16 ANSI colours when the terminal lacks truecolor, and `NO_COLOR` now
   disables colour in every full-screen view.
+- **`sara theme [classic|retro]`** switches the TUI palette and saves the
+  choice; without an argument it shows the active palette.
 
 ### Changed
 

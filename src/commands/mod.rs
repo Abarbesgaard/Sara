@@ -35,4 +35,5 @@ pub mod reset;
 pub mod shared;
 pub mod sync;
 pub mod tags;
+pub mod theme;
 pub mod undo;

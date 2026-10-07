@@ -964,7 +964,9 @@ Every full-screen view (`info`, the board, `add`/`modify` review, `projects`,
   warnings. It uses 24-bit colour when `COLORTERM` is `truecolor`/`24bit` and
   falls back to the 16 ANSI colours otherwise.
 
-Set it in `[tui] theme`, or override per shell with `SARA_THEME=retro`.
+Switch any time with `sara theme retro` or `sara theme classic`; plain
+`sara theme` shows which one is active. The choice is saved as `[tui] theme`.
+For a one-off, override it per shell with `SARA_THEME=retro`.
 `NO_COLOR=1` turns colour off in every palette.
 
 Print the resolved config and database paths:
@@ -1124,6 +1126,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara undo`                        | Revert the most recent command                           |
 | `sara reset`                       | Delete a project's tasks and profile (`-p`, `-y`)        |
 | `sara paths`                       | Print config and data paths                              |
+| `sara theme [classic\|retro]`      | Show or switch the TUI palette                           |
 | `sara completions <shell>`         | Generate shell completions                               |
 
 Run `sara help` or `sara <command> --help` for full options.

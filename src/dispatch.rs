@@ -635,6 +635,14 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             mcp::run(conn, &cfg)?;
         }
 
+        Command::Theme { palette } => {
+            let mut c = config::load()?;
+            println!(
+                "{}",
+                crate::commands::theme::run(&mut c, palette.as_deref())?
+            );
+        }
+
         Command::Paths => {
             let cfg_path = config::config_path()?;
             let db_path = config::db_path()?;
