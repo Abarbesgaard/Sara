@@ -329,7 +329,7 @@ fn item(card: &Card, e: FlowEvent) -> FeedItem {
 }
 
 #[test]
-fn follow_render_minimal_feed_is_ascending_newest_last() {
+fn follow_render_minimal_feed_is_newest_first() {
     let card = mk_card(26, "sara", 2, 4, Some("wiring"), 5);
     let feed = vec![
         item(&card, fev(300, FlowKind::StepDone, "recall")),
@@ -345,9 +345,9 @@ fn follow_render_minimal_feed_is_ascending_newest_last() {
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines[0], "26 ●●◆○ 2/4", "{out}");
     assert_eq!(lines[1], "  ◆ step 3", "{out}");
-    assert_eq!(lines[2], " 5m ● recall", "{out}");
+    assert_eq!(lines[2], " 5s ▸ wiring", "{out}");
     assert_eq!(lines[3], " 2m » finding: lexer lossy", "{out}");
-    assert_eq!(lines[4], " 5s ▸ wiring", "{out}");
+    assert_eq!(lines[4], " 5m ● recall", "{out}");
     assert!(lines.iter().all(|l| l.chars().count() <= 30));
 }
 
@@ -369,8 +369,9 @@ fn follow_render_minimal_feed_tails_and_labels_many_tasks() {
     assert!(lines[2].starts_with("8 "), "{out}");
     assert_eq!(lines[3], "  ◆ step 1", "{out}");
     assert!(lines[4].starts_with('─'), "{out}");
-    assert_eq!(lines[11], " 1s ▸ 8 b last", "{out}");
-    assert!(lines[10].contains("7 a19"), "{out}");
+    assert_eq!(lines[5], " 1s ▸ 8 b last", "{out}");
+    assert!(lines[6].contains("7 a19"), "{out}");
+    assert!(lines[11].contains("7 a14"), "{out}");
     assert!(lines.iter().all(|l| l.chars().count() <= 24));
 }
 
@@ -389,8 +390,8 @@ fn follow_render_minimal_task_mode_shows_its_feed_without_label() {
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines[0], "26 ●◆○ 1/3", "{out}");
     assert_eq!(lines[1], "  ◆ step 2", "{out}");
-    assert_eq!(lines[2], "10m ○ step added: step 1", "{out}");
-    assert_eq!(lines[3], "10s ▸ cli", "{out}");
+    assert_eq!(lines[2], "10s ▸ cli", "{out}");
+    assert_eq!(lines[3], "10m ○ step added: step 1", "{out}");
     assert!(!out.contains("noise"), "{out}");
 }
 

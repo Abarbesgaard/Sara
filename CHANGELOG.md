@@ -13,7 +13,7 @@
   The view refreshes as soon as anything writes to the database.
 - **Minimal `sara follow` shows the active step and an event feed.** Under
   each step rail is the name of the active step, followed by the latest events
-  across the visible tasks in ascending order (newest at the bottom), each with
+  across the visible tasks, newest at the top and older further down, each with
   its age and, when several tasks are active, the task id.
 - **"Now doing" reports.** The new MCP `doing` tool (and an optional `doing`
   parameter on `step_done` and `annotate`) records a one-line status shown by

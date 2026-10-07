@@ -206,7 +206,7 @@ pub fn render_minimal(
         lines.push(Line::styled("─".repeat(width), theme.muted()));
     }
     let room = height.saturating_sub(lines.len());
-    for (label, e) in &feed[feed.len().saturating_sub(room)..] {
+    for (label, e) in feed[feed.len().saturating_sub(room)..].iter().rev() {
         lines.push(feed_line(label.as_deref(), e, now, width, theme));
     }
     lines.truncate(height);
