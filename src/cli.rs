@@ -549,6 +549,11 @@ pub enum Command {
 
     Paths,
 
+    Theme {
+        #[arg(value_parser = ["classic", "retro"])]
+        palette: Option<String>,
+    },
+
     Completions {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
