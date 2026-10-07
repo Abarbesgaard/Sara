@@ -310,3 +310,127 @@ fn follow_render_task_shows_flow_timeline_newest_last() {
     assert!(pos("step added") < pos("10s ▸ wiring the CLI"));
     assert!(out.lines().last().unwrap().starts_with("esc quit"), "{out}");
 }
+
+fn fev(secs: i64, kind: FlowKind, text: &str) -> FlowEvent {
+    FlowEvent {
+        at: now() - Duration::seconds(secs),
+        kind,
+        text: text.into(),
+        detail: None,
+    }
+}
+
+fn item(card: &Card, e: FlowEvent) -> FeedItem {
+    FeedItem {
+        uuid: card.uuid,
+        label: card.label(),
+        event: e,
+    }
+}
+
+#[test]
+fn follow_render_minimal_feed_is_ascending_newest_last() {
+    let card = mk_card(26, "sara", 2, 4, Some("wiring"), 5);
+    let feed = vec![
+        item(&card, fev(300, FlowKind::StepDone, "recall")),
+        item(
+            &card,
+            fev(120, FlowKind::Note("finding".into()), "lexer lossy"),
+        ),
+        item(&card, fev(5, FlowKind::Doing, "wiring")),
+    ];
+    let mut app = mission(vec![card], Some("sara"));
+    app.feed = feed;
+    let out = draw(&app, 30, 6);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "26 ●●◆○ 2/4", "{out}");
+    assert_eq!(lines[1], "  ◆ step 3", "{out}");
+    assert_eq!(lines[2], " 5m ● recall", "{out}");
+    assert_eq!(lines[3], " 2m » finding: lexer lossy", "{out}");
+    assert_eq!(lines[4], " 5s ▸ wiring", "{out}");
+    assert!(lines.iter().all(|l| l.chars().count() <= 30));
+}
+
+#[test]
+fn follow_render_minimal_feed_tails_and_labels_many_tasks() {
+    let a = mk_card(7, "sara", 1, 2, None, 5);
+    let b = mk_card(8, "sara", 0, 2, None, 5);
+    let mut feed: Vec<FeedItem> = (0..20)
+        .map(|i| item(&a, fev(1000 - i * 10, FlowKind::Doing, &format!("a{i}"))))
+        .collect();
+    feed.push(item(&b, fev(1, FlowKind::Doing, "b last")));
+    let mut app = mission(vec![a, b], Some("sara"));
+    app.feed = feed;
+    let out = draw(&app, 24, 12);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 12, "{out}");
+    assert!(lines[0].starts_with("7 "), "{out}");
+    assert_eq!(lines[1], "  ◆ step 2", "{out}");
+    assert!(lines[2].starts_with("8 "), "{out}");
+    assert_eq!(lines[3], "  ◆ step 1", "{out}");
+    assert!(lines[4].starts_with('─'), "{out}");
+    assert_eq!(lines[11], " 1s ▸ 8 b last", "{out}");
+    assert!(lines[10].contains("7 a19"), "{out}");
+    assert!(lines.iter().all(|l| l.chars().count() <= 24));
+}
+
+#[test]
+fn follow_render_minimal_task_mode_shows_its_feed_without_label() {
+    let card = mk_card(26, "sara", 1, 3, Some("cli"), 10);
+    let events = vec![
+        fev(600, FlowKind::StepAdded, "step 1"),
+        fev(500, FlowKind::Change("modified".into()), "noise"),
+        fev(10, FlowKind::Doing, "cli"),
+    ];
+    let mut app = App::new(Mode::Task(card.uuid), true, None, false, stall());
+    app.now = now();
+    app.focus = Some(Focus { card, events });
+    let out = draw(&app, 24, 6);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "26 ●◆○ 1/3", "{out}");
+    assert_eq!(lines[1], "  ◆ step 2", "{out}");
+    assert_eq!(lines[2], "10m ○ step added: step 1", "{out}");
+    assert_eq!(lines[3], "10s ▸ cli", "{out}");
+    assert!(!out.contains("noise"), "{out}");
+}
+
+#[test]
+fn follow_feed_merges_tasks_ascending_and_skips_changes() {
+    let conn = db::open_in_memory_for_test();
+    let a = crate::test_support::seed_task(&conn, "alpha", "p").uuid;
+    let b = crate::test_support::seed_task(&conn, "beta", "p").uuid;
+    db::record_doing(&conn, &a, "a1", None).unwrap();
+    db::record_doing(&conn, &b, "b1", None).unwrap();
+    db::record_doing(&conn, &a, "a2", None).unwrap();
+    let cards = mission_cards(&conn, Utc::now(), stall()).unwrap();
+    let items = feed(&conn, &cards).unwrap();
+    let texts = |u: Uuid| -> Vec<&str> {
+        items
+            .iter()
+            .filter(|i| i.uuid == u && i.event.kind == FlowKind::Doing)
+            .map(|i| i.event.text.as_str())
+            .collect()
+    };
+    assert_eq!(texts(a), ["a1", "a2"]);
+    assert_eq!(texts(b), ["b1"]);
+    assert!(items.windows(2).all(|w| w[0].event.at <= w[1].event.at));
+    assert!(
+        items
+            .iter()
+            .all(|i| !matches!(i.event.kind, FlowKind::Change(_)))
+    );
+}
+
+#[test]
+fn follow_render_minimal_feed_collapses_many_tasks_into_a_counter() {
+    let cards: Vec<Card> = (1..=5).map(|i| mk_card(i, "sara", 1, 3, None, 5)).collect();
+    let feed = vec![item(&cards[0], fev(5, FlowKind::Doing, "busy"))];
+    let mut app = mission(cards, Some("sara"));
+    app.feed = feed;
+    let out = draw(&app, 24, 6);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "1 ●◆○ 1/3", "{out}");
+    assert_eq!(lines[1], "  ◆ step 2", "{out}");
+    assert_eq!(lines[2], "+4 more", "{out}");
+    assert_eq!(lines[3], " 5s ▸ 1 busy", "{out}");
+}
