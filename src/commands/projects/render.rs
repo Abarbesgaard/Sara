@@ -1,10 +1,11 @@
+use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
@@ -66,7 +67,11 @@ fn build_lines(st: &ProjectListState) -> Vec<Line<'static>> {
 }
 
 fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
-    let bg = if is_sel { Color::Blue } else { Color::Reset };
+    let bg = if is_sel {
+        ink(Ink::Select)
+    } else {
+        ink(Ink::Plain)
+    };
     let prefix = if is_sel { " ▶ " } else { "   " };
 
     let name = format!("{:<width$}", truncate(&r.name, name_w), width = name_w);
@@ -85,7 +90,7 @@ fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
     let activity = r.last_activity.map(rel_time).unwrap_or_default();
 
     if is_sel {
-        let s = Style::default().fg(Color::White).bg(bg);
+        let s = Style::default().fg(ink(Ink::Text)).bg(bg);
         Line::from(vec![
             Span::styled(format!("{prefix}{name}"), s.add_modifier(Modifier::BOLD)),
             Span::styled(counts, s),
@@ -97,14 +102,14 @@ fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
             Span::styled(
                 format!("{prefix}{name}"),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ink(Ink::Accent))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(counts, Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("   {meta}"), Style::default().fg(Color::Gray)),
+            Span::styled(counts, Style::default().fg(ink(Ink::Muted))),
+            Span::styled(format!("   {meta}"), Style::default().fg(ink(Ink::Soft))),
             Span::styled(
                 format!("   {activity}"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             ),
         ])
     }
@@ -125,7 +130,7 @@ fn render(f: &mut Frame, st: &ProjectListState, lines: &[Line]) {
             Block::default()
                 .borders(Borders::ALL)
                 .title(title)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(ink(Ink::Accent))),
         )
         .wrap(Wrap { trim: false })
         .scroll((st.scroll, 0));
@@ -133,7 +138,7 @@ fn render(f: &mut Frame, st: &ProjectListState, lines: &[Line]) {
 
     let footer = Paragraph::new(Line::from(Span::styled(
         " j/k navigate  Enter open board  PgDn/PgUp scroll  q quit",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
     f.render_widget(footer, chunks[1]);
 }

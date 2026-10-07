@@ -1,3 +1,4 @@
+use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use crossterm::event::KeyCode;
@@ -199,13 +200,13 @@ fn badge_for(st: &BoardState, task: &Task) -> Span<'static> {
 
 fn board_badge_span(flags: LinkFlags, synced: bool) -> Span<'static> {
     let (label, color) = if flags.pr {
-        ("PR", Color::Magenta)
+        ("PR", ink(Ink::Special))
     } else if flags.issue && synced {
-        ("ISS", Color::Green)
+        ("ISS", ink(Ink::Ok))
     } else if flags.any {
-        ("↗", Color::Cyan)
+        ("↗", ink(Ink::Accent))
     } else {
-        ("", Color::Reset)
+        ("", ink(Ink::Plain))
     };
     let text = format!("{:<w$}", label, w = BADGE_W);
     if label.is_empty() {
@@ -239,7 +240,7 @@ fn col_header_line() -> Line<'static> {
     Line::from(Span::styled(
         s,
         Style::default()
-            .fg(Color::White)
+            .fg(ink(Ink::Text))
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
     ))
 }
@@ -271,7 +272,7 @@ fn priority_chip(pri: Option<&Priority>, is_sel: bool, row_bg: Color) -> Span<'s
         return Span::styled(
             text,
             Style::default()
-                .fg(Color::White)
+                .fg(ink(Ink::Text))
                 .bg(row_bg)
                 .add_modifier(Modifier::BOLD),
         );
@@ -280,33 +281,33 @@ fn priority_chip(pri: Option<&Priority>, is_sel: bool, row_bg: Color) -> Span<'s
         Some(Priority::H) => Span::styled(
             text,
             Style::default()
-                .fg(Color::White)
-                .bg(Color::Red)
+                .fg(ink(Ink::Text))
+                .bg(ink(Ink::Err))
                 .add_modifier(Modifier::BOLD),
         ),
         Some(Priority::M) => Span::styled(
             text,
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
+                .fg(ink(Ink::Base))
+                .bg(ink(Ink::Warn))
                 .add_modifier(Modifier::BOLD),
         ),
         Some(Priority::L) => Span::styled(
             text,
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Green)
+                .fg(ink(Ink::Base))
+                .bg(ink(Ink::Ok))
                 .add_modifier(Modifier::BOLD),
         ),
-        None => Span::styled(text, Style::default().fg(Color::DarkGray).bg(row_bg)),
+        None => Span::styled(text, Style::default().fg(ink(Ink::Muted)).bg(row_bg)),
     }
 }
 
 fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
     let bg = if is_sel {
-        Color::Blue
+        ink(Ink::Select)
     } else {
-        Color::Rgb(28, 30, 44)
+        ink(Ink::Header)
     };
     let total = issue.total;
     let done = issue.done;
@@ -333,11 +334,11 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
         .unwrap_or_default();
 
     let title_color = if is_sel {
-        Color::White
+        ink(Ink::Text)
     } else if complete {
-        Color::Green
+        ink(Ink::Ok)
     } else {
-        Color::Cyan
+        ink(Ink::Accent)
     };
 
     let issue_label = match &issue.title {
@@ -352,9 +353,9 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
     let count_str = format!("  [{done}/{total} done]");
 
     let meta = if is_sel {
-        Style::default().fg(Color::White).bg(bg)
+        Style::default().fg(ink(Ink::Text)).bg(bg)
     } else {
-        Style::default().fg(Color::DarkGray).bg(bg)
+        Style::default().fg(ink(Ink::Muted)).bg(bg)
     };
 
     Line::from(vec![
@@ -384,7 +385,11 @@ fn task_line_for(
     connector: Option<&'static str>,
     badge_span: Span<'static>,
 ) -> Line<'static> {
-    let bg = if is_sel { Color::Blue } else { Color::Reset };
+    let bg = if is_sel {
+        ink(Ink::Select)
+    } else {
+        ink(Ink::Plain)
+    };
     let sel_ch = if is_sel { "▶" } else { " " };
     let tree = match connector {
         Some(c) => format!(" {c}"),
@@ -399,9 +404,9 @@ fn task_line_for(
     if task.status == Status::Completed {
         let base = Style::default()
             .fg(if is_sel {
-                Color::White
+                ink(Ink::Text)
             } else {
-                Color::DarkGray
+                ink(Ink::Muted)
             })
             .bg(bg);
         let spans = vec![
@@ -420,13 +425,13 @@ fn task_line_for(
     }
 
     let (meta_s, id_s, age_s, desc_s) = if is_sel {
-        let s = Style::default().fg(Color::White).bg(bg);
+        let s = Style::default().fg(ink(Ink::Text)).bg(bg);
         (s, s, s, s.add_modifier(Modifier::BOLD))
     } else {
         (
-            Style::default().fg(Color::Gray).bg(bg),
-            Style::default().fg(Color::Cyan).bg(bg),
-            Style::default().fg(Color::DarkGray).bg(bg),
+            Style::default().fg(ink(Ink::Soft)).bg(bg),
+            Style::default().fg(ink(Ink::Accent)).bg(bg),
+            Style::default().fg(ink(Ink::Muted)).bg(bg),
             Style::default().bg(bg),
         )
     };
@@ -477,13 +482,13 @@ fn render_stats(f: &mut Frame, st: &BoardState, area: Rect) {
     let active = active_count(st);
 
     let bracket = Style::default()
-        .fg(Color::Cyan)
+        .fg(ink(Ink::Accent))
         .add_modifier(Modifier::BOLD);
-    let label = Style::default().fg(Color::DarkGray);
+    let label = Style::default().fg(ink(Ink::Muted));
     let value = Style::default()
-        .fg(Color::White)
+        .fg(ink(Ink::Text))
         .add_modifier(Modifier::BOLD);
-    let sep = Style::default().fg(Color::DarkGray);
+    let sep = Style::default().fg(ink(Ink::Muted));
 
     let left_spans: Vec<Span> = vec![
         Span::styled("[ ", bracket),
@@ -531,19 +536,19 @@ fn render_progress_bar(f: &mut Frame, st: &BoardState, area: Rect) {
     let empty = bar_width.saturating_sub(filled);
 
     let line = Line::from(vec![
-        Span::styled("[", Style::default().fg(Color::DarkGray)),
+        Span::styled("[", Style::default().fg(ink(Ink::Muted))),
         Span::styled(
             "█".repeat(filled),
             Style::default()
-                .fg(Color::Green)
+                .fg(ink(Ink::Ok))
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("░".repeat(empty), Style::default().fg(Color::DarkGray)),
-        Span::styled("]", Style::default().fg(Color::DarkGray)),
+        Span::styled("░".repeat(empty), Style::default().fg(ink(Ink::Muted))),
+        Span::styled("]", Style::default().fg(ink(Ink::Muted))),
         Span::styled(
             label,
             Style::default()
-                .fg(Color::White)
+                .fg(ink(Ink::Text))
                 .add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -562,7 +567,7 @@ fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
         Paragraph::new(Line::from(Span::styled(
             "Priority:",
             Style::default()
-                .fg(Color::White)
+                .fg(ink(Ink::Text))
                 .add_modifier(Modifier::BOLD),
         ))),
         label_area,
@@ -596,10 +601,10 @@ fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
     const SWATCH: &str = "███";
     let mut spans = Vec::new();
     for (name, count, color) in [
-        ("High", h, Color::Red),
-        ("Med", m, Color::Yellow),
-        ("Low", l, Color::Green),
-        ("None", n, Color::DarkGray),
+        ("High", h, ink(Ink::Err)),
+        ("Med", m, ink(Ink::Warn)),
+        ("Low", l, ink(Ink::Ok)),
+        ("None", n, ink(Ink::Muted)),
     ] {
         if count == 0 {
             continue;
@@ -607,14 +612,14 @@ fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
         let pct = count * 100 / total;
         spans.push(Span::styled(
             format!("{name} "),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         ));
-        spans.push(Span::styled("[", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled("[", Style::default().fg(ink(Ink::Muted))));
         spans.push(Span::styled(SWATCH, Style::default().fg(color)));
-        spans.push(Span::styled("]", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled("]", Style::default().fg(ink(Ink::Muted))));
         spans.push(Span::styled(
             format!(" {pct}%   "),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         ));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), legend_area);
@@ -645,11 +650,11 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(ink(Ink::Accent)))
         .title(Span::styled(
             title,
             Style::default()
-                .fg(Color::Cyan)
+                .fg(ink(Ink::Accent))
                 .add_modifier(Modifier::BOLD),
         ));
     let inner = block.inner(box_area);
@@ -671,42 +676,42 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
             Span::styled(
                 " j/k",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ink(Ink::Text))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Select", Style::default().fg(Color::DarkGray)),
-            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Select", Style::default().fg(ink(Ink::Muted))),
+            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
             Span::styled(
                 "h/l",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ink(Ink::Text))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Collapse/Expand", Style::default().fg(Color::DarkGray)),
-            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Collapse/Expand", Style::default().fg(ink(Ink::Muted))),
+            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
             Span::styled(
                 "Enter",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ink(Ink::Text))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Open", Style::default().fg(Color::DarkGray)),
-            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Open", Style::default().fg(ink(Ink::Muted))),
+            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
             Span::styled(
                 "?",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ink(Ink::Text))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Help", Style::default().fg(Color::DarkGray)),
-            Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Help", Style::default().fg(ink(Ink::Muted))),
+            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
             Span::styled(
                 "q",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ink(Ink::Text))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Quit", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Quit", Style::default().fg(ink(Ink::Muted))),
         ])),
         chunks[6],
     );

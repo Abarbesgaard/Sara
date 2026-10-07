@@ -521,3 +521,19 @@ fn styled_snapshot_follow_task() {
     app.focus = Some(Focus { card, events });
     insta::assert_snapshot!(styled(&app, 60, 16));
 }
+
+#[test]
+fn styled_snapshot_follow_mission_retro() {
+    use crate::infrastructure::tui::theme::{Palette, set_look};
+    set_look(Palette::Retro, true, true);
+    let app = mission(
+        vec![
+            fixed(mk_card(26, "sara", 2, 4, Some("writing tests"), 30), 1),
+            fixed(mk_card(3, "pling", 1, 3, None, 60 * 20), 2),
+        ],
+        None,
+    );
+    let out = styled(&app, 80, 12);
+    set_look(Palette::Classic, true, true);
+    insta::assert_snapshot!(out);
+}

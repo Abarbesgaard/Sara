@@ -1,3 +1,4 @@
+use crate::infrastructure::tui::theme::{Ink, heat, ink};
 use chrono::{Local, Utc};
 use ratatui::{
     Frame,
@@ -16,7 +17,7 @@ use super::handler::{
     guide_is_stale, notes_of_kind, typed_notes, verification_rows,
 };
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
-use crate::commands::shared::{heat_color, month_abbr, plural, short_id, truncate};
+use crate::commands::shared::{month_abbr, plural, short_id, truncate};
 
 pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     let area = f.area();
@@ -133,9 +134,13 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             key_span("Time spent"),
             Span::styled(
                 time_str,
-                Style::default().fg(if active { Color::Green } else { Color::Reset }),
+                Style::default().fg(if active {
+                    ink(Ink::Ok)
+                } else {
+                    ink(Ink::Plain)
+                }),
             ),
-            Span::styled(estimate_str, Style::default().fg(Color::DarkGray)),
+            Span::styled(estimate_str, Style::default().fg(ink(Ink::Muted))),
         ]));
     }
 
@@ -155,7 +160,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             Span::raw(format!("{:.1}", t.urgency)),
             Span::styled(
                 format!("{breakdown_str}{hint}"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             ),
         ]));
     }
@@ -179,7 +184,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             ),
             Span::styled(
                 format!("  ({age_str})"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             ),
         ]));
     }
@@ -196,7 +201,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             key_span("Assignment"),
             Span::styled(
                 collapsed_text(a, st.verbose),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             ),
         ]));
     }
@@ -214,7 +219,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 d.head_commit.as_deref().unwrap_or("-"),
             ),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(ink(Ink::Warn))
                 .add_modifier(Modifier::BOLD),
         )]));
     } else if let Some(v) = &d.guide.validated_commit {
@@ -222,7 +227,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             key_span("Freshness"),
             Span::styled(
                 format!("validated @ {v}"),
-                Style::default().fg(Color::Green),
+                Style::default().fg(ink(Ink::Ok)),
             ),
         ]));
     }
@@ -241,7 +246,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         lines.push(Line::from(Span::styled(
             "  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve",
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(ink(Ink::Muted))
                 .add_modifier(Modifier::ITALIC),
         )));
     }
@@ -272,8 +277,16 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             let note_idx = note_cursor;
             note_cursor += 1;
             let is_sel = sel == Some(Focusable::Note(note_idx));
-            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
-            let row_fg = if is_sel { Color::White } else { Color::Reset };
+            let row_bg = if is_sel {
+                ink(Ink::Select)
+            } else {
+                ink(Ink::Plain)
+            };
+            let row_fg = if is_sel {
+                ink(Ink::Text)
+            } else {
+                ink(Ink::Plain)
+            };
 
             let note_id_str = n.id.to_string();
             let note_fb: Vec<&crate::infrastructure::db::Annotation> = d
@@ -292,13 +305,21 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Span::styled(
                     prefix.to_string(),
                     Style::default()
-                        .fg(if is_sel { Color::White } else { Color::Gray })
+                        .fg(if is_sel {
+                            ink(Ink::Text)
+                        } else {
+                            ink(Ink::Soft)
+                        })
                         .bg(row_bg),
                 ),
                 Span::styled(
                     "• ".to_string(),
                     Style::default()
-                        .fg(if is_sel { Color::White } else { Color::Gray })
+                        .fg(if is_sel {
+                            ink(Ink::Text)
+                        } else {
+                            ink(Ink::Soft)
+                        })
                         .bg(row_bg),
                 ),
                 Span::styled(
@@ -317,20 +338,24 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 spans.push(Span::styled(
                     " (ai)",
                     Style::default()
-                        .fg(if is_sel { Color::White } else { Color::Magenta })
+                        .fg(if is_sel {
+                            ink(Ink::Text)
+                        } else {
+                            ink(Ink::Special)
+                        })
                         .bg(row_bg),
                 ));
             }
             if !note_fb.is_empty() {
                 spans.push(Span::styled(
                     format!("  💬{}", note_fb.len()),
-                    Style::default().fg(Color::Cyan).bg(row_bg),
+                    Style::default().fg(ink(Ink::Accent)).bg(row_bg),
                 ));
             }
             if note_fb.iter().any(|a| a.request_revision) {
                 spans.push(Span::styled(
                     " ⟳",
-                    Style::default().fg(Color::Yellow).bg(row_bg),
+                    Style::default().fg(ink(Ink::Warn)).bg(row_bg),
                 ));
             }
             if is_sel {
@@ -342,12 +367,12 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 let date = a.entry.with_timezone(&Local).format("%H:%M");
                 let flag = if a.request_revision { " ⟳" } else { "" };
                 lines.push(Line::from(vec![
-                    Span::styled("      ╰ ".to_string(), Style::default().fg(Color::DarkGray)),
+                    Span::styled("      ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
                     Span::styled(
                         format!("{date}{flag}  "),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     ),
-                    Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(a.text.clone(), Style::default().fg(ink(Ink::Muted))),
                 ]));
             }
         }
@@ -367,7 +392,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 plural(total)
             ),
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(ink(Ink::Muted))
                 .add_modifier(Modifier::ITALIC),
         )));
     }
@@ -403,9 +428,9 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         for (i, link) in d.links.iter().enumerate() {
             let selected = sel == Some(Focusable::Link(i));
             let (bg, fg) = if selected {
-                (Color::Blue, Color::White)
+                (ink(Ink::Select), ink(Ink::Text))
             } else {
-                (Color::Reset, Color::Cyan)
+                (ink(Ink::Plain), ink(Ink::Accent))
             };
             let prefix = if selected { " ▶ " } else { "   " };
             let style = Style::default()
@@ -413,7 +438,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 .bg(bg)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
             let meta_style = Style::default()
-                .fg(if selected { Color::White } else { Color::Gray })
+                .fg(if selected {
+                    ink(Ink::Text)
+                } else {
+                    ink(Ink::Soft)
+                })
                 .bg(bg);
             let mut spans = vec![
                 Span::styled(prefix.to_string(), meta_style),
@@ -423,7 +452,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             if link.display() != link.url {
                 spans.push(Span::styled(
                     format!("  {}", link.url),
-                    Style::default().fg(Color::DarkGray).bg(bg),
+                    Style::default().fg(ink(Ink::Muted)).bg(bg),
                 ));
             }
             if selected {
@@ -440,7 +469,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             if selected {
                 sel_range = Some((lines.len(), lines.len()));
             }
-            lines.push(nav_line(file, Color::Cyan, false, selected));
+            lines.push(nav_line(file, ink(Ink::Accent), false, selected));
         }
     }
     if !d.anchors.is_empty() {
@@ -469,9 +498,21 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 .iter()
                 .any(|a| a.request_revision && a.status == "open");
 
-            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
-            let row_fg = if is_sel { Color::White } else { Color::Cyan };
-            let meta_fg = if is_sel { Color::White } else { Color::Gray };
+            let row_bg = if is_sel {
+                ink(Ink::Select)
+            } else {
+                ink(Ink::Plain)
+            };
+            let row_fg = if is_sel {
+                ink(Ink::Text)
+            } else {
+                ink(Ink::Accent)
+            };
+            let meta_fg = if is_sel {
+                ink(Ink::Text)
+            } else {
+                ink(Ink::Soft)
+            };
 
             let mut spans = vec![
                 Span::styled(
@@ -492,7 +533,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Span::styled(
                     badge.to_string(),
                     Style::default()
-                        .fg(if is_sel { Color::White } else { Color::Magenta })
+                        .fg(if is_sel {
+                            ink(Ink::Text)
+                        } else {
+                            ink(Ink::Special)
+                        })
                         .bg(row_bg),
                 ),
             ];
@@ -501,9 +546,9 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     format!("  — {r}"),
                     Style::default()
                         .fg(if is_sel {
-                            Color::White
+                            ink(Ink::Text)
                         } else {
-                            Color::DarkGray
+                            ink(Ink::Muted)
                         })
                         .bg(row_bg),
                 ));
@@ -511,13 +556,13 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             if open_fb > 0 {
                 spans.push(Span::styled(
                     format!("  💬{open_fb}"),
-                    Style::default().fg(Color::Cyan).bg(row_bg),
+                    Style::default().fg(ink(Ink::Accent)).bg(row_bg),
                 ));
             }
             if needs_reconsider {
                 spans.push(Span::styled(
                     " ⟳",
-                    Style::default().fg(Color::Yellow).bg(row_bg),
+                    Style::default().fg(ink(Ink::Warn)).bg(row_bg),
                 ));
             }
             if is_sel {
@@ -530,10 +575,10 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 let resolved = a.status == "resolved";
                 let text_style = if resolved {
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(ink(Ink::Muted))
                         .add_modifier(Modifier::CROSSED_OUT)
                 } else {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(ink(Ink::Muted))
                 };
                 let flag = if a.request_revision && !resolved {
                     " ⟳"
@@ -541,10 +586,10 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     ""
                 };
                 lines.push(Line::from(vec![
-                    Span::styled("      ╰ ".to_string(), Style::default().fg(Color::DarkGray)),
+                    Span::styled("      ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
                     Span::styled(
                         format!("{date}{flag}  "),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     ),
                     Span::styled(a.text.clone(), text_style),
                 ]));
@@ -577,13 +622,17 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         lines.push(section(&format!("Checklist  {progress}")));
         for (i, item) in d.checklist.iter().enumerate() {
             let is_sel = sel == Some(Focusable::Checklist(i));
-            let row_bg = if is_sel { Color::Blue } else { Color::Reset };
+            let row_bg = if is_sel {
+                ink(Ink::Select)
+            } else {
+                ink(Ink::Plain)
+            };
 
             let (box_str, text_style) = if item.done {
                 (
                     "[x]",
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(ink(Ink::Muted))
                         .bg(row_bg)
                         .add_modifier(Modifier::CROSSED_OUT),
                 )
@@ -591,8 +640,8 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 (
                     "[ ]",
                     Style::default()
-                        .fg(Color::White)
-                        .bg(Color::Blue)
+                        .fg(ink(Ink::Text))
+                        .bg(ink(Ink::Select))
                         .add_modifier(Modifier::BOLD),
                 )
             } else {
@@ -616,7 +665,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 .collect();
             let prefix = if is_sel { " ▶ " } else { "   " };
             let box_style = Style::default()
-                .fg(if is_sel { Color::White } else { Color::Gray })
+                .fg(if is_sel {
+                    ink(Ink::Text)
+                } else {
+                    ink(Ink::Soft)
+                })
                 .bg(row_bg);
             let mut spans = vec![
                 Span::styled(prefix.to_string(), box_style),
@@ -624,19 +677,25 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Span::styled(item.text.clone(), text_style),
             ];
             if item.kind == db::STEP_KIND_ACCEPTANCE {
-                spans.push(Span::styled(" [accept]", Style::default().fg(Color::Blue)));
+                spans.push(Span::styled(
+                    " [accept]",
+                    Style::default().fg(ink(Ink::Info)),
+                ));
             }
             if item.source == "ai" {
-                spans.push(Span::styled(" (ai)", Style::default().fg(Color::Magenta)));
+                spans.push(Span::styled(
+                    " (ai)",
+                    Style::default().fg(ink(Ink::Special)),
+                ));
             }
             if !fb.is_empty() {
                 spans.push(Span::styled(
                     format!("  💬{}", fb.len()),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(ink(Ink::Accent)),
                 ));
             }
             if fb.iter().any(|a| a.request_revision) {
-                spans.push(Span::styled(" ⟳", Style::default().fg(Color::Yellow)));
+                spans.push(Span::styled(" ⟳", Style::default().fg(ink(Ink::Warn))));
             }
             if is_sel {
                 sel_range = Some((lines.len(), lines.len()));
@@ -647,22 +706,22 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 if let Some(intent) = &item.intent {
                     lines.push(Line::from(Span::styled(
                         format!("         {intent}"),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     )));
                 }
                 if let Some(v) = &item.verify_cmd {
                     lines.push(Line::from(vec![
                         Span::styled(
                             "         verify ".to_string(),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(ink(Ink::Muted)),
                         ),
-                        Span::styled(v.clone(), Style::default().fg(Color::Blue)),
+                        Span::styled(v.clone(), Style::default().fg(ink(Ink::Info))),
                     ]));
                 }
                 if let Some(r) = &item.result {
                     lines.push(Line::from(vec![
-                        Span::styled("         → ".to_string(), Style::default().fg(Color::Green)),
-                        Span::styled(r.clone(), Style::default().fg(Color::Green)),
+                        Span::styled("         → ".to_string(), Style::default().fg(ink(Ink::Ok))),
+                        Span::styled(r.clone(), Style::default().fg(ink(Ink::Ok))),
                     ]));
                 }
                 if item.done && (item.done_commit.is_some() || item.done_at.is_some()) {
@@ -678,7 +737,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                         .unwrap_or_default();
                     lines.push(Line::from(Span::styled(
                         format!("         done {commit}{when}"),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     )));
                 }
             }
@@ -688,13 +747,13 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 lines.push(Line::from(vec![
                     Span::styled(
                         "         ╰ ".to_string(),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     ),
                     Span::styled(
                         format!("{date}{flag}  "),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(ink(Ink::Muted)),
                     ),
-                    Span::styled(a.text.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(a.text.clone(), Style::default().fg(ink(Ink::Muted))),
                 ]));
             }
             if is_sel && let Some((start, _)) = sel_range {
@@ -712,11 +771,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Span::styled(
                     format!("  {label:<7}"),
                     Style::default()
-                        .fg(Color::Gray)
+                        .fg(ink(Ink::Soft))
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(cmd.clone(), Style::default().fg(Color::Blue)),
-                Span::styled(format!("  ({scope})"), Style::default().fg(Color::DarkGray)),
+                Span::styled(cmd.clone(), Style::default().fg(ink(Ink::Info))),
+                Span::styled(format!("  ({scope})"), Style::default().fg(ink(Ink::Muted))),
             ]));
         }
     }
@@ -733,7 +792,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                     r.model.as_deref().unwrap_or("?"),
                     r.provider.as_deref().unwrap_or("?"),
                 ),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             )));
         }
     }
@@ -745,11 +804,11 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         lines.push(section("Related tasks (shared tags)"));
         for (id, desc, urg) in similar.iter().take(RELATED_SHOWN) {
             lines.push(Line::from(vec![
-                Span::styled(format!("  #{id:<3} "), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("  #{id:<3} "), Style::default().fg(ink(Ink::Muted))),
                 Span::raw(desc.clone()),
                 Span::styled(
                     format!("  urg {urg:.1}"),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(ink(Ink::Muted)),
                 ),
             ]));
         }
@@ -757,7 +816,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             lines.push(Line::from(Span::styled(
                 format!("  … {} more", similar.len() - RELATED_SHOWN),
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(ink(Ink::Muted))
                     .add_modifier(Modifier::ITALIC),
             )));
         }
@@ -827,17 +886,17 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             let resolved = a.status == "resolved";
             let text_style = if resolved {
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(ink(Ink::Muted))
                     .add_modifier(Modifier::CROSSED_OUT)
             } else if is_sel {
-                Style::default().fg(Color::White).bg(Color::Blue)
+                Style::default().fg(ink(Ink::Text)).bg(ink(Ink::Select))
             } else {
                 Style::default()
             };
             let meta_style = if is_sel {
-                Style::default().fg(Color::White).bg(Color::Blue)
+                Style::default().fg(ink(Ink::Text)).bg(ink(Ink::Select))
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(ink(Ink::Muted))
             };
             let mut spans = vec![
                 Span::styled(if is_sel { " ▶ " } else { "   " }.to_string(), meta_style),
@@ -847,14 +906,14 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 spans.push(Span::styled(
                     target_label,
                     if is_sel {
-                        Style::default().fg(Color::White).bg(Color::Blue)
+                        Style::default().fg(ink(Ink::Text)).bg(ink(Ink::Select))
                     } else {
-                        Style::default().fg(Color::Cyan)
+                        Style::default().fg(ink(Ink::Accent))
                     },
                 ));
             }
             if a.request_revision && !resolved {
-                spans.push(Span::styled("⟳ ", Style::default().fg(Color::Yellow)));
+                spans.push(Span::styled("⟳ ", Style::default().fg(ink(Ink::Warn))));
             }
             spans.push(Span::styled(a.text.clone(), text_style));
             if is_sel {
@@ -909,7 +968,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             Block::default()
                 .borders(Borders::ALL)
                 .title(title)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(ink(Ink::Accent))),
         )
         .wrap(Wrap { trim: false })
         .scroll((st.scroll, 0));
@@ -933,7 +992,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
             Block::default()
                 .borders(Borders::ALL)
                 .title(tree_title)
-                .border_style(Style::default().fg(Color::Magenta)),
+                .border_style(Style::default().fg(ink(Ink::Special))),
         );
         f.render_widget(tree_para, panel_chunks[0]);
 
@@ -943,7 +1002,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" Git ")
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(Style::default().fg(ink(Ink::Muted))),
             )
             .wrap(Wrap { trim: false });
         f.render_widget(git_para, panel_chunks[1]);
@@ -957,7 +1016,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" History ")
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(Style::default().fg(ink(Ink::Muted))),
             )
             .wrap(Wrap { trim: false });
         f.render_widget(hist_para, hist_chunk);
@@ -968,7 +1027,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Add step  (Enter save · Esc cancel) ".to_string())
-            .border_style(Style::default().fg(Color::Green));
+            .border_style(Style::default().fg(ink(Ink::Ok)));
         let inner = block.inner(chunks[edit_chunk_idx]);
         f.render_widget(block, chunks[edit_chunk_idx]);
         f.render_widget(&st.editor, inner);
@@ -986,7 +1045,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(format!(" Comment on {target}  (Enter save · Esc cancel) "))
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(ink(Ink::Warn)));
         let inner = block.inner(chunks[edit_chunk_idx]);
         f.render_widget(block, chunks[edit_chunk_idx]);
         f.render_widget(&st.editor, inner);
@@ -1001,22 +1060,25 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         let (title, border) = if st.due_error {
             (
                 format!(" Editing {} — invalid date ", field.label()),
-                Color::Red,
+                ink(Ink::Err),
             )
         } else if let Some(ref err) = st.dep_error {
-            (format!(" Editing {} — {} ", field.label(), err), Color::Red)
+            (
+                format!(" Editing {} — {} ", field.label(), err),
+                ink(Ink::Err),
+            )
         } else if field == EditField::DependsOn {
             (
                 format!(
                     " Editing {}  (task IDs, space/comma separated · Enter confirm · Esc cancel) ",
                     field.label()
                 ),
-                Color::Yellow,
+                ink(Ink::Warn),
             )
         } else {
             (
                 format!(" Editing {}  (Enter confirm · Esc cancel) ", field.label()),
-                Color::Yellow,
+                ink(Ink::Warn),
             )
         };
         let block = Block::default()
@@ -1040,7 +1102,7 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     };
     let footer_idx = chunks.len() - 1;
     f.render_widget(
-        Paragraph::new(footer).style(Style::default().fg(Color::Gray)),
+        Paragraph::new(footer).style(Style::default().fg(ink(Ink::Soft))),
         chunks[footer_idx],
     );
 }
@@ -1070,12 +1132,12 @@ fn task_tree_lines(d: &Detail, st: &EditState) -> Vec<Line<'static>> {
     let rule = "─".repeat(TREE_PANEL_WIDTH);
     lines.push(Line::from(Span::styled(
         rule.clone(),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
     lines.push(current_task_tree_line(&d.task));
     lines.push(Line::from(Span::styled(
         rule,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
 
     lines.push(tree_section_header(&format!(
@@ -1102,7 +1164,7 @@ fn push_tree_side_lines(
     if nodes.is_empty() && hidden == 0 {
         lines.push(Line::from(Span::styled(
             "   — none —",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         )));
         return;
     }
@@ -1113,7 +1175,7 @@ fn tree_section_header(text: &str) -> Line<'static> {
     Line::from(Span::styled(
         format!(" {text}"),
         Style::default()
-            .fg(Color::Gray)
+            .fg(ink(Ink::Soft))
             .add_modifier(Modifier::BOLD),
     ))
 }
@@ -1124,8 +1186,8 @@ fn current_task_tree_line(task: &Task) -> Line<'static> {
         .map(|n| format!("{n:>3}"))
         .unwrap_or_else(|| "  -".to_string());
     let style = Style::default()
-        .fg(Color::White)
-        .bg(Color::Blue)
+        .fg(ink(Ink::Text))
+        .bg(ink(Ink::Select))
         .add_modifier(Modifier::BOLD);
     Line::from(vec![
         Span::styled(" ▶ ", style),
@@ -1167,7 +1229,7 @@ fn push_tree_node_lines(
                 lines.push(Line::from(Span::styled(
                     format!("{child_prefix}└─ … (d to expand)"),
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(ink(Ink::Muted))
                         .add_modifier(Modifier::ITALIC),
                 )));
             }
@@ -1177,7 +1239,7 @@ fn push_tree_node_lines(
         lines.push(Line::from(Span::styled(
             format!("{prefix}└─ +{overflow} more  (d to expand)"),
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(ink(Ink::Muted))
                 .add_modifier(Modifier::ITALIC),
         )));
     }
@@ -1189,17 +1251,17 @@ fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'stat
     let id_str = node.id.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
     let style = if completed {
         Style::default()
-            .fg(Color::DarkGray)
+            .fg(ink(Ink::Muted))
             .add_modifier(Modifier::CROSSED_OUT)
     } else {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(ink(Ink::Accent))
     };
     let desc_budget = TREE_PANEL_WIDTH
         .saturating_sub(prefix.chars().count() + connector.chars().count() + id_str.len() + 4);
     let mut spans = vec![
         Span::styled(
             format!("{prefix}{connector}"),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
         Span::styled(format!("{glyph} "), style),
         Span::styled(format!("{id_str} "), style),
@@ -1208,7 +1270,7 @@ fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'stat
     if let Some(label) = link_badge_label(node.badge.as_ref()) {
         spans.push(Span::styled(
             format!(" {label}"),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(ink(Ink::Warn)),
         ));
     }
     Line::from(spans)
@@ -1232,7 +1294,7 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Project ")
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(ink(Ink::Muted)));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -1266,101 +1328,105 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<10}", "Pending"),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         ),
         Span::raw(format!("{:>3}", s.pending)),
     ]));
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<10}", "Active"),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         ),
         Span::styled(
             format!("{:>3}", s.active),
             Style::default().fg(if s.active > 0 {
-                Color::Green
+                ink(Ink::Ok)
             } else {
-                Color::Reset
+                ink(Ink::Plain)
             }),
         ),
     ]));
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<10}", "Done"),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         ),
         Span::raw(format!("{:>3}", s.completed_total)),
         Span::styled(
             format!("  {}", completion_rate),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
     ]));
 
     lines.push(Line::from(Span::styled(
         "  ─────────────",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
 
     let pri_total = s.pending.max(1);
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<5}", "H"),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ink(Ink::Err))
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("{:<bar_w$}", bar(s.high, pri_total, bar_w)),
-            Style::default().fg(Color::Red),
+            Style::default().fg(ink(Ink::Err)),
         ),
-        Span::styled(format!(" {}", s.high), Style::default().fg(Color::DarkGray)),
+        Span::styled(format!(" {}", s.high), Style::default().fg(ink(Ink::Muted))),
     ]));
     lines.push(Line::from(vec![
-        Span::styled(format!("  {:<5}", "M"), Style::default().fg(Color::Yellow)),
+        Span::styled(format!("  {:<5}", "M"), Style::default().fg(ink(Ink::Warn))),
         Span::styled(
             format!("{:<bar_w$}", bar(s.medium, pri_total, bar_w)),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(ink(Ink::Warn)),
         ),
         Span::styled(
             format!(" {}", s.medium),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
     ]));
     lines.push(Line::from(vec![
-        Span::styled(format!("  {:<5}", "L"), Style::default().fg(Color::Green)),
+        Span::styled(format!("  {:<5}", "L"), Style::default().fg(ink(Ink::Ok))),
         Span::styled(
             format!("{:<bar_w$}", bar(s.low, pri_total, bar_w)),
-            Style::default().fg(Color::Green),
+            Style::default().fg(ink(Ink::Ok)),
         ),
-        Span::styled(format!(" {}", s.low), Style::default().fg(Color::DarkGray)),
+        Span::styled(format!(" {}", s.low), Style::default().fg(ink(Ink::Muted))),
     ]));
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<5}", "—"),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
         Span::styled(
             format!("{:<bar_w$}", bar(s.no_pri, pri_total, bar_w)),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
         Span::styled(
             format!(" {}", s.no_pri),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ),
     ]));
 
     lines.push(Line::from(Span::styled(
         "  ─────────────",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
 
     if s.overdue > 0 {
         lines.push(Line::from(vec![
             Span::styled(
                 format!("  {:<10}", "Overdue"),
-                Style::default().fg(Color::Red),
+                Style::default().fg(ink(Ink::Err)),
             ),
             Span::styled(
                 format!("{:>3}", s.overdue),
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(ink(Ink::Err))
+                    .add_modifier(Modifier::BOLD),
             ),
         ]));
     }
@@ -1368,11 +1434,11 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
         lines.push(Line::from(vec![
             Span::styled(
                 format!("  {:<10}", "Today"),
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(ink(Ink::Warn)),
             ),
             Span::styled(
                 format!("{:>3}", s.due_today),
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(ink(Ink::Warn)),
             ),
         ]));
     }
@@ -1381,7 +1447,7 @@ fn render_project_stats(f: &mut Frame, area: ratatui::layout::Rect, d: &Detail) 
         lines.push(Line::from(vec![
             Span::styled(
                 format!("  {:<10}", "This week"),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(ink(Ink::Soft)),
             ),
             Span::raw(format!("{:>3}", due_later)),
         ]));
@@ -1402,7 +1468,7 @@ fn render_mini_heatmap(
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" {} ", project))
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(ink(Ink::Muted)));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -1431,7 +1497,7 @@ fn render_mini_heatmap(
                 let name = &month_abbr(m)[..3];
                 spans.push(Span::styled(
                     format!("{:<width$}", name, width = cell_w as usize),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(ink(Ink::Muted)),
                 ));
                 last_month = m;
             } else {
@@ -1467,7 +1533,7 @@ fn render_mini_heatmap(
         };
         spans.push(Span::styled(
             format!("{label} "),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         ));
 
         let mut ws = grid_start;
@@ -1480,9 +1546,9 @@ fn render_mini_heatmap(
                 counts.get(&day).copied().unwrap_or(0)
             };
             let color = if in_future {
-                Color::Rgb(12, 14, 18)
+                ink(Ink::Void)
             } else {
-                heat_color(count, max)
+                heat(count, max)
             };
             spans.push(Span::styled("██ ", Style::default().bg(color).fg(color)));
             ws += Duration::weeks(1);
@@ -1508,7 +1574,7 @@ fn render_mini_heatmap(
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 format!("  {total} events (16w)"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(ink(Ink::Muted)),
             ))),
             stats_area,
         );
@@ -1531,8 +1597,11 @@ pub(super) fn history_lines(
             &h.field
         };
         let mut spans = vec![
-            Span::styled(format!("  {date}  "), Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{:<11} ", label), Style::default().fg(Color::Cyan)),
+            Span::styled(format!("  {date}  "), Style::default().fg(ink(Ink::Muted))),
+            Span::styled(
+                format!("{:<11} ", label),
+                Style::default().fg(ink(Ink::Accent)),
+            ),
         ];
         let additive = matches!(
             h.field.as_str(),
@@ -1542,18 +1611,18 @@ pub(super) fn history_lines(
             spans.push(Span::raw(h.new_value.clone().unwrap_or_default()));
         } else if additive {
             if let Some(text) = &h.new_value {
-                spans.push(Span::styled("+ ", Style::default().fg(Color::Green)));
+                spans.push(Span::styled("+ ", Style::default().fg(ink(Ink::Ok))));
                 spans.push(Span::raw(text.clone()));
             } else if let Some(text) = &h.old_value {
-                spans.push(Span::styled("− ", Style::default().fg(Color::Red)));
+                spans.push(Span::styled("− ", Style::default().fg(ink(Ink::Err))));
                 spans.push(Span::raw(text.clone()));
             }
         } else {
             spans.push(Span::styled(
                 h.old_value.clone().unwrap_or_else(|| "—".into()),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(ink(Ink::Soft)),
             ));
-            spans.push(Span::styled(" → ", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(" → ", Style::default().fg(ink(Ink::Muted))));
             spans.push(Span::raw(h.new_value.clone().unwrap_or_else(|| "—".into())));
         }
         lines.push(Line::from(spans));
@@ -1567,22 +1636,22 @@ fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
     let Some(rec) = &d.branch else {
         lines.push(Line::from(Span::styled(
             "  No branch tied.",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         )));
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  Run: sara <id> addbranch",
-            Style::default().fg(Color::Gray),
+            Style::default().fg(ink(Ink::Soft)),
         )));
         return lines;
     };
 
     lines.push(Line::from(vec![
-        Span::styled("  Branch  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("  Branch  ", Style::default().fg(ink(Ink::Muted))),
         Span::styled(
             rec.branch.clone(),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(ink(Ink::Accent))
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
@@ -1628,8 +1697,8 @@ fn nav_line<'a>(text: &str, color: Color, italic: bool, selected: bool) -> Line<
     }
     if selected {
         style = style
-            .bg(Color::Blue)
-            .fg(Color::White)
+            .bg(ink(Ink::Select))
+            .fg(ink(Ink::Text))
             .add_modifier(Modifier::BOLD);
     }
     let prefix = if selected { " ▶ " } else { "   " };
@@ -1646,16 +1715,16 @@ fn sel_line<'a>(spans: Vec<Span<'a>>, selected: bool) -> Line<'a> {
     }
     let highlighted: Vec<Span> = spans
         .into_iter()
-        .map(|s| Span::styled(s.content, s.style.bg(Color::Blue).fg(Color::White)))
+        .map(|s| Span::styled(s.content, s.style.bg(ink(Ink::Select)).fg(ink(Ink::Text))))
         .collect();
     Line::from(highlighted)
 }
 
 fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &Task) -> Line<'a> {
     let (bg, fg) = if selected {
-        (Color::Blue, Color::White)
+        (ink(Ink::Select), ink(Ink::Text))
     } else {
-        (Color::Reset, Color::DarkGray)
+        (ink(Ink::Plain), ink(Ink::Muted))
     };
     let key_style = if selected {
         Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
@@ -1665,10 +1734,10 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
 
     let value_span = if field == EditField::Priority {
         match &task.priority {
-            Some(Priority::H) => Span::styled("High", Style::default().fg(Color::Red)),
-            Some(Priority::M) => Span::styled("Medium", Style::default().fg(Color::Yellow)),
-            Some(Priority::L) => Span::styled("Low", Style::default().fg(Color::Green)),
-            None => Span::styled("-", Style::default().fg(Color::Gray)),
+            Some(Priority::H) => Span::styled("High", Style::default().fg(ink(Ink::Err))),
+            Some(Priority::M) => Span::styled("Medium", Style::default().fg(ink(Ink::Warn))),
+            Some(Priority::L) => Span::styled("Low", Style::default().fg(ink(Ink::Ok))),
+            None => Span::styled("-", Style::default().fg(ink(Ink::Soft))),
         }
     } else if field == EditField::Due {
         due_value_span(task, v)
@@ -1678,7 +1747,7 @@ fn editable_line<'a>(k: &str, v: &str, selected: bool, field: EditField, task: &
 
     let prefix = if selected { " ▶ " } else { "   " };
     let value_style = if selected {
-        Style::default().fg(Color::White).bg(Color::Blue)
+        Style::default().fg(ink(Ink::Text)).bg(ink(Ink::Select))
     } else {
         Style::default()
     };
@@ -1694,11 +1763,11 @@ fn due_value_span<'a>(task: &Task, fallback: &str) -> Span<'a> {
     if let Some(dd) = task.due {
         let days = (dd - Utc::now()).num_days();
         let color = if days < 0 {
-            Color::Red
+            ink(Ink::Err)
         } else if days <= 1 {
-            Color::Yellow
+            ink(Ink::Warn)
         } else {
-            Color::Reset
+            ink(Ink::Plain)
         };
         Span::styled(
             format!(
@@ -1709,7 +1778,7 @@ fn due_value_span<'a>(task: &Task, fallback: &str) -> Span<'a> {
             Style::default().fg(color),
         )
     } else {
-        Span::styled(fallback.to_string(), Style::default().fg(Color::Gray))
+        Span::styled(fallback.to_string(), Style::default().fg(ink(Ink::Soft)))
     }
 }
 
@@ -1775,7 +1844,7 @@ fn collapsed_text(s: &str, verbose: bool) -> String {
 }
 
 fn key_span(k: &str) -> Span<'static> {
-    Span::styled(format!("  {:<12}", k), Style::default().fg(Color::DarkGray))
+    Span::styled(format!("  {:<12}", k), Style::default().fg(ink(Ink::Muted)))
 }
 
 fn field_line<'a>(k: &str, v: &str) -> Line<'a> {
@@ -1787,7 +1856,7 @@ fn section(k: &str) -> Line<'static> {
         k.to_string(),
         Style::default()
             .add_modifier(Modifier::BOLD)
-            .fg(Color::Cyan),
+            .fg(ink(Ink::Accent)),
     ))
 }
 

@@ -1,10 +1,11 @@
+use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
@@ -599,10 +600,10 @@ fn render_priority(f: &mut Frame, state: &mut FormState, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
     let label = match &state.priority {
-        None => Span::styled("None", Style::default().fg(Color::DarkGray)),
-        Some(Priority::L) => Span::styled("L  (Low)", Style::default().fg(Color::Green)),
-        Some(Priority::M) => Span::styled("M  (Medium)", Style::default().fg(Color::Yellow)),
-        Some(Priority::H) => Span::styled("H  (High)", Style::default().fg(Color::Red)),
+        None => Span::styled("None", Style::default().fg(ink(Ink::Muted))),
+        Some(Priority::L) => Span::styled("L  (Low)", Style::default().fg(ink(Ink::Ok))),
+        Some(Priority::M) => Span::styled("M  (Medium)", Style::default().fg(ink(Ink::Warn))),
+        Some(Priority::H) => Span::styled("H  (High)", Style::default().fg(ink(Ink::Err))),
     };
     f.render_widget(Paragraph::new(Line::from(label)), inner);
 }
@@ -618,7 +619,7 @@ fn render_due(f: &mut Frame, state: &mut FormState, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .border_style(Style::default().fg(Color::Red))
+            .border_style(Style::default().fg(ink(Ink::Err)))
     } else {
         field_block(title, focused)
     };
@@ -666,7 +667,7 @@ fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
     f.render_widget(block, area);
     if state.ctx.available_deps.is_empty() {
         f.render_widget(
-            Paragraph::new("No existing tasks").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("No existing tasks").style(Style::default().fg(ink(Ink::Muted))),
             inner,
         );
     } else {
@@ -679,10 +680,10 @@ fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
                 let check = if state.selected_deps[i] { "☑" } else { "☐" };
                 let suggested = state.ctx.suggested_dep_indices.contains(&i);
                 let style = if state.selected_deps[i] {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(ink(Ink::Ok))
                 } else if suggested {
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(ink(Ink::Muted))
                         .add_modifier(Modifier::ITALIC)
                 } else {
                     Style::default()
@@ -692,7 +693,7 @@ fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
             .collect();
         let list = List::new(items).highlight_style(
             Style::default()
-                .bg(Color::DarkGray)
+                .bg(ink(Ink::Muted))
                 .add_modifier(Modifier::BOLD),
         );
         f.render_stateful_widget(list, inner, &mut state.dep_state);
@@ -728,7 +729,7 @@ fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
     if let Some(fa) = filter_area {
         f.render_widget(
             Paragraph::new(format!("🔍 {}", state.file_filter))
-                .style(Style::default().fg(Color::Yellow)),
+                .style(Style::default().fg(ink(Ink::Warn))),
             fa,
         );
     }
@@ -741,7 +742,7 @@ fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
             "No matches"
         };
         f.render_widget(
-            Paragraph::new(msg).style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new(msg).style(Style::default().fg(ink(Ink::Muted))),
             list_area,
         );
     } else {
@@ -750,14 +751,14 @@ fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
             .map(|r| {
                 if r.add_custom {
                     return ListItem::new(format!("＋ add \"{}\"", r.path))
-                        .style(Style::default().fg(Color::Magenta));
+                        .style(Style::default().fg(ink(Ink::Special)));
                 }
                 let check = if r.selected { "☑" } else { "☐" };
                 let style = if r.selected {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(ink(Ink::Ok))
                 } else if r.suggested {
                     Style::default()
-                        .fg(Color::DarkGray)
+                        .fg(ink(Ink::Muted))
                         .add_modifier(Modifier::ITALIC)
                 } else {
                     Style::default()
@@ -767,7 +768,7 @@ fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
             .collect();
         let list = List::new(items).highlight_style(
             Style::default()
-                .bg(Color::DarkGray)
+                .bg(ink(Ink::Muted))
                 .add_modifier(Modifier::BOLD),
         );
         f.render_stateful_widget(list, list_area, &mut state.file_state);
@@ -782,13 +783,13 @@ fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
 
     let submit_style = if state.focus == Focus::Submit {
         Style::default()
-            .bg(Color::Green)
-            .fg(Color::Black)
+            .bg(ink(Ink::Ok))
+            .fg(ink(Ink::Base))
             .add_modifier(Modifier::BOLD)
     } else if state.can_submit() {
-        Style::default().fg(Color::Green)
+        Style::default().fg(ink(Ink::Ok))
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(ink(Ink::Muted))
     };
     f.render_widget(
         Paragraph::new(" ✔  Save  (Ctrl+S)")
@@ -799,11 +800,11 @@ fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
 
     let cancel_style = if state.focus == Focus::Cancel {
         Style::default()
-            .bg(Color::Red)
-            .fg(Color::White)
+            .bg(ink(Ink::Err))
+            .fg(ink(Ink::Text))
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::Red)
+        Style::default().fg(ink(Ink::Err))
     };
     f.render_widget(
         Paragraph::new(" ✖  Cancel  (Esc)")
@@ -816,7 +817,7 @@ fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
 fn render_footer(f: &mut Frame, _state: &FormState, area: Rect) {
     let text = " Tab/Shift+Tab: move  •  ←/→: cycle priority  •  Space: toggle  •  Ctrl+S: save  •  ?: help  •  Esc: cancel ";
     f.render_widget(
-        Paragraph::new(text).style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(text).style(Style::default().fg(ink(Ink::Muted))),
         area,
     );
 }
@@ -828,14 +829,14 @@ fn field_block(title: &str, focused: bool) -> Block<'_> {
             .title(format!(" {title} "))
             .border_style(
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(ink(Ink::Accent))
                     .add_modifier(Modifier::BOLD),
             )
     } else {
         Block::default()
             .borders(Borders::ALL)
             .title(format!(" {title} "))
-            .border_style(Style::default().fg(Color::DarkGray))
+            .border_style(Style::default().fg(ink(Ink::Muted)))
     }
 }
 

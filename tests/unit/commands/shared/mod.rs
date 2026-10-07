@@ -1,6 +1,5 @@
 use super::*;
 use chrono::Utc;
-use ratatui::style::Color;
 
 #[test]
 fn truncate_leaves_short_strings_untouched() {
@@ -72,17 +71,6 @@ fn rel_time_just_now_for_recent() {
 fn rel_time_days_and_years() {
     assert_eq!(rel_time(Utc::now() - chrono::Duration::days(3)), "3d ago");
     assert_eq!(rel_time(Utc::now() - chrono::Duration::days(400)), "1y ago");
-}
-
-#[test]
-fn heat_color_zero_is_empty_cell() {
-    assert_eq!(heat_color(0, 10), Color::Rgb(22, 27, 34));
-}
-
-#[test]
-fn heat_color_scales_with_ratio() {
-    assert_eq!(heat_color(10, 10), Color::Rgb(57, 211, 83));
-    assert_eq!(heat_color(1, 10), Color::Rgb(14, 68, 41));
 }
 
 #[test]

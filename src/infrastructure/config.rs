@@ -75,6 +75,20 @@ impl Default for TelemetryConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct TuiConfig {
+    pub theme: String,
+}
+
+impl Default for TuiConfig {
+    fn default() -> Self {
+        TuiConfig {
+            theme: "classic".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub default_project: String,
     pub date_dialect: String,
@@ -82,6 +96,7 @@ pub struct Config {
     pub vault_path: Option<PathBuf>,
     pub recall: RecallConfig,
     pub telemetry: TelemetryConfig,
+    pub tui: TuiConfig,
 }
 
 impl Default for Config {
@@ -93,6 +108,7 @@ impl Default for Config {
             vault_path: None,
             recall: RecallConfig::default(),
             telemetry: TelemetryConfig::default(),
+            tui: TuiConfig::default(),
         }
     }
 }
