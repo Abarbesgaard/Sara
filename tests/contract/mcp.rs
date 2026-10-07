@@ -65,9 +65,10 @@ fn begin_learn_recall_payloads() {
     let begin = {
         let mut begin = begin;
         let map = begin.as_object_mut().expect("begin returns an object");
-        let folded = map.remove("folded").expect("telemetry builds fold a trace");
-        assert!(folded.as_array().is_some_and(|ops| !ops.is_empty()));
-        assert!(map.remove("begin_id").is_some_and(|id| id.is_string()));
+        let trace = map.remove("trace").expect("telemetry builds fold a trace");
+        assert!(trace["ops"].as_array().is_some_and(|ops| !ops.is_empty()));
+        assert!(trace["id"].is_string());
+        assert!(!map.contains_key("begin_id") && !map.contains_key("folded"));
         begin
     };
     assert_json_snapshot!("mcp_begin", redact(begin));

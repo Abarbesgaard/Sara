@@ -1,6 +1,6 @@
 //! Folded-operation trace for `begin`. With the `telemetry` feature, every internal
 //! op `begin` composes emits its own ordered telemetry event (stamped with one
-//! random `trace_id` and a `seq`) and is returned in the result's `folded` log.
+//! random `trace_id` and a `seq`) and is returned under the result's `trace` object (`id`, `ops`).
 //! Without the feature this is a zero-sized no-op and the result is unchanged.
 
 use std::time::Instant;
@@ -62,8 +62,7 @@ impl<'a> Folded<'a> {
     }
 
     pub(super) fn finish(self, out: &mut Value) {
-        out["begin_id"] = Value::String(self.trace_id);
-        out["folded"] = Value::Array(self.log);
+        out["trace"] = serde_json::json!({ "id": self.trace_id, "ops": self.log });
     }
 }
 
