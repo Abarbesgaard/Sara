@@ -528,7 +528,7 @@ refreshes as soon as anything writes to the database, so you can keep it open
 in a side pane while an agent works.
 
 ```bash
-sara follow                # mission control: every open task with activity in the last 24h, all projects
+sara follow                # mission control: every open task in every project, most recently active first
 sara follow 782d04d7       # follow one task: step rail, current step, flow timeline
 sara follow -m             # minimal: step rails, active step and an event feed, grouped by project
 sara follow -m -p          # tie the view to this folder's project
@@ -536,7 +536,7 @@ sara follow -p pling       # tie the view to a named project
 sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (default 10)
 ```
 
-- **Mission control** lists each recently active task with a pulse badge
+- **Mission control** lists every open task, most recently active first, with a pulse badge
   (`LIVE` for activity in the last 2 minutes, `STALLED` when steps are open but
   nothing has happened past the stall threshold, otherwise `IDLE`), its step
   rail (`●` done, `◆` current, `○` open), the current step, and what the agent

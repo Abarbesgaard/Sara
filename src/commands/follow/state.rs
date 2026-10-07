@@ -9,7 +9,6 @@ use crate::infrastructure::model::Task;
 
 pub const LIVE_WINDOW_SECS: i64 = 120;
 pub const DEFAULT_STALL_MINS: i64 = 10;
-pub const MISSION_WINDOW_HOURS: i64 = 24;
 pub const MINIMAL_MAX_WIDTH: u16 = 40;
 pub const MINIMAL_MAX_HEIGHT: u16 = 12;
 pub const FEED_PER_TASK: usize = 50;
@@ -110,8 +109,7 @@ pub fn mission_cards(
     now: DateTime<Utc>,
     stall_after: Duration,
 ) -> Result<Vec<Card>> {
-    let since = now - Duration::hours(MISSION_WINDOW_HOURS);
-    db::recently_active_tasks(conn, since, None)?
+    db::open_tasks_by_activity(conn, None)?
         .iter()
         .map(|(t, at)| card(conn, t, *at, now, stall_after))
         .collect()

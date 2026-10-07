@@ -142,17 +142,16 @@ pub fn last_event_times(conn: &Connection) -> Result<HashMap<Uuid, DateTime<Utc>
     Ok(out)
 }
 
-pub fn recently_active_tasks(
+pub fn open_tasks_by_activity(
     conn: &Connection,
-    since: DateTime<Utc>,
     project: Option<&str>,
 ) -> Result<Vec<(Task, DateTime<Utc>)>> {
     let last = last_event_times(conn)?;
     let mut out: Vec<(Task, DateTime<Utc>)> = list_tasks(conn, project)?
         .into_iter()
-        .filter_map(|t| {
-            let at = last.get(&t.uuid).copied()?;
-            (at >= since).then_some((t, at))
+        .map(|t| {
+            let at = last.get(&t.uuid).copied().unwrap_or(t.modified);
+            (t, at)
         })
         .collect();
     out.sort_by_key(|e| std::cmp::Reverse(e.1));
