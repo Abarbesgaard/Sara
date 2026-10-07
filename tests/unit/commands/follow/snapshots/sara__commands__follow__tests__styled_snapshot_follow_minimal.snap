@@ -1,0 +1,35 @@
+---
+source: tests/unit/commands/follow/tests.rs
+expression: "styled(&app, 40, 12)"
+---
+── sara ────────────────────────────────
+26 ●●◆○ 2/4
+  ◆ step 3
+── pling ───────────────────────────────
+3 ●◆○ 1/3
+  ◆ step 2
+────────────────────────────────────────
+ 5s ▸ sara 26 wiring
+ 1m ≈ sara 26 recalled m12
+ 2m » sara 26 finding: lexer lossy
+20m ● pling 3 recall
+
+--- styles ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+bbcddbaaaaaccccccccccccccccccccccccccccc
+bbbbbbbbbbcccccccccccccccccccccccccccccc
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ecdbaaaaaccccccccccccccccccccccccccccccc
+bbbbbbbbbbcccccccccccccccccccccccccccccc
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaabbbbbbbbbbbbbbbbcccccccccccccccccccc
+aaaaccbbbbbbbbcccccccccccccccccccccccccc
+aaaaccbbbbbbbbcccccccccccccccccccccccccc
+aaaaddbbbbbbbbddddddcccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccc
+--- legend ---
+a fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+c fg=Some(Reset) bg=Some(Reset) mod=NONE
+d fg=Some(Green) bg=Some(Reset) mod=NONE
+e fg=Some(Yellow) bg=Some(Reset) mod=NONE

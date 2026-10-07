@@ -250,3 +250,48 @@ fn help_overlay_renders_without_panicking() {
     assert!(out.contains("Board"));
     assert!(out.contains("any key closes"));
 }
+
+fn styled_board() -> BoardState {
+    let mut a = Task::new("wire the theme".into(), "tk".into());
+    a.id = Some(1);
+    a.priority = Some(Priority::H);
+    a.tags = vec!["tui".into()];
+    a.due = Some(chrono::Utc::now() + chrono::Duration::hours(84));
+    let mut b = Task::new("pin snapshots".into(), "tk".into());
+    b.id = Some(2);
+    b.priority = Some(Priority::M);
+    b.started_at = Some(chrono::Utc::now());
+    let mut c = Task::new("old chore".into(), "tk".into());
+    c.id = Some(3);
+    c.priority = Some(Priority::L);
+    let mut d = Task::new("loose end".into(), "tk".into());
+    d.id = Some(4);
+    let pr = a.uuid.to_string();
+    let mut st = board_state(
+        vec![
+            issue_node(225, vec![a, b], true),
+            issue_node(224, vec![c], false),
+        ],
+        vec![d],
+    );
+    st.badges.insert(
+        pr,
+        LinkFlags {
+            any: true,
+            pr: true,
+            issue: true,
+        },
+    );
+    st.selected = 1;
+    st
+}
+
+#[test]
+fn styled_snapshot_board() {
+    let st = styled_board();
+    let rows = visible_rows(&st);
+    let (lines, _) = build_lines(&st, &rows);
+    insta::assert_snapshot!(crate::test_support::render_to_styled_string(100, 24, |f| {
+        render(f, &st, &lines)
+    }));
+}

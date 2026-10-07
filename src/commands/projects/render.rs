@@ -137,3 +137,7 @@ fn render(f: &mut Frame, st: &ProjectListState, lines: &[Line]) {
     )));
     f.render_widget(footer, chunks[1]);
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/projects/render.rs"]
+mod tests;

@@ -1,0 +1,47 @@
+---
+source: tests/unit/commands/follow/tests.rs
+expression: "styled(&app, 80, 16)"
+---
+ sara  ▸ follow · mission control             all projects · 1 live · 1 stalled
+▸  LIVE  26  task 26                                                  sara · 30s
+    ●●◆○ 2/4  step 3
+    ▸ writing tests
+
+   STALLED  3  task 3                                                pling · 20m
+    ●◆○ 1/3  step 2
+
+   IDLE  9  task 9                                                    pling · 1d
+    ●●● 3/3  all steps done
+
+
+
+
+
+↑↓ select  ⏎ follow  m minimal  q quit
+--- styles ---
+aaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccdddddddddddddddeeeeeeffffffffffffc
+bbggggggcbbccaaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddd
+cccceebdddddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+dddddddddddddddddddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cchhhhhhhhhcfccccccccccccccccccccccccccccccccccccccccccccccccccccccccddddddddddd
+ccccebdddddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cciiiiiicdccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddd
+cccceeeddddeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbdddddddddbdddddddddbddddddddddbdddddcccccccccccccccccccccccccccccccccccccccccc
+--- legend ---
+a fg=Some(Black) bg=Some(Cyan) mod=BOLD
+b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+c fg=Some(Reset) bg=Some(Reset) mod=NONE
+d fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+e fg=Some(Green) bg=Some(Reset) mod=NONE
+f fg=Some(Yellow) bg=Some(Reset) mod=NONE
+g fg=Some(Black) bg=Some(Green) mod=BOLD
+h fg=Some(Black) bg=Some(Yellow) mod=BOLD
+i fg=Some(Black) bg=Some(DarkGray) mod=BOLD

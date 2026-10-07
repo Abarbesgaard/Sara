@@ -1,0 +1,33 @@
+---
+source: tests/unit/commands/projects/render.rs
+expression: "crate::test_support::render_to_styled_string(90, 10, |f|\nrender(f, &st, &lines))"
+---
+┌ Projects · 3 · 5 pending ──────────────────────────────────────────────────────────────┐
+│   sara             1 pending ·  40 done   sara goal · [rust]   1h ago                  │
+│ ▶ pling-backend    0 pending ·   2 done   pling-backend goal · [rust]   3d ago         │
+│   dream-web        4 pending ·   0 done   dream-web goal · [rust]                      │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+ j/k navigate  Enter open board  PgDn/PgUp scroll  q quit
+--- styles ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+abbbbbbbbbbbbbbbbccccccccccccccccccccccccdddddddddddddddddddddccccccccceeeeeeeeeeeeeeeeeea
+affffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggeeeeeeeeea
+abbbbbbbbbbbbbbbbccccccccccccccccccccccccddddddddddddddddddddddddddccceeeeeeeeeeeeeeeeeeea
+aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeea
+aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeea
+aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeea
+aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeea
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+--- legend ---
+a fg=Some(Cyan) bg=Some(Reset) mod=NONE
+b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+c fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+d fg=Some(Gray) bg=Some(Reset) mod=NONE
+e fg=Some(Reset) bg=Some(Reset) mod=NONE
+f fg=Some(White) bg=Some(Blue) mod=BOLD
+g fg=Some(White) bg=Some(Blue) mod=NONE

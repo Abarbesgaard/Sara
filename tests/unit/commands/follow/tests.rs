@@ -463,3 +463,61 @@ fn follow_render_minimal_groups_projects_and_names_them_in_the_feed() {
     assert_eq!(lines[7], " 5s ▸ sara 7 wiring", "{out}");
     assert_eq!(lines[8], " 1m ▸ pling 88 tests", "{out}");
 }
+
+fn styled(app: &App, w: u16, h: u16) -> String {
+    let theme = Theme::new(true);
+    crate::test_support::render_to_styled_string(w, h, |f| render(f, app, &theme))
+}
+
+fn fixed(mut c: Card, n: u128) -> Card {
+    c.uuid = Uuid::from_u128(n);
+    c
+}
+
+#[test]
+fn styled_snapshot_follow_mission() {
+    let app = mission(
+        vec![
+            fixed(mk_card(26, "sara", 2, 4, Some("writing tests"), 30), 1),
+            fixed(mk_card(3, "pling", 1, 3, None, 60 * 20), 2),
+            fixed(mk_card(9, "pling", 3, 3, None, 60 * 60 * 30), 3),
+        ],
+        None,
+    );
+    insta::assert_snapshot!(styled(&app, 80, 16));
+}
+
+#[test]
+fn styled_snapshot_follow_minimal() {
+    let a = fixed(mk_card(26, "sara", 2, 4, Some("wiring"), 5), 1);
+    let b = fixed(mk_card(3, "pling", 1, 3, None, 60 * 20), 2);
+    let feed = vec![
+        item(&b, fev(1200, FlowKind::StepDone, "recall")),
+        item(
+            &a,
+            fev(120, FlowKind::Note("finding".into()), "lexer lossy"),
+        ),
+        item(&a, fev(60, FlowKind::Memory("recalled".into()), "m12")),
+        item(&a, fev(5, FlowKind::Doing, "wiring")),
+    ];
+    let mut app = mission(vec![a, b], None);
+    app.minimal = true;
+    app.feed = feed;
+    insta::assert_snapshot!(styled(&app, 40, 12));
+}
+
+#[test]
+fn styled_snapshot_follow_task() {
+    let card = fixed(mk_card(26, "sara", 1, 3, Some("wiring the CLI"), 10), 1);
+    let events = vec![
+        fev(600, FlowKind::StepAdded, "step 1"),
+        fev(300, FlowKind::StepDone, "step 1"),
+        fev(120, FlowKind::Note("risk".into()), "lexer is lossy"),
+        fev(60, FlowKind::Memory("recalled".into()), "m12"),
+        fev(10, FlowKind::Doing, "wiring the CLI"),
+    ];
+    let mut app = App::new(Mode::Task(card.uuid), false, None, false, stall());
+    app.now = now();
+    app.focus = Some(Focus { card, events });
+    insta::assert_snapshot!(styled(&app, 60, 16));
+}
