@@ -1,0 +1,55 @@
+---
+source: tests/unit/commands/info/render.rs
+expression: out
+---
+┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────┐
+│ ← blocked by (1)                       ││   [ ] step number 11                                   │
+│  └─✓ 1 task 1                          ││   [ ] step number 12                                   │
+│────────────────────────────────────────││   [ ] step number 13                                   │
+│ ▶   6 root task                        ││   [ ] step number 14                                   │
+│────────────────────────────────────────││   [ ] step number 15                                   │
+│ blocks → (1)                           ││   [ ] step number 16                                   │
+│  └─○ 2 task 2                          ││   [ ] step number 17                                   │
+└────────────────────────────────────────┘│   [ ] step number 18                                   │
+┌ Git ───────────────────────────────────┐│   [ ] step number 19                                   │
+│  No branch tied.                       ││   [ ] step number 20                                   │
+│                                        ││   [ ] step number 21                                   │
+│  Run: sara <id> addbranch              ││   [ ] step number 22                                   │
+│                                        ││   [ ] step number 23                                   │
+│                                        ││   [ ] step number 24                                   │
+│                                        ││ ▶ [ ] step number 25  💬 1                              │
+│                                        ││         why this step matters                          │
+│                                        ││         ╰ hh:mm  on step 26                            │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+ ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help
+--- styles ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+acccccccccccccccccdddddddddddddddddddddddabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+affffggggggggggddddddddddddddddddddddddddabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+affffffffffffffffffffffffffffffffffffffffabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+ahhhhhhhhhhhhhhhhddddddddddddddddddddddddabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+affffffffffffffffffffffffffffffffffffffffabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+acccccccccccccdddddddddddddddddddddddddddabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+affffbbbbbbbbbbddddddddddddddddddddddddddabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+ffffffffffffffffffffffffffffffffffffffffffbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+ffffffffffffffffffdddddddddddddddddddddddfbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+feeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddfbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbiiiiiiihhhhhhhhhhhhhhbbbdbddddddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbffffffffffffffffffffffffffffffddddddddddddddddddddddddddb
+fddddddddddddddddddddddddddddddddddddddddfbffffffffffffffffffffffffffffddddddddddddddddddddddddddddb
+ffffffffffffffffffffffffffffffffffffffffffbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+--- legend ---
+a fg=Some(Magenta) bg=Some(Reset) mod=NONE
+b fg=Some(Cyan) bg=Some(Reset) mod=NONE
+c fg=Some(Gray) bg=Some(Reset) mod=BOLD
+d fg=Some(Reset) bg=Some(Reset) mod=NONE
+e fg=Some(Gray) bg=Some(Reset) mod=NONE
+f fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+g fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+h fg=Some(White) bg=Some(Blue) mod=BOLD
+i fg=Some(White) bg=Some(Blue) mod=NONE
