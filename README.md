@@ -530,7 +530,7 @@ in a side pane while an agent works.
 ```bash
 sara follow                # mission control: every task with activity in the last 24h
 sara follow 782d04d7       # follow one task: step rail, current step, flow timeline
-sara follow -m             # minimal: just the step rails for this project
+sara follow -m             # minimal: step rails, active step and an event feed for this project
 sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (default 10)
 ```
 
@@ -544,9 +544,12 @@ sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (defaul
   notes, memories recalled or cited, "now doing" lines, and other changes,
   with the newest at the bottom.
 - **Minimal mode** (`-m`) shows one step rail per active task in the current
-  project and a dim `▸ now doing` line, and fits in a 24×6 pane. It switches on
-  automatically when the terminal is narrower than 40 columns or shorter than
-  12 rows.
+  project with the name of the active step (`◆ …`) beneath it, then a feed of
+  the tasks' events in ascending order, newest at the bottom: steps added and
+  done, notes, memories and "now doing" lines, each prefixed with its age (and
+  the task id when several tasks are active). It fits in a 24×6 pane and
+  switches on automatically when the terminal is narrower than 40 columns or
+  shorter than 12 rows.
 
 Agents report the "now doing" line with the MCP `doing` tool, or by passing
 `doing` to `step_done` or `annotate`. From a shell, use

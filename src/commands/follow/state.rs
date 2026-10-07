@@ -12,6 +12,8 @@ pub const DEFAULT_STALL_MINS: i64 = 10;
 pub const MISSION_WINDOW_HOURS: i64 = 24;
 pub const MINIMAL_MAX_WIDTH: u16 = 40;
 pub const MINIMAL_MAX_HEIGHT: u16 = 12;
+pub const FEED_PER_TASK: usize = 50;
+pub const FEED_MAX: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pulse {
@@ -116,6 +118,36 @@ pub fn mission_cards(
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FeedItem {
+    pub uuid: Uuid,
+    pub label: String,
+    pub event: FlowEvent,
+}
+
+pub fn in_feed(e: &FlowEvent) -> bool {
+    !matches!(e.kind, db::FlowKind::Change(_))
+}
+
+pub fn feed(conn: &Connection, cards: &[Card]) -> Result<Vec<FeedItem>> {
+    let mut items = Vec::new();
+    for c in cards {
+        let events: Vec<FlowEvent> = db::flow_events(conn, &c.uuid)?
+            .into_iter()
+            .filter(in_feed)
+            .collect();
+        let start = events.len().saturating_sub(FEED_PER_TASK);
+        items.extend(events.into_iter().skip(start).map(|event| FeedItem {
+            uuid: c.uuid,
+            label: c.label(),
+            event,
+        }));
+    }
+    items.sort_by_key(|i| i.event.at);
+    let start = items.len().saturating_sub(FEED_MAX);
+    Ok(items.split_off(start))
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Focus {
     pub card: Card,
     pub events: Vec<FlowEvent>,
@@ -163,6 +195,7 @@ pub struct App {
     pub now: DateTime<Utc>,
     pub cards: Vec<Card>,
     pub focus: Option<Focus>,
+    pub feed: Vec<FeedItem>,
 }
 
 impl App {
@@ -184,6 +217,7 @@ impl App {
             now: Utc::now(),
             cards: Vec::new(),
             focus: None,
+            feed: Vec::new(),
         }
     }
 
@@ -204,11 +238,20 @@ impl App {
         cards
     }
 
+    pub fn visible_feed(&self, minimal: bool) -> Vec<&FeedItem> {
+        let visible: Vec<Uuid> = self.visible_cards(minimal).iter().map(|c| c.uuid).collect();
+        self.feed
+            .iter()
+            .filter(|i| visible.contains(&i.uuid))
+            .collect()
+    }
+
     pub fn refresh(&mut self, conn: &Connection, now: DateTime<Utc>) -> Result<()> {
         self.now = now;
         match self.mode {
             Mode::Mission => {
                 self.cards = mission_cards(conn, now, self.stall_after)?;
+                self.feed = feed(conn, &self.cards)?;
                 self.focus = None;
                 let n = self.visible_cards(self.minimal).len();
                 self.selected = self.selected.min(n.saturating_sub(1));

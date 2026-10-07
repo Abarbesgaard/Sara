@@ -11,18 +11,35 @@ use crate::infrastructure::tui::theme::{
     GLYPH_CURRENT, GLYPH_DONE, GLYPH_OPEN, GLYPH_PROMPT, Theme, Tone,
 };
 
-use super::state::{App, Card, Mode, Pulse, is_minimal};
+use super::state::{App, Card, Mode, Pulse, in_feed, is_minimal};
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
     let minimal = is_minimal(app.minimal, area.width, area.height);
     match (app.mode, &app.focus) {
-        (Mode::Task(_), Some(focus)) if minimal => render_minimal(f, area, &[&focus.card], theme),
+        (Mode::Task(_), Some(focus)) if minimal => {
+            let feed: Vec<(Option<String>, &FlowEvent)> = focus
+                .events
+                .iter()
+                .filter(|e| in_feed(e))
+                .map(|e| (None, e))
+                .collect();
+            render_minimal(f, area, &[&focus.card], &feed, app.now, theme)
+        }
         (Mode::Task(_), Some(focus)) => {
             render_task(f, area, app, &focus.card, &focus.events, theme)
         }
         (Mode::Task(_), None) => {}
-        (Mode::Mission, _) if minimal => render_minimal(f, area, &app.visible_cards(true), theme),
+        (Mode::Mission, _) if minimal => {
+            let cards = app.visible_cards(true);
+            let many = cards.len() > 1;
+            let feed: Vec<(Option<String>, &FlowEvent)> = app
+                .visible_feed(true)
+                .into_iter()
+                .map(|i| (many.then(|| i.label.clone()), &i.event))
+                .collect();
+            render_minimal(f, area, &cards, &feed, app.now, theme)
+        }
         (Mode::Mission, _) => render_mission(f, area, app, theme),
     }
 }
@@ -128,6 +145,15 @@ fn card_rail_line(card: &Card, width: usize, indent: &str, theme: &Theme) -> Lin
     Line::from(spans)
 }
 
+fn step_line(step: &str, width: usize, theme: &Theme) -> Line<'static> {
+    let prefix = format!("  {GLYPH_CURRENT} ");
+    let room = width.saturating_sub(prefix.chars().count());
+    Line::from(vec![
+        Span::styled(prefix, theme.accent()),
+        Span::styled(fit(step, room), theme.accent()),
+    ])
+}
+
 fn doing_line(doing: &str, width: usize, indent: &str, theme: &Theme) -> Line<'static> {
     let prefix = format!("{indent}{GLYPH_PROMPT} ");
     let room = width.saturating_sub(prefix.chars().count());
@@ -137,7 +163,14 @@ fn doing_line(doing: &str, width: usize, indent: &str, theme: &Theme) -> Line<'s
     ])
 }
 
-pub fn render_minimal(f: &mut Frame, area: Rect, cards: &[&Card], theme: &Theme) {
+pub fn render_minimal(
+    f: &mut Frame,
+    area: Rect,
+    cards: &[&Card],
+    feed: &[(Option<String>, &FlowEvent)],
+    now: DateTime<Utc>,
+    theme: &Theme,
+) {
     let width = area.width as usize;
     let height = area.height as usize;
     if cards.is_empty() {
@@ -145,11 +178,51 @@ pub fn render_minimal(f: &mut Frame, area: Rect, cards: &[&Card], theme: &Theme)
         f.render_widget(Paragraph::new(line), area);
         return;
     }
+    if feed.is_empty() {
+        f.render_widget(
+            Paragraph::new(rails_with_doing(cards, width, height, theme)),
+            area,
+        );
+        return;
+    }
+    let budget = (height / 2).max(1);
     let mut lines: Vec<Line> = Vec::new();
     for (i, card) in cards.iter().enumerate() {
         let more_after = usize::from(i + 1 < cards.len());
-        let rows_left = height - lines.len();
-        if rows_left < 1 + more_after {
+        let left = budget.saturating_sub(lines.len());
+        if left < 1 + more_after {
+            let more = format!("+{} more", cards.len() - i);
+            lines.push(Line::styled(fit(&more, width), theme.muted()));
+            break;
+        }
+        lines.push(card_rail_line(card, width, "", theme));
+        if let Some(step) = card.current().map(|c| &card.steps[c].text)
+            && left >= 2 + more_after
+        {
+            lines.push(step_line(step, width, theme));
+        }
+    }
+    if height >= 10 {
+        lines.push(Line::styled("─".repeat(width), theme.muted()));
+    }
+    let room = height.saturating_sub(lines.len());
+    for (label, e) in &feed[feed.len().saturating_sub(room)..] {
+        lines.push(feed_line(label.as_deref(), e, now, width, theme));
+    }
+    lines.truncate(height);
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn rails_with_doing(
+    cards: &[&Card],
+    width: usize,
+    height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, card) in cards.iter().enumerate() {
+        let more_after = usize::from(i + 1 < cards.len());
+        if height - lines.len() < 1 + more_after {
             let more = format!("+{} more", cards.len() - i);
             lines.push(Line::styled(fit(&more, width), theme.muted()));
             break;
@@ -162,7 +235,31 @@ pub fn render_minimal(f: &mut Frame, area: Rect, cards: &[&Card], theme: &Theme)
         }
     }
     lines.truncate(height);
-    f.render_widget(Paragraph::new(lines), area);
+    lines
+}
+
+fn feed_line(
+    label: Option<&str>,
+    e: &FlowEvent,
+    now: DateTime<Utc>,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let when = format!("{:>3} ", age(now, e.at));
+    let glyph = format!("{} ", event_glyph(&e.kind));
+    let mut spans = vec![
+        Span::styled(when.clone(), theme.muted()),
+        Span::styled(glyph.clone(), event_style(&e.kind, theme)),
+    ];
+    let mut used = when.chars().count() + glyph.chars().count();
+    if let Some(l) = label {
+        let tag = format!("{l} ");
+        used += tag.chars().count();
+        spans.push(Span::styled(tag, theme.accent()));
+    }
+    let text = fit(&event_text(e), width.saturating_sub(used));
+    spans.push(Span::styled(text, event_style(&e.kind, theme)));
+    Line::from(spans)
 }
 
 fn mission_card_lines(
