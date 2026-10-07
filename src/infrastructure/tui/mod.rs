@@ -4,6 +4,7 @@ pub mod review_form;
 pub mod screen;
 pub mod theme;
 
+use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
 use crossterm::{
     execute,
@@ -99,7 +100,7 @@ pub fn centered_rect(pct_x: u16, pct_y: u16, area: ratatui::layout::Rect) -> rat
 
 pub fn render_help_overlay(f: &mut ratatui::Frame, title: &str, bindings: &[(&str, &str)]) {
     use ratatui::{
-        style::{Color, Modifier, Style},
+        style::{Modifier, Style},
         text::{Line, Span},
         widgets::{Block, Borders, Clear, Paragraph},
     };
@@ -120,7 +121,7 @@ pub fn render_help_overlay(f: &mut ratatui::Frame, title: &str, bindings: &[(&st
                 Span::styled(
                     format!("{key:<key_w$}"),
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(ink(Ink::Accent))
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(*desc),
@@ -130,12 +131,12 @@ pub fn render_help_overlay(f: &mut ratatui::Frame, title: &str, bindings: &[(&st
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "(any key closes this)",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )));
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(" {title} — keybindings "))
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(ink(Ink::Warn)));
     f.render_widget(Paragraph::new(lines).block(block), area);
 }

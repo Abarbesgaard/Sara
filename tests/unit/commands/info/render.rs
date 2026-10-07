@@ -443,3 +443,16 @@ fn styled_snapshot_info_with_notes() {
         insta::assert_snapshot!(out);
     });
 }
+
+#[test]
+fn styled_snapshot_info_retro() {
+    use crate::infrastructure::tui::theme::{Palette, set_look};
+    set_look(Palette::Retro, true, true);
+    let mut st = base_state(styled_detail());
+    st.selected = 1;
+    let out = crate::test_support::render_to_styled_string(120, 48, |f| render(f, &mut st));
+    set_look(Palette::Classic, true, true);
+    insta::with_settings!({filters => vec![(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "YYYY-MM-DD hh:mm")]}, {
+        insta::assert_snapshot!(out);
+    });
+}

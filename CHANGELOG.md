@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **TUI palettes.** Choose `classic` (today's colours, the default) or `retro`
+  (phosphor green with a cyan-green accent and amber warnings) via `[tui] theme`
+  in `config.toml` or the `SARA_THEME` environment variable. Retro falls back to
+  16 ANSI colours when the terminal lacks truecolor, and `NO_COLOR` now
+  disables colour in every full-screen view.
+
+### Changed
+
+- Every TUI screen now takes its colours from semantic roles in `tui::theme`
+  instead of hard-coded colours; styled snapshot tests pin each screen.
+
 ## [2.3.0] - 2026-10-07
 
 ### Changed

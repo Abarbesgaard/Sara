@@ -1,6 +1,5 @@
 mod annotation;
 mod cite;
-mod color;
 pub mod insight;
 mod json;
 mod memory_graph;
@@ -11,7 +10,6 @@ mod time;
 
 pub use annotation::annotation_target;
 pub use cite::{cited_labels, cited_memories, print_cited, with_citation};
-pub use color::heat_color;
 pub use json::{json_strs, print_json};
 pub use memory_graph::{
     canonical_labels, derived_children, derived_count, derived_from_suffix, item_label,

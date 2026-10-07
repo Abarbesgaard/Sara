@@ -1,14 +1,15 @@
+use crate::infrastructure::tui::theme::{Ink, heat, ink};
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
 use super::types::ActivityData;
-use crate::commands::shared::{heat_color, month_abbr};
+use crate::commands::shared::month_abbr;
 
 const CELL: &str = "██";
 
@@ -28,7 +29,7 @@ fn render_on(f: &mut Frame, data: &ActivityData, today: NaiveDate) {
     let outer = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(ink(Ink::Accent)));
     let inner = outer.inner(area);
     f.render_widget(outer, area);
 
@@ -89,7 +90,7 @@ fn render_stats(f: &mut Frame, data: &ActivityData, area: ratatui::layout::Rect)
         Paragraph::new(line).block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(ink(Ink::Muted))),
         ),
         area,
     );
@@ -115,7 +116,7 @@ fn render_month_labels(
         if month != last_month {
             spans.push(Span::styled(
                 format!("{:<width$}", month_abbr(month), width = cell_width as usize),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(ink(Ink::Soft)),
             ));
             last_month = month;
         } else {
@@ -150,7 +151,7 @@ fn render_heatmap(
         };
         let mut spans = vec![Span::styled(
             format!("{label} "),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(ink(Ink::Muted)),
         )];
 
         let mut week_start = grid_start;
@@ -162,9 +163,9 @@ fn render_heatmap(
                 counts.get(&day).copied().unwrap_or(0)
             };
             let color = if day > today {
-                Color::Rgb(12, 14, 18)
+                ink(Ink::Void)
             } else {
-                heat_color(count, max)
+                heat(count, max)
             };
             spans.push(Span::styled(
                 format!("{CELL} "),
@@ -195,25 +196,25 @@ fn render_legend(f: &mut Frame, max: u32, area: ratatui::layout::Rect) {
     ];
     let mut spans = vec![Span::styled(
         "    Less ",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(ink(Ink::Muted)),
     )];
     for (count, _) in &levels {
-        let color = heat_color(*count, max);
+        let color = heat(*count, max);
         spans.push(Span::styled(CELL, Style::default().bg(color).fg(color)));
         spans.push(Span::raw(" "));
     }
-    spans.push(Span::styled("More", Style::default().fg(Color::DarkGray)));
+    spans.push(Span::styled("More", Style::default().fg(ink(Ink::Muted))));
     spans.push(Span::styled(
         "    q/Esc to close",
         Style::default()
-            .fg(Color::DarkGray)
+            .fg(ink(Ink::Muted))
             .add_modifier(Modifier::DIM),
     ));
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn stat_span(label: &str, value: &str) -> Span<'static> {
-    Span::raw(format!("{label}: {value}")).style(Style::default().fg(Color::White))
+    Span::raw(format!("{label}: {value}")).style(Style::default().fg(ink(Ink::Text)))
 }
 
 #[cfg(test)]

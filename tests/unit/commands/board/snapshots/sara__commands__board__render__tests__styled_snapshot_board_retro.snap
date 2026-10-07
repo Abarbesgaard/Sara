@@ -1,0 +1,72 @@
+---
+source: tests/unit/commands/board/render.rs
+expression: out
+---
+[ Total: 4 | Active: 1 | Issues: 2 | Done: 0 ]                                [ Next: #4 loose end ]
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+
+Priority:
+High [███] 25%   Med [███] 25%   Low [███] 25%   None [███] 25%
+
+╭ tk ──────────────────────────────────────────────────────────────────────────────────────────────╮
+│     ID  PRI AGE           DESCRIPTION                                                            │
+│ ▾        H  0m            #225 o/r  [0/2 done]                                                   │
+│▶ ├─  1   H  0m       PR   wire the theme                                                         │
+│  └─  2   M  0m            pin snapshots                                                          │
+│ ▸        L  0m            #224 o/r  [0/1 done]                                                   │
+│      4   -  0m            loose end                                                              │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+ j/k Select  |  h/l Collapse/Expand  |  Enter Open  |  ? Help  |  q Quit
+--- styles ---
+aabbbbbbbcbbbbbbbbbbbcbbbbbbbbbbbcbbbbbbbbbcaaddddddddddddddddddddddddddddddddaabbbbbbccccccccccccaa
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccc
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+cccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+eeeeebfffbeeeeeeeeeeebgggbeeeeeeeeeeebhhhbeeeeeeeeeeeebbbbbeeeeeeedddddddddddddddddddddddddddddddddd
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+iaaaaiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+ijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+ikkkkkkkkklllkkkkkkkkkkkkkkkmmmmmmmmkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddi
+innnnnnnnnooonnnnnnnnnnpppppoooooooooooooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+ieeeeiiiiiqqqebbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+ikkkkkkkkkrrrkkkkkkkkkkkkkkkmmmmmmmmkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddi
+ieeeeiiiiibbbebbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+ccccbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbbbbcccccbbbbbbbbbbcbbbbbbbbbbcbbbbbdddddddddddddddddddddddddddd
+--- legend ---
+a fg=Some(Rgb(70, 245, 195)) bg=Some(Reset) mod=BOLD
+b fg=Some(Rgb(62, 112, 88)) bg=Some(Reset) mod=NONE
+c fg=Some(Rgb(200, 255, 215)) bg=Some(Reset) mod=BOLD
+d fg=Some(Reset) bg=Some(Reset) mod=NONE
+e fg=Some(Rgb(130, 205, 160)) bg=Some(Reset) mod=NONE
+f fg=Some(Rgb(255, 95, 85)) bg=Some(Reset) mod=NONE
+g fg=Some(Rgb(255, 190, 70)) bg=Some(Reset) mod=NONE
+h fg=Some(Rgb(95, 230, 115)) bg=Some(Reset) mod=NONE
+i fg=Some(Rgb(70, 245, 195)) bg=Some(Reset) mod=NONE
+j fg=Some(Rgb(200, 255, 215)) bg=Some(Reset) mod=BOLD | UNDERLINED
+k fg=Some(Rgb(62, 112, 88)) bg=Some(Rgb(12, 34, 28)) mod=NONE
+l fg=Some(Rgb(200, 255, 215)) bg=Some(Rgb(255, 95, 85)) mod=BOLD
+m fg=Some(Rgb(70, 245, 195)) bg=Some(Rgb(12, 34, 28)) mod=BOLD
+n fg=Some(Rgb(200, 255, 215)) bg=Some(Rgb(18, 72, 58)) mod=NONE
+o fg=Some(Rgb(200, 255, 215)) bg=Some(Rgb(18, 72, 58)) mod=BOLD
+p fg=Some(Rgb(190, 160, 255)) bg=Some(Reset) mod=BOLD
+q fg=Some(Rgb(6, 16, 12)) bg=Some(Rgb(255, 190, 70)) mod=BOLD
+r fg=Some(Rgb(6, 16, 12)) bg=Some(Rgb(95, 230, 115)) mod=BOLD

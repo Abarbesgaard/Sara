@@ -949,7 +949,23 @@ has_tags   = 1.0
 project    = 1.0
 age        = 2.0
 age_max    = 365.0
+
+[tui]
+theme = "classic"           # "classic" (default) or "retro" (phosphor green)
 ```
+
+### TUI palette
+
+Every full-screen view (`info`, the board, `add`/`modify` review, `projects`,
+`activity`, `follow`) draws from one palette:
+
+- **`classic`** — the familiar terminal colours (default).
+- **`retro`** — a phosphor look: pale green text, a cyan-green accent, amber
+  warnings. It uses 24-bit colour when `COLORTERM` is `truecolor`/`24bit` and
+  falls back to the 16 ANSI colours otherwise.
+
+Set it in `[tui] theme`, or override per shell with `SARA_THEME=retro`.
+`NO_COLOR=1` turns colour off in every palette.
 
 Print the resolved config and database paths:
 

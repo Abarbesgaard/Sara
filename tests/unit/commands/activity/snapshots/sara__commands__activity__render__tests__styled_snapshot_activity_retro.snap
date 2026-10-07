@@ -1,0 +1,52 @@
+---
+source: tests/unit/commands/activity/render.rs
+expression: out
+---
+┌ Activity — all projects ───────────────────────────────────────────────────────────────┐
+│Created: 120   Completed: 98   Completion rate: 82%   Current streak: 6d   Longest strea│
+│                                                                                        │
+│────────────────────────────────────────────────────────────────────────────────────────│
+│    Dec           Jan                         Feb                         Mar           │
+│                                                                                        │
+│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│Mon ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│Wed ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│Fri ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
+│    Less ██ ██ ██ ██ ██ More    q/Esc to close                                          │
+│                                                                                        │
+│                                                                                        │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+--- styles ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+abbbbbbbbbbbbcccbbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbcccbbbbbbbbbbbbba
+acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
+adddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddda
+acccceeeeeeeccccccceeeeeeeccccccccccccccccccccceeeeeeeccccccccccccccccccccceeeeeeeccccccca
+acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffggggggggggggggggggggggggcccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhcccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffffffffffffffffffffffffffcccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffiiiiiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffiiiiiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccca
+addddffffffffffffjjjjjjjjjjjjjjjjjjjjjjjjcccccccccccccccccccccccccccccccccccccccccccccccca
+addddkkkkkfffhhjjjjiijiijllllmmmmmmmmmmmmnnnnnncccccccccccccccccccccccccccccccccccccccccca
+acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
+acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+--- legend ---
+a fg=Some(Rgb(70, 245, 195)) bg=Some(Reset) mod=NONE
+b fg=Some(Rgb(200, 255, 215)) bg=Some(Reset) mod=NONE
+c fg=Some(Reset) bg=Some(Reset) mod=NONE
+d fg=Some(Rgb(62, 112, 88)) bg=Some(Reset) mod=NONE
+e fg=Some(Rgb(130, 205, 160)) bg=Some(Reset) mod=NONE
+f fg=Some(Rgb(14, 26, 22)) bg=Some(Rgb(14, 26, 22)) mod=NONE
+g fg=Some(Rgb(30, 140, 105)) bg=Some(Rgb(30, 140, 105)) mod=NONE
+h fg=Some(Rgb(20, 80, 62)) bg=Some(Rgb(20, 80, 62)) mod=NONE
+i fg=Some(Rgb(110, 255, 210)) bg=Some(Rgb(110, 255, 210)) mod=NONE
+j fg=Some(Rgb(50, 200, 155)) bg=Some(Rgb(50, 200, 155)) mod=NONE
+k fg=Some(Rgb(62, 112, 88)) bg=Some(Rgb(14, 26, 22)) mod=NONE
+l fg=Some(Rgb(62, 112, 88)) bg=Some(Rgb(50, 200, 155)) mod=NONE
+m fg=Some(Rgb(62, 112, 88)) bg=Some(Rgb(50, 200, 155)) mod=DIM
+n fg=Some(Rgb(62, 112, 88)) bg=Some(Reset) mod=DIM

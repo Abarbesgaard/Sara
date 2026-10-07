@@ -295,3 +295,15 @@ fn styled_snapshot_board() {
         render(f, &st, &lines)
     }));
 }
+
+#[test]
+fn styled_snapshot_board_retro() {
+    use crate::infrastructure::tui::theme::{Palette, set_look};
+    set_look(Palette::Retro, true, true);
+    let st = styled_board();
+    let rows = visible_rows(&st);
+    let (lines, _) = build_lines(&st, &rows);
+    let out = crate::test_support::render_to_styled_string(100, 24, |f| render(f, &st, &lines));
+    set_look(Palette::Classic, true, true);
+    insta::assert_snapshot!(out);
+}

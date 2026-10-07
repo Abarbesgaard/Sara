@@ -73,6 +73,7 @@ fn run() -> Result<()> {
     };
 
     let cfg = config::load()?;
+    infrastructure::tui::theme::init(Some(&cfg.tui.theme));
     let conn = db::open()?;
 
     let _ = infrastructure::memory::embedding::ensure_index_current(&conn);
