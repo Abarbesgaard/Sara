@@ -595,7 +595,9 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             all,
             stall,
         } => {
-            let project = project.or_else(|| {
+            let tied = project.is_some();
+            let all = all || !tied;
+            let project = project.flatten().or_else(|| {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 crate::infrastructure::project::find_git_root(&cwd)
                     .map(|root| crate::infrastructure::project::project_name_from_root(&root))

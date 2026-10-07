@@ -124,19 +124,22 @@ fn flow_card_from_db_counts_steps_and_reads_doing() {
 }
 
 #[test]
-fn flow_scope_defaults_to_all_in_mission_and_project_in_minimal() {
-    let app = mission(
+fn flow_scope_is_all_projects_unless_tied() {
+    let cards = || {
         vec![
             mk_card(1, "a", 0, 2, None, 5),
             mk_card(2, "b", 0, 2, None, 5),
-        ],
-        Some("a"),
-    );
+        ]
+    };
+    let mut app = mission(cards(), Some("a"));
+    app.all = true;
     assert_eq!(app.visible_cards(false).len(), 2);
+    assert_eq!(app.visible_cards(true).len(), 2);
+    app.handle_key(key(KeyCode::Char('p')), true);
     assert_eq!(app.visible_cards(true).len(), 1);
-    let mut app = app;
-    app.handle_key(key(KeyCode::Char('p')), false);
-    assert_eq!(app.visible_cards(false).len(), 1);
+    let tied = mission(cards(), Some("a"));
+    assert_eq!(tied.visible_cards(true).len(), 1);
+    assert_eq!(tied.visible_cards(false).len(), 1);
 }
 
 #[test]
@@ -323,6 +326,7 @@ fn fev(secs: i64, kind: FlowKind, text: &str) -> FlowEvent {
 fn item(card: &Card, e: FlowEvent) -> FeedItem {
     FeedItem {
         uuid: card.uuid,
+        project: card.project.clone(),
         label: card.label(),
         event: e,
     }
@@ -434,4 +438,28 @@ fn follow_render_minimal_feed_collapses_many_tasks_into_a_counter() {
     assert_eq!(lines[1], "  ◆ step 2", "{out}");
     assert_eq!(lines[2], "+4 more", "{out}");
     assert_eq!(lines[3], " 5s ▸ 1 busy", "{out}");
+}
+
+#[test]
+fn follow_render_minimal_groups_projects_and_names_them_in_the_feed() {
+    let a = mk_card(7, "sara", 1, 2, None, 5);
+    let b = mk_card(88, "pling", 0, 2, None, 60);
+    let feed = vec![
+        item(&b, fev(60, FlowKind::Doing, "tests")),
+        item(&a, fev(5, FlowKind::Doing, "wiring")),
+    ];
+    let mut app = mission(vec![a, b], Some("sara"));
+    app.all = true;
+    app.feed = feed;
+    let out = draw(&app, 30, 12);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], format!("── sara {}", "─".repeat(22)), "{out}");
+    assert!(lines[1].starts_with("7 "), "{out}");
+    assert_eq!(lines[2], "  ◆ step 2", "{out}");
+    assert!(lines[3].starts_with("── pling ─"), "{out}");
+    assert!(lines[4].starts_with("88 "), "{out}");
+    assert_eq!(lines[5], "  ◆ step 1", "{out}");
+    assert!(lines[6].starts_with('─'), "{out}");
+    assert_eq!(lines[7], " 5s ▸ sara 7 wiring", "{out}");
+    assert_eq!(lines[8], " 1m ▸ pling 88 tests", "{out}");
 }
