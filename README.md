@@ -36,6 +36,7 @@ is ever written into your repositories.**
 - [Core concepts](#core-concepts)
 - [The task list](#the-task-list)
 - [The detail view (`sara info`)](#the-detail-view-sara-info)
+- [Following agents live (`sara follow`)](#following-agents-live-sara-follow)
 - [MCP server (`sara mcp`)](#mcp-server-sara-mcp)
 - [Working with tasks](#working-with-tasks)
   - [Adding tasks](#adding-tasks)
@@ -520,6 +521,40 @@ stable, omits the unbounded History log by default, and needs no reshaping.
 
 ---
 
+## Following agents live (`sara follow`)
+
+`sara follow` is a live, read-only view of agents working through tasks. It
+refreshes as soon as anything writes to the database, so you can keep it open
+in a side pane while an agent works.
+
+```bash
+sara follow                # mission control: every task with activity in the last 24h
+sara follow 782d04d7       # follow one task: step rail, current step, flow timeline
+sara follow -m             # minimal: just the step rails for this project
+sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (default 10)
+```
+
+- **Mission control** lists each recently active task with a pulse badge
+  (`LIVE` for activity in the last 2 minutes, `STALLED` when steps are open but
+  nothing has happened past the stall threshold, otherwise `IDLE`), its step
+  rail (`●` done, `◆` current, `○` open), the current step, and what the agent
+  says it is doing. `↑↓` selects a task, `⏎` follows it, `p` switches between
+  all projects and this project, `m` toggles minimal mode, and `q` quits.
+- **Task view** adds a timeline of the task's flow: steps added and done,
+  notes, memories recalled or cited, "now doing" lines, and other changes,
+  with the newest at the bottom.
+- **Minimal mode** (`-m`) shows one step rail per active task in the current
+  project and a dim `▸ now doing` line, and fits in a 24×6 pane. It switches on
+  automatically when the terminal is narrower than 40 columns or shorter than
+  12 rows.
+
+Agents report the "now doing" line with the MCP `doing` tool, or by passing
+`doing` to `step_done` or `annotate`. From a shell, use
+`sara doing <id> "running the parser tests"`. sara keeps only the latest 200
+lines per task, and nothing reads them as evidence.
+
+---
+
 ## MCP server (`sara mcp`)
 
 `sara mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
@@ -529,7 +564,7 @@ drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, 
 TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
 single source of truth.
 
-The server exposes forty-four tools — the non-interactive agent loop end to end,
+The server exposes forty-five tools — the non-interactive agent loop end to end,
 from reading and planning a task through to completing it:
 
 | Tool | Purpose |
@@ -542,7 +577,8 @@ from reading and planning a task through to completing it:
 | `add` | Create a task (never opens the review form) |
 | `next` | The execution cursor — first not-done step |
 | `steps` | Ordered steps (optionally up to step N) |
-| `step_done` | Mark a step done, recording result + commit |
+| `step_done` | Mark a step done, recording result + commit (optional `doing` reports what comes next) |
+| `doing` | Report a one-line "now doing" status, shown live in `sara follow` |
 | `verify` | Read-only: the verification commands + acceptance criteria (does **not** run them) |
 | `recall` | Cross-task keyword search + memory lookup |
 | `memories` | Browse all saved memories (with strength labels) |
@@ -590,7 +626,7 @@ reason as text, not a JSON-RPC error, so the model can read the message and
 correct its call.
 
 Interactive-only surfaces (the bare `add`/`modify` review form, `board`,
-`activity`, `projects`) stay CLI-only by design — the server never opens a TUI or
+`activity`, `follow`, `projects`) stay CLI-only by design — the server never opens a TUI or
 blocks on stdin. So do a few niche/destructive/setup commands (`init`, `move`,
 `delete`, `reset`, `undo`, `sync`, `export`/`import`).
 
@@ -1057,6 +1093,8 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
 | `sara doctor`                      | Read-only memory-store health report with the fix for each finding, plus the knowledge-reuse share (`--json`, `--strict` exits 1 on warnings) |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
+| `sara follow [id]`                 | Live view of agents working tasks; `-m` minimal, `-a` all projects, `--stall <min>` ([details](#following-agents-live-sara-follow)) |
+| `sara doing <id> <text>`           | Report what is being done on a task right now (shown in `sara follow`) |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |
 | `sara reset`                       | Delete a project's tasks and profile (`-p`, `-y`)        |

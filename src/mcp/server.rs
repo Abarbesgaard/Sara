@@ -30,7 +30,8 @@ Execution loop: start new work with `begin` (or `list`/`info` to resume a task).
 task and call `recall` yourself, passing the task as `task`. Lay out the work with `check` (steps, or \
 acceptance criteria with kind=\"acceptance\" and a `verify` command), then repeat: \
 `next` for the current step → do the work → `step_done` with a result (and `used`: the memories that helped). Record \
-findings and decisions with `annotate`. `validate` runs every acceptance \
+findings and decisions with `annotate`. Whenever you switch activity, report one short line with `doing` (or the \
+`doing` param on `step_done`/`annotate`) so a human watching `sara follow` sees what you are working on. `validate` runs every acceptance \
 criterion's verify command and stamps the guide green at git HEAD.\n\n\
 Memory: `recall` before solving, with `task` set when it serves a task (heed its `patterns`, `confidence`, and `stale` \
 flags); `learn` one distilled insight when you finish, tagged and bound to its \
@@ -77,6 +78,7 @@ impl Drop for CwdGuard {
 pub struct SaraServer {
     conn: Arc<Mutex<Connection>>,
     cfg: Config,
+    client: Arc<Mutex<Option<String>>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -85,8 +87,30 @@ impl SaraServer {
         Self {
             conn: Arc::new(Mutex::new(conn)),
             cfg,
+            client: Arc::new(Mutex::new(None)),
             tool_router: Self::all_router(),
         }
+    }
+
+    pub(crate) fn client_name(&self) -> Option<String> {
+        self.client.lock().ok().and_then(|c| c.clone())
+    }
+
+    pub(crate) fn report_doing(
+        &self,
+        conn: &Connection,
+        id: &str,
+        doing: Option<&str>,
+        mut v: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let Some(text) = doing.filter(|t| !t.trim().is_empty()) else {
+            return Ok(v);
+        };
+        let r = crate::commands::doing::doing_value(conn, id, text, self.client_name().as_deref())?;
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("doing".into(), r["doing"].clone());
+        }
+        Ok(v)
     }
 
     pub(crate) fn all_router() -> ToolRouter<Self> {
@@ -190,6 +214,12 @@ impl ServerHandler for SaraServer {
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+        if let Some(info) = context.peer.peer_info()
+            && let Ok(mut slot) = self.client.lock()
+            && slot.is_none()
+        {
+            *slot = Some(info.client_info.name.clone());
+        }
         self.route_tool(request, context).await
     }
 }

@@ -47,6 +47,8 @@ fn run() -> Result<()> {
             "pr",
             "link",
             "addbranch",
+            "doing",
+            "follow",
         ];
         if ACTIONS.contains(&args[2].as_str()) {
             let id = args.remove(1);

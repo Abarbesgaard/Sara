@@ -526,6 +526,17 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              );
              CREATE INDEX IF NOT EXISTS idx_memory_uses_task ON memory_uses(task_uuid);",
         ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS task_activity (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_uuid TEXT NOT NULL,
+                text      TEXT NOT NULL,
+                client    TEXT,
+                at        TEXT NOT NULL,
+                FOREIGN KEY (task_uuid) REFERENCES tasks(uuid) ON DELETE CASCADE
+             );
+             CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_uuid, id);",
+        ),
     ]);
     migrations
         .to_latest(conn)

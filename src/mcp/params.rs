@@ -218,6 +218,10 @@ pub(crate) struct StepDoneParams {
     )]
     #[serde(default, deserialize_with = "de_opt_string_list")]
     pub(crate) used: Option<Vec<String>>,
+    #[schemars(
+        description = "Optional one-line \"now doing\" status to report in the same call (what you move on to next); shown live in `sara follow`."
+    )]
+    pub(crate) doing: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -281,6 +285,10 @@ pub(crate) struct AnnotateParams {
     pub(crate) on: Option<String>,
     #[schemars(description = "Flag the note for reconsideration.")]
     pub(crate) reconsider: Option<bool>,
+    #[schemars(
+        description = "Optional one-line \"now doing\" status to report in the same call; shown live in `sara follow`."
+    )]
+    pub(crate) doing: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -693,4 +701,18 @@ pub(crate) struct ReindexEmbeddingsParams {
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
     )]
     pub(crate) project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct DoingParams {
+    #[schemars(
+        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
+    )]
+    pub(crate) project_path: Option<String>,
+    #[schemars(description = "Task UUID prefix (stable, preferred) or numeric display id.")]
+    pub(crate) id: String,
+    #[schemars(
+        description = "One short line saying what you are doing right now (max 200 chars), e.g. \"running the parser tests\"."
+    )]
+    pub(crate) text: String,
 }

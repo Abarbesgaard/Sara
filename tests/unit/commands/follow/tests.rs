@@ -1,0 +1,312 @@
+use super::render::{age, rail, render};
+use super::state::*;
+use crate::infrastructure::db::{self, FlowEvent, FlowKind};
+use crate::infrastructure::tui::theme::Theme;
+use crate::test_support::{key, render_to_string};
+use chrono::{DateTime, Duration, TimeZone, Utc};
+use crossterm::event::KeyCode;
+use uuid::Uuid;
+
+fn now() -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).unwrap()
+}
+
+fn stall() -> Duration {
+    Duration::minutes(DEFAULT_STALL_MINS)
+}
+
+fn mk_card(
+    id: i64,
+    project: &str,
+    done: usize,
+    total: usize,
+    doing: Option<&str>,
+    quiet_secs: i64,
+) -> Card {
+    let last = now() - Duration::seconds(quiet_secs);
+    let steps: Vec<Step> = (0..total)
+        .map(|i| Step {
+            text: format!("step {}", i + 1),
+            done: i < done,
+        })
+        .collect();
+    Card {
+        uuid: Uuid::new_v4(),
+        id: Some(id),
+        description: format!("task {id}"),
+        project: project.into(),
+        pulse: pulse(last, now(), total - done, stall()),
+        steps,
+        doing: doing.map(str::to_owned),
+        last,
+    }
+}
+
+fn mission(cards: Vec<Card>, project: Option<&str>) -> App {
+    let mut app = App::new(
+        Mode::Mission,
+        false,
+        project.map(str::to_owned),
+        false,
+        stall(),
+    );
+    app.now = now();
+    app.cards = cards;
+    app
+}
+
+fn draw(app: &App, w: u16, h: u16) -> String {
+    let theme = Theme::new(false);
+    render_to_string(w, h, |f| render(f, app, &theme))
+}
+
+#[test]
+fn flow_pulse_is_live_within_two_minutes() {
+    assert_eq!(
+        pulse(now() - Duration::seconds(30), now(), 3, stall()),
+        Pulse::Live
+    );
+    assert_eq!(
+        pulse(
+            now() - Duration::seconds(LIVE_WINDOW_SECS),
+            now(),
+            0,
+            stall()
+        ),
+        Pulse::Live
+    );
+}
+
+#[test]
+fn flow_pulse_stalls_only_with_open_steps_past_threshold() {
+    let quiet = now() - Duration::minutes(11);
+    assert_eq!(pulse(quiet, now(), 2, stall()), Pulse::Stalled);
+    assert_eq!(pulse(quiet, now(), 0, stall()), Pulse::Idle);
+    assert_eq!(
+        pulse(now() - Duration::minutes(5), now(), 2, stall()),
+        Pulse::Idle
+    );
+    assert_eq!(
+        pulse(now() - Duration::minutes(5), now(), 2, Duration::minutes(3)),
+        Pulse::Stalled
+    );
+}
+
+#[test]
+fn flow_auto_minimal_below_40_by_12() {
+    assert!(!is_minimal(false, 40, 12));
+    assert!(is_minimal(false, 39, 30));
+    assert!(is_minimal(false, 120, 11));
+    assert!(is_minimal(true, 200, 60));
+}
+
+#[test]
+fn flow_card_from_db_counts_steps_and_reads_doing() {
+    let conn = db::open_in_memory_for_test();
+    let t = crate::test_support::seed_task(&conn, "build it", "p");
+    db::add_checklist_item(&conn, &t.uuid, "one").unwrap();
+    db::add_checklist_item(&conn, &t.uuid, "two").unwrap();
+    let first = db::get_checklist(&conn, &t.uuid).unwrap().remove(0);
+    db::set_step_done(&conn, first.id, true, None, None).unwrap();
+    db::record_doing(&conn, &t.uuid, "on step two", None).unwrap();
+    let cards = mission_cards(&conn, Utc::now(), stall()).unwrap();
+    assert_eq!(cards.len(), 1);
+    let c = &cards[0];
+    assert_eq!(
+        (c.done_count(), c.steps.len(), c.current()),
+        (1, 2, Some(1))
+    );
+    assert_eq!(c.doing.as_deref(), Some("on step two"));
+    assert_eq!(c.pulse, Pulse::Live);
+
+    let f = focus(&conn, &t.uuid, Utc::now(), stall()).unwrap();
+    assert!(f.events.iter().any(|e| e.kind == FlowKind::Doing));
+}
+
+#[test]
+fn flow_scope_defaults_to_all_in_mission_and_project_in_minimal() {
+    let app = mission(
+        vec![
+            mk_card(1, "a", 0, 2, None, 5),
+            mk_card(2, "b", 0, 2, None, 5),
+        ],
+        Some("a"),
+    );
+    assert_eq!(app.visible_cards(false).len(), 2);
+    assert_eq!(app.visible_cards(true).len(), 1);
+    let mut app = app;
+    app.handle_key(key(KeyCode::Char('p')), false);
+    assert_eq!(app.visible_cards(false).len(), 1);
+}
+
+#[test]
+fn flow_keys_select_open_and_return() {
+    let mut app = mission(
+        vec![
+            mk_card(1, "a", 0, 2, None, 5),
+            mk_card(2, "a", 0, 2, None, 5),
+        ],
+        None,
+    );
+    app.handle_key(key(KeyCode::Down), false);
+    app.handle_key(key(KeyCode::Down), false);
+    assert_eq!(app.selected, 1);
+    let target = app.cards[1].uuid;
+    app.handle_key(key(KeyCode::Enter), false);
+    assert_eq!(app.mode, Mode::Task(target));
+    assert_eq!(app.handle_key(key(KeyCode::Esc), false), Outcome::Continue);
+    assert_eq!(app.mode, Mode::Mission);
+    assert_eq!(app.handle_key(key(KeyCode::Esc), false), Outcome::Quit);
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('q')), false),
+        Outcome::Quit
+    );
+}
+
+#[test]
+fn flow_age_is_compact() {
+    assert_eq!(age(now(), now() - Duration::seconds(9)), "9s");
+    assert_eq!(age(now(), now() - Duration::minutes(3)), "3m");
+    assert_eq!(age(now(), now() - Duration::hours(2)), "2h");
+    assert_eq!(age(now(), now() - Duration::days(4)), "4d");
+}
+
+#[test]
+fn follow_render_rail_compresses_long_guides() {
+    let theme = Theme::new(false);
+    let c = mk_card(1, "a", 3, 5, None, 5);
+    let s: String = rail(&c, 10, &theme)
+        .iter()
+        .map(|s| s.content.to_string())
+        .collect();
+    assert_eq!(s, "●●●◆○");
+    let long = mk_card(1, "a", 10, 20, None, 5);
+    let s: String = rail(&long, 10, &theme)
+        .iter()
+        .map(|s| s.content.to_string())
+        .collect();
+    assert_eq!(s, "●●●●●◆○○○○");
+}
+
+#[test]
+fn follow_render_minimal_one_task_fits_24x6() {
+    let app = mission(
+        vec![mk_card(
+            26,
+            "sara",
+            9,
+            14,
+            Some("running the parser tests"),
+            5,
+        )],
+        Some("sara"),
+    );
+    let out = draw(&app, 24, 6);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "26 ●●●●●●●●●◆○○○○ 9/14");
+    assert_eq!(lines[1], "  ▸ running the parser…");
+    assert!(lines[2..].iter().all(|l| l.is_empty()), "{out}");
+}
+
+#[test]
+fn follow_render_minimal_many_tasks_overflow_into_a_counter() {
+    let cards = (1..=5)
+        .map(|i| mk_card(i, "sara", 1, 3, Some("busy"), 5))
+        .collect();
+    let app = mission(cards, Some("sara"));
+    let out = draw(&app, 24, 6);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 6);
+    assert_eq!(lines[4], "3 ●◆○ 1/3", "{out}");
+    assert_eq!(lines[5], "+2 more", "{out}");
+    assert!(lines.iter().all(|l| l.chars().count() <= 24));
+}
+
+#[test]
+fn follow_render_minimal_no_tasks() {
+    let app = mission(vec![], Some("sara"));
+    let out = draw(&app, 24, 6);
+    assert_eq!(out.lines().next(), Some("sara · no active tasks"));
+}
+
+#[test]
+fn follow_render_auto_minimal_in_a_small_pane() {
+    let app = mission(vec![mk_card(7, "sara", 1, 2, None, 5)], Some("sara"));
+    let small = draw(&app, 39, 20);
+    assert!(small.starts_with("7 ●◆ 1/2"), "{small}");
+    let big = draw(&app, 80, 20);
+    assert!(
+        big.starts_with(" sara  ▸ follow · mission control"),
+        "{big}"
+    );
+}
+
+#[test]
+fn follow_render_mission_shows_pulse_rail_and_doing() {
+    let app = mission(
+        vec![
+            mk_card(26, "sara", 2, 4, Some("writing tests"), 30),
+            mk_card(3, "pling", 1, 3, None, 60 * 20),
+        ],
+        None,
+    );
+    let out = draw(&app, 80, 14);
+    assert!(out.contains("all projects · 1 live · 1 stalled"), "{out}");
+    assert!(out.contains("▸  LIVE  26  task 26"), "{out}");
+    assert!(out.contains("sara · 30s"), "{out}");
+    assert!(out.contains("●●◆○ 2/4  step 3"), "{out}");
+    assert!(out.contains("▸ writing tests"), "{out}");
+    assert!(out.contains(" STALLED  3  task 3"), "{out}");
+    assert!(out.contains("pling · 20m"), "{out}");
+    assert!(
+        out.lines()
+            .last()
+            .unwrap()
+            .starts_with("↑↓ select  ⏎ follow  m minimal  q quit"),
+        "{out}"
+    );
+}
+
+#[test]
+fn follow_render_mission_empty_explains_how_to_report() {
+    let out = draw(&mission(vec![], None), 80, 12);
+    assert!(out.contains("No agent activity in the last 24h."), "{out}");
+    assert!(out.contains("`doing` MCP tool"), "{out}");
+}
+
+#[test]
+fn follow_render_task_shows_flow_timeline_newest_last() {
+    let card = mk_card(26, "sara", 1, 3, Some("wiring the CLI"), 10);
+    let ev = |secs: i64, kind: FlowKind, text: &str, detail: Option<&str>| FlowEvent {
+        at: now() - Duration::seconds(secs),
+        kind,
+        text: text.into(),
+        detail: detail.map(str::to_owned),
+    };
+    let events = vec![
+        ev(600, FlowKind::StepAdded, "step 1", None),
+        ev(300, FlowKind::StepDone, "step 1", Some("green")),
+        ev(
+            120,
+            FlowKind::Note("finding".into()),
+            "lexer is lossy",
+            None,
+        ),
+        ev(60, FlowKind::Memory("recalled".into()), "m12", None),
+        ev(10, FlowKind::Doing, "wiring the CLI", None),
+    ];
+    let mut app = App::new(Mode::Task(card.uuid), false, None, false, stall());
+    app.now = now();
+    app.focus = Some(Focus { card, events });
+    let out = draw(&app, 60, 16);
+    assert!(out.starts_with(" sara  ▸ follow · 26"), "{out}");
+    assert!(out.lines().next().unwrap().contains("LIVE"), "{out}");
+    assert!(out.contains(" ◆ step 2"), "{out}");
+    assert!(out.contains("10m ○ step added: step 1"), "{out}");
+    assert!(out.contains("5m ● step 1 — green"), "{out}");
+    assert!(out.contains("2m » finding: lexer is lossy"), "{out}");
+    assert!(out.contains("1m ≈ recalled m12"), "{out}");
+    let pos = |s: &str| out.find(s).unwrap();
+    assert!(pos("step added") < pos("10s ▸ wiring the CLI"));
+    assert!(out.lines().last().unwrap().starts_with("esc quit"), "{out}");
+}

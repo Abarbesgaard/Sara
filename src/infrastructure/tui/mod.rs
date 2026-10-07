@@ -1,6 +1,8 @@
 pub mod fzf;
 pub mod keymap;
 pub mod review_form;
+pub mod screen;
+pub mod theme;
 
 use anyhow::Result;
 use crossterm::{
