@@ -33,14 +33,14 @@ fn memory_uses_migration_applies_on_upgraded_db() {
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
     conn.execute_batch("DROP TABLE memory_uses;").unwrap();
-    conn.pragma_update(None, "user_version", version - 1)
+    conn.pragma_update(None, "user_version", version - 2)
         .unwrap();
 
     super::super::migrations::apply_migrations(&mut conn).unwrap();
     assert!(table_exists(&conn, "memory_uses"));
 
     // A DB already at a high watermark with the table present must not abort (m433).
-    conn.pragma_update(None, "user_version", version - 1)
+    conn.pragma_update(None, "user_version", version - 2)
         .unwrap();
     super::super::migrations::apply_migrations(&mut conn).unwrap();
 }

@@ -544,6 +544,10 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             commands::guide::rationale(&conn, &id, &text.join(" "))?;
         }
 
+        Command::Doing { id, text } => {
+            commands::doing::run(&conn, &id, &text.join(" "))?;
+        }
+
         Command::Validate { id, no_run, fresh } => {
             commands::guide::validate(&conn, &id, no_run, fresh)?;
         }
@@ -583,6 +587,30 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
                 commands::plan::show(&conn, &cfg, &id, json)?;
             }
         },
+
+        Command::Follow {
+            id,
+            minimal,
+            project,
+            all,
+            stall,
+        } => {
+            let project = project.or_else(|| {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                crate::infrastructure::project::find_git_root(&cwd)
+                    .map(|root| crate::infrastructure::project::project_name_from_root(&root))
+            });
+            commands::follow::run(
+                &conn,
+                commands::follow::FollowOptions {
+                    id,
+                    minimal,
+                    project,
+                    all,
+                    stall_mins: stall,
+                },
+            )?;
+        }
 
         Command::Activity { project, all } => {
             let proj = if all {

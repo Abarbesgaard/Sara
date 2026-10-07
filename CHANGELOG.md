@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`sara follow`, a live view of agents at work** (#231). Mission control
+  lists every task with activity in the last 24 hours, with a LIVE/IDLE/STALLED
+  pulse, a step rail, the current step and the agent's "now doing" line.
+  `sara follow <id>` follows one task with a timeline of its flow (steps,
+  notes, memories, changes). `--minimal`/`-m` shows only the step rails for the
+  current project and fits a 24×6 pane; it turns on automatically below 40×12.
+  The view refreshes as soon as anything writes to the database.
+- **"Now doing" reports.** The new MCP `doing` tool (and an optional `doing`
+  parameter on `step_done` and `annotate`) records a one-line status shown by
+  `sara follow`. CLI: `sara doing <id> <text>`. A database migration adds the
+  `task_activity` table, so older binaries cannot open the upgraded database.
+- A shared TUI theme (semantic tones, `NO_COLOR` support) and screen chrome,
+  the first piece of the TUI overhaul (#224).
+
 ### Changed
 
 - `begin`'s telemetry trace is now nested as `trace: { id, ops }` instead of top-level `begin_id`/`folded`. Agents were mistaking the uuid-shaped `begin_id` for the task uuid and passing it to `link`/`recall`, which failed with "No pending task". Use `uuid` to target the task.

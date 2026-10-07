@@ -477,6 +477,12 @@ pub enum Command {
         text: Vec<String>,
     },
 
+    Doing {
+        id: String,
+        #[arg(trailing_var_arg = true, required = true)]
+        text: Vec<String>,
+    },
+
     Validate {
         id: String,
         #[arg(long)]
@@ -515,6 +521,18 @@ pub enum Command {
     Plan {
         #[command(subcommand)]
         action: PlanAction,
+    },
+
+    Follow {
+        id: Option<String>,
+        #[arg(long, short)]
+        minimal: bool,
+        #[arg(long, short, add = ArgValueCandidates::new(projects))]
+        project: Option<String>,
+        #[arg(long, short)]
+        all: bool,
+        #[arg(long, value_name = "MINUTES")]
+        stall: Option<i64>,
     },
 
     #[clap(name = "activity", alias = "heat")]

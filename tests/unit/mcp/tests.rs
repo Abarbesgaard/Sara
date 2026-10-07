@@ -27,7 +27,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 44, "expected 44 tools, got {names:?}");
+    assert_eq!(names.len(), 45, "expected 45 tools, got {names:?}");
     for expected in [
         "list",
         "info",
@@ -69,6 +69,7 @@ fn exposes_the_agent_loop_tools() {
         "reflect",
         "diagnose_memories",
         "reindex_embeddings",
+        "doing",
     ] {
         assert!(
             names.iter().any(|n| n == expected),
@@ -767,7 +768,7 @@ fn tools_carry_annotations() {
         "rationale",
     ];
     let tools = SaraServer::all_router().list_all();
-    assert_eq!(tools.len(), 44);
+    assert_eq!(tools.len(), 45);
     for t in &tools {
         let name = t.name.as_ref();
         let a = t
@@ -792,4 +793,85 @@ fn tools_carry_annotations() {
             assert!(a.idempotent_hint.is_some(), "`{name}` idempotentHint");
         }
     }
+}
+
+fn tool_props(name: &str) -> serde_json::Map<String, serde_json::Value> {
+    SaraServer::all_router()
+        .list_all()
+        .iter()
+        .find(|t| t.name == name)
+        .and_then(|t| {
+            t.input_schema
+                .get("properties")
+                .and_then(|v| v.as_object())
+                .cloned()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn mcp_doing_tool_requires_id_and_text() {
+    let props = tool_props("doing");
+    assert!(props.contains_key("id") && props.contains_key("text"));
+}
+
+#[test]
+fn mcp_doing_param_is_offered_on_step_done_and_annotate_only() {
+    assert!(tool_props("step_done").contains_key("doing"));
+    assert!(tool_props("annotate").contains_key("doing"));
+    assert!(!tool_props("next").contains_key("doing"));
+}
+
+#[test]
+fn mcp_doing_records_the_line_for_the_task() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let v = server
+        .with_project(None, "doing", |conn, _cfg| {
+            commands::doing::doing_value(conn, &uuid[..8], "  running   tests ", Some("copilot"))
+        })
+        .expect("doing");
+    assert_eq!(v["doing"], "running tests");
+    let latest = server
+        .with_project(None, "read", |conn, _cfg| {
+            db::latest_doing(conn, &uuid::Uuid::parse_str(&uuid)?)
+        })
+        .expect("read")
+        .expect("an entry");
+    assert_eq!(latest.client.as_deref(), Some("copilot"));
+}
+
+#[test]
+fn mcp_doing_rejects_empty_text() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let r = server.with_project(None, "doing", |conn, _cfg| {
+        commands::doing::doing_value(conn, &uuid, "   ", None)
+    });
+    assert!(r.is_err());
+}
+
+#[test]
+fn mcp_doing_report_piggybacks_on_another_result() {
+    let server = server_with(db::open_in_memory_for_test());
+    let uuid = seed_returning(&server, "p", "task");
+    let v = server
+        .with_project(None, "step", |conn, _cfg| {
+            server.report_doing(
+                conn,
+                &uuid,
+                Some("next: wire the CLI"),
+                serde_json::json!({"done": true}),
+            )
+        })
+        .expect("report");
+    assert_eq!(v["done"], true);
+    assert_eq!(v["doing"], "next: wire the CLI");
+
+    let untouched = server
+        .with_project(None, "step", |conn, _cfg| {
+            server.report_doing(conn, &uuid, Some("  "), serde_json::json!({"done": true}))
+        })
+        .expect("report");
+    assert!(untouched.get("doing").is_none());
 }

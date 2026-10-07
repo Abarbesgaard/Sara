@@ -5,6 +5,7 @@ use rusqlite::Connection;
 
 mod annotations;
 mod checklist;
+mod follow;
 mod github;
 mod guide;
 mod links;

@@ -109,6 +109,26 @@ impl SaraServer {
                         )
                     }
                 })
+                .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Report what you are doing RIGHT NOW on a task, as one short line (e.g. \"running the parser tests\"). It is shown live to the human watching `sara follow`; it is not a note and is not kept as evidence. Call it whenever you switch to a new activity; `step_done` and `annotate` also take an optional `doing` to report in the same call.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn doing(&self, Parameters(p): Parameters<DoingParams>) -> Result<String, String> {
+        let client = self.client_name();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp doing", |conn, _cfg| {
+                commands::doing::doing_value(conn, &p.id, &p.text, client.as_deref())
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -136,6 +156,7 @@ impl SaraServer {
                     p.on.as_deref(),
                     p.reconsider.unwrap_or(false),
                 )
+                .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
             })
             .map_err(mcp_err)?;
         ok_json(v)
