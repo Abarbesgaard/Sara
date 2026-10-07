@@ -33,10 +33,18 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
         (Mode::Mission, _) if minimal => {
             let cards = app.visible_cards(true);
             let many = cards.len() > 1;
+            let grouped = is_grouped(&cards);
             let feed: Vec<(Option<String>, &FlowEvent)> = app
                 .visible_feed(true)
                 .into_iter()
-                .map(|i| (many.then(|| i.label.clone()), &i.event))
+                .map(|i| {
+                    let label = if grouped {
+                        Some(format!("{} {}", i.project, i.label))
+                    } else {
+                        many.then(|| i.label.clone())
+                    };
+                    (label, &i.event)
+                })
                 .collect();
             render_minimal(f, area, &cards, &feed, app.now, theme)
         }
@@ -186,22 +194,13 @@ pub fn render_minimal(
         return;
     }
     let budget = (height / 2).max(1);
-    let mut lines: Vec<Line> = Vec::new();
-    for (i, card) in cards.iter().enumerate() {
-        let more_after = usize::from(i + 1 < cards.len());
-        let left = budget.saturating_sub(lines.len());
-        if left < 1 + more_after {
-            let more = format!("+{} more", cards.len() - i);
-            lines.push(Line::styled(fit(&more, width), theme.muted()));
-            break;
-        }
-        lines.push(card_rail_line(card, width, "", theme));
+    let mut lines = rail_block(cards, width, budget, theme, |card, room, lines| {
         if let Some(step) = card.current().map(|c| &card.steps[c].text)
-            && left >= 2 + more_after
+            && room >= 1
         {
             lines.push(step_line(step, width, theme));
         }
-    }
+    });
     if height >= 10 {
         lines.push(Line::styled("─".repeat(width), theme.muted()));
     }
@@ -219,22 +218,61 @@ fn rails_with_doing(
     height: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = Vec::new();
+    rail_block(cards, width, height, theme, |card, room, lines| {
+        if let Some(d) = &card.doing
+            && room >= 1
+        {
+            lines.push(doing_line(d, width, "  ", theme));
+        }
+    })
+}
+
+fn is_grouped(cards: &[&Card]) -> bool {
+    cards.iter().any(|c| c.project != cards[0].project)
+}
+
+fn project_header(project: &str, width: usize, theme: &Theme) -> Line<'static> {
+    let head = format!("── {project} ");
+    let pad = width.saturating_sub(head.chars().count());
+    Line::styled(
+        fit(&format!("{head}{}", "─".repeat(pad)), width),
+        theme.muted(),
+    )
+}
+
+fn rail_block(
+    cards: &[&Card],
+    width: usize,
+    budget: usize,
+    theme: &Theme,
+    detail: impl Fn(&Card, usize, &mut Vec<Line<'static>>),
+) -> Vec<Line<'static>> {
+    let grouped = is_grouped(cards);
+    let mut lines: Vec<Line<'static>> = Vec::new();
     for (i, card) in cards.iter().enumerate() {
         let more_after = usize::from(i + 1 < cards.len());
-        if height - lines.len() < 1 + more_after {
+        let left = budget.saturating_sub(lines.len());
+        let new_group = grouped && (i == 0 || cards[i - 1].project != card.project);
+        let header = new_group && left >= 2 + more_after;
+        let need = 1 + usize::from(header) + more_after;
+        if i > 0 && left < need {
             let more = format!("+{} more", cards.len() - i);
             lines.push(Line::styled(fit(&more, width), theme.muted()));
             break;
         }
-        lines.push(card_rail_line(card, width, "", theme));
-        if let Some(d) = &card.doing
-            && height - lines.len() > more_after
-        {
-            lines.push(doing_line(d, width, "  ", theme));
+        if header {
+            lines.push(project_header(&card.project, width, theme));
         }
+        lines.push(card_rail_line(card, width, "", theme));
+        let room = budget.saturating_sub(lines.len() + more_after);
+        let next_header = grouped && i + 1 < cards.len() && cards[i + 1].project != card.project;
+        detail(
+            card,
+            room.saturating_sub(usize::from(next_header)),
+            &mut lines,
+        );
     }
-    lines.truncate(height);
+    lines.truncate(budget.max(1));
     lines
 }
 
@@ -323,7 +361,7 @@ pub fn render_mission(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let cards = app.visible_cards(false);
     let live = cards.iter().filter(|c| c.pulse == Pulse::Live).count();
     let stalled = cards.iter().filter(|c| c.pulse == Pulse::Stalled).count();
-    let all = app.shows_all_projects(false);
+    let all = app.shows_all_projects();
     let scope = if all {
         "all projects".to_string()
     } else {

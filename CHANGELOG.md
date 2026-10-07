@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`sara follow` covers every project by default.** Minimal mode no longer
+  limits itself to the current folder's project: tasks are grouped under a
+  `── project ──` header and feed lines name the project. `-p` alone ties the
+  view to the current folder's project, `-p <name>` to a named one. `-a` is now
+  the default and is hidden.
+
 ## [2.2.0] - 2026-10-07
 
 ### Added

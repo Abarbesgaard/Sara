@@ -528,9 +528,11 @@ refreshes as soon as anything writes to the database, so you can keep it open
 in a side pane while an agent works.
 
 ```bash
-sara follow                # mission control: every task with activity in the last 24h
+sara follow                # mission control: every open task with activity in the last 24h, all projects
 sara follow 782d04d7       # follow one task: step rail, current step, flow timeline
-sara follow -m             # minimal: step rails, active step and an event feed for this project
+sara follow -m             # minimal: step rails, active step and an event feed, grouped by project
+sara follow -m -p          # tie the view to this folder's project
+sara follow -p pling       # tie the view to a named project
 sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (default 10)
 ```
 
@@ -538,16 +540,20 @@ sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (defaul
   (`LIVE` for activity in the last 2 minutes, `STALLED` when steps are open but
   nothing has happened past the stall threshold, otherwise `IDLE`), its step
   rail (`●` done, `◆` current, `○` open), the current step, and what the agent
-  says it is doing. `↑↓` selects a task, `⏎` follows it, `p` switches between
-  all projects and this project, `m` toggles minimal mode, and `q` quits.
+  says it is doing. It covers every project unless `-p` ties it to one: `-p`
+  alone means the project of the current folder, `-p <name>` a named project.
+  `↑↓` selects a task, `⏎` follows it, `p` switches between all projects and
+  this project, `m` toggles minimal mode, and `q` quits.
 - **Task view** adds a timeline of the task's flow: steps added and done,
   notes, memories recalled or cited, "now doing" lines, and other changes,
   with the newest at the bottom.
-- **Minimal mode** (`-m`) shows one step rail per active task in the current
-  project with the name of the active step (`◆ …`) beneath it, then a feed of
-  the tasks' events, newest at the top and older further down: steps added and
-  done, notes, memories and "now doing" lines, each prefixed with its age (and
-  the task id when several tasks are active). It fits in a 24×6 pane and
+- **Minimal mode** (`-m`) shows one step rail per active task with the name of
+  the active step (`◆ …`) beneath it, grouped under a `── project ──` header
+  when several projects are active (most recently active first). Below is a
+  feed of the tasks' events, newest at the top and older further down: steps
+  added and done, notes, memories and "now doing" lines, each prefixed with its
+  age and, when several tasks are active, the task id (and project name when
+  several projects are). It fits in a 24×6 pane and
   switches on automatically when the terminal is narrower than 40 columns or
   shorter than 12 rows.
 
@@ -1096,7 +1102,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
 | `sara doctor`                      | Read-only memory-store health report with the fix for each finding, plus the knowledge-reuse share (`--json`, `--strict` exits 1 on warnings) |
 | `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
-| `sara follow [id]`                 | Live view of agents working tasks; `-m` minimal, `-a` all projects, `--stall <min>` ([details](#following-agents-live-sara-follow)) |
+| `sara follow [id]`                 | Live view of agents working tasks across all projects; `-m` minimal, `-p [project]` tie to one project, `--stall <min>` ([details](#following-agents-live-sara-follow)) |
 | `sara doing <id> <text>`           | Report what is being done on a task right now (shown in `sara follow`) |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |
 | `sara undo`                        | Revert the most recent command                           |

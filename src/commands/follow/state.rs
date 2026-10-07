@@ -120,6 +120,7 @@ pub fn mission_cards(
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeedItem {
     pub uuid: Uuid,
+    pub project: String,
     pub label: String,
     pub event: FlowEvent,
 }
@@ -138,6 +139,7 @@ pub fn feed(conn: &Connection, cards: &[Card]) -> Result<Vec<FeedItem>> {
         let start = events.len().saturating_sub(FEED_PER_TASK);
         items.extend(events.into_iter().skip(start).map(|event| FeedItem {
             uuid: c.uuid,
+            project: c.project.clone(),
             label: c.label(),
             event,
         }));
@@ -189,7 +191,7 @@ pub struct App {
     pub opened_from_mission: bool,
     pub minimal: bool,
     pub project: Option<String>,
-    pub all: Option<bool>,
+    pub all: bool,
     pub selected: usize,
     pub stall_after: Duration,
     pub now: DateTime<Utc>,
@@ -211,7 +213,7 @@ impl App {
             opened_from_mission: false,
             minimal,
             project,
-            all: all.then_some(true),
+            all,
             selected: 0,
             stall_after,
             now: Utc::now(),
@@ -221,19 +223,26 @@ impl App {
         }
     }
 
-    pub fn shows_all_projects(&self, minimal: bool) -> bool {
-        self.project.is_none() || self.all.unwrap_or(!minimal)
+    pub fn shows_all_projects(&self) -> bool {
+        self.project.is_none() || self.all
     }
 
     pub fn visible_cards(&self, minimal: bool) -> Vec<&Card> {
-        let all = self.shows_all_projects(minimal);
+        let all = self.shows_all_projects();
         let mut cards: Vec<&Card> = self
             .cards
             .iter()
             .filter(|c| all || Some(&c.project) == self.project.as_ref())
             .collect();
         if minimal {
-            cards.sort_by_key(|c| c.pulse == Pulse::Idle);
+            let mut order: Vec<&str> = Vec::new();
+            for c in &cards {
+                if !order.contains(&c.project.as_str()) {
+                    order.push(&c.project);
+                }
+            }
+            let rank = |p: &str| order.iter().position(|o| *o == p).unwrap_or(0);
+            cards.sort_by_key(|c| (rank(&c.project), c.pulse == Pulse::Idle));
         }
         cards
     }
@@ -279,7 +288,7 @@ impl App {
             }
             KeyCode::Char('m') => self.minimal = !self.minimal,
             KeyCode::Char('p') if self.mode == Mode::Mission => {
-                self.all = Some(!self.shows_all_projects(minimal));
+                self.all = !self.shows_all_projects();
                 self.selected = 0;
             }
             KeyCode::Down | KeyCode::Char('j') if self.mode == Mode::Mission => {

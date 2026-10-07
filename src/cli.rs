@@ -527,9 +527,9 @@ pub enum Command {
         id: Option<String>,
         #[arg(long, short)]
         minimal: bool,
-        #[arg(long, short, add = ArgValueCandidates::new(projects))]
-        project: Option<String>,
-        #[arg(long, short)]
+        #[arg(long, short, num_args = 0..=1, value_name = "PROJECT", add = ArgValueCandidates::new(projects))]
+        project: Option<Option<String>>,
+        #[arg(long, short, hide = true)]
         all: bool,
         #[arg(long, value_name = "MINUTES")]
         stall: Option<i64>,
