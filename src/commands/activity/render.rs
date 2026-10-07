@@ -17,7 +17,12 @@ pub(super) fn render(f: &mut Frame, data: &ActivityData) {
     render_on(f, data, Local::now().date_naive());
 }
 
+pub(super) const MIN_SIZE: (u16, u16) = (50, 12);
+
 fn render_on(f: &mut Frame, data: &ActivityData, today: NaiveDate) {
+    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+        return;
+    }
     let area = f.area();
     let max = data.counts.values().copied().max().unwrap_or(1).max(1);
 

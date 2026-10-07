@@ -1,7 +1,7 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use rusqlite::Connection;
 
+use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 use crate::infrastructure::{db, tui};
 
 mod render;
@@ -24,20 +24,24 @@ pub fn run(conn: &Connection, project: Option<&str>) -> Result<()> {
     };
 
     let mut terminal = tui::init_terminal()?;
+    let mut keys = KeyDispatcher::new();
     loop {
         terminal.draw(|f| render::render(f, &data))?;
-        if event::poll(std::time::Duration::from_millis(200))?
-            && let Event::Key(key) = event::read()?
-        {
-            if key.kind == KeyEventKind::Release {
-                continue;
-            }
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc | KeyCode::Enter => break,
-                _ => {}
-            }
+        let Some(key) = tui::next_key(200)? else {
+            continue;
+        };
+        if closes(keys.dispatch(key, Mode::Normal)) {
+            break;
         }
     }
     tui::restore_terminal()?;
     Ok(())
 }
+
+fn closes(action: Action) -> bool {
+    matches!(action, Action::Quit | Action::Confirm)
+}
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/activity/mod.rs"]
+mod tests;

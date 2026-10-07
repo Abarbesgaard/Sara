@@ -40,3 +40,18 @@ fn styled_snapshot_activity_retro() {
     set_look(Palette::Classic, true, true);
     insta::assert_snapshot!(out);
 }
+
+#[test]
+fn activity_too_small_shows_fallback() {
+    let data = ActivityData {
+        counts: HashMap::new(),
+        project: None,
+        total_created: 0,
+        total_completed: 0,
+        cur_streak: 0,
+        longest_streak: 0,
+    };
+    let today = NaiveDate::from_ymd_opt(2026, 3, 18).unwrap();
+    let out = crate::test_support::render_to_string(40, 8, |f| render_on(f, &data, today));
+    assert!(out.contains("Terminal too small"), "{out}");
+}

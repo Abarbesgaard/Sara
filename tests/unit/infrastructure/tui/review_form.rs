@@ -357,3 +357,10 @@ fn styled_snapshot_review_form() {
         render(f, &mut state)
     }));
 }
+
+#[test]
+fn review_form_too_small_shows_fallback() {
+    let mut state = FormState::new(ctx_with_deps());
+    let out = render_to_string(39, 10, |f| render(f, &mut state));
+    assert!(out.contains("Terminal too small"), "{out}");
+}

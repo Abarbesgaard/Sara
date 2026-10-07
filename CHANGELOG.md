@@ -14,6 +14,10 @@
 
 - Every TUI screen now takes its colours from semantic roles in `tui::theme`
   instead of hard-coded colours; styled snapshot tests pin each screen.
+- `sara projects`, `sara activity` and `sara follow` read keys through the shared
+  keymap, so `gg`/`G` jump to the top/bottom there as on the board.
+- Full-screen views show a "Terminal too small" notice, with the size they
+  need, instead of a garbled layout when the window is below their minimum.
 
 ## [2.3.0] - 2026-10-07
 

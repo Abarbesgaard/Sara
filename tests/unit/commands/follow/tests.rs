@@ -537,3 +537,20 @@ fn styled_snapshot_follow_mission_retro() {
     set_look(Palette::Classic, true, true);
     insta::assert_snapshot!(out);
 }
+
+#[test]
+fn follow_keys_support_jump_to_top_and_bottom() {
+    let mut app = mission(
+        vec![
+            mk_card(1, "sara", 0, 2, None, 5),
+            mk_card(2, "sara", 0, 2, None, 6),
+            mk_card(3, "sara", 0, 2, None, 7),
+        ],
+        None,
+    );
+    app.handle_key(key(KeyCode::Char('G')), false);
+    assert_eq!(app.selected, 2);
+    app.handle_key(key(KeyCode::Char('g')), false);
+    app.handle_key(key(KeyCode::Char('g')), false);
+    assert_eq!(app.selected, 0);
+}

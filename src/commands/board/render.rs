@@ -625,7 +625,12 @@ fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
     f.render_widget(Paragraph::new(Line::from(spans)), legend_area);
 }
 
+pub(super) const MIN_SIZE: (u16, u16) = (60, 12);
+
 fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
+    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+        return;
+    }
     let area = f.area();
 
     let chunks = Layout::default()

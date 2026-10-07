@@ -23,3 +23,11 @@ fn theme_header_and_footer_render_title_status_and_hints() {
     assert!(lines[0].ends_with("LIVE"), "{out}");
     assert_eq!(lines[2], "q quit  p project");
 }
+
+#[test]
+fn too_small_is_silent_at_or_above_the_minimum() {
+    let out = render_to_string(20, 4, |f| assert!(!too_small(f, 20, 4)));
+    assert!(out.trim().is_empty());
+    let out = render_to_string(20, 4, |f| assert!(too_small(f, 21, 4)));
+    assert!(out.contains("Terminal too small"), "{out}");
+}

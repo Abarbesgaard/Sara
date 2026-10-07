@@ -456,3 +456,13 @@ fn styled_snapshot_info_retro() {
         insta::assert_snapshot!(out);
     });
 }
+
+#[test]
+fn info_too_small_shows_fallback_and_recovers_on_resize() {
+    let mut st = base_state(base_detail(task()));
+    let small = draw_at(&mut st, 50, 10);
+    assert!(small.contains("Terminal too small"), "{small}");
+    assert!(small.contains("need 60×16, have 50×10"), "{small}");
+    let big = draw_at(&mut st, 100, 24);
+    assert!(!big.contains("Terminal too small"), "{big}");
+}
