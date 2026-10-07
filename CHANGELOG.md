@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-07
+
 ### Changed
 
 - **`sara follow` covers every project by default.** Minimal mode no longer
