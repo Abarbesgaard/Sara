@@ -19,7 +19,12 @@ use super::handler::{
 use super::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable, GraphNode};
 use crate::commands::shared::{month_abbr, plural, short_id, truncate};
 
+pub(super) const MIN_SIZE: (u16, u16) = (60, 16);
+
 pub(super) fn render(f: &mut Frame, st: &mut EditState) {
+    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+        return;
+    }
     let area = f.area();
     let d = &st.detail;
 

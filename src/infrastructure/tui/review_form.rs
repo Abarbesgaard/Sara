@@ -523,7 +523,12 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
     }
 }
 
+pub(super) const MIN_SIZE: (u16, u16) = (40, 10);
+
 fn render(f: &mut Frame, state: &mut FormState) {
+    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+        return;
+    }
     let area = f.area();
     f.render_widget(
         Block::default()

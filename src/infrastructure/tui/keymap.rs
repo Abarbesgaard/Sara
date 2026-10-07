@@ -69,7 +69,7 @@ pub mod help {
     ];
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct KeyDispatcher {
     pending_g: bool,
 }

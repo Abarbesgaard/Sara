@@ -1,9 +1,44 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Wrap};
 
-use super::theme::{GLYPH_PROMPT, Theme};
+use super::theme::{GLYPH_PROMPT, Ink, Theme, ink};
+
+pub fn too_small(f: &mut Frame, min_w: u16, min_h: u16) -> bool {
+    let area = f.area();
+    if area.width >= min_w && area.height >= min_h {
+        return false;
+    }
+    let lines = vec![
+        Line::from(Span::styled(
+            "Terminal too small",
+            Style::new().fg(ink(Ink::Warn)).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            format!("need {min_w}×{min_h}, have {}×{}", area.width, area.height),
+            Style::new().fg(ink(Ink::Muted)),
+        )),
+        Line::from(Span::styled(
+            "resize, or press q",
+            Style::new().fg(ink(Ink::Muted)),
+        )),
+    ];
+    let top = area.height.saturating_sub(lines.len() as u16) / 2;
+    let body = Rect {
+        y: area.y + top,
+        height: area.height - top,
+        ..area
+    };
+    f.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true }),
+        body,
+    );
+    true
+}
 
 pub struct Chrome {
     pub header: Rect,

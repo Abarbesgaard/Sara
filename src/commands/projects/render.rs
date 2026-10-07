@@ -1,6 +1,5 @@
 use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
-use crossterm::event::KeyCode;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -12,11 +11,13 @@ use ratatui::{
 
 use super::{ProjectAction, ProjectListState, ProjectRow};
 use crate::commands::shared::{rel_time, truncate};
+use crate::infrastructure::tui::keymap::{Action, KeyDispatcher, Mode};
 
 pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     st: &mut ProjectListState,
 ) -> Result<ProjectAction> {
+    let mut keys = KeyDispatcher::new();
     loop {
         let size = terminal.size()?;
         let viewport = size.height.saturating_sub(3);
@@ -28,27 +29,30 @@ pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
         let Some(key) = crate::infrastructure::tui::next_key(100)? else {
             continue;
         };
-
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return Ok(ProjectAction::Quit),
-            KeyCode::Down | KeyCode::Char('j') => {
-                if !st.rows.is_empty() {
-                    st.selected = (st.selected + 1).min(st.rows.len() - 1);
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                st.selected = st.selected.saturating_sub(1);
-            }
-            KeyCode::PageDown => st.scroll = st.scroll.saturating_add(10),
-            KeyCode::PageUp => st.scroll = st.scroll.saturating_sub(10),
-            KeyCode::Enter => {
-                if let Some(row) = st.rows.get(st.selected) {
-                    return Ok(ProjectAction::Open(row.name.clone()));
-                }
-            }
-            _ => {}
+        if let Some(action) = apply(st, keys.dispatch(key, Mode::Normal)) {
+            return Ok(action);
         }
     }
+}
+
+pub(super) fn apply(st: &mut ProjectListState, action: Action) -> Option<ProjectAction> {
+    let last = st.rows.len().saturating_sub(1);
+    match action {
+        Action::Quit | Action::Cancel => return Some(ProjectAction::Quit),
+        Action::Down => st.selected = (st.selected + 1).min(last),
+        Action::Up => st.selected = st.selected.saturating_sub(1),
+        Action::Top => st.selected = 0,
+        Action::Bottom => st.selected = last,
+        Action::PageDown => st.scroll = st.scroll.saturating_add(10),
+        Action::PageUp => st.scroll = st.scroll.saturating_sub(10),
+        Action::Confirm => {
+            if let Some(row) = st.rows.get(st.selected) {
+                return Some(ProjectAction::Open(row.name.clone()));
+            }
+        }
+        _ => {}
+    }
+    None
 }
 
 fn build_lines(st: &ProjectListState) -> Vec<Line<'static>> {
@@ -115,7 +119,12 @@ fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
     }
 }
 
+pub(super) const MIN_SIZE: (u16, u16) = (40, 6);
+
 fn render(f: &mut Frame, st: &ProjectListState, lines: &[Line]) {
+    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+        return;
+    }
     let area = f.area();
     let total_pending: u32 = st.rows.iter().map(|r| r.pending).sum();
     let title = format!(" Projects · {} · {} pending ", st.rows.len(), total_pending);

@@ -307,3 +307,12 @@ fn styled_snapshot_board_retro() {
     set_look(Palette::Classic, true, true);
     insta::assert_snapshot!(out);
 }
+
+#[test]
+fn board_too_small_shows_fallback() {
+    let st = styled_board();
+    let rows = visible_rows(&st);
+    let (lines, _) = build_lines(&st, &rows);
+    let out = crate::test_support::render_to_string(59, 20, |f| render(f, &st, &lines));
+    assert!(out.contains("Terminal too small"), "{out}");
+}

@@ -1,3 +1,4 @@
+use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher};
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -196,6 +197,7 @@ pub struct App {
     pub cards: Vec<Card>,
     pub focus: Option<Focus>,
     pub feed: Vec<FeedItem>,
+    keys: KeyDispatcher,
 }
 
 impl App {
@@ -209,6 +211,7 @@ impl App {
         Self {
             mode,
             opened_from_mission: false,
+            keys: KeyDispatcher::new(),
             minimal,
             project,
             all,
@@ -274,9 +277,9 @@ impl App {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Outcome::Quit;
         }
-        match key.code {
-            KeyCode::Char('q') => return Outcome::Quit,
-            KeyCode::Esc => {
+        let mission = self.mode == Mode::Mission;
+        match self.keys.dispatch(key, keymap::Mode::Normal) {
+            Action::Quit if key.code == KeyCode::Esc => {
                 if matches!(self.mode, Mode::Task(_)) && self.opened_from_mission {
                     self.mode = Mode::Mission;
                     self.opened_from_mission = false;
@@ -284,21 +287,26 @@ impl App {
                     return Outcome::Quit;
                 }
             }
-            KeyCode::Char('m') => self.minimal = !self.minimal,
-            KeyCode::Char('p') if self.mode == Mode::Mission => {
+            Action::Quit => return Outcome::Quit,
+            Action::Raw(k) if k.code == KeyCode::Char('m') => self.minimal = !self.minimal,
+            Action::Raw(k) if k.code == KeyCode::Char('p') && mission => {
                 self.all = !self.shows_all_projects();
                 self.selected = 0;
             }
-            KeyCode::Down | KeyCode::Char('j') if self.mode == Mode::Mission => {
+            Action::Down if mission => {
                 let n = self.visible_cards(minimal).len();
                 if self.selected + 1 < n {
                     self.selected += 1;
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') if self.mode == Mode::Mission => {
+            Action::Up if mission => {
                 self.selected = self.selected.saturating_sub(1);
             }
-            KeyCode::Enter if self.mode == Mode::Mission => {
+            Action::Top if mission => self.selected = 0,
+            Action::Bottom if mission => {
+                self.selected = self.visible_cards(minimal).len().saturating_sub(1);
+            }
+            Action::Confirm if mission => {
                 if let Some(c) = self.visible_cards(minimal).get(self.selected) {
                     self.mode = Mode::Task(c.uuid);
                     self.opened_from_mission = true;
