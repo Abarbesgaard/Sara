@@ -13,6 +13,10 @@ use crate::commands::shared::{heat_color, month_abbr};
 const CELL: &str = "██";
 
 pub(super) fn render(f: &mut Frame, data: &ActivityData) {
+    render_on(f, data, Local::now().date_naive());
+}
+
+fn render_on(f: &mut Frame, data: &ActivityData, today: NaiveDate) {
     let area = f.area();
     let max = data.counts.values().copied().max().unwrap_or(1).max(1);
 
@@ -39,7 +43,6 @@ pub(super) fn render(f: &mut Frame, data: &ActivityData) {
         ])
         .split(inner);
 
-    let today = Local::now().date_naive();
     let days_since_sunday = today.weekday().num_days_from_sunday();
     let grid_end = today - Duration::days(days_since_sunday as i64);
     let cell_width = CELL.len() as u16 + 1;
@@ -212,3 +215,7 @@ fn render_legend(f: &mut Frame, max: u32, area: ratatui::layout::Rect) {
 fn stat_span(label: &str, value: &str) -> Span<'static> {
     Span::raw(format!("{label}: {value}")).style(Style::default().fg(Color::White))
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/activity/render.rs"]
+mod tests;

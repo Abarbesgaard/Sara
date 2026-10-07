@@ -372,3 +372,74 @@ fn manual_scroll_is_clamped_but_not_snapped_back() {
     assert!(st.scroll < 500, "scroll should be clamped to content");
     assert!(st.scroll > 0, "scroll must not snap back to the selection");
 }
+
+fn step(id: i64, text: &str, done: bool, kind: &str) -> crate::infrastructure::db::ChecklistItem {
+    crate::infrastructure::db::ChecklistItem {
+        id,
+        text: text.into(),
+        done,
+        position: id,
+        intent: Some(format!("why {text}")),
+        kind: kind.into(),
+        source: "human".into(),
+        verify_cmd: (kind == "acceptance").then(|| "cargo test".into()),
+        result: done.then(|| "green".into()),
+        done_commit: None,
+        done_at: None,
+    }
+}
+
+fn styled_detail() -> Detail {
+    let mut t = task();
+    t.uuid = uuid::Uuid::from_u128(0xa71b8b5f);
+    t.id = Some(6);
+    t.priority = Some(Priority::H);
+    t.tags = vec!["tui".into(), "theme".into()];
+    t.due = Some(Utc::now() + chrono::Duration::hours(84));
+    t.urgency = 7.5;
+    let mut d = base_detail(t);
+    d.guide.assignment = Some("make the TUI coherent".into());
+    d.guide.rationale = Some("screens drifted apart".into());
+    d.checklist = vec![
+        step(1, "recall", true, "step"),
+        step(2, "observe", false, "step"),
+        step(3, "snapshots pass", false, "acceptance"),
+    ];
+    d.annotations = vec![
+        typed_note(1, "risk", "info render is huge"),
+        typed_note(2, "finding", "only text snapshots exist"),
+    ];
+    let mut a = node(1, Status::Completed);
+    a.uuid = uuid::Uuid::from_u128(1);
+    let mut b = node(2, Status::Pending);
+    b.uuid = uuid::Uuid::from_u128(2);
+    d.tree = TaskTree {
+        blockers: vec![a],
+        blockers_hidden: 0,
+        dependents: vec![b],
+        dependents_hidden: 0,
+    };
+    d
+}
+
+#[test]
+fn styled_snapshot_info() {
+    let mut st = base_state(styled_detail());
+    st.selected = 1;
+    let out = crate::test_support::render_to_styled_string(120, 48, |f| render(f, &mut st));
+    insta::with_settings!({filters => vec![(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "YYYY-MM-DD hh:mm")]}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_with_notes() {
+    let mut st = base_state(styled_detail());
+    st.show_notes = true;
+    st.show_urgency_breakdown = true;
+    st.verbose = true;
+    let out = crate::test_support::render_to_styled_string(120, 48, |f| render(f, &mut st));
+    insta::with_settings!({filters => vec![(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "YYYY-MM-DD hh:mm")]}, {
+        insta::assert_snapshot!(out);
+    });
+}

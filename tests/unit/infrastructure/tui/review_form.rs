@@ -349,3 +349,11 @@ fn empty_deps_list_toggle_is_noop() {
     state.handle_key(key(KeyCode::Down));
     assert_eq!(state.focus, Focus::Files);
 }
+
+#[test]
+fn styled_snapshot_review_form() {
+    let mut state = FormState::new(ctx_with_deps());
+    insta::assert_snapshot!(crate::test_support::render_to_styled_string(100, 34, |f| {
+        render(f, &mut state)
+    }));
+}
