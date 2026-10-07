@@ -545,7 +545,7 @@ sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (defaul
   with the newest at the bottom.
 - **Minimal mode** (`-m`) shows one step rail per active task in the current
   project with the name of the active step (`◆ …`) beneath it, then a feed of
-  the tasks' events in ascending order, newest at the bottom: steps added and
+  the tasks' events, newest at the top and older further down: steps added and
   done, notes, memories and "now doing" lines, each prefixed with its age (and
   the task id when several tasks are active). It fits in a 24×6 pane and
   switches on automatically when the terminal is narrower than 40 columns or
