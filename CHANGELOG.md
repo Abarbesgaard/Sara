@@ -9,6 +9,8 @@
   `── project ──` header and feed lines name the project. `-p` alone ties the
   view to the current folder's project, `-p <name>` to a named one. `-a` is now
   the default and is hidden.
+- **`sara follow` shows every open task**, not just those with activity in the
+  last 24 hours. Quiet tasks are listed after active ones and marked IDLE.
 
 ## [2.2.0] - 2026-10-07
 

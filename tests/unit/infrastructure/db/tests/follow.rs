@@ -185,7 +185,7 @@ fn flow_events_union_all_sources_in_time_order() {
 }
 
 #[test]
-fn flow_recently_active_tasks_filters_by_window_and_orders_newest_first() {
+fn flow_open_tasks_include_quiet_ones_ordered_newest_first() {
     let conn = mem();
     let quiet = seed_task(&conn);
     let older = seed_task(&conn);
@@ -206,12 +206,7 @@ fn flow_recently_active_tasks_filters_by_window_and_orders_newest_first() {
     .unwrap();
     record_doing(&conn, &newer.uuid, "b", None).unwrap();
 
-    let since = Utc::now() - Duration::hours(1);
-    let active = recently_active_tasks(&conn, since, None).unwrap();
-    let ids: Vec<_> = active.iter().map(|(t, _)| t.uuid).collect();
-    assert_eq!(ids, vec![newer.uuid, older.uuid]);
-    assert!(!ids.contains(&quiet.uuid));
-
-    let narrow = recently_active_tasks(&conn, Utc::now() - Duration::minutes(5), None).unwrap();
-    assert_eq!(narrow.len(), 1);
+    let open = open_tasks_by_activity(&conn, None).unwrap();
+    let ids: Vec<_> = open.iter().map(|(t, _)| t.uuid).collect();
+    assert_eq!(ids, vec![newer.uuid, older.uuid, quiet.uuid]);
 }
