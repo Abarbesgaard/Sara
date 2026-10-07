@@ -1,6 +1,7 @@
-use super::super::types::TaskTree;
+use super::super::handler::focusables;
+use super::super::types::{Detail, Focusable, GraphNode, TaskTree};
 use super::*;
-use crate::infrastructure::model::{Status, Task};
+use crate::infrastructure::model::{Priority, Status, Task};
 use chrono::Utc;
 
 fn task() -> Task {
@@ -465,4 +466,368 @@ fn info_too_small_shows_fallback_and_recovers_on_resize() {
     assert!(small.contains("need 60×16, have 50×10"), "{small}");
     let big = draw_at(&mut st, 100, 24);
     assert!(!big.contains("Terminal too small"), "{big}");
+}
+
+fn snap_filters() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", "YYYY-MM-DD hh:mm"),
+        (r"\d{2}-\d{2} \d{2}:\d{2}", "MM-DD hh:mm"),
+        (r"\b\d{2}:\d{2}\b", "hh:mm"),
+    ]
+}
+
+fn comment(
+    id: i64,
+    text: &str,
+    target: Option<(&str, &str)>,
+    status: &str,
+    request_revision: bool,
+) -> crate::infrastructure::db::Annotation {
+    crate::infrastructure::db::Annotation {
+        id,
+        text: text.into(),
+        entry: Utc::now(),
+        kind: "comment".into(),
+        author: "human".into(),
+        target_kind: target.map(|(k, _)| k.to_string()),
+        target_id: target.map(|(_, i)| i.to_string()),
+        status: status.into(),
+        request_revision,
+        resolved_by_run: None,
+    }
+}
+
+fn link(id: i64, url: &str, label: Option<&str>) -> crate::infrastructure::db::Link {
+    crate::infrastructure::db::Link {
+        id,
+        url: url.into(),
+        label: label.map(String::from),
+        entry: Utc::now(),
+    }
+}
+
+fn anchor(path: &str, source: &str, reason: Option<&str>) -> crate::infrastructure::db::Anchor {
+    crate::infrastructure::db::Anchor {
+        path: path.into(),
+        source: source.into(),
+        reason: reason.map(String::from),
+        symbol: Some("render".into()),
+        line_start: Some(10),
+        line_end: Some(40),
+    }
+}
+
+fn history_entry(
+    field: &str,
+    old: Option<&str>,
+    new: Option<&str>,
+) -> crate::infrastructure::db::HistoryEntry {
+    crate::infrastructure::db::HistoryEntry {
+        field: field.into(),
+        old_value: old.map(String::from),
+        new_value: new.map(String::from),
+        changed_at: Utc::now(),
+    }
+}
+
+fn select(st: &mut EditState, target: Focusable) {
+    st.selected = focusables(&st.detail, st.show_notes)
+        .iter()
+        .position(|f| *f == target)
+        .unwrap();
+}
+
+fn styled_snap(st: &mut EditState, w: u16, h: u16) -> String {
+    crate::test_support::render_to_styled_string(w, h, |f| render(f, st))
+}
+
+#[test]
+fn styled_snapshot_info_narrow_with_blockers() {
+    let mut d = styled_detail();
+    d.blocked_by = vec!["#3 wire the theme".into(), "#4 pick colours".into()];
+    d.blocking = vec!["#9 ship the release".into()];
+    d.cited = vec!["m12 prefer ink() over Color literals".into()];
+    let mut st = base_state(d);
+    st.selected = 2;
+    let out = styled_snap(&mut st, 90, 50);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_links() {
+    let mut d = styled_detail();
+    d.links = vec![
+        link(1, "https://github.com/acme/sara/pull/225", None),
+        link(2, "https://example.com/docs", Some("design doc")),
+        link(3, "https://example.com", Some("https://example.com")),
+    ];
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Link(1));
+    let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_files_and_anchors() {
+    let mut d = styled_detail();
+    d.manual_files = vec!["src/commands/info/render.rs".into(), "src/main.rs".into()];
+    d.anchors = vec![
+        anchor(
+            "src/commands/info/handler.rs",
+            "suggested",
+            Some("builds focusables"),
+        ),
+        anchor("src/infrastructure/tui/theme.rs", "manual", None),
+    ];
+    d.annotations.push(comment(
+        10,
+        "check this one",
+        Some(("anchor", "src/commands/info/handler.rs")),
+        "open",
+        true,
+    ));
+    d.annotations.push(comment(
+        11,
+        "old remark",
+        Some(("anchor", "src/commands/info/handler.rs")),
+        "resolved",
+        false,
+    ));
+    let mut st = base_state(d);
+    select(&mut st, Focusable::File("src/main.rs".into()));
+    let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_anchor_selected() {
+    let mut d = styled_detail();
+    d.anchors = vec![
+        anchor(
+            "src/commands/info/handler.rs",
+            "suggested",
+            Some("builds focusables"),
+        ),
+        anchor("src/infrastructure/tui/theme.rs", "manual", None),
+    ];
+    d.annotations.push(comment(
+        10,
+        "check this one",
+        Some(("anchor", "src/commands/info/handler.rs")),
+        "open",
+        true,
+    ));
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Anchor(0));
+    let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_verification() {
+    let mut d = styled_detail();
+    let mut done_acc = step(4, "clippy clean", true, "acceptance");
+    done_acc.done_commit = Some("0123456789abcdef".into());
+    done_acc.done_at = Some("2026-01-02".into());
+    done_acc.source = "ai".into();
+    d.checklist.push(done_acc);
+    d.project_commands = crate::infrastructure::db::ProjectCommands {
+        setup_cmd: None,
+        test_cmd: Some("cargo test".into()),
+        lint_cmd: Some("cargo clippy".into()),
+        run_cmd: Some("  ".into()),
+    };
+    d.guide.meta_json = Some(r#"{"bench_cmd":"cargo bench","empty":""}"#.into());
+    d.annotations.push(comment(
+        20,
+        "split it smaller",
+        Some(("step", "2")),
+        "open",
+        true,
+    ));
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Checklist(1));
+    let selected = styled_snap(&mut st, 120, 60);
+    st.verbose = true;
+    let verbose = styled_snap(&mut st, 120, 60);
+    let out = format!("{selected}\n{verbose}");
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_scrolled_to_selection() {
+    let mut d = styled_detail();
+    d.checklist = many_steps(30);
+    d.checklist[25].intent = Some("why this step matters".into());
+    d.annotations.push(comment(
+        40,
+        "on step 26",
+        Some(("step", "26")),
+        "open",
+        false,
+    ));
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Checklist(25));
+    let out = styled_snap(&mut st, 100, 20);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_ai_runs_and_similar() {
+    let mut d = styled_detail();
+    d.ai_runs = vec![
+        crate::infrastructure::db::AiRun {
+            id: 1,
+            kind: "plan".into(),
+            model: Some("gpt".into()),
+            provider: Some("copilot".into()),
+            created_at: Utc::now(),
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+        },
+        crate::infrastructure::db::AiRun {
+            id: 2,
+            kind: "reflect".into(),
+            model: None,
+            provider: None,
+            created_at: Utc::now(),
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+        },
+    ];
+    d.similar = vec![
+        (11, "tidy the board".into(), 2.0),
+        (12, "theme the follow screen".into(), 6.5),
+        (13, "split board render".into(), 4.25),
+        (14, "snapshot every screen".into(), 1.0),
+    ];
+    d.branch = Some(crate::infrastructure::db::BranchRecord {
+        branch: "tui/info-split".into(),
+    });
+    let mut st = base_state(d);
+    st.verbose = true;
+    let out = styled_snap(&mut st, 120, 60);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_comments() {
+    let mut d = styled_detail();
+    d.annotations.extend([
+        comment(30, "looks good overall", None, "open", false),
+        comment(31, "reword this note", Some(("note", "1")), "open", true),
+        comment(32, "step needs a test", Some(("step", "2")), "open", false),
+        comment(
+            33,
+            "accept is vague",
+            Some(("acceptance", "3")),
+            "resolved",
+            true,
+        ),
+        comment(34, "anchor remark", Some(("anchor", "x.rs")), "open", false),
+        comment(35, "dangling", Some(("step", "999")), "open", false),
+    ]);
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Comment(1));
+    let out = styled_snap(&mut st, 120, 60);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+fn with_history(mut d: Detail) -> Detail {
+    d.history = vec![
+        history_entry("created", None, Some("root task")),
+        history_entry("priority", None, Some("H")),
+        history_entry("annotation", None, Some("first comment")),
+        history_entry("link", Some("https://old.example"), None),
+        history_entry("due", Some("2026-01-01"), Some("2026-02-01")),
+    ];
+    d
+}
+
+#[test]
+fn styled_snapshot_info_history() {
+    let mut st = base_state(with_history(styled_detail()));
+    let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_editing_field() {
+    let mut st = base_state(with_history(styled_detail()));
+    st.editing = true;
+    st.selected = 0;
+    st.editor = ratatui_textarea::TextArea::from(["root task renamed"]);
+    let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_editing_errors() {
+    let mut st = base_state(styled_detail());
+    st.editing = true;
+    st.selected = 3;
+    st.due_error = true;
+    st.editor = ratatui_textarea::TextArea::from(["not a date"]);
+    let due = styled_snap(&mut st, 120, 48);
+    st.due_error = false;
+    st.selected = 7;
+    st.dep_error = Some("no task 99".into());
+    let dep = styled_snap(&mut st, 120, 48);
+    st.dep_error = None;
+    let dep_ok = styled_snap(&mut st, 120, 48);
+    let out = format!("{due}\n{dep}\n{dep_ok}");
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_commenting() {
+    let mut st = base_state(styled_detail());
+    select(&mut st, Focusable::Checklist(1));
+    st.commenting = true;
+    st.editor = ratatui_textarea::TextArea::from(["needs a test"]);
+    let on_step = styled_snap(&mut st, 120, 48);
+    st.selected = 0;
+    let on_task = styled_snap(&mut st, 120, 48);
+    let out = format!("{on_step}\n{on_task}");
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn styled_snapshot_info_adding_step() {
+    let mut st = base_state(with_history(styled_detail()));
+    st.adding_step = true;
+    st.editor = ratatui_textarea::TextArea::from(["write the snapshot"]);
+    let with_hist = styled_snap(&mut st, 120, 48);
+    st.detail.history.clear();
+    let without_hist = styled_snap(&mut st, 120, 48);
+    let out = format!("{with_hist}\n{without_hist}");
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
 }

@@ -1,0 +1,140 @@
+---
+source: tests/unit/commands/info/render.rs
+expression: out
+---
+┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
+│ ← blocked by (1)                       ││ ▶ Description root task                                                    │
+│  └─✓ 1 task 1                          ││   Project     tk                                                           │
+│────────────────────────────────────────││   Priority    High                                                         │
+│ ▶   6 root task                        ││   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
+│────────────────────────────────────────││   Tags        tui, theme                                                   │
+│ blocks → (1)                           ││   Estimate    -                                                            │
+│  └─○ 2 task 2                          ││   Recur       -                                                            │
+└────────────────────────────────────────┘│   Depends on  -                                                            │
+┌ Git ───────────────────────────────────┐│  Time spent  -                                                             │
+│  Branch  tui/info-split                ││  Urgency     7.5                                                           │
+│                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
+│                                        ││  Modified    YYYY-MM-DD hh:mm                                              │
+│                                        ││  Assignment  make the TUI coherent                                         │
+│                                        ││  Rationale   screens drifted apart                                         │
+│                                        ││                                                                            │
+│                                        ││  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve     │
+│                                        ││                                                                            │
+│                                        ││Risks                                                                       │
+│                                        ││   • info render is huge (ai)                                               │
+│                                        ││                                                                            │
+│                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
+│                                        ││needed for review  (n to view)                                              │
+│                                        ││                                                                            │
+│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││   [x] recall                                                               │
+│                                        ││         why recall                                                         │
+│                                        ││         → green                                                            │
+│                                        ││   [ ] observe                                                              │
+│                                        ││         why observe                                                        │
+│                                        ││   [ ] snapshots pass [accept]                                              │
+│                                        ││         why snapshots pass                                                 │
+│                                        ││         verify cargo test                                                  │
+│                                        ││                                                                            │
+│                                        ││AI activity                                                                 │
+│                                        ││  plan via gpt [copilot] @ YYYY-MM-DD hh:mm                                 │
+│                                        ││  reflect via ? [?] @ YYYY-MM-DD hh:mm                                      │
+│                                        ││                                                                            │
+│                                        ││Related tasks (shared tags)                                                 │
+│                                        ││  #12  theme the follow screen  urg 6.5                                     │
+│                                        ││  #13  split board render  urg 4.2                                          │
+│                                        ││  #11  tidy the board  urg 2.0                                              │
+│                                        ││  … 1 more                                                                  │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
+ ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+--- styles ---
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+acccccccccccccccccdddddddddddddddddddddddabeeeeeeeeeeeeeeefffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddb
+agggghhhhhhhhhhddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+aggggggggggggggggggggggggggggggggggggggggabgggggggggggggggiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+aeeeeeeeeeeeeeeeeddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+aggggggggggggggggggggggggggggggggggggggggabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+acccccccccccccdddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+aggggbbbbbbbbbbddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+ggggggggggggggggggggggggggggggggggggggggggbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gggggggggggjjjjjjjjjjjjjjddddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggddddddddddddddddgggggggggdddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkdddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbllllldddddddddddddddddddaaaaadddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkddb
+gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgblllllllhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbmmmmmmmmmmmmmmmmddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbllllllldddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgblllllllddddddddddddddnnnnnnnnnddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggggnnnnnnnnnnddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggggggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggggggggggggggggggggggggggddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggdddddddddddddddddddddddgggggggggdddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggddddddddddddddddddgggggggggddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbgggggggddddddddddddddgggggggggddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
+ggggggggggggggggggggggggggggggggggggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
+--- legend ---
+a fg=Some(Magenta) bg=Some(Reset) mod=NONE
+b fg=Some(Cyan) bg=Some(Reset) mod=NONE
+c fg=Some(Gray) bg=Some(Reset) mod=BOLD
+d fg=Some(Reset) bg=Some(Reset) mod=NONE
+e fg=Some(White) bg=Some(Blue) mod=BOLD
+f fg=Some(White) bg=Some(Blue) mod=NONE
+g fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+h fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+i fg=Some(Red) bg=Some(Reset) mod=NONE
+j fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+k fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+l fg=Some(Gray) bg=Some(Reset) mod=NONE
+m fg=Some(Green) bg=Some(Reset) mod=NONE
+n fg=Some(Blue) bg=Some(Reset) mod=NONE
