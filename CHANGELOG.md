@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-07
+
 ### Added
 
 - **`sara follow`, a live view of agents at work** (#231). Mission control
@@ -18,7 +20,7 @@
 - **"Now doing" reports.** The new MCP `doing` tool (and an optional `doing`
   parameter on `step_done` and `annotate`) records a one-line status shown by
   `sara follow`. CLI: `sara doing <id> <text>`. A database migration adds the
-  `task_activity` table, so older binaries cannot open the upgraded database.
+  `task_activity` table, so older binaries cannot open a 2.2.0 database.
 - A shared TUI theme (semantic tones, `NO_COLOR` support) and screen chrome,
   the first piece of the TUI overhaul (#224).
 
