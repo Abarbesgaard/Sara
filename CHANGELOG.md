@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-08
+
 ### Added
 
 - `sara board` cards: every task now shows a second line with guide validation,
