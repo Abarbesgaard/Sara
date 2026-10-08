@@ -6,6 +6,17 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::theme::{GLYPH_PROMPT, Ink, Theme, ink};
 
+pub fn bar(done: usize, total: usize, cells: usize) -> Vec<Span<'static>> {
+    let filled = (done * cells).checked_div(total).unwrap_or(0).min(cells);
+    vec![
+        Span::styled("▰".repeat(filled), Style::default().fg(ink(Ink::Ok))),
+        Span::styled(
+            "▱".repeat(cells - filled),
+            Style::default().fg(ink(Ink::Muted)),
+        ),
+    ]
+}
+
 pub fn too_small(f: &mut Frame, min_w: u16, min_h: u16) -> bool {
     let area = f.area();
     if area.width >= min_w && area.height >= min_h {

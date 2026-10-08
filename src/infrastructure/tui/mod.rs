@@ -106,7 +106,13 @@ pub fn render_help_overlay(f: &mut ratatui::Frame, title: &str, bindings: &[(&st
         widgets::{Block, Borders, Clear, Paragraph},
     };
 
-    let area = centered_rect(60, 60, f.area());
+    let screen = f.area();
+    let mut area = centered_rect(60, 60, screen);
+    let needed = (bindings.len() as u16 + 4).min(screen.height);
+    if area.height < needed {
+        area.height = needed;
+        area.y = screen.y + (screen.height - needed) / 2;
+    }
     f.render_widget(Clear, area);
 
     let key_w = bindings

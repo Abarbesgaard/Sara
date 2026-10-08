@@ -65,17 +65,7 @@ pub(super) fn label_line(
     }
     Line::from(spans)
 }
-
-pub(super) fn bar(done: usize, total: usize, cells: usize) -> Vec<Span<'static>> {
-    let filled = (done * cells).checked_div(total).unwrap_or(0).min(cells);
-    vec![
-        Span::styled("▰".repeat(filled), Style::default().fg(ink(Ink::Ok))),
-        Span::styled(
-            "▱".repeat(cells - filled),
-            Style::default().fg(ink(Ink::Muted)),
-        ),
-    ]
-}
+pub(super) use crate::infrastructure::tui::screen::bar;
 
 pub(super) fn feedback_mark(open: usize, revise: bool, bg: Color) -> Vec<Span<'static>> {
     let mut spans = vec![];

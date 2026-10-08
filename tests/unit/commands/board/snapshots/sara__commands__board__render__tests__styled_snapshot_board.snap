@@ -1,8 +1,8 @@
 ---
 source: tests/unit/commands/board/render.rs
-expression: "crate::test_support::render_to_styled_string(100, 24, |f|\nrender(f, &st, &lines))"
+expression: "crate::test_support::render_to_styled_string(100, 24, |f|\n{ render(f, &st, &lines) })"
 ---
-[ Total: 4 | Active: 1 | Issues: 2 | Done: 0 ]                                [ Next: #4 loose end ]
+[ Total: 4 | Active: 1 | Issues: 2 | Done: 0 ]                           [ Next: #1 wire the theme ]
 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 
 Priority:
@@ -10,14 +10,14 @@ High [███] 25%   Med [███] 25%   Low [███] 25%   None [██�
 
 ╭ tk ──────────────────────────────────────────────────────────────────────────────────────────────╮
 │     ID  PRI AGE           DESCRIPTION                                                            │
-│ ▾        H  0m            #225 o/r  [0/2 done]                                                   │
+│▌▾        H  0m            #225 o/r  ▱▱▱▱▱▱▱▱▱▱ 0/2                                               │
 │▶ ├─  1   H  0m       PR   wire the theme                                                         │
+│ │                         ★ NEXT  ⚠ stale  ☐ 1/2  ! 1 feedback  ◷ due 3d  ⎇ feat/theme  ▸ Pin the│
 │  └─  2   M  0m            pin snapshots                                                          │
-│ ▸        L  0m            #224 o/r  [0/1 done]                                                   │
+│                           ✓ valid  ☐ 2/2  · no feedback  ⊘ blocked #1                            │
+│▌▸        L  0m            #224 o/r  ▱▱▱▱▱▱▱▱▱▱ 0/1                                               │
 │      4   -  0m            loose end                                                              │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
+│                           · unvalidated  ☐ no criteria  · no feedback                            │
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │
@@ -25,9 +25,9 @@ High [███] 25%   Med [███] 25%   Low [███] 25%   None [██�
 │                                                                                                  │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
- j/k Select  |  h/l Collapse/Expand  |  Enter Open  |  ? Help  |  q Quit
+ j/k move  ·  Enter open  ·  / filter  ·  p preview  ·  ? help  ·  q quit
 --- styles ---
-aabbbbbbbcbbbbbbbbbbbcbbbbbbbbbbbcbbbbbbbbbcaaddddddddddddddddddddddddddddddddaabbbbbbccccccccccccaa
+aabbbbbbbcbbbbbbbbbbbcbbbbbbbbbbbcbbbbbbbbbcaadddddddddddddddddddddddddddaabbbbbbcccccccccccccccccaa
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccc
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 cccccccccddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
@@ -35,14 +35,14 @@ eeeeebfffbeeeeeeeeeeebgggbeeeeeeeeeeebhhhbeeeeeeeeeeeebbbbbeeeeeeedddddddddddddd
 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 iaaaaiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 ijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-ikkkkkkkkklllkkkkkkkkkkkkkkkmmmmmmmmkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddi
-innnnnnnnnooonnnnnnnnnnpppppoooooooooooooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-ieeeeiiiiiqqqebbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-ikkkkkkkkkrrrkkkkkkkkkkkkkkkmmmmmmmmkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddi
+ikllllllllmmmlllllllllllllllnnnnnnnnlllllllllllllllldddddddddddddddddddddddddddddddddddddddddddddddi
+iooooooooopppooooooooooqqqqqppppppppppppppdddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+irrrrrrrrrrrrrrrrrrrrrrrrrrrssssssttuuuuuuuttvvvvvttwwwwwwwwwwwwttvvvvvvvvttxxxxxxxxxxxxttvvvvvvvvvi
+ieeeeiiiiiyyyebbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+ibbbbbbbbbbbbbbbbbbbbbbbbbbbhhhhhhhddhhhhhddbbbbbbbbbbbbbddffffffffffffddddddddddddddddddddddddddddi
+ikllllllllzzzlllllllllllllllnnnnnnnnlllllllllllllllldddddddddddddddddddddddddddddddddddddddddddddddi
 ieeeeiiiiibbbebbbbbbbbbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
-iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
+ibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbddbbbbbbbbbbbbbddbbbbbbbbbbbbbddddddddddddddddddddddddddddi
 iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
 iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
 iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
@@ -50,7 +50,7 @@ iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
 iddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddi
 iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
-ccccbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbbbbcccccbbbbbbbbbbcbbbbbbbbbbcbbbbbdddddddddddddddddddddddddddd
+dcccbbbbbbbbbbcccccbbbbbbbbbbcbbbbbbbbbbbbcbbbbbbbbbbbbbcbbbbbbbbbbcbbbbbddddddddddddddddddddddddddd
 --- legend ---
 a fg=Some(Cyan) bg=Some(Reset) mod=BOLD
 b fg=Some(DarkGray) bg=Some(Reset) mod=NONE
@@ -62,11 +62,19 @@ g fg=Some(Yellow) bg=Some(Reset) mod=NONE
 h fg=Some(Green) bg=Some(Reset) mod=NONE
 i fg=Some(Cyan) bg=Some(Reset) mod=NONE
 j fg=Some(White) bg=Some(Reset) mod=BOLD | UNDERLINED
-k fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
-l fg=Some(White) bg=Some(Red) mod=BOLD
-m fg=Some(Cyan) bg=Some(Rgb(28, 30, 44)) mod=BOLD
-n fg=Some(White) bg=Some(Blue) mod=NONE
-o fg=Some(White) bg=Some(Blue) mod=BOLD
-p fg=Some(Magenta) bg=Some(Reset) mod=BOLD
-q fg=Some(Black) bg=Some(Yellow) mod=BOLD
-r fg=Some(Black) bg=Some(Green) mod=BOLD
+k fg=Some(Cyan) bg=Some(Rgb(28, 30, 44)) mod=NONE
+l fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+m fg=Some(White) bg=Some(Red) mod=BOLD
+n fg=Some(Cyan) bg=Some(Rgb(28, 30, 44)) mod=BOLD
+o fg=Some(White) bg=Some(Blue) mod=NONE
+p fg=Some(White) bg=Some(Blue) mod=BOLD
+q fg=Some(Magenta) bg=Some(Reset) mod=BOLD
+r fg=Some(DarkGray) bg=Some(Blue) mod=NONE
+s fg=Some(Cyan) bg=Some(Blue) mod=BOLD
+t fg=Some(Reset) bg=Some(Blue) mod=NONE
+u fg=Some(Yellow) bg=Some(Blue) mod=NONE
+v fg=Some(Gray) bg=Some(Blue) mod=NONE
+w fg=Some(Cyan) bg=Some(Blue) mod=NONE
+x fg=Some(Blue) bg=Some(Blue) mod=NONE
+y fg=Some(Black) bg=Some(Yellow) mod=BOLD
+z fg=Some(Black) bg=Some(Green) mod=BOLD

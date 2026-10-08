@@ -35,7 +35,10 @@ pub fn run(
     }
 
     loop {
-        let action = tui::with_terminal(|t| render::board_loop(t, &mut st))?;
+        let mut load = |uuid: &str, width: u16| {
+            crate::commands::info::preview_lines(conn, cfg, uuid, width).unwrap_or_default()
+        };
+        let action = tui::with_terminal(|t| render::board_loop(t, &mut st, &mut load))?;
 
         match action {
             BoardAction::Quit => break,

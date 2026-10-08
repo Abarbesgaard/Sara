@@ -103,6 +103,34 @@ pub fn guide_value(conn: &Connection, id_or_uuid: &str) -> Result<serde_json::Va
     Ok(guide)
 }
 
+pub fn preview_lines(
+    conn: &Connection,
+    cfg: &Config,
+    uuid: &str,
+    width: u16,
+) -> Result<Vec<ratatui::text::Line<'static>>> {
+    let task = db::resolve_task(conn, uuid)?;
+    let detail = load_detail(conn, cfg, task)?;
+    let st = types::EditState {
+        detail,
+        selected: usize::MAX,
+        editing: false,
+        commenting: false,
+        adding_step: false,
+        editor: ratatui_textarea::TextArea::default(),
+        due_error: false,
+        dep_error: None,
+        scroll: 0,
+        last_selected: None,
+        tree_expanded: false,
+        show_urgency_breakdown: false,
+        verbose: false,
+        show_notes: false,
+        open: handler::load_open_sections(conn),
+    };
+    Ok(render::preview(&st, width as usize))
+}
+
 pub fn run_json(conn: &Connection, _cfg: &Config, id_or_uuid: &str) -> Result<()> {
     print_json(&guide_value(conn, id_or_uuid)?)?;
     Ok(())
