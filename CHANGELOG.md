@@ -17,6 +17,13 @@
   without an argument it lists every palette with colour swatches (plain when
   piped or under `NO_COLOR`) and marks the active one.
 
+- **`sara info` header bar and anchor block.** Status, guide freshness
+  (validated / stale / never), branch, open feedback with revision requests,
+  and id · uuid sit in a header bar; assignment and why lead the body. The
+  checklist marks the current step (what `next` returns) with its intent, shows
+  an acceptance progress bar, and shows each acceptance item's verify command
+  and result inline.
+
 ### Changed
 
 - Every TUI screen now takes its colours from semantic roles in `tui::theme`

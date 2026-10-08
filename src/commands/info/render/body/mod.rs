@@ -48,12 +48,12 @@ impl<'a> Body<'a> {
             lines: vec![],
             sel_range: None,
         };
+        body.anchor();
         body.edit_rows();
         body.status_row();
         body.time_row();
         body.urgency_row();
         body.date_rows();
-        body.guide();
         body.select_hint();
         body.typed_notes();
         body.blockers();

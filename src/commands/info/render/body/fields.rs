@@ -7,10 +7,10 @@ use ratatui::{
 use crate::infrastructure::model::{Priority, Task, format_duration};
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use super::super::lines::{collapsed_text, field_line, key_span};
+use super::super::lines::{collapsed_text, field_line, key_span, section};
 use super::Body;
 use crate::commands::info::edit::current_value;
-use crate::commands::info::handler::{depends_on_display, guide_is_stale};
+use crate::commands::info::handler::depends_on_display;
 use crate::commands::info::types::{Detail, EDIT_FIELDS, EditField};
 
 impl Body<'_> {
@@ -163,44 +163,32 @@ impl Body<'_> {
         ));
     }
 
-    pub(super) fn guide(&mut self) {
+    pub(super) fn anchor(&mut self) {
         let d = self.d;
         let st = self.st;
+        if d.guide.assignment.is_none() && d.guide.rationale.is_none() {
+            return;
+        }
+        self.lines.push(section("Anchor"));
         if let Some(a) = &d.guide.assignment {
             self.lines.push(Line::from(vec![
                 key_span("Assignment"),
                 Span::styled(
                     collapsed_text(a, st.verbose),
-                    Style::default().fg(ink(Ink::Muted)),
+                    Style::default().fg(ink(Ink::Text)),
                 ),
             ]));
         }
         if let Some(r) = &d.guide.rationale {
             self.lines.push(Line::from(vec![
-                key_span("Rationale"),
-                Span::raw(collapsed_text(r, st.verbose)),
-            ]));
-        }
-        if guide_is_stale(d) {
-            self.lines.push(Line::from(vec![Span::styled(
-                format!(
-                    "  ⚠ guide may be stale — validated @ {} but HEAD is {} (run `sara validate`)",
-                    d.guide.validated_commit.as_deref().unwrap_or("-"),
-                    d.head_commit.as_deref().unwrap_or("-"),
-                ),
-                Style::default()
-                    .fg(ink(Ink::Warn))
-                    .add_modifier(Modifier::BOLD),
-            )]));
-        } else if let Some(v) = &d.guide.validated_commit {
-            self.lines.push(Line::from(vec![
-                key_span("Freshness"),
+                key_span("Why"),
                 Span::styled(
-                    format!("validated @ {v}"),
-                    Style::default().fg(ink(Ink::Ok)),
+                    collapsed_text(r, st.verbose),
+                    Style::default().fg(ink(Ink::Soft)),
                 ),
             ]));
         }
+        self.lines.push(Line::from(""));
     }
 }
 

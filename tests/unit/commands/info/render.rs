@@ -278,7 +278,7 @@ fn long_assignment_is_collapsed_until_verbose() {
 }
 
 #[test]
-fn checklist_detail_only_shows_for_selected_row_unless_verbose() {
+fn checklist_detail_shows_for_current_and_selected_rows_unless_verbose() {
     let mut d = base_detail(task());
     d.checklist = vec![
         crate::infrastructure::db::ChecklistItem {
@@ -311,17 +311,23 @@ fn checklist_detail_only_shows_for_selected_row_unless_verbose() {
     let mut st = base_state(d);
     st.selected = 0;
     let out = draw(&mut st);
-    assert!(!out.contains("do the first thing"));
+    assert!(out.contains("do the first thing"));
     assert!(!out.contains("do the second thing"));
 
     let idx = focusables(&st.detail, st.show_notes)
         .iter()
-        .position(|f| matches!(f, Focusable::Checklist(0)))
+        .position(|f| matches!(f, Focusable::Checklist(1)))
         .unwrap();
     st.selected = idx;
     let out2 = draw(&mut st);
     assert!(out2.contains("do the first thing"));
-    assert!(!out2.contains("do the second thing"));
+    assert!(out2.contains("do the second thing"));
+
+    st.detail.checklist[0].done = true;
+    st.selected = 0;
+    let out_after = draw(&mut st);
+    assert!(!out_after.contains("do the first thing"));
+    assert!(out_after.contains("do the second thing"));
 
     st.verbose = true;
     let out3 = draw(&mut st);
@@ -827,6 +833,112 @@ fn styled_snapshot_info_adding_step() {
     st.detail.history.clear();
     let without_hist = styled_snap(&mut st, 120, 48);
     let out = format!("{with_hist}\n{without_hist}");
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+#[test]
+fn header_shows_status_freshness_branch_feedback_and_ids() {
+    let mut d = base_detail(task());
+    d.task.id = Some(9);
+    d.task.uuid = uuid::Uuid::parse_str("f9ea645f-0f27-46de-a527-ff70e13e8c53").unwrap();
+    let out = draw(&mut base_state(d));
+    let head = out.lines().next().unwrap().to_string();
+    assert!(head.contains("○ pending"), "{head}");
+    assert!(head.contains("· never validated"), "{head}");
+    assert!(head.contains("⎇ no branch"), "{head}");
+    assert!(head.contains("0 open"), "{head}");
+    assert!(head.contains("#9 · f9ea645f"), "{head}");
+
+    let mut d = base_detail(task());
+    d.guide.validated_commit = Some("abc12345".into());
+    d.head_commit = Some("abc12345".into());
+    d.branch = Some(crate::infrastructure::db::BranchRecord {
+        branch: "feat/info".into(),
+    });
+    d.annotations = vec![
+        comment(1, "fix it", None, "open", true),
+        comment(2, "nit", None, "open", false),
+        comment(3, "old", None, "resolved", true),
+    ];
+    let out = draw(&mut base_state(d));
+    let head = out.lines().next().unwrap().to_string();
+    assert!(head.contains("✓ validated @ abc12345"), "{head}");
+    assert!(head.contains("⎇ feat/info"), "{head}");
+    assert!(head.contains("2 open"), "{head}");
+    assert!(head.contains("⟳ 1 needs revision"), "{head}");
+
+    let mut d = base_detail(task());
+    d.guide.validated_commit = Some("abc12345".into());
+    d.head_commit = Some("def67890".into());
+    let out = draw(&mut base_state(d));
+    let head = out.lines().next().unwrap().to_string();
+    assert!(
+        head.contains("⚠ stale @ abc12345 (HEAD def67890)"),
+        "{head}"
+    );
+
+    let mut d = base_detail(task());
+    d.task.started_at = Some(Utc::now());
+    let out = draw(&mut base_state(d));
+    let head = out.lines().next().unwrap().to_string();
+    assert!(head.contains("● active"), "{head}");
+}
+
+#[test]
+fn anchor_block_leads_the_body_and_is_absent_without_guide() {
+    let out = draw(&mut base_state(styled_detail()));
+    let anchor = out.find("Anchor").unwrap();
+    let desc = out.find("Description").unwrap();
+    assert!(anchor < desc, "{out}");
+    assert!(out.contains("Why         screens drifted apart"), "{out}");
+    let bare = draw(&mut base_state(base_detail(task())));
+    assert!(!bare.contains("Anchor"), "{bare}");
+}
+
+#[test]
+fn checklist_marks_current_step_and_shows_acceptance_bar_and_verify() {
+    let mut d = base_detail(task());
+    d.checklist = vec![
+        step(1, "recall", true, "step"),
+        step(2, "observe", false, "step"),
+        step(3, "build", false, "step"),
+        step(4, "tests pass", true, "acceptance"),
+        step(5, "clippy clean", false, "acceptance"),
+    ];
+    let out = draw(&mut base_state(d));
+    assert!(out.contains("◆ [ ] observe  ← next"), "{out}");
+    assert!(!out.contains("build  ← next"), "{out}");
+    assert!(out.contains("why observe"), "{out}");
+    assert!(!out.contains("why build"), "{out}");
+    assert!(
+        out.contains("acceptance  ██████████░░░░░░░░░░ 1/2"),
+        "{out}"
+    );
+    assert!(out.contains("verify cargo test  → green"), "{out}");
+    assert!(out.contains("verify cargo test  → not run"), "{out}");
+}
+
+#[test]
+fn styled_snapshot_info_header_and_steps() {
+    let mut d = styled_detail();
+    d.guide.validated_commit = Some("abc12345".into());
+    d.head_commit = Some("def67890".into());
+    d.branch = Some(crate::infrastructure::db::BranchRecord {
+        branch: "feat/info".into(),
+    });
+    d.checklist
+        .push(step(4, "clippy clean", true, "acceptance"));
+    d.annotations.push(comment(
+        9,
+        "tighten this",
+        Some(("step", "2")),
+        "open",
+        true,
+    ));
+    let mut st = base_state(d);
+    let out = styled_snap(&mut st, 120, 48);
     insta::with_settings!({filters => snap_filters()}, {
         insta::assert_snapshot!(out);
     });
