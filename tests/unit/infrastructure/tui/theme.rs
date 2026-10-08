@@ -186,3 +186,15 @@ fn scheme_palettes_keep_text_readable() {
     set_look(Palette::Classic, true, true);
     assert!(weak.is_empty(), "{}", weak.join("\n"));
 }
+
+#[test]
+fn swatch_reads_another_palette_without_switching() {
+    set_look(Palette::Classic, true, false);
+    let colors = swatch(Palette::Nord).unwrap();
+    assert_eq!(colors.len(), SWATCH.len());
+    assert!(colors.iter().all(|c| matches!(c, Color::Indexed(..))));
+    assert_eq!(palette(), Palette::Classic);
+    set_look(Palette::Classic, false, true);
+    assert_eq!(swatch(Palette::Nord), None);
+    set_look(Palette::Classic, true, true);
+}

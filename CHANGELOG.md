@@ -14,7 +14,8 @@
   and `high-contrast`. Truecolor where available, nearest xterm-256 colour
   otherwise; a contrast test keeps text and badges readable in each.
 - **`sara theme [name]`** switches the TUI palette and saves the choice;
-  without an argument it lists every palette and marks the active one.
+  without an argument it lists every palette with colour swatches (plain when
+  piped or under `NO_COLOR`) and marks the active one.
 
 ### Changed
 

@@ -970,7 +970,8 @@ Every full-screen view (`info`, the board, `add`/`modify` review, `projects`,
   terminal background.
 
 Switch any time with `sara theme <name>` (e.g. `sara theme nord`); plain
-`sara theme` shows which one is active. The choice is saved as `[tui] theme`.
+`sara theme` lists every palette with a row of colour swatches and marks the
+active one. The choice is saved as `[tui] theme`.
 For a one-off, override it per shell with `SARA_THEME=retro`.
 `NO_COLOR=1` turns colour off in every palette.
 
