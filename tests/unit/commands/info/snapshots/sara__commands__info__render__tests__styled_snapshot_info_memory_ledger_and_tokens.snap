@@ -29,12 +29,12 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Memory ledger  (3)  Enter opens in dream                                    │
+│                                        ││▾ Memory ledger (3)  Enter opens in dream                                   │
 │                                        ││ ▶ m855  one file per palette under tui/themes  cited  recalled  surfaced ×2│
 │                                        ││   m829  TUI inventory  recalled                                            │
 │                                        ││   m487  fold design analogue  surfaced ×4                                  │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
@@ -42,7 +42,7 @@ expression: out
 │                                        ││   [ ] snapshots pass [accept]                                              │
 │                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
-│                                        ││AI activity                                                                 │
+│                                        ││▾ AI activity (1)                                                           │
 │                                        ││  plan via gpt [copilot] @ YYYY-MM-DD hh:mm  · 1,545 tok (1,200 in / 345    │
 │                                        ││out)                                                                        │
 │                                        ││  1 run · 1,545 tokens                                                      │
@@ -53,7 +53,7 @@ expression: out
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
 ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
@@ -82,12 +82,12 @@ jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiijjjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiijjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgqqqrrrrrrqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsssssssttttttttttjjjjjjjjjjjjjg
 jddddddddddddddddddddddddddddddddddddddddjgllluuuuuudddddddddddddttttttttttddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgllluuuuuuddddddddddddddddddddjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
@@ -95,7 +95,7 @@ jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmddddddddddddddtttttttttddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjttttttttttddjjjjjjjjjdddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjtttttttttttttttttttttttttttttddddg
 jddddddddddddddddddddddddddddddddddddddddjgttttddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjghhhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddg

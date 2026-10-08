@@ -27,6 +27,11 @@
   recalled or cited for the task is listed once with its use kinds (cited
   first); `Enter` on a row opens it in `sara dream`. AI activity rows show
   token counts (in / out) and a total.
+- **`sara info` collapsible sections.** Memory ledger, Links, files,
+  Checklist, Verification, AI activity, Related tasks and Feedback (formerly
+  Comments) fold with `Enter`/`Space` on their `▾`/`▸` header, which shows a
+  count. Checklist and Feedback start open; the open set persists across
+  sessions.
 
 ### Changed
 

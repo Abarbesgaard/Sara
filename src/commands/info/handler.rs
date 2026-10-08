@@ -6,8 +6,51 @@ use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
 use super::types::{
-    Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, LedgerEntry, NOTE_KINDS, TaskTree,
+    Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, LedgerEntry, NOTE_KINDS, SectionId,
+    Sections, TaskTree,
 };
+
+const OPEN_SECTIONS_KEY: &str = "tui.info.open";
+
+pub(super) fn load_open_sections(conn: &Connection) -> Sections {
+    match db::meta_get(conn, OPEN_SECTIONS_KEY) {
+        Ok(Some(v)) => v.split(',').filter_map(SectionId::parse).collect(),
+        _ => SectionId::default_open(),
+    }
+}
+
+pub(super) fn save_open_sections(conn: &Connection, open: &Sections) {
+    let v: Vec<&str> = open.iter().map(|id| id.key()).collect();
+    let _ = db::meta_set(conn, OPEN_SECTIONS_KEY, &v.join(","));
+}
+
+pub(super) fn toggle_section(conn: &Connection, open: &mut Sections, id: SectionId) {
+    if !open.remove(&id) {
+        open.insert(id);
+    }
+    save_open_sections(conn, open);
+}
+
+fn feedback_count(d: &Detail) -> usize {
+    d.annotations
+        .iter()
+        .filter(|a| a.kind == "comment" && a.target_kind.as_deref() != Some("anchor"))
+        .count()
+}
+
+pub(super) fn section_len(d: &Detail, id: SectionId) -> usize {
+    match id {
+        SectionId::Memory => d.ledger.len(),
+        SectionId::Links => d.links.len(),
+        SectionId::Files => d.manual_files.len(),
+        SectionId::Anchors => d.anchors.len(),
+        SectionId::Steps => d.checklist.len(),
+        SectionId::Verification => verification_rows(d).len(),
+        SectionId::Ai => d.ai_runs.len(),
+        SectionId::Related => d.similar.len(),
+        SectionId::Feedback => feedback_count(d),
+    }
+}
 
 const TREE_FETCH_MAX_DEPTH: usize = 6;
 const TREE_FETCH_MAX_NODES: usize = 40;
@@ -374,44 +417,74 @@ pub(super) fn memory_ledger(conn: &Connection, task: &uuid::Uuid) -> Vec<LedgerE
     ledger
 }
 
-pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
+pub(super) fn focusables(d: &Detail, show_notes: bool, open: &Sections) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
     for (i, note) in typed_notes(d).iter().enumerate() {
         if show_notes || note.kind == "risk" {
             v.push(Focusable::Note(i));
         }
     }
-    for i in 0..d.ledger.len() {
-        v.push(Focusable::Memory(i));
-    }
-    for i in 0..d.links.len() {
-        v.push(Focusable::Link(i));
-    }
-    for f in d.manual_files.iter().chain(d.suggested_files.iter()) {
-        v.push(Focusable::File(f.clone()));
-    }
-    for i in 0..d.anchors.len() {
-        v.push(Focusable::Anchor(i));
-    }
-    for i in 0..d.checklist.len() {
-        v.push(Focusable::Checklist(i));
-    }
-    let comment_count = d
-        .annotations
-        .iter()
-        .filter(|a| a.kind == "comment" && a.target_kind.as_deref() != Some("anchor"))
-        .count();
-    for i in 0..comment_count {
-        v.push(Focusable::Comment(i));
-    }
+    let fold = |v: &mut Vec<Focusable>, id: SectionId, items: Vec<Focusable>| {
+        if section_len(d, id) > 0 {
+            v.push(Focusable::Section(id));
+            if open.contains(&id) {
+                v.extend(items);
+            }
+        }
+    };
+    fold(
+        &mut v,
+        SectionId::Memory,
+        (0..d.ledger.len()).map(Focusable::Memory).collect(),
+    );
+    fold(
+        &mut v,
+        SectionId::Links,
+        (0..d.links.len()).map(Focusable::Link).collect(),
+    );
+    fold(
+        &mut v,
+        SectionId::Files,
+        d.manual_files
+            .iter()
+            .cloned()
+            .map(Focusable::File)
+            .collect(),
+    );
+    v.extend(d.suggested_files.iter().cloned().map(Focusable::File));
+    fold(
+        &mut v,
+        SectionId::Anchors,
+        (0..d.anchors.len()).map(Focusable::Anchor).collect(),
+    );
+    fold(
+        &mut v,
+        SectionId::Steps,
+        (0..d.checklist.len()).map(Focusable::Checklist).collect(),
+    );
+    fold(&mut v, SectionId::Verification, vec![]);
+    fold(&mut v, SectionId::Ai, vec![]);
+    fold(&mut v, SectionId::Related, vec![]);
+    fold(
+        &mut v,
+        SectionId::Feedback,
+        (0..feedback_count(d)).map(Focusable::Comment).collect(),
+    );
     v
 }
 
-pub(super) fn checklist_focus_index(d: &Detail, show_notes: bool, item_id: i64) -> Option<usize> {
-    focusables(d, show_notes).iter().position(|f| match f {
-        Focusable::Checklist(i) => d.checklist.get(*i).map(|c| c.id) == Some(item_id),
-        _ => false,
-    })
+pub(super) fn checklist_focus_index(
+    d: &Detail,
+    show_notes: bool,
+    open: &Sections,
+    item_id: i64,
+) -> Option<usize> {
+    focusables(d, show_notes, open)
+        .iter()
+        .position(|f| match f {
+            Focusable::Checklist(i) => d.checklist.get(*i).map(|c| c.id) == Some(item_id),
+            _ => false,
+        })
 }
 
 pub(super) fn reorder_focused_step(
@@ -428,7 +501,7 @@ pub(super) fn reorder_focused_step(
     };
     if db::move_step(conn, id, up).unwrap_or(false) {
         st.detail.checklist = db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
-        if let Some(p) = checklist_focus_index(&st.detail, st.show_notes, id) {
+        if let Some(p) = checklist_focus_index(&st.detail, st.show_notes, &st.open, id) {
             st.selected = p;
         }
     }

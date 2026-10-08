@@ -29,7 +29,7 @@ expression: out
 │                                        ││Findings                                                                    │
 │                                        ││   • only text snapshots exist (ai)                                         │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││         why recall                                                         │
@@ -49,7 +49,7 @@ expression: out
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
 ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
@@ -78,7 +78,7 @@ jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddg

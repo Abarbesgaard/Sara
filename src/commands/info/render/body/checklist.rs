@@ -8,10 +8,9 @@ use crate::commands::shared::short_id;
 use crate::infrastructure::db;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use super::super::lines::section;
 use super::Body;
 use crate::commands::info::handler::verification_rows;
-use crate::commands::info::types::Focusable;
+use crate::commands::info::types::{Focusable, SectionId};
 
 impl Body<'_> {
     pub(super) fn checklist(&mut self) {
@@ -38,8 +37,11 @@ impl Body<'_> {
                 }
                 progress.push_str(&format!("{acc_done}/{acc_total} acceptance"));
             }
-            self.lines.push(Line::from(""));
-            self.lines.push(section(&format!("Checklist  {progress}")));
+            let progress =
+                Span::styled(format!("  {progress}"), Style::default().fg(ink(Ink::Soft)));
+            if !self.fold(SectionId::Steps, "Checklist", vec![progress]) {
+                return;
+            }
             if acc_total > 0 {
                 self.lines
                     .push(progress_bar("acceptance", acc_done, acc_total));
@@ -207,9 +209,13 @@ impl Body<'_> {
         let d = self.d;
         let verif = verification_rows(d);
         if !verif.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines
-                .push(section("Verification  (run: sara verify <id> --run)"));
+            let hint = Span::styled(
+                "  run: sara verify <id> --run",
+                Style::default().fg(ink(Ink::Muted)),
+            );
+            if !self.fold(SectionId::Verification, "Verification", vec![hint]) {
+                return;
+            }
             for (scope, label, cmd) in &verif {
                 self.lines.push(Line::from(vec![
                     Span::styled(

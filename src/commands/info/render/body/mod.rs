@@ -14,8 +14,8 @@ use ratatui::{
 
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use crate::commands::info::handler::focusables;
-use crate::commands::info::types::{Detail, EditState, Focusable};
+use crate::commands::info::handler::{focusables, section_len};
+use crate::commands::info::types::{Detail, EditState, Focusable, SectionId};
 
 pub(super) struct Body<'a> {
     d: &'a Detail,
@@ -33,7 +33,7 @@ impl<'a> Body<'a> {
         show_panel: bool,
     ) -> (Vec<Line<'static>>, Option<(usize, usize)>) {
         let d = &st.detail;
-        let items = focusables(d, st.show_notes);
+        let items = focusables(d, st.show_notes, &st.open);
         let sel = if st.editing {
             None
         } else {
@@ -67,6 +67,31 @@ impl<'a> Body<'a> {
         body.related_tasks();
         body.comments();
         (body.lines, body.sel_range)
+    }
+}
+
+impl Body<'_> {
+    fn fold(&mut self, id: SectionId, title: &str, extra: Vec<Span<'static>>) -> bool {
+        let open = self.st.open.contains(&id);
+        let selected = self.sel == Some(Focusable::Section(id));
+        let mut style = Style::default()
+            .fg(ink(Ink::Accent))
+            .add_modifier(ratatui::style::Modifier::BOLD);
+        if selected {
+            style = style.fg(ink(Ink::Text)).bg(ink(Ink::Select));
+        }
+        let arrow = if open { "▾" } else { "▸" };
+        let mut spans = vec![Span::styled(
+            format!("{arrow} {title} ({})", section_len(self.d, id)),
+            style,
+        )];
+        spans.extend(extra);
+        self.lines.push(Line::from(""));
+        if selected {
+            self.sel_range = Some((self.lines.len(), self.lines.len()));
+        }
+        self.lines.push(Line::from(spans));
+        open
     }
 }
 

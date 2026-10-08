@@ -102,6 +102,59 @@ impl EditField {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub(super) enum SectionId {
+    Memory,
+    Links,
+    Files,
+    Anchors,
+    Steps,
+    Verification,
+    Ai,
+    Related,
+    Feedback,
+}
+
+pub(super) type Sections = std::collections::BTreeSet<SectionId>;
+
+impl SectionId {
+    pub(super) const ALL: [SectionId; 9] = [
+        SectionId::Memory,
+        SectionId::Links,
+        SectionId::Files,
+        SectionId::Anchors,
+        SectionId::Steps,
+        SectionId::Verification,
+        SectionId::Ai,
+        SectionId::Related,
+        SectionId::Feedback,
+    ];
+
+    pub(super) fn key(self) -> &'static str {
+        match self {
+            SectionId::Memory => "memory",
+            SectionId::Links => "links",
+            SectionId::Files => "files",
+            SectionId::Anchors => "anchors",
+            SectionId::Steps => "steps",
+            SectionId::Verification => "verification",
+            SectionId::Ai => "ai",
+            SectionId::Related => "related",
+            SectionId::Feedback => "feedback",
+        }
+    }
+
+    pub(super) fn parse(s: &str) -> Option<SectionId> {
+        SectionId::ALL.into_iter().find(|id| id.key() == s.trim())
+    }
+
+    pub(super) fn default_open() -> Sections {
+        [SectionId::Steps, SectionId::Feedback]
+            .into_iter()
+            .collect()
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub(super) enum Focusable {
     Field(EditField),
@@ -112,6 +165,7 @@ pub(super) enum Focusable {
     Comment(usize),
     Note(usize),
     Memory(usize),
+    Section(SectionId),
 }
 
 pub(super) struct EditState {
@@ -129,6 +183,7 @@ pub(super) struct EditState {
     pub(super) show_urgency_breakdown: bool,
     pub(super) verbose: bool,
     pub(super) show_notes: bool,
+    pub(super) open: Sections,
 }
 
 pub(super) const NOTE_KINDS: [&str; 8] = [

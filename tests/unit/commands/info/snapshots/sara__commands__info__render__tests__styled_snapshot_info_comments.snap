@@ -30,7 +30,7 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next  💬 1                                                 │
@@ -39,7 +39,7 @@ expression: out
 │                                        ││   [ ] snapshots pass [accept]                                              │
 │                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
-│                                        ││Comments                                                                    │
+│                                        ││▾ Feedback (5)                                                              │
 │                                        ││   YYYY-MM-DD hh:mm  looks good overall                                     │
 │                                        ││ ▶ YYYY-MM-DD hh:mm  ⟳ reword this note                                     │
 │                                        ││   YYYY-MM-DD hh:mm  step: "observe"  step needs a test                     │
@@ -61,7 +61,7 @@ expression: out
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddffffffffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaggggggggggggga
 hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
@@ -91,7 +91,7 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkooooooooooooooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllllllllllllllllooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliooooooommmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliiiiiiiikkkkkkkiiiiiiiiiiieieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
@@ -100,7 +100,7 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelilllllllllllllllllllllllllllllllllllee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelioooooooeeeeeeeeeeeeeettttttttteeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelilllllllllllllllltttttttttteellllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliuuuuuuuuuuuuuuuuuuuuussuuuuuuuuuuuuuuuueeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllliiiiiiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei

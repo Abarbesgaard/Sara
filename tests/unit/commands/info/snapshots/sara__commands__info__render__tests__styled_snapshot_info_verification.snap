@@ -29,7 +29,7 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 1/2 acceptance                                       │
+│                                        ││▾ Checklist (4)  1/2 steps · 1/2 acceptance                                 │
 │                                        ││  acceptance  ██████████░░░░░░░░░░ 1/2                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ▶ [ ] observe  ← next  💬 1 ⟳                                               │
@@ -40,12 +40,12 @@ expression: out
 │                                        ││   [x] clippy clean [accept] (ai)                                           │
 │                                        ││         verify cargo test  → green                                         │
 │                                        ││                                                                            │
-│                                        ││Verification  (run: sara verify <id> --run)                                 │
+│                                        ││▾ Verification (3)  run: sara verify <id> --run                             │
 │                                        ││  test   cargo test  (project)                                              │
 │                                        ││  lint   cargo clippy  (project)                                            │
 │                                        ││  bench  cargo bench  (task)                                                │
 │                                        ││                                                                            │
-│                                        ││Comments                                                                    │
+│                                        ││▾ Feedback (1)                                                              │
 │                                        ││   YYYY-MM-DD hh:mm  step: "observe"  ⟳ split it smaller                    │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -61,7 +61,7 @@ expression: out
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddffffffffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaggggggggggggga
 hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
@@ -90,7 +90,7 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkooooooooooooooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllssssssssssllllllllllooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliooooooommmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelitttttttpppppppiiiiiiiiiiieiuueeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
@@ -101,12 +101,12 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllvvvvvvvvvveelllllllll
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliooooooommmmmmmmmmmmvvvvvvvvvhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllvvvvvvvvvveessssssseeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkllllllllllllllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvvvllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvvlllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllliiiiiiiiiiiiiiiiiuueeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
@@ -174,7 +174,7 @@ v fg=Some(Blue) bg=Some(Reset) mod=NONE
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 1/2 acceptance                                       │
+│                                        ││▾ Checklist (4)  1/2 steps · 1/2 acceptance                                 │
 │                                        ││  acceptance  ██████████░░░░░░░░░░ 1/2                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││         why recall                                                         │
@@ -190,12 +190,12 @@ v fg=Some(Blue) bg=Some(Reset) mod=NONE
 │                                        ││         verify cargo test  → green                                         │
 │                                        ││         done @ 01234567  2026-01-02                                        │
 │                                        ││                                                                            │
-│                                        ││Verification  (run: sara verify <id> --run)                                 │
+│                                        ││▾ Verification (3)  run: sara verify <id> --run                             │
 │                                        ││  test   cargo test  (project)                                              │
 │                                        ││  lint   cargo clippy  (project)                                            │
 │                                        ││  bench  cargo bench  (task)                                                │
 │                                        ││                                                                            │
-│                                        ││Comments                                                                    │
+│                                        ││▾ Feedback (1)                                                              │
 │                                        ││   YYYY-MM-DD hh:mm  step: "observe"  ⟳ split it smaller                    │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -206,7 +206,7 @@ v fg=Some(Blue) bg=Some(Reset) mod=NONE
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddffffffffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaggggggggggggga
 hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
@@ -235,7 +235,7 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkooooooooooooooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllssssssssssllllllllllooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliooooooommmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
@@ -251,12 +251,12 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllllllleeeeeeeeeeee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllvvvvvvvvvveessssssseeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelilllllllllllllllllllllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkllllllllllllllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvvvllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelijjjjjjjjjvvvvvvvvvvvlllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllliiiiiiiiiiiiiiiiiuueeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
