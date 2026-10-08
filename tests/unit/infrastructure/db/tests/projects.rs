@@ -101,3 +101,81 @@ fn reset_project_nukes_tasks_children_and_profile() {
     assert!(get_links(&conn, &task.uuid).unwrap().is_empty());
     assert!(get_annotations(&conn, &task.uuid).unwrap().is_empty());
 }
+
+#[test]
+fn project_badges_count_stale_validation_and_open_feedback() {
+    let conn = mem();
+    let mut fresh = Task::new("fresh".into(), "demo".into());
+    insert_task(&conn, &mut fresh).unwrap();
+    set_validated(&conn, &fresh.uuid, "head").unwrap();
+    let mut stale = Task::new("stale".into(), "demo".into());
+    insert_task(&conn, &mut stale).unwrap();
+    set_validated(&conn, &stale.uuid, "old").unwrap();
+    let mut other = Task::new("other".into(), "else".into());
+    insert_task(&conn, &mut other).unwrap();
+    set_validated(&conn, &other.uuid, "old").unwrap();
+
+    add_annotation(&conn, &fresh.uuid, "please fix").unwrap();
+    let resolved = add_annotation_full(
+        &conn,
+        &stale.uuid,
+        "done",
+        NOTE_KIND_COMMENT,
+        "human",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    resolve_annotation(&conn, resolved, None).unwrap();
+    add_annotation_full(
+        &conn,
+        &stale.uuid,
+        "a finding",
+        "finding",
+        "agent",
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+
+    let b = project_badges(&conn, "demo", Some("head")).unwrap();
+    assert_eq!(
+        b,
+        ProjectBadges {
+            stale: 1,
+            feedback: 1
+        }
+    );
+    assert_eq!(project_badges(&conn, "demo", None).unwrap().stale, 0);
+}
+
+#[test]
+fn tasks_touched_on_matches_created_completed_and_history() {
+    let conn = mem();
+    let day = Utc.with_ymd_and_hms(2024, 5, 2, 12, 0, 0).unwrap();
+    let mut created = Task::new("created".into(), "demo".into());
+    created.entry = day;
+    insert_task(&conn, &mut created).unwrap();
+    let mut finished = Task::new("finished".into(), "demo".into());
+    finished.entry = day - chrono::Duration::days(10);
+    finished.end = Some(day);
+    insert_task(&conn, &mut finished).unwrap();
+    let mut untouched = Task::new("untouched".into(), "demo".into());
+    untouched.entry = day - chrono::Duration::days(10);
+    insert_task(&conn, &mut untouched).unwrap();
+    let mut elsewhere = Task::new("elsewhere".into(), "else".into());
+    elsewhere.entry = day;
+    insert_task(&conn, &mut elsewhere).unwrap();
+
+    let d = day.date_naive();
+    let mut titles: Vec<String> = tasks_touched_on(&conn, d, Some("demo"))
+        .unwrap()
+        .into_iter()
+        .map(|t| t.title)
+        .collect();
+    titles.sort();
+    assert_eq!(titles, ["created", "finished"]);
+    assert_eq!(tasks_touched_on(&conn, d, None).unwrap().len(), 3);
+}

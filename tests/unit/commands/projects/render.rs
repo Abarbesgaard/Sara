@@ -9,7 +9,10 @@ fn styled_snapshot_projects() {
         goal: Some(format!("{name} goal")),
         stack: Some("rust".into()),
         pending,
+        active: pending.min(1),
         done,
+        stale: if name == "sara" { 2 } else { 0 },
+        feedback: if name == "dream-web" { 1 } else { 0 },
         last_activity: days.map(|d| Utc::now() - Duration::days(d) - Duration::hours(1)),
     };
     let st = ProjectListState {
@@ -33,7 +36,10 @@ fn three() -> ProjectListState {
         goal: None,
         stack: None,
         pending: 0,
+        active: 0,
         done: 0,
+        stale: 0,
+        feedback: 0,
         last_activity: None,
     };
     ProjectListState {
@@ -91,4 +97,38 @@ fn projects_too_small_shows_fallback() {
     let out = crate::test_support::render_to_string(30, 5, |f| render(f, &st, &lines));
     assert!(out.contains("Terminal too small"), "{out}");
     assert!(out.contains("need 40×6, have 30×5"), "{out}");
+}
+
+#[test]
+fn projects_badges_hide_zero_stale_and_feedback() {
+    let mut r = three().rows.remove(0);
+    let text = |r: &ProjectRow| {
+        badges(r)
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect::<String>()
+    };
+    assert_eq!(text(&r), "[0\u{a0}open] [0\u{a0}active]");
+    r.pending = 3;
+    r.active = 1;
+    r.stale = 2;
+    r.feedback = 4;
+    assert_eq!(
+        text(&r),
+        "[3\u{a0}open] [1\u{a0}active] [2\u{a0}stale] [4\u{a0}feedback]"
+    );
+}
+
+#[test]
+fn projects_screen_uses_shared_skeleton() {
+    let st = three();
+    let lines = build_lines(&st);
+    let out = crate::test_support::render_to_string(80, 8, |f| render(f, &st, &lines));
+    let rows: Vec<&str> = out.lines().collect();
+    assert!(
+        rows[0].contains(" sara ") && rows[0].contains("projects"),
+        "{out}"
+    );
+    assert!(rows[0].contains("3 projects"), "{out}");
+    assert!(rows.last().unwrap().contains("open board"), "{out}");
 }

@@ -1,52 +1,59 @@
 ---
 source: tests/unit/commands/activity/render.rs
-expression: "crate::test_support::render_to_styled_string(90, 16, |f|\nrender_on(f, &data, today))"
+expression: "crate::test_support::render_to_styled_string(90, 20, |f| { render(f, &st) })"
 ---
-┌ Activity — sara ───────────────────────────────────────────────────────────────────────┐
-│Created: 120   Completed: 98   Completion rate: 82%   Current streak: 6d   Longest strea│
-│                                                                                        │
-│────────────────────────────────────────────────────────────────────────────────────────│
-│    Dec           Jan                         Feb                         Mar           │
-│                                                                                        │
-│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│Mon ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│Wed ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│    ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│Fri ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██                                                 │
-│    Less ██ ██ ██ ██ ██ More    q/Esc to close                                          │
-│                                                                                        │
-│                                                                                        │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+ sara  ▸ activity                                                        sara · 6d streak
+▌ Overview
+  120 created  ·  98 completed  ·  81% done rate  ·  6d streak  ·  21d best
+
+▌ Last 43 weeks
+    May Jun     Jul     Aug       Sep     Oct     Nov       Dec     Jan     Feb     Mar
+    · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ● ●
+Mon · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ● ●
+    · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ● ●
+Wed · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·
+    · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ●
+Fri · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ●
+    · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ● ● ● ● ● ● ● ●
+    less · ● ● ● ● more
+
+▌ Mon 16 Mar 2026  2 events · ↵ to see the tasks touched
+
+
+
+h/l week  j/k day  ↵ tasks  Esc close  q quit
 --- styles ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-abbbbbbbbbbbbcccbbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbbbcccbbbbbbbbbbbbbbbbbbcccbbbbbbbbbbbbba
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-adddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddda
-acccceeeeeeeccccccceeeeeeeccccccccccccccccccccceeeeeeeccccccccccccccccccccceeeeeeeccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffggggggggggggggggggggggggcccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffhhhhhhhhhhhhhhhhhhhhhhhhcccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffffffffffffffffffffffffffcccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffiiiiiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffiiiiiiiiiiiiiiiiiiiiiiiicccccccccccccccccccccccccccccccccccccccccccccccca
-addddffffffffffffjjjjjjjjjjjjjjjjjjjjjjjjcccccccccccccccccccccccccccccccccccccccccccccccca
-addddkkkkkfffhhjjjjiijiijllllmmmmmmmmmmmmnnnnnncccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaabbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddeeeeeeeeee
+bbbbbbbbbbddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccfffdddddddddddddffdddddddddddddddfffdddddddddddddddffddddddddddddfffdddddccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbbbbbbbddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggccc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchcicicicicicicicicic
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchcjcjcjcjcjcjcjcjckc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchclclclclclclclclclc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchcmcmcmcmcmcmcmcmccc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchcmcmcmcmcmcmcmcmccc
+ddddhchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchchciciciciciciciciccc
+dddddddddhhjjiimmmmddddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbbbbbbbbbdddddddddddddddddddddddddddddddddddddddcccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbdddddddbbbddddddbddddddddbbbddddddddbdddddccccccccccccccccccccccccccccccccccccccccccccc
 --- legend ---
-a fg=Some(Cyan) bg=Some(Reset) mod=NONE
-b fg=Some(White) bg=Some(Reset) mod=NONE
+a fg=Some(Black) bg=Some(Cyan) mod=BOLD
+b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
 c fg=Some(Reset) bg=Some(Reset) mod=NONE
 d fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-e fg=Some(Gray) bg=Some(Reset) mod=NONE
-f fg=Some(Rgb(22, 27, 34)) bg=Some(Rgb(22, 27, 34)) mod=NONE
-g fg=Some(Rgb(0, 109, 50)) bg=Some(Rgb(0, 109, 50)) mod=NONE
-h fg=Some(Rgb(14, 68, 41)) bg=Some(Rgb(14, 68, 41)) mod=NONE
-i fg=Some(Rgb(57, 211, 83)) bg=Some(Rgb(57, 211, 83)) mod=NONE
-j fg=Some(Rgb(38, 166, 65)) bg=Some(Rgb(38, 166, 65)) mod=NONE
-k fg=Some(DarkGray) bg=Some(Rgb(22, 27, 34)) mod=NONE
-l fg=Some(DarkGray) bg=Some(Rgb(38, 166, 65)) mod=NONE
-m fg=Some(DarkGray) bg=Some(Rgb(38, 166, 65)) mod=DIM
-n fg=Some(DarkGray) bg=Some(Reset) mod=DIM
+e fg=Some(Green) bg=Some(Reset) mod=NONE
+f fg=Some(White) bg=Some(Reset) mod=BOLD
+g fg=Some(Gray) bg=Some(Reset) mod=NONE
+h fg=Some(Rgb(22, 27, 34)) bg=Some(Reset) mod=NONE
+i fg=Some(Rgb(38, 166, 65)) bg=Some(Reset) mod=NONE
+j fg=Some(Rgb(0, 109, 50)) bg=Some(Reset) mod=NONE
+k fg=Some(Rgb(0, 109, 50)) bg=Some(Blue) mod=BOLD
+l fg=Some(Rgb(14, 68, 41)) bg=Some(Reset) mod=NONE
+m fg=Some(Rgb(57, 211, 83)) bg=Some(Reset) mod=NONE

@@ -13,6 +13,12 @@
 - Links and estimate fields in the form, for both add and modify.
 - Live **Similar work** pane listing related tasks and memories while
   the title is typed (debounced, shown at ≥100 columns).
+- Projects and activity Phase 6 (#230): `sara projects` uses the shared
+  screen skeleton with per-project badges for open, active, stale
+  validation and open feedback.
+- `sara activity` shows a dotted heatmap in the theme palette with a
+  day cursor (`h/l` week, `j/k` day) and an `↵` drill-down listing the
+  tasks touched that day.
 
 ## [2.5.0] - 2026-10-08
 

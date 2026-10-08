@@ -1,12 +1,13 @@
-use crate::infrastructure::tui::theme::{Ink, ink};
+use crate::infrastructure::tui::screen;
+use crate::infrastructure::tui::theme::{Ink, Theme, ink};
 use anyhow::Result;
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::Paragraph,
 };
 
 use super::{ProjectAction, ProjectListState, ProjectRow};
@@ -20,7 +21,7 @@ pub(super) fn list_loop<B: Backend<Error: Send + Sync + 'static>>(
     let mut keys = KeyDispatcher::new();
     loop {
         let size = terminal.size()?;
-        let viewport = size.height.saturating_sub(3);
+        let viewport = size.height.saturating_sub(4);
         crate::infrastructure::tui::scroll_into_view(&mut st.scroll, st.selected as u16, viewport);
 
         let lines = build_lines(st);
@@ -63,23 +64,44 @@ fn build_lines(st: &ProjectListState) -> Vec<Line<'static>> {
         .max()
         .unwrap_or(4)
         .clamp(4, 28);
+    let badge_w = st
+        .rows
+        .iter()
+        .map(|r| badges(r).iter().map(Span::width).sum::<usize>())
+        .max()
+        .unwrap_or(0);
     st.rows
         .iter()
         .enumerate()
-        .map(|(i, r)| project_line(r, i == st.selected, name_w))
+        .map(|(i, r)| project_line(r, i == st.selected, name_w, badge_w))
         .collect()
 }
 
-fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
-    let bg = if is_sel {
-        ink(Ink::Select)
-    } else {
-        ink(Ink::Plain)
-    };
-    let prefix = if is_sel { " ▶ " } else { "   " };
+fn badge(n: u32, label: &str, tone: Ink) -> Span<'static> {
+    let fg = if n == 0 { ink(Ink::Muted) } else { ink(tone) };
+    Span::styled(format!("[{n}\u{a0}{label}]"), Style::default().fg(fg))
+}
 
+pub(super) fn badges(r: &ProjectRow) -> Vec<Span<'static>> {
+    let mut out = vec![
+        badge(r.pending, "open", Ink::Accent),
+        Span::raw(" "),
+        badge(r.active, "active", Ink::Ok),
+    ];
+    if r.stale > 0 {
+        out.push(Span::raw(" "));
+        out.push(badge(r.stale, "stale", Ink::Warn));
+    }
+    if r.feedback > 0 {
+        out.push(Span::raw(" "));
+        out.push(badge(r.feedback, "feedback", Ink::Err));
+    }
+    out
+}
+
+fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize, badge_w: usize) -> Line<'static> {
+    let prefix = if is_sel { " ▶ " } else { "   " };
     let name = format!("{:<width$}", truncate(&r.name, name_w), width = name_w);
-    let counts = format!("  {:>3} pending · {:>3} done", r.pending, r.done);
 
     let mut meta = String::new();
     if let Some(g) = r.goal.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -93,63 +115,72 @@ fn project_line(r: &ProjectRow, is_sel: bool, name_w: usize) -> Line<'static> {
     }
     let activity = r.last_activity.map(rel_time).unwrap_or_default();
 
+    let mut spans = vec![Span::styled(
+        format!("{prefix}{name}  "),
+        Style::default()
+            .fg(ink(if is_sel { Ink::Text } else { Ink::Accent }))
+            .add_modifier(Modifier::BOLD),
+    )];
+    let row_badges = badges(r);
+    let used: usize = row_badges.iter().map(Span::width).sum();
+    spans.extend(row_badges);
+    spans.push(Span::raw(" ".repeat(badge_w - used)));
+    spans.push(Span::styled(
+        format!("   {:>4}\u{a0}done", r.done),
+        Style::default().fg(ink(Ink::Muted)),
+    ));
+    spans.push(Span::styled(
+        format!("   {meta}"),
+        Style::default().fg(ink(Ink::Soft)),
+    ));
+    spans.push(Span::styled(
+        format!("   {activity}"),
+        Style::default().fg(ink(Ink::Muted)),
+    ));
     if is_sel {
-        let s = Style::default().fg(ink(Ink::Text)).bg(bg);
-        Line::from(vec![
-            Span::styled(format!("{prefix}{name}"), s.add_modifier(Modifier::BOLD)),
-            Span::styled(counts, s),
-            Span::styled(format!("   {meta}"), s),
-            Span::styled(format!("   {activity}"), s),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled(
-                format!("{prefix}{name}"),
-                Style::default()
-                    .fg(ink(Ink::Accent))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(counts, Style::default().fg(ink(Ink::Muted))),
-            Span::styled(format!("   {meta}"), Style::default().fg(ink(Ink::Soft))),
-            Span::styled(
-                format!("   {activity}"),
-                Style::default().fg(ink(Ink::Muted)),
-            ),
-        ])
+        for s in &mut spans {
+            s.style = s.style.bg(ink(Ink::Select));
+        }
     }
+    Line::from(spans)
 }
 
 pub(super) const MIN_SIZE: (u16, u16) = (40, 6);
 
+pub(super) const FOOTER: [(&str, &str); 4] = [
+    ("j/k", "move"),
+    ("↵", "open board"),
+    ("PgDn/PgUp", "scroll"),
+    ("q", "quit"),
+];
+
 fn render(f: &mut Frame, st: &ProjectListState, lines: &[Line]) {
-    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+    if screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
         return;
     }
-    let area = f.area();
-    let total_pending: u32 = st.rows.iter().map(|r| r.pending).sum();
-    let title = format!(" Projects · {} · {} pending ", st.rows.len(), total_pending);
+    let theme = Theme::detect();
+    let c = screen::chrome(f.area());
+    let open: u32 = st.rows.iter().map(|r| r.pending).sum();
+    let active: u32 = st.rows.iter().map(|r| r.active).sum();
+    let status = vec![
+        Span::styled(format!("{} projects · ", st.rows.len()), theme.muted()),
+        Span::styled(format!("{open} open"), theme.accent()),
+        Span::styled(" · ", theme.muted()),
+        Span::styled(format!("{active} active "), theme.ok()),
+    ];
+    screen::render_header(f, c.header, &theme, "projects", &status);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(area);
-
-    let para = Paragraph::new(lines.to_vec())
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(ink(Ink::Accent))),
-        )
-        .wrap(Wrap { trim: false })
-        .scroll((st.scroll, 0));
-    f.render_widget(para, chunks[0]);
-
-    let footer = Paragraph::new(Line::from(Span::styled(
-        " j/k navigate  Enter open board  PgDn/PgUp scroll  q quit",
-        Style::default().fg(ink(Ink::Muted)),
-    )));
-    f.render_widget(footer, chunks[1]);
+    let [label, list] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(c.body);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("▌ ", theme.accent()),
+            Span::styled("Projects", theme.accent()),
+            Span::styled("  by recent activity", theme.muted()),
+        ])),
+        label,
+    );
+    f.render_widget(Paragraph::new(lines.to_vec()).scroll((st.scroll, 0)), list);
+    screen::render_footer(f, c.footer, &theme, &FOOTER);
 }
 
 #[cfg(test)]

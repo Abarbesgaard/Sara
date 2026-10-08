@@ -276,3 +276,67 @@ pub fn project_stats(conn: &Connection, project: &str) -> Result<ProjectStats> {
         due_week,
     })
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectBadges {
+    pub stale: u32,
+    pub feedback: u32,
+}
+
+pub fn project_badges(
+    conn: &Connection,
+    project: &str,
+    head: Option<&str>,
+) -> Result<ProjectBadges> {
+    let stale: u32 = match head {
+        Some(h) => conn.query_row(
+            "SELECT COUNT(*) FROM tasks WHERE project=?1 AND status='pending'
+             AND validated_commit IS NOT NULL AND validated_commit != ?2",
+            rusqlite::params![project, h],
+            |r| r.get(0),
+        )?,
+        None => 0,
+    };
+    let feedback: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM annotations a JOIN tasks t ON t.uuid = a.task_uuid
+         WHERE t.project=?1 AND t.status='pending' AND a.kind='comment' AND a.status='open'",
+        [project],
+        |r| r.get(0),
+    )?;
+    Ok(ProjectBadges { stale, feedback })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DayTask {
+    pub id: Option<i64>,
+    pub title: String,
+    pub project: String,
+    pub status: String,
+}
+
+pub fn tasks_touched_on(
+    conn: &Connection,
+    day: chrono::NaiveDate,
+    project: Option<&str>,
+) -> Result<Vec<DayTask>> {
+    let day = day.format("%Y-%m-%d").to_string();
+    let mut stmt = conn.prepare(
+        "SELECT id, description, project, status FROM tasks
+         WHERE (?2 IS NULL OR project=?2) AND status != 'deleted'
+           AND (substr(entry,1,10)=?1 OR substr(end,1,10)=?1
+                OR uuid IN (SELECT task_uuid FROM task_history WHERE substr(changed_at,1,10)=?1))
+         ORDER BY status DESC, modified DESC",
+    )?;
+    let rows = stmt
+        .query_map(rusqlite::params![day, project], |r| {
+            Ok(DayTask {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                project: r.get(2)?,
+                status: r.get(3)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}

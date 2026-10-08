@@ -1,225 +1,243 @@
-use crate::infrastructure::tui::theme::{Ink, heat, ink};
-use chrono::{Datelike, Duration, Local, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
-use super::types::ActivityData;
-use crate::commands::shared::month_abbr;
+use super::types::{ActivityState, Drill};
+use crate::commands::shared::{month_abbr, truncate};
+use crate::infrastructure::tui::screen;
+use crate::infrastructure::tui::theme::{GLYPH_DONE, GLYPH_OPEN, Ink, Theme, heat, ink};
 
-const CELL: &str = "██";
+const DOT: &str = "●";
+const EMPTY: &str = "·";
+const LABEL_W: usize = 4;
+const CELL_W: usize = 2;
 
-pub(super) fn render(f: &mut Frame, data: &ActivityData) {
-    render_on(f, data, Local::now().date_naive());
-}
+pub(super) const MIN_SIZE: (u16, u16) = (50, 18);
 
-pub(super) const MIN_SIZE: (u16, u16) = (50, 12);
+pub(super) const FOOTER: [(&str, &str); 5] = [
+    ("h/l", "week"),
+    ("j/k", "day"),
+    ("↵", "tasks"),
+    ("Esc", "close"),
+    ("q", "quit"),
+];
 
-fn render_on(f: &mut Frame, data: &ActivityData, today: NaiveDate) {
-    if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
+pub(super) fn render(f: &mut Frame, st: &ActivityState) {
+    if screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
         return;
     }
-    let area = f.area();
-    let max = data.counts.values().copied().max().unwrap_or(1).max(1);
+    let theme = Theme::detect();
+    let c = screen::chrome(f.area());
+    let scope = st.data.project.as_deref().unwrap_or("all projects");
+    let status = vec![
+        Span::styled(format!("{scope} · "), theme.muted()),
+        Span::styled(format!("{}d streak ", st.data.cur_streak), theme.ok()),
+    ];
+    screen::render_header(f, c.header, &theme, "activity", &status);
 
-    let title = match &data.project {
-        Some(p) => format!(" Activity — {p} "),
-        None => " Activity — all projects ".to_string(),
-    };
-
-    let outer = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(Style::default().fg(ink(Ink::Accent)));
-    let inner = outer.inner(area);
-    f.render_widget(outer, area);
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(2),
-            Constraint::Length(7),
-            Constraint::Length(2),
-            Constraint::Min(1),
-        ])
-        .split(inner);
-
-    let days_since_sunday = today.weekday().num_days_from_sunday();
-    let grid_end = today - Duration::days(days_since_sunday as i64);
-    let cell_width = CELL.len() as u16 + 1;
-    let label_width: u16 = 4;
-    let available_width = area.width.saturating_sub(label_width + 2);
-    let num_weeks = ((available_width / cell_width) as i64).clamp(4, 52);
-    let grid_start = grid_end - Duration::weeks(num_weeks) + Duration::days(1);
-
-    render_stats(f, data, chunks[0]);
-    render_month_labels(f, grid_start, num_weeks, cell_width, label_width, chunks[1]);
-    render_heatmap(
-        f,
-        &data.counts,
-        today,
-        grid_start,
-        num_weeks,
-        max,
-        chunks[2],
-    );
-    render_legend(f, max, chunks[3]);
+    let [stats, _, grid, _, day] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(1),
+        Constraint::Length(10),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .areas(c.body);
+    render_stats(f, st, &theme, stats);
+    render_grid(f, st, &theme, grid);
+    render_day(f, st, &theme, day);
+    screen::render_footer(f, c.footer, &theme, &FOOTER);
 }
 
-fn render_stats(f: &mut Frame, data: &ActivityData, area: ratatui::layout::Rect) {
-    let rate = if data.total_created > 0 {
-        format!(
-            "{:.0}%",
-            data.total_completed as f64 / data.total_created as f64 * 100.0
-        )
-    } else {
-        "—".to_string()
-    };
-    let line = Line::from(vec![
-        stat_span("Created", &data.total_created.to_string()),
-        Span::raw("   "),
-        stat_span("Completed", &data.total_completed.to_string()),
-        Span::raw("   "),
-        stat_span("Completion rate", &rate),
-        Span::raw("   "),
-        stat_span("Current streak", &format!("{}d", data.cur_streak)),
-        Span::raw("   "),
-        stat_span("Longest streak", &format!("{}d", data.longest_streak)),
-    ]);
+fn section(theme: &Theme, title: String, note: String) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("▌ ", theme.accent()),
+        Span::styled(title, theme.accent()),
+        Span::styled(format!("  {note}"), theme.muted()),
+    ])
+}
+
+fn render_stats(f: &mut Frame, st: &ActivityState, theme: &Theme, area: Rect) {
+    let d = &st.data;
+    let rate = (d.total_completed * 100)
+        .checked_div(d.total_created)
+        .map(|r| format!("{r}%"))
+        .unwrap_or_else(|| "—".into());
+    let value = Style::default()
+        .fg(ink(Ink::Text))
+        .add_modifier(Modifier::BOLD);
+    let mut spans = vec![Span::raw("  ")];
+    let stats = [
+        (d.total_created.to_string(), "created"),
+        (d.total_completed.to_string(), "completed"),
+        (rate, "done rate"),
+        (format!("{}d", d.cur_streak), "streak"),
+        (format!("{}d", d.longest_streak), "best"),
+    ];
+    for (i, (v, label)) in stats.into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ·  ", theme.muted()));
+        }
+        spans.push(Span::styled(v, value));
+        spans.push(Span::styled(format!("\u{a0}{label}"), theme.muted()));
+    }
     f.render_widget(
-        Paragraph::new(line).block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(ink(Ink::Muted))),
-        ),
+        Paragraph::new(vec![
+            section(theme, "Overview".into(), String::new()),
+            Line::from(spans),
+        ]),
         area,
     );
 }
 
-fn render_month_labels(
-    f: &mut Frame,
-    grid_start: NaiveDate,
-    num_weeks: i64,
-    cell_width: u16,
-    label_width: u16,
-    area: ratatui::layout::Rect,
-) {
-    let mut spans: Vec<Span> = vec![Span::raw(format!(
-        "{:<width$}",
-        "",
-        width = label_width as usize
-    ))];
-    let mut last_month = 0u32;
-    let mut week_start = grid_start;
-    for _ in 0..num_weeks {
-        let month = week_start.month();
-        if month != last_month {
-            spans.push(Span::styled(
-                format!("{:<width$}", month_abbr(month), width = cell_width as usize),
-                Style::default().fg(ink(Ink::Soft)),
-            ));
-            last_month = month;
-        } else {
-            spans.push(Span::raw(format!(
-                "{:<width$}",
-                "",
-                width = cell_width as usize
-            )));
-        }
-        week_start += Duration::weeks(1);
-    }
-    f.render_widget(Paragraph::new(Line::from(spans)), area);
+pub(super) fn week_start(day: NaiveDate) -> NaiveDate {
+    day - Duration::days(day.weekday().num_days_from_sunday() as i64)
 }
 
-fn render_heatmap(
-    f: &mut Frame,
-    counts: &std::collections::HashMap<NaiveDate, u32>,
-    today: NaiveDate,
-    grid_start: NaiveDate,
-    num_weeks: i64,
-    max: u32,
-    area: ratatui::layout::Rect,
-) {
-    const DAY_LABELS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const SHOW_LABEL: [bool; 7] = [false, true, false, true, false, true, false];
+pub(super) fn grid_start(st: &ActivityState, weeks: i64) -> NaiveDate {
+    let latest = week_start(st.today) - Duration::weeks(weeks - 1);
+    latest.min(week_start(st.cursor))
+}
 
-    for row in 0..7u32 {
-        let label = if SHOW_LABEL[row as usize] {
-            DAY_LABELS[row as usize]
+fn render_grid(f: &mut Frame, st: &ActivityState, theme: &Theme, area: Rect) {
+    let weeks = ((area.width as usize).saturating_sub(LABEL_W) / CELL_W).clamp(4, 53) as i64;
+    let start = grid_start(st, weeks);
+    let max = st.data.counts.values().copied().max().unwrap_or(1).max(1);
+
+    let mut lines = vec![section(theme, format!("Last {weeks} weeks"), String::new())];
+
+    let mut months = " ".repeat(LABEL_W);
+    let mut last = 0;
+    for w in 0..weeks {
+        let first = start + Duration::weeks(w);
+        let col = LABEL_W + w as usize * CELL_W;
+        if first.month() != last && months.chars().count() <= col {
+            months.push_str(&" ".repeat(col - months.chars().count()));
+            months.push_str(month_abbr(first.month()));
+            last = first.month();
+        }
+    }
+    lines.push(Line::from(Span::styled(
+        months,
+        Style::default().fg(ink(Ink::Soft)),
+    )));
+
+    const DAYS: [&str; 7] = ["", "Mon", "", "Wed", "", "Fri", ""];
+    for (row, label) in DAYS.iter().enumerate() {
+        let mut spans = vec![Span::styled(format!("{label:<LABEL_W$}"), theme.muted())];
+        for w in 0..weeks {
+            let day = start + Duration::weeks(w) + Duration::days(row as i64);
+            spans.push(cell(st, theme, day, max));
+            spans.push(Span::raw(" "));
+        }
+        lines.push(Line::from(spans));
+    }
+
+    let mut legend = vec![Span::styled(format!("{:LABEL_W$}less ", ""), theme.muted())];
+    for n in [0, 1, 2, 3, 4] {
+        let glyph = if n == 0 { EMPTY } else { DOT };
+        legend.push(Span::styled(
+            format!("{glyph} "),
+            Style::default().fg(heat(n, 4)),
+        ));
+    }
+    legend.push(Span::styled("more", theme.muted()));
+    lines.push(Line::from(legend));
+
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn cell(st: &ActivityState, theme: &Theme, day: NaiveDate, max: u32) -> Span<'static> {
+    if day > st.today {
+        return Span::raw(" ");
+    }
+    let n = st.count(day);
+    let glyph = if n == 0 { EMPTY } else { DOT };
+    let mut style = Style::default().fg(heat(n, max));
+    if day == st.cursor {
+        style = if theme.color {
+            style.bg(ink(Ink::Select)).add_modifier(Modifier::BOLD)
         } else {
-            "   "
+            style.add_modifier(Modifier::REVERSED)
         };
-        let mut spans = vec![Span::styled(
-            format!("{label} "),
-            Style::default().fg(ink(Ink::Muted)),
-        )];
+    }
+    Span::styled(glyph, style)
+}
 
-        let mut week_start = grid_start;
-        for _ in 0..num_weeks {
-            let day = week_start + Duration::days(row as i64);
-            let count = if day > today {
-                0
-            } else {
-                counts.get(&day).copied().unwrap_or(0)
-            };
-            let color = if day > today {
-                ink(Ink::Void)
-            } else {
-                heat(count, max)
-            };
-            spans.push(Span::styled(
-                format!("{CELL} "),
-                Style::default().bg(color).fg(color),
+fn day_title(day: NaiveDate) -> String {
+    format!(
+        "{} {} {} {}",
+        day.weekday(),
+        day.day(),
+        month_abbr(day.month()),
+        day.year()
+    )
+}
+
+fn render_day(f: &mut Frame, st: &ActivityState, theme: &Theme, area: Rect) {
+    let n = st.count(st.cursor);
+    let mut lines = Vec::new();
+    match &st.drill {
+        None => {
+            lines.push(section(
+                theme,
+                day_title(st.cursor),
+                format!("{n} events · ↵ to see the tasks touched"),
             ));
-            week_start += Duration::weeks(1);
         }
-
-        f.render_widget(
-            Paragraph::new(Line::from(spans)),
-            ratatui::layout::Rect {
-                x: area.x,
-                y: area.y + row as u16,
-                width: area.width,
-                height: 1,
-            },
-        );
+        Some(Drill { day, tasks }) => {
+            lines.push(section(
+                theme,
+                day_title(*day),
+                format!("{} tasks touched", tasks.len()),
+            ));
+            if tasks.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  Nothing touched on this day.",
+                    theme.muted(),
+                )));
+            }
+            let room = (area.height as usize).saturating_sub(1);
+            let width = area.width as usize;
+            for t in tasks.iter().take(room) {
+                let done = t.status == "completed";
+                let (glyph, tone) = if done {
+                    (GLYPH_DONE, theme.ok())
+                } else {
+                    (GLYPH_OPEN, theme.accent())
+                };
+                let id = t.id.map(|i| format!("#{i}")).unwrap_or_default();
+                let project = if st.data.project.is_none() {
+                    format!("  {}", t.project)
+                } else {
+                    String::new()
+                };
+                let title_w = width.saturating_sub(12 + project.chars().count());
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {glyph}\u{a0}"), tone),
+                    Span::styled(format!("{id:>5}  "), theme.muted()),
+                    Span::styled(
+                        truncate(&t.title, title_w),
+                        Style::default().fg(ink(Ink::Text)),
+                    ),
+                    Span::styled(project, theme.muted()),
+                ]));
+            }
+            if tasks.len() > room {
+                lines.pop();
+                lines.push(Line::from(Span::styled(
+                    format!("  … {} more", tasks.len() - room + 1),
+                    theme.muted(),
+                )));
+            }
+        }
     }
-}
-
-fn render_legend(f: &mut Frame, max: u32, area: ratatui::layout::Rect) {
-    let levels = [
-        (0u32, "none"),
-        (1, "low"),
-        (3, "med"),
-        (6, "high"),
-        (max, "peak"),
-    ];
-    let mut spans = vec![Span::styled(
-        "    Less ",
-        Style::default().fg(ink(Ink::Muted)),
-    )];
-    for (count, _) in &levels {
-        let color = heat(*count, max);
-        spans.push(Span::styled(CELL, Style::default().bg(color).fg(color)));
-        spans.push(Span::raw(" "));
-    }
-    spans.push(Span::styled("More", Style::default().fg(ink(Ink::Muted))));
-    spans.push(Span::styled(
-        "    q/Esc to close",
-        Style::default()
-            .fg(ink(Ink::Muted))
-            .add_modifier(Modifier::DIM),
-    ));
-    f.render_widget(Paragraph::new(Line::from(spans)), area);
-}
-
-fn stat_span(label: &str, value: &str) -> Span<'static> {
-    Span::raw(format!("{label}: {value}")).style(Style::default().fg(ink(Ink::Text)))
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 #[cfg(test)]
