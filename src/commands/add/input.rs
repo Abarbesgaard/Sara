@@ -8,7 +8,9 @@ use crate::infrastructure::db;
 use crate::infrastructure::model::{Priority, Project};
 use crate::infrastructure::project::{detect_current_project, parse_add_tokens};
 use crate::infrastructure::tui;
-use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
+use crate::infrastructure::tui::review_form::{FormContext, FormInput, HintLookup, run_form};
+
+const HINT_LIMIT: i64 = 6;
 
 pub(super) fn resolve(
     conn: &Connection,
@@ -70,8 +72,7 @@ pub(super) fn resolve(
             priority,
             due: String::new(),
             tags: parsed.tags.join(","),
-            selected_deps: vec![],
-            selected_files: vec![],
+            ..Default::default()
         })
     } else {
         let pending = db::list_tasks(conn, None)?;
@@ -103,13 +104,19 @@ pub(super) fn resolve(
                 priority: priority_init,
                 due: String::new(),
                 tags: parsed.tags.join(","),
-                selected_deps: vec![],
-                selected_files: vec![],
+                ..Default::default()
             },
             available_deps,
             available_files: project_files,
             suggested_dep_indices: vec![],
             suggested_files: vec![],
+            create: true,
+            lookup: Some(hint_lookup(
+                conn,
+                cfg,
+                project_name.clone(),
+                parsed.tags.clone(),
+            )),
         };
 
         let result = tui::with_terminal(|t| run_form(t, ctx));
@@ -117,6 +124,19 @@ pub(super) fn resolve(
     };
 
     Ok(form_result.map(|f| (f, parsed.recur.clone())))
+}
+
+fn hint_lookup<'a>(
+    conn: &'a Connection,
+    cfg: &'a Config,
+    project: String,
+    tags: Vec<String>,
+) -> HintLookup<'a> {
+    Box::new(move |query: &str| {
+        super::similar::find_similar(conn, cfg, query, &tags, &project, HINT_LIMIT)
+            .map(|hits| super::similar::to_hints(&hits))
+            .unwrap_or_default()
+    })
 }
 
 fn atty_check() -> bool {

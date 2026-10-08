@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- Review form Phase 4 (#228): `sara add` and `sara modify` use a stepped
+  form (Task · Guide · Relations) with a focus marker, inline validation,
+  a contextual footer and `Ctrl+S` from any field (jumping to the first
+  invalid one).
+- Begin parity in the form: assignment, rationale, acceptance criterion
+  and verify command; filling any of them founds the task like
+  `sara begin`, including the recall step.
+- Links and estimate fields in the form, for both add and modify.
+- Live **Similar work** pane listing related tasks and memories while
+  the title is typed (debounced, shown at ≥100 columns).
+
 ## [2.5.0] - 2026-10-08
 
 ### Added

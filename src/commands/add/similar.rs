@@ -7,6 +7,7 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding::{self, Embedder};
 use crate::infrastructure::model::Item;
+use crate::infrastructure::tui::review_form::{Hint, HintKind};
 
 const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "is", "in", "it", "of", "to", "for", "on", "at", "by", "up", "as", "or",
@@ -195,3 +196,28 @@ fn merge_semantic_memories(
 #[cfg(test)]
 #[path = "../../../tests/unit/commands/add/similar.rs"]
 mod tests;
+
+pub(super) fn to_hints(hits: &[Value]) -> Vec<Hint> {
+    hits.iter()
+        .filter_map(|h| {
+            if h["ref_kind"] == "memory" {
+                Some(Hint {
+                    kind: HintKind::Memory,
+                    label: h["memory"].as_str().unwrap_or("?").to_string(),
+                    title: h["title"].as_str()?.to_string(),
+                })
+            } else {
+                let id = h["task"].as_i64().unwrap_or(0);
+                Some(Hint {
+                    kind: HintKind::Task,
+                    label: if id > 0 {
+                        id.to_string()
+                    } else {
+                        "done".into()
+                    },
+                    title: h["description"].as_str()?.to_string(),
+                })
+            }
+        })
+        .collect()
+}

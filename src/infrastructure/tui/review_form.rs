@@ -10,29 +10,71 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use ratatui_textarea::TextArea;
+use std::time::{Duration, Instant};
 
 use crate::infrastructure::model::Priority;
 use crate::infrastructure::tui::fzf;
 use crate::infrastructure::tui::keymap::{self, Action};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FormInput {
     pub description: String,
     pub project: String,
     pub priority: Option<Priority>,
     pub due: String,
     pub tags: String,
+    pub estimate: String,
+    pub assignment: String,
+    pub rationale: String,
+    pub acceptance: String,
+    pub verify: String,
+    pub links: String,
     pub selected_deps: Vec<usize>,
     pub selected_files: Vec<String>,
 }
 
-pub struct FormContext {
+impl FormInput {
+    pub fn link_list(&self) -> Vec<String> {
+        split_links(&self.links)
+    }
+
+    pub fn has_guide(&self) -> bool {
+        [&self.assignment, &self.rationale, &self.acceptance]
+            .iter()
+            .any(|s| !s.trim().is_empty())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HintKind {
+    Task,
+    Memory,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hint {
+    pub kind: HintKind,
+    pub label: String,
+    pub title: String,
+}
+
+pub type HintLookup<'a> = Box<dyn FnMut(&str) -> Vec<Hint> + 'a>;
+
+pub struct FormContext<'a> {
     pub initial: FormInput,
     pub available_deps: Vec<(String, String)>,
     pub available_files: Vec<String>,
     pub suggested_dep_indices: Vec<usize>,
     pub suggested_files: Vec<String>,
+    pub create: bool,
+    pub lookup: Option<HintLookup<'a>>,
 }
+
+const HINT_DEBOUNCE: Duration = Duration::from_millis(350);
+const HINT_MIN_CHARS: usize = 3;
+const LABEL_W: u16 = 14;
+const HINTS_MIN_WIDTH: u16 = 100;
+const HINTS_W: u16 = 38;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Focus {
@@ -41,6 +83,12 @@ enum Focus {
     Priority,
     Due,
     Tags,
+    Estimate,
+    Assignment,
+    Rationale,
+    Acceptance,
+    Verify,
+    Links,
     Dependencies,
     Files,
     Submit,
@@ -53,11 +101,84 @@ const ALL_FIELDS: &[Focus] = &[
     Focus::Priority,
     Focus::Due,
     Focus::Tags,
+    Focus::Estimate,
+    Focus::Assignment,
+    Focus::Rationale,
+    Focus::Acceptance,
+    Focus::Verify,
+    Focus::Links,
     Focus::Dependencies,
     Focus::Files,
     Focus::Submit,
     Focus::Cancel,
 ];
+
+impl Focus {
+    fn is_guide(self) -> bool {
+        matches!(
+            self,
+            Focus::Assignment | Focus::Rationale | Focus::Acceptance | Focus::Verify
+        )
+    }
+
+    fn is_text(self) -> bool {
+        !matches!(
+            self,
+            Focus::Priority | Focus::Dependencies | Focus::Files | Focus::Submit | Focus::Cancel
+        )
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Focus::Description => "Title",
+            Focus::Project => "Project",
+            Focus::Priority => "Priority",
+            Focus::Due => "Due",
+            Focus::Tags => "Tags",
+            Focus::Estimate => "Estimate",
+            Focus::Assignment => "Assignment",
+            Focus::Rationale => "Why",
+            Focus::Acceptance => "Done when",
+            Focus::Verify => "Verify",
+            Focus::Links => "Links",
+            Focus::Dependencies => "Depends on",
+            Focus::Files => "Files",
+            Focus::Submit => "Save",
+            Focus::Cancel => "Cancel",
+        }
+    }
+
+    fn hint(self) -> &'static str {
+        match self {
+            Focus::Description => "what to do",
+            Focus::Priority => "←/→ cycle",
+            Focus::Due => "←/→ presets · friday, +3d",
+            Focus::Tags => "comma-separated",
+            Focus::Estimate => "90m, 1h30m",
+            Focus::Assignment => "what was asked, verbatim",
+            Focus::Rationale => "why it matters",
+            Focus::Acceptance => "acceptance criterion",
+            Focus::Verify => "command that proves it",
+            Focus::Links => "space-separated URLs",
+            _ => "",
+        }
+    }
+}
+
+fn split_links(s: &str) -> Vec<String> {
+    s.split(|c: char| c.is_whitespace() || c == ',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn single_line(text: &str) -> TextArea<'static> {
+    let mut ta = TextArea::default();
+    ta.insert_str(text);
+    ta.set_cursor_line_style(Style::default());
+    ta
+}
 
 struct FormState<'a> {
     focus: Focus,
@@ -65,13 +186,19 @@ struct FormState<'a> {
     project_area: TextArea<'a>,
     due_area: TextArea<'a>,
     tags_area: TextArea<'a>,
+    estimate_area: TextArea<'a>,
+    assignment_area: TextArea<'a>,
+    rationale_area: TextArea<'a>,
+    acceptance_area: TextArea<'a>,
+    verify_area: TextArea<'a>,
+    links_area: TextArea<'a>,
     priority: Option<Priority>,
     dep_state: ListState,
     file_state: ListState,
     selected_deps: Vec<bool>,
     selected_file_paths: std::collections::BTreeSet<String>,
     file_filter: String,
-    ctx: FormContext,
+    ctx: FormContext<'a>,
     submitted: bool,
     cancelled: bool,
     due_error: bool,
@@ -79,6 +206,10 @@ struct FormState<'a> {
     fzf_available: bool,
     fzf_requested: bool,
     showing_help: bool,
+    notice: Option<String>,
+    hints: Vec<Hint>,
+    hint_query: Option<String>,
+    last_edit: Option<Instant>,
 }
 
 struct FileRow {
@@ -89,29 +220,18 @@ struct FileRow {
 }
 
 impl<'a> FormState<'a> {
-    fn new(ctx: FormContext) -> Self {
-        let mut desc_area = TextArea::default();
-        desc_area.insert_str(&ctx.initial.description);
-
-        let mut project_area = TextArea::default();
-        project_area.insert_str(&ctx.initial.project);
-
-        let mut due_area = TextArea::default();
-        due_area.insert_str(&ctx.initial.due);
-
-        let mut tags_area = TextArea::default();
-        tags_area.insert_str(&ctx.initial.tags);
-
+    fn new(ctx: FormContext<'a>) -> Self {
+        let init = &ctx.initial;
         let n_deps = ctx.available_deps.len();
 
         let mut selected_deps = vec![false; n_deps];
-        for &i in &ctx.initial.selected_deps {
+        for &i in &init.selected_deps {
             if i < n_deps {
                 selected_deps[i] = true;
             }
         }
         let selected_file_paths: std::collections::BTreeSet<String> =
-            ctx.initial.selected_files.iter().cloned().collect();
+            init.selected_files.iter().cloned().collect();
 
         let mut dep_state = ListState::default();
         if n_deps > 0 {
@@ -122,13 +242,19 @@ impl<'a> FormState<'a> {
             file_state.select(Some(0));
         }
 
-        FormState {
+        let mut state = FormState {
             focus: Focus::Description,
-            desc_area,
-            project_area,
-            due_area,
-            tags_area,
-            priority: ctx.initial.priority.clone(),
+            desc_area: single_line(&init.description),
+            project_area: single_line(&init.project),
+            due_area: single_line(&init.due),
+            tags_area: single_line(&init.tags),
+            estimate_area: single_line(&init.estimate),
+            assignment_area: single_line(&init.assignment),
+            rationale_area: single_line(&init.rationale),
+            acceptance_area: single_line(&init.acceptance),
+            verify_area: single_line(&init.verify),
+            links_area: single_line(&init.links),
+            priority: init.priority.clone(),
             dep_state,
             file_state,
             selected_deps,
@@ -142,7 +268,88 @@ impl<'a> FormState<'a> {
             fzf_available: false,
             fzf_requested: false,
             showing_help: false,
+            notice: None,
+            hints: vec![],
+            hint_query: None,
+            last_edit: None,
+        };
+        state.validate_due();
+        state
+    }
+
+    fn fields(&self) -> Vec<Focus> {
+        ALL_FIELDS
+            .iter()
+            .copied()
+            .filter(|f| self.ctx.create || !f.is_guide())
+            .collect()
+    }
+
+    fn area(&self, f: Focus) -> Option<&TextArea<'a>> {
+        Some(match f {
+            Focus::Description => &self.desc_area,
+            Focus::Project => &self.project_area,
+            Focus::Due => &self.due_area,
+            Focus::Tags => &self.tags_area,
+            Focus::Estimate => &self.estimate_area,
+            Focus::Assignment => &self.assignment_area,
+            Focus::Rationale => &self.rationale_area,
+            Focus::Acceptance => &self.acceptance_area,
+            Focus::Verify => &self.verify_area,
+            Focus::Links => &self.links_area,
+            _ => return None,
+        })
+    }
+
+    fn area_mut(&mut self, f: Focus) -> Option<&mut TextArea<'a>> {
+        Some(match f {
+            Focus::Description => &mut self.desc_area,
+            Focus::Project => &mut self.project_area,
+            Focus::Due => &mut self.due_area,
+            Focus::Tags => &mut self.tags_area,
+            Focus::Estimate => &mut self.estimate_area,
+            Focus::Assignment => &mut self.assignment_area,
+            Focus::Rationale => &mut self.rationale_area,
+            Focus::Acceptance => &mut self.acceptance_area,
+            Focus::Verify => &mut self.verify_area,
+            Focus::Links => &mut self.links_area,
+            _ => return None,
+        })
+    }
+
+    fn text(&self, f: Focus) -> String {
+        self.area(f).map(|a| a.lines().join("")).unwrap_or_default()
+    }
+
+    fn error(&self, f: Focus) -> Option<&'static str> {
+        match f {
+            Focus::Description if self.text(f).trim().is_empty() => Some("required"),
+            Focus::Due if self.due_error => Some("invalid date"),
+            Focus::Estimate => {
+                let t = self.text(f);
+                (!t.trim().is_empty()
+                    && crate::infrastructure::util::dates::parse_duration_mins(&t).is_none())
+                .then_some("use 90m or 1h30m")
+            }
+            Focus::Verify
+                if self.ctx.create
+                    && !self.text(Focus::Verify).trim().is_empty()
+                    && self.text(Focus::Acceptance).trim().is_empty() =>
+            {
+                Some("needs a Done when")
+            }
+            Focus::Links => split_links(&self.text(f))
+                .iter()
+                .any(|l| !l.contains("://"))
+                .then_some("expects URLs"),
+            _ => None,
         }
+    }
+
+    fn first_error(&self) -> Option<(Focus, &'static str)> {
+        self.fields()
+            .into_iter()
+            .find_map(|f| self.error(f).map(|e| (f, e)))
     }
 
     fn fzf_candidates(&self) -> Vec<String> {
@@ -207,19 +414,15 @@ impl<'a> FormState<'a> {
     }
 
     fn next_focus(&mut self) {
-        let idx = ALL_FIELDS
-            .iter()
-            .position(|f| *f == self.focus)
-            .unwrap_or(0);
-        self.focus = ALL_FIELDS[(idx + 1) % ALL_FIELDS.len()];
+        let fields = self.fields();
+        let idx = fields.iter().position(|f| *f == self.focus).unwrap_or(0);
+        self.focus = fields[(idx + 1) % fields.len()];
     }
 
     fn prev_focus(&mut self) {
-        let idx = ALL_FIELDS
-            .iter()
-            .position(|f| *f == self.focus)
-            .unwrap_or(0);
-        self.focus = ALL_FIELDS[(idx + ALL_FIELDS.len() - 1) % ALL_FIELDS.len()];
+        let fields = self.fields();
+        let idx = fields.iter().position(|f| *f == self.focus).unwrap_or(0);
+        self.focus = fields[(idx + fields.len() - 1) % fields.len()];
     }
 
     fn toggle_dep(&mut self) {
@@ -278,9 +481,7 @@ impl<'a> FormState<'a> {
     }
 
     fn set_due_text(&mut self, value: &str) {
-        let mut ta = TextArea::default();
-        ta.insert_str(value);
-        self.due_area = ta;
+        self.due_area = single_line(value);
         self.validate_due();
     }
 
@@ -303,27 +504,54 @@ impl<'a> FormState<'a> {
     }
 
     fn can_submit(&self) -> bool {
-        !self.desc_area.lines().join("").trim().is_empty() && !self.due_error
+        self.first_error().is_none()
+    }
+
+    fn try_submit(&mut self) {
+        match self.first_error() {
+            None => self.submitted = true,
+            Some((f, e)) => {
+                self.focus = f;
+                self.notice = Some(format!("Cannot save · {}: {e}", f.label()));
+            }
+        }
     }
 
     fn input_to_focused_text_field(&mut self, key: crossterm::event::KeyEvent) -> bool {
-        match self.focus {
-            Focus::Description => {
-                self.desc_area.input(key);
-            }
-            Focus::Project => {
-                self.project_area.input(key);
-            }
-            Focus::Due => {
-                self.due_area.input(key);
-                self.validate_due();
-            }
-            Focus::Tags => {
-                self.tags_area.input(key);
-            }
-            _ => return false,
+        let focus = self.focus;
+        let Some(area) = self.area_mut(focus) else {
+            return false;
+        };
+        let changed = area.input(key);
+        if focus == Focus::Due {
+            self.validate_due();
+        }
+        if focus == Focus::Description && changed {
+            self.last_edit = Some(Instant::now());
         }
         true
+    }
+
+    fn refresh_hints(&mut self, now: Instant, force: bool) {
+        let query = self.text(Focus::Description).trim().to_string();
+        if self.hint_query.as_deref() == Some(query.as_str()) {
+            return;
+        }
+        if !force
+            && let Some(t) = self.last_edit
+            && now.duration_since(t) < HINT_DEBOUNCE
+        {
+            return;
+        }
+        let Some(lookup) = self.ctx.lookup.as_mut() else {
+            return;
+        };
+        self.hints = if query.chars().count() < HINT_MIN_CHARS {
+            vec![]
+        } else {
+            lookup(&query)
+        };
+        self.hint_query = Some(query);
     }
 
     fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -331,12 +559,8 @@ impl<'a> FormState<'a> {
             self.showing_help = false;
             return;
         }
-        if key.code == KeyCode::Char('?')
-            && !matches!(
-                self.focus,
-                Focus::Description | Focus::Project | Focus::Due | Focus::Tags
-            )
-        {
+        self.notice = None;
+        if key.code == KeyCode::Char('?') && !self.focus.is_text() {
             self.showing_help = true;
             return;
         }
@@ -346,9 +570,7 @@ impl<'a> FormState<'a> {
                 return;
             }
             Some(Action::Save) => {
-                if self.can_submit() {
-                    self.submitted = true;
-                }
+                self.try_submit();
                 return;
             }
             Some(Action::NextFocus) => {
@@ -363,11 +585,7 @@ impl<'a> FormState<'a> {
         }
         match (key.code, key.modifiers) {
             (KeyCode::Enter, _) => match self.focus {
-                Focus::Submit => {
-                    if self.can_submit() {
-                        self.submitted = true;
-                    }
-                }
+                Focus::Submit => self.try_submit(),
                 Focus::Cancel => {
                     self.cancelled = true;
                 }
@@ -471,12 +689,25 @@ impl<'a> FormState<'a> {
             .map(|(i, _)| i)
             .collect();
         let file_paths: Vec<String> = self.selected_file_paths.iter().cloned().collect();
+        let guide = |f: Focus| {
+            if self.ctx.create {
+                self.text(f)
+            } else {
+                String::new()
+            }
+        };
         FormInput {
-            description: self.desc_area.lines().join(""),
-            project: self.project_area.lines().join(""),
+            description: self.text(Focus::Description),
+            project: self.text(Focus::Project),
             priority: self.priority.clone(),
-            due: self.due_area.lines().join(""),
-            tags: self.tags_area.lines().join(""),
+            due: self.text(Focus::Due),
+            tags: self.text(Focus::Tags),
+            estimate: self.text(Focus::Estimate),
+            assignment: guide(Focus::Assignment),
+            rationale: guide(Focus::Rationale),
+            acceptance: guide(Focus::Acceptance),
+            verify: guide(Focus::Verify),
+            links: self.text(Focus::Links),
             selected_deps: dep_indices,
             selected_files: file_paths,
         }
@@ -489,14 +720,19 @@ pub fn run_form<B: Backend<Error: Send + Sync + 'static>>(
 ) -> Result<Option<FormInput>> {
     let mut state = FormState::new(ctx);
     state.fzf_available = fzf::fzf_available();
+    state.refresh_hints(Instant::now(), true);
 
     loop {
         terminal.draw(|f| render(f, &mut state))?;
 
-        let Some(key) = crate::infrastructure::tui::next_key(100)? else {
+        let key = crate::infrastructure::tui::next_key(100)?;
+        if let Some(key) = key {
+            state.handle_key(key);
+        }
+        state.refresh_hints(Instant::now(), false);
+        if key.is_none() {
             continue;
-        };
-        state.handle_key(key);
+        }
 
         if state.fzf_requested {
             state.fzf_requested = false;
@@ -530,44 +766,63 @@ fn render(f: &mut Frame, state: &mut FormState) {
         return;
     }
     let area = f.area();
+    let title = if state.ctx.create {
+        " sara · new task "
+    } else {
+        " sara · edit task "
+    };
     f.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .title(" sara — Review Task "),
+            .border_style(Style::default().fg(ink(Ink::Muted)))
+            .title(Span::styled(
+                title,
+                Style::default()
+                    .fg(ink(Ink::Accent))
+                    .add_modifier(Modifier::BOLD),
+            )),
         area,
     );
 
     let inner = shrink(area, 1);
-
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(inner);
-    let fields_area = chunks[0];
-    let footer = chunks[1];
+
+    let show_hints = state.ctx.lookup.is_some() && inner.width >= HINTS_MIN_WIDTH;
+    let (fields_area, hints_area) = if show_hints {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(HINTS_W)])
+            .split(chunks[0]);
+        (cols[0], Some(cols[1]))
+    } else {
+        (chunks[0], None)
+    };
 
     render_fields(f, state, fields_area);
-    render_footer(f, state, footer);
+    if let Some(h) = hints_area {
+        render_hints(f, state, h);
+    }
+    f.render_widget(Paragraph::new(footer_line(state)), chunks[1]);
 
     if state.showing_help {
-        crate::infrastructure::tui::render_help_overlay(f, "Review task", &help_bindings());
+        crate::infrastructure::tui::render_help_overlay(f, "Task form", &help_bindings());
     }
 }
 
 fn help_bindings() -> Vec<(&'static str, &'static str)> {
     let mut v = keymap::help::CONTROL_ACTION_BINDINGS.to_vec();
     v.extend([
-        (
-            "↑ / ↓",
-            "move within a field, or to the previous/next field",
-        ),
+        ("↑ / ↓", "move within a list, or to the previous/next field"),
         (
             "Enter",
-            "toggle / open fzf / submit / cancel (depends on focus)",
+            "next field · toggle · open fzf · save/cancel on buttons",
         ),
         ("Space", "toggle a dependency or file"),
         ("← / →", "cycle priority or a due-date preset"),
-        ("?", "toggle this help"),
+        ("?", "toggle this help (outside text fields)"),
     ]);
     v
 }
@@ -581,268 +836,563 @@ fn shrink(r: Rect, n: u16) -> Rect {
     }
 }
 
-fn render_description(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Description;
-    let block = field_block("Description", focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    state.desc_area.set_block(Block::default());
-    f.render_widget(&state.desc_area, inner);
+enum Row {
+    Section(&'static str),
+    Field(Focus),
+    Deps,
+    Files,
+    Gap,
+    Buttons,
 }
 
-fn render_project(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Project;
-    let block = field_block("Project", focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    state.project_area.set_block(Block::default());
-    f.render_widget(&state.project_area, inner);
-}
-
-fn render_priority(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Priority;
-    let block = field_block("Priority  ←/→ to cycle", focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    let label = match &state.priority {
-        None => Span::styled("None", Style::default().fg(ink(Ink::Muted))),
-        Some(Priority::L) => Span::styled("L  (Low)", Style::default().fg(ink(Ink::Ok))),
-        Some(Priority::M) => Span::styled("M  (Medium)", Style::default().fg(ink(Ink::Warn))),
-        Some(Priority::H) => Span::styled("H  (High)", Style::default().fg(ink(Ink::Err))),
-    };
-    f.render_widget(Paragraph::new(Line::from(label)), inner);
-}
-
-fn render_due(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Due;
-    let title = if state.due_error {
-        "Due  ⚠ invalid date"
+fn layout_rows(state: &FormState, height: u16) -> Vec<(Row, u16)> {
+    let mut rows = vec![(Row::Section("1 · Task"), 1)];
+    for f in [
+        Focus::Description,
+        Focus::Project,
+        Focus::Priority,
+        Focus::Due,
+        Focus::Tags,
+        Focus::Estimate,
+    ] {
+        rows.push((Row::Field(f), 1));
+    }
+    rows.push((Row::Gap, 1));
+    let relations = if state.ctx.create {
+        rows.push((Row::Section("2 · Guide"), 1));
+        for f in [
+            Focus::Assignment,
+            Focus::Rationale,
+            Focus::Acceptance,
+            Focus::Verify,
+        ] {
+            rows.push((Row::Field(f), 1));
+        }
+        rows.push((Row::Gap, 1));
+        "3 · Relations"
     } else {
-        "Due  ←/→ presets, or type (2026-06-20, friday, +3d)"
+        "2 · Relations"
     };
-    let block = if state.due_error {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(Style::default().fg(ink(Ink::Err)))
-    } else {
-        field_block(title, focused)
-    };
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    state.due_area.set_block(Block::default());
-    f.render_widget(&state.due_area, inner);
+    rows.push((Row::Section(relations), 1));
+    rows.push((Row::Field(Focus::Links), 1));
+    let fixed = rows.len() as u16 + 4;
+    let room = height.saturating_sub(fixed);
+    let n_deps = state.ctx.available_deps.len().max(1) as u16;
+    let n_files = state.file_rows().len().max(1) as u16;
+    let deps_h = n_deps.min((room / 3).max(1)) + 1;
+    let files_h = n_files.min(room.saturating_sub(deps_h).max(2)) + 1;
+    rows.push((Row::Deps, deps_h));
+    rows.push((Row::Files, files_h));
+    rows.push((Row::Gap, 1));
+    rows.push((Row::Buttons, 1));
+    rows
 }
 
-fn render_tags(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Tags;
-    let block = field_block("Tags  (comma-separated)", focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    state.tags_area.set_block(Block::default());
-    f.render_widget(&state.tags_area, inner);
+fn row_has_focus(row: &Row, focus: Focus) -> bool {
+    match row {
+        Row::Field(f) => *f == focus,
+        Row::Deps => focus == Focus::Dependencies,
+        Row::Files => focus == Focus::Files,
+        Row::Buttons => matches!(focus, Focus::Submit | Focus::Cancel),
+        _ => false,
+    }
 }
 
 fn render_fields(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let heights = [3u16, 3, 3, 3, 3, 5, 7, 3];
-    if area.height < 4 {
-        return;
+    let rows = layout_rows(state, area.height);
+    let mut y = 0u16;
+    let mut focus_end = 0u16;
+    for (row, h) in &rows {
+        y += h;
+        if row_has_focus(row, state.focus) {
+            focus_end = y;
+        }
     }
-
-    let constraints: Vec<Constraint> = heights.iter().map(|&h| Constraint::Length(h)).collect();
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(area);
-
-    render_description(f, state, rows[0]);
-    render_project(f, state, rows[1]);
-    render_priority(f, state, rows[2]);
-    render_due(f, state, rows[3]);
-    render_tags(f, state, rows[4]);
-    render_dependencies(f, state, rows[5]);
-    render_files(f, state, rows[6]);
-    render_buttons(f, state, rows[7]);
-}
-
-fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Dependencies;
-    let block = field_block("Dependencies  (↑/↓ move, space toggle)", focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    if state.ctx.available_deps.is_empty() {
-        f.render_widget(
-            Paragraph::new("No existing tasks").style(Style::default().fg(ink(Ink::Muted))),
-            inner,
-        );
-    } else {
-        let items: Vec<ListItem> = state
-            .ctx
-            .available_deps
-            .iter()
-            .enumerate()
-            .map(|(i, (id, desc))| {
-                let check = if state.selected_deps[i] { "☑" } else { "☐" };
-                let suggested = state.ctx.suggested_dep_indices.contains(&i);
-                let style = if state.selected_deps[i] {
-                    Style::default().fg(ink(Ink::Ok))
-                } else if suggested {
-                    Style::default()
-                        .fg(ink(Ink::Muted))
-                        .add_modifier(Modifier::ITALIC)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(format!("{check} {id}  {desc}")).style(style)
-            })
-            .collect();
-        let list = List::new(items).highlight_style(
-            Style::default()
-                .bg(ink(Ink::Muted))
-                .add_modifier(Modifier::BOLD),
-        );
-        f.render_stateful_widget(list, inner, &mut state.dep_state);
-    }
-}
-
-fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let focused = state.focus == Focus::Files;
-    let n_selected = state.selected_file_paths.len();
-    let hint = if state.fzf_available {
-        "Enter: fzf · space toggle · type to filter"
-    } else {
-        "type to filter · space toggle · Enter add typed"
-    };
-    let mut title = format!("Relevant Files  ({hint})");
-    if n_selected > 0 {
-        title = format!("Relevant Files  [{n_selected} selected]  ({hint})");
-    }
-    let block = field_block(&title, focused);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    let show_filter = focused && !state.fzf_available;
-    let (filter_area, list_area) = if show_filter {
-        let parts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(1)])
-            .split(inner);
-        (Some(parts[0]), parts[1])
-    } else {
-        (None, inner)
-    };
-    if let Some(fa) = filter_area {
-        f.render_widget(
-            Paragraph::new(format!("🔍 {}", state.file_filter))
-                .style(Style::default().fg(ink(Ink::Warn))),
-            fa,
-        );
-    }
-
-    let file_rows = state.file_rows();
-    if file_rows.is_empty() {
-        let msg = if state.ctx.available_files.is_empty() {
-            "No project files found — type a path, Enter to add"
-        } else {
-            "No matches"
+    let offset = focus_end.saturating_sub(area.height);
+    let mut y = 0u16;
+    for (row, h) in &rows {
+        let top = y;
+        y += h;
+        if top < offset || y - offset > area.height {
+            continue;
+        }
+        let rect = Rect {
+            x: area.x,
+            y: area.y + top - offset,
+            width: area.width,
+            height: *h,
         };
-        f.render_widget(
-            Paragraph::new(msg).style(Style::default().fg(ink(Ink::Muted))),
-            list_area,
-        );
-    } else {
-        let items: Vec<ListItem> = file_rows
-            .iter()
-            .map(|r| {
-                if r.add_custom {
-                    return ListItem::new(format!("＋ add \"{}\"", r.path))
-                        .style(Style::default().fg(ink(Ink::Special)));
-                }
-                let check = if r.selected { "☑" } else { "☐" };
-                let style = if r.selected {
-                    Style::default().fg(ink(Ink::Ok))
-                } else if r.suggested {
-                    Style::default()
-                        .fg(ink(Ink::Muted))
-                        .add_modifier(Modifier::ITALIC)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(format!("{check} {}", r.path)).style(style)
-            })
-            .collect();
-        let list = List::new(items).highlight_style(
-            Style::default()
-                .bg(ink(Ink::Muted))
-                .add_modifier(Modifier::BOLD),
-        );
-        f.render_stateful_widget(list, list_area, &mut state.file_state);
+        match row {
+            Row::Section(t) => render_section(f, t, rect),
+            Row::Field(Focus::Priority) => render_priority(f, state, rect),
+            Row::Field(fo) => render_text_field(f, state, *fo, rect),
+            Row::Deps => render_dependencies(f, state, rect),
+            Row::Files => render_files(f, state, rect),
+            Row::Gap => {}
+            Row::Buttons => render_buttons(f, state, rect),
+        }
     }
 }
 
-fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
-    let halves = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    let submit_style = if state.focus == Focus::Submit {
-        Style::default()
-            .bg(ink(Ink::Ok))
-            .fg(ink(Ink::Base))
-            .add_modifier(Modifier::BOLD)
-    } else if state.can_submit() {
-        Style::default().fg(ink(Ink::Ok))
-    } else {
-        Style::default().fg(ink(Ink::Muted))
-    };
+fn render_section(f: &mut Frame, title: &str, area: Rect) {
     f.render_widget(
-        Paragraph::new(" ✔  Save  (Ctrl+S)")
-            .style(submit_style)
-            .block(Block::default().borders(Borders::ALL)),
-        halves[0],
-    );
-
-    let cancel_style = if state.focus == Focus::Cancel {
-        Style::default()
-            .bg(ink(Ink::Err))
-            .fg(ink(Ink::Text))
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(ink(Ink::Err))
-    };
-    f.render_widget(
-        Paragraph::new(" ✖  Cancel  (Esc)")
-            .style(cancel_style)
-            .block(Block::default().borders(Borders::ALL)),
-        halves[1],
-    );
-}
-
-fn render_footer(f: &mut Frame, _state: &FormState, area: Rect) {
-    let text = " Tab/Shift+Tab: move  •  ←/→: cycle priority  •  Space: toggle  •  Ctrl+S: save  •  ?: help  •  Esc: cancel ";
-    f.render_widget(
-        Paragraph::new(text).style(Style::default().fg(ink(Ink::Muted))),
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ▌ ", Style::default().fg(ink(Ink::Accent))),
+            Span::styled(
+                title.to_string(),
+                Style::default()
+                    .fg(ink(Ink::Text))
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])),
         area,
     );
 }
 
-fn field_block(title: &str, focused: bool) -> Block<'_> {
-    if focused {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" {title} "))
-            .border_style(
-                Style::default()
-                    .fg(ink(Ink::Accent))
-                    .add_modifier(Modifier::BOLD),
-            )
+fn label_spans(focus: Focus, focused: bool, error: bool) -> Vec<Span<'static>> {
+    let marker = if focused { " ▸ " } else { "   " };
+    let label_style = if error {
+        Style::default().fg(ink(Ink::Err))
+    } else if focused {
+        Style::default()
+            .fg(ink(Ink::Accent))
+            .add_modifier(Modifier::BOLD)
     } else {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" {title} "))
-            .border_style(Style::default().fg(ink(Ink::Muted)))
+        Style::default().fg(ink(Ink::Muted))
+    };
+    let width = LABEL_W as usize - 3;
+    vec![
+        Span::styled(
+            marker,
+            Style::default()
+                .fg(ink(Ink::Accent))
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("{:<width$}", focus.label()), label_style),
+    ]
+}
+
+fn split_field(area: Rect, side: &str) -> (Rect, Rect, Rect) {
+    let side_w = if side.is_empty() {
+        0
+    } else {
+        (side.chars().count() as u16 + 2).min(area.width / 3)
+    };
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(LABEL_W),
+            Constraint::Min(1),
+            Constraint::Length(side_w),
+        ])
+        .split(area);
+    (cols[0], cols[1], cols[2])
+}
+
+fn side_note(state: &FormState, focus: Focus) -> (String, Style) {
+    if let Some(e) = state.error(focus) {
+        return (format!("⚠\u{a0}{e} "), Style::default().fg(ink(Ink::Err)));
     }
+    if state.focus == focus && !focus.hint().is_empty() {
+        return (
+            format!("{} ", focus.hint()),
+            Style::default().fg(ink(Ink::Muted)),
+        );
+    }
+    (String::new(), Style::default())
+}
+
+fn render_text_field(f: &mut Frame, state: &mut FormState, focus: Focus, area: Rect) {
+    let focused = state.focus == focus;
+    let (note, note_style) = side_note(state, focus);
+    let (label_r, value_r, side_r) = split_field(area, &note);
+    f.render_widget(
+        Paragraph::new(Line::from(label_spans(
+            focus,
+            focused,
+            state.error(focus).is_some(),
+        ))),
+        label_r,
+    );
+    if focused {
+        if let Some(ta) = state.area_mut(focus) {
+            ta.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+            f.render_widget(&*ta, value_r);
+        }
+    } else {
+        let text = state.text(focus);
+        let span = if text.is_empty() {
+            Span::styled("·", Style::default().fg(ink(Ink::Muted)))
+        } else {
+            Span::styled(text, Style::default().fg(ink(Ink::Text)))
+        };
+        f.render_widget(Paragraph::new(Line::from(span)), value_r);
+    }
+    if !note.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(note, note_style)))
+                .alignment(ratatui::layout::Alignment::Right),
+            side_r,
+        );
+    }
+}
+
+fn render_priority(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Priority;
+    let (note, note_style) = side_note(state, Focus::Priority);
+    let (label_r, value_r, side_r) = split_field(area, &note);
+    f.render_widget(
+        Paragraph::new(Line::from(label_spans(Focus::Priority, focused, false))),
+        label_r,
+    );
+    let (text, role) = match &state.priority {
+        None => ("none", Ink::Muted),
+        Some(Priority::L) => ("L\u{a0}low", Ink::Ok),
+        Some(Priority::M) => ("M\u{a0}medium", Ink::Warn),
+        Some(Priority::H) => ("H\u{a0}high", Ink::Err),
+    };
+    let arrow = Style::default().fg(if focused {
+        ink(Ink::Accent)
+    } else {
+        ink(Ink::Muted)
+    });
+    let mut spans = vec![];
+    if focused {
+        spans.push(Span::styled("‹ ", arrow));
+    }
+    spans.push(Span::styled(
+        text,
+        Style::default().fg(ink(role)).add_modifier(Modifier::BOLD),
+    ));
+    if focused {
+        spans.push(Span::styled(" ›", arrow));
+    }
+    f.render_widget(Paragraph::new(Line::from(spans)), value_r);
+    if !note.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(note, note_style)))
+                .alignment(ratatui::layout::Alignment::Right),
+            side_r,
+        );
+    }
+}
+
+fn list_header(f: &mut Frame, focus: Focus, focused: bool, extra: Vec<Span<'static>>, area: Rect) {
+    let mut spans = label_spans(focus, focused, false);
+    spans.extend(extra);
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn split_list(area: Rect) -> (Rect, Rect) {
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(area);
+    let list = Rect {
+        x: parts[1].x + 3,
+        width: parts[1].width.saturating_sub(3),
+        ..parts[1]
+    };
+    (parts[0], list)
+}
+
+fn checkbox_item(text: String, selected: bool, suggested: bool) -> ListItem<'static> {
+    let (mark, mark_style) = if selected {
+        ("[x] ", Style::default().fg(ink(Ink::Ok)))
+    } else {
+        ("[ ] ", Style::default().fg(ink(Ink::Muted)))
+    };
+    let text_style = if selected {
+        Style::default().fg(ink(Ink::Text))
+    } else if suggested {
+        Style::default()
+            .fg(ink(Ink::Muted))
+            .add_modifier(Modifier::ITALIC)
+    } else {
+        Style::default().fg(ink(Ink::Muted))
+    };
+    ListItem::new(Line::from(vec![
+        Span::styled(mark, mark_style),
+        Span::styled(text, text_style),
+    ]))
+}
+
+fn highlight(focused: bool) -> Style {
+    if focused {
+        Style::default()
+            .fg(ink(Ink::Accent))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    }
+}
+
+fn count_badge(n: usize) -> Vec<Span<'static>> {
+    if n == 0 {
+        return vec![];
+    }
+    vec![Span::styled(
+        format!("[{n} selected]"),
+        Style::default().fg(ink(Ink::Ok)),
+    )]
+}
+
+fn render_dependencies(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Dependencies;
+    let (head, list_r) = split_list(area);
+    let n = state.selected_deps.iter().filter(|v| **v).count();
+    list_header(f, Focus::Dependencies, focused, count_badge(n), head);
+    if list_r.height == 0 {
+        return;
+    }
+    if state.ctx.available_deps.is_empty() {
+        f.render_widget(
+            Paragraph::new("no open tasks").style(Style::default().fg(ink(Ink::Muted))),
+            list_r,
+        );
+        return;
+    }
+    let items: Vec<ListItem> = state
+        .ctx
+        .available_deps
+        .iter()
+        .enumerate()
+        .map(|(i, (id, desc))| {
+            checkbox_item(
+                format!("{id}\u{a0}{desc}"),
+                state.selected_deps[i],
+                state.ctx.suggested_dep_indices.contains(&i),
+            )
+        })
+        .collect();
+    let list = List::new(items)
+        .highlight_style(highlight(focused))
+        .highlight_symbol(if focused { "› " } else { "  " });
+    f.render_stateful_widget(list, list_r, &mut state.dep_state);
+}
+
+fn render_files(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let focused = state.focus == Focus::Files;
+    let (head, list_r) = split_list(area);
+    let mut extra = count_badge(state.selected_file_paths.len());
+    if focused && !state.file_filter.is_empty() {
+        if !extra.is_empty() {
+            extra.push(Span::raw("  "));
+        }
+        extra.push(Span::styled("/", Style::default().fg(ink(Ink::Accent))));
+        extra.push(Span::styled(
+            state.file_filter.clone(),
+            Style::default().fg(ink(Ink::Text)),
+        ));
+    }
+    list_header(f, Focus::Files, focused, extra, head);
+    if list_r.height == 0 {
+        return;
+    }
+    let file_rows = state.file_rows();
+    if file_rows.is_empty() {
+        let msg = if state.ctx.available_files.is_empty() {
+            "no project files · type a path, Space to add"
+        } else {
+            "no matches"
+        };
+        f.render_widget(
+            Paragraph::new(msg).style(Style::default().fg(ink(Ink::Muted))),
+            list_r,
+        );
+        return;
+    }
+    let items: Vec<ListItem> = file_rows
+        .iter()
+        .map(|r| {
+            if r.add_custom {
+                return ListItem::new(Span::styled(
+                    format!("+ add \"{}\"", r.path),
+                    Style::default().fg(ink(Ink::Special)),
+                ));
+            }
+            checkbox_item(r.path.clone(), r.selected, r.suggested)
+        })
+        .collect();
+    let list = List::new(items)
+        .highlight_style(highlight(focused))
+        .highlight_symbol(if focused { "› " } else { "  " });
+    f.render_stateful_widget(list, list_r, &mut state.file_state);
+}
+
+fn button(label: &str, focused: bool, role: Ink, enabled: bool) -> Span<'static> {
+    let style = if focused {
+        Style::default()
+            .bg(ink(role))
+            .fg(ink(Ink::Base))
+            .add_modifier(Modifier::BOLD)
+    } else if enabled {
+        Style::default().fg(ink(role)).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(ink(Ink::Muted))
+    };
+    Span::styled(format!(" {label} "), style)
+}
+
+fn render_buttons(f: &mut Frame, state: &mut FormState, area: Rect) {
+    let save_label = if state.ctx.create {
+        "Create  ^S"
+    } else {
+        "Save  ^S"
+    };
+    let line = Line::from(vec![
+        Span::raw("   "),
+        button(
+            save_label,
+            state.focus == Focus::Submit,
+            Ink::Ok,
+            state.can_submit(),
+        ),
+        Span::raw("   "),
+        button("Cancel  Esc", state.focus == Focus::Cancel, Ink::Err, true),
+    ]);
+    f.render_widget(Paragraph::new(line), area);
+}
+
+fn render_hints(f: &mut Frame, state: &FormState, area: Rect) {
+    let inner = Rect {
+        x: area.x + 1,
+        width: area.width.saturating_sub(1),
+        ..area
+    };
+    let mut lines = vec![Line::from(vec![
+        Span::styled("▌ ", Style::default().fg(ink(Ink::Accent))),
+        Span::styled(
+            "Similar work",
+            Style::default()
+                .fg(ink(Ink::Text))
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])];
+    lines.push(Line::raw(""));
+    if state.hints.is_empty() {
+        let msg = if state.hint_query.as_deref().unwrap_or("").chars().count() < HINT_MIN_CHARS {
+            "type a title to see related tasks and memories"
+        } else {
+            "nothing similar yet"
+        };
+        lines.push(Line::from(Span::styled(
+            msg,
+            Style::default().fg(ink(Ink::Muted)),
+        )));
+    }
+    let w = inner.width as usize;
+    for h in &state.hints {
+        let (kind, role) = match h.kind {
+            HintKind::Task => ("task", Ink::Accent),
+            HintKind::Memory => ("memory", Ink::Special),
+        };
+        let badge = format!("[{kind}\u{a0}{}]", h.label);
+        let room = w.saturating_sub(badge.chars().count() + 1);
+        lines.push(Line::from(vec![
+            Span::styled(badge, Style::default().fg(ink(role))),
+            Span::raw(" "),
+            Span::styled(
+                truncate_chars(&h.title, room),
+                Style::default().fg(ink(Ink::Text)),
+            ),
+        ]));
+    }
+    f.render_widget(
+        Block::default()
+            .borders(Borders::LEFT)
+            .border_style(Style::default().fg(ink(Ink::Muted))),
+        area,
+    );
+    f.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            x: inner.x + 1,
+            width: inner.width.saturating_sub(1),
+            ..inner
+        },
+    );
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+fn footer_line(state: &FormState) -> Line<'static> {
+    if let Some(n) = &state.notice {
+        return Line::from(Span::styled(
+            format!(" {n}"),
+            Style::default()
+                .fg(ink(Ink::Err))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    let keys: &[(&str, &str)] = match state.focus {
+        Focus::Priority => &[
+            ("←/→", "cycle"),
+            ("Tab", "next"),
+            ("^S", "save"),
+            ("Esc", "cancel"),
+            ("?", "help"),
+        ],
+        Focus::Due => &[
+            ("←/→", "presets"),
+            ("Tab", "next"),
+            ("^S", "save"),
+            ("Esc", "cancel"),
+        ],
+        Focus::Dependencies => &[
+            ("↑/↓", "move"),
+            ("Space", "toggle"),
+            ("Tab", "next"),
+            ("^S", "save"),
+            ("?", "help"),
+        ],
+        Focus::Files if state.fzf_available => &[
+            ("Enter", "fzf"),
+            ("Space", "toggle"),
+            ("type", "filter"),
+            ("^S", "save"),
+            ("?", "help"),
+        ],
+        Focus::Files => &[
+            ("Space", "toggle"),
+            ("type", "filter"),
+            ("Tab", "next"),
+            ("^S", "save"),
+            ("?", "help"),
+        ],
+        Focus::Submit | Focus::Cancel => &[
+            ("Enter", "confirm"),
+            ("Tab", "next"),
+            ("Esc", "cancel"),
+            ("?", "help"),
+        ],
+        _ => &[
+            ("Tab", "next"),
+            ("S-Tab", "prev"),
+            ("^S", "save"),
+            ("Esc", "cancel"),
+        ],
+    };
+    let key = Style::default()
+        .fg(ink(Ink::Text))
+        .add_modifier(Modifier::BOLD);
+    let label = Style::default().fg(ink(Ink::Muted));
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (k, d)) in keys.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ·  ", label));
+        }
+        spans.push(Span::styled(k.to_string(), key));
+        spans.push(Span::styled(format!(" {d}"), label));
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]

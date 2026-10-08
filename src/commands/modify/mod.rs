@@ -8,7 +8,7 @@ use crate::commands::shared::{
 };
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
+use crate::infrastructure::model::{Task, format_duration};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 
@@ -91,13 +91,19 @@ pub fn run(
             priority: task.priority.clone(),
             due: due_str,
             tags: task.tags.join(","),
-            selected_deps: vec![],
+            estimate: task
+                .estimate_mins
+                .map(|m| format_duration(m * 60))
+                .unwrap_or_default(),
             selected_files: current_files,
+            ..Default::default()
         },
         available_deps,
         available_files: project_files,
         suggested_dep_indices: vec![],
         suggested_files: vec![],
+        create: false,
+        lookup: None,
     };
 
     let result = tui::with_terminal(|t| run_form(t, ctx));
@@ -107,11 +113,18 @@ pub fn run(
         return Ok(());
     };
 
+    let updated = apply_form(conn, cfg, &task, form)?;
+    render::print_updated(updated.id.unwrap_or(0), &updated.description);
+    Ok(())
+}
+
+fn apply_form(conn: &Connection, cfg: &Config, task: &Task, form: FormInput) -> Result<Task> {
     let mut updated = task.clone();
-    updated.description = form.description;
+    updated.description = form.description.clone();
     updated.project = form.project.clone();
-    updated.priority = form.priority;
+    updated.priority = form.priority.clone();
     updated.tags = split_csv(&form.tags);
+    updated.estimate_mins = parse_duration_mins(&form.estimate);
     updated.modified = Utc::now();
 
     if form.due.is_empty() {
@@ -125,10 +138,18 @@ pub fn run(
 
     db::set_task_files(conn, &updated.uuid, &form.selected_files)?;
 
-    db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
+    let existing: Vec<String> = db::get_links(conn, &updated.uuid)?
+        .into_iter()
+        .map(|l| l.url)
+        .collect();
+    for url in form.link_list() {
+        if !existing.contains(&url) {
+            db::add_link(conn, &updated.uuid, &url, None)?;
+        }
+    }
 
-    render::print_updated(updated.id.unwrap_or(0), &updated.description);
-    Ok(())
+    db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
+    Ok(updated)
 }
 
 #[allow(clippy::too_many_arguments)]
