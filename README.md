@@ -479,14 +479,17 @@ the tied branch, open feedback (with `⟳` when a revision is requested), and
 the display id with the short uuid. The task's **Anchor** — assignment and
 why — leads the body. In the checklist, the step `sara next` would return is
 marked `◆ … ← next` with its intent, acceptance progress shows as a bar, and
-every acceptance item shows its `verify` command and last result inline.
+every acceptance item shows its `verify` command and last result inline. The
+**Memory ledger** lists each memory surfaced, recalled or cited for the task
+(`Enter` opens it in `sara dream`), and **AI activity** shows token usage per
+run with a total.
 
 **Keys**
 
 | Key            | Action                                            |
 |----------------|---------------------------------------------------|
 | `↑` / `↓` (or `k` / `j`) | Move between fields and items            |
-| `Enter` / `e`  | Edit the selected field, or open the selected file/link |
+| `Enter` / `e`  | Edit the selected field, open the selected file/link, or open the selected memory in `sara dream` |
 | `←` / `→`      | Cycle priority (when Priority is selected)        |
 | `Space`        | Toggle the selected checklist item                |
 | `a`            | Add a new checklist step (Enter saves, Esc cancels) |

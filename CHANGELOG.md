@@ -23,6 +23,10 @@
   checklist marks the current step (what `next` returns) with its intent, shows
   an acceptance progress bar, and shows each acceptance item's verify command
   and result inline.
+- **`sara info` memory ledger and token usage.** Every memory surfaced,
+  recalled or cited for the task is listed once with its use kinds (cited
+  first); `Enter` on a row opens it in `sara dream`. AI activity rows show
+  token counts (in / out) and a total.
 
 ### Changed
 
