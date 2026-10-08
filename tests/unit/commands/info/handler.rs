@@ -124,3 +124,35 @@ fn pr_url_is_none_without_any_pr_reference() {
     let notes = vec![note("see https://github.com/o/r/issues/7 for context")];
     assert_eq!(pr_url_from(&links, &notes), None);
 }
+
+#[test]
+fn memory_ledger_groups_uses_per_memory_and_puts_cited_first() {
+    use crate::infrastructure::db::{self, MemoryUseKind};
+    use crate::test_support::{seed_memory, seed_task};
+    let conn = db::open_in_memory_for_test();
+    let t = seed_task(&conn, "ledger task", "p");
+    let surfaced = seed_memory(&conn, "only surfaced", "a", &[]);
+    let cited = seed_memory(&conn, "was cited", "b", &[]);
+    for kind in [MemoryUseKind::Surfaced, MemoryUseKind::Surfaced] {
+        db::record_memory_use(&conn, &surfaced.uuid, &t.uuid, kind).unwrap();
+    }
+    for kind in [
+        MemoryUseKind::Surfaced,
+        MemoryUseKind::Recalled,
+        MemoryUseKind::Cited,
+    ] {
+        db::record_memory_use(&conn, &cited.uuid, &t.uuid, kind).unwrap();
+    }
+    let ledger = memory_ledger(&conn, &t.uuid);
+    assert_eq!(ledger.len(), 2);
+    assert_eq!(ledger[0].snippet, "b", "{ledger:?}");
+    assert!(ledger[0].handle.starts_with('m'), "{ledger:?}");
+    assert_eq!(
+        (ledger[0].cited, ledger[0].recalled, ledger[0].surfaced),
+        (1, 1, 1)
+    );
+    assert_eq!(
+        (ledger[1].cited, ledger[1].recalled, ledger[1].surfaced),
+        (0, 0, 1)
+    );
+}

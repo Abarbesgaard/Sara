@@ -32,14 +32,73 @@ impl Body<'_> {
         }
     }
 
-    pub(super) fn cited(&mut self) {
+    pub(super) fn ledger(&mut self) {
         let d = self.d;
-        if !d.cited.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Cited memories"));
-            for c in &d.cited {
-                self.lines.push(Line::from(format!("  {c}")));
+        if d.ledger.is_empty() {
+            return;
+        }
+        self.lines.push(Line::from(""));
+        self.lines.push(Line::from(vec![
+            Span::styled(
+                format!("Memory ledger  ({})", d.ledger.len()),
+                Style::default()
+                    .fg(ink(Ink::Accent))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "  Enter opens in dream",
+                Style::default().fg(ink(Ink::Muted)),
+            ),
+        ]));
+        for (i, e) in d.ledger.iter().enumerate() {
+            let selected = self.sel == Some(Focusable::Memory(i));
+            let bg = if selected {
+                ink(Ink::Select)
+            } else {
+                ink(Ink::Plain)
+            };
+            let prefix = if selected { " ▶ " } else { "   " };
+            let mut spans = vec![
+                Span::styled(prefix, Style::default().fg(ink(Ink::Text)).bg(bg)),
+                Span::styled(
+                    format!("{:<6}", e.handle),
+                    Style::default()
+                        .fg(ink(Ink::Special))
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    e.snippet.clone(),
+                    Style::default()
+                        .fg(if selected {
+                            ink(Ink::Text)
+                        } else {
+                            ink(Ink::Plain)
+                        })
+                        .bg(bg),
+                ),
+            ];
+            for (n, label, color) in [
+                (e.cited, "cited", ink(Ink::Ok)),
+                (e.recalled, "recalled", ink(Ink::Info)),
+                (e.surfaced, "surfaced", ink(Ink::Muted)),
+            ] {
+                if n > 0 {
+                    let count = if n > 1 {
+                        format!(" ×{n}")
+                    } else {
+                        String::new()
+                    };
+                    spans.push(Span::styled(
+                        format!("  {label}{count}"),
+                        Style::default().fg(color),
+                    ));
+                }
             }
+            if selected {
+                self.sel_range = Some((self.lines.len(), self.lines.len()));
+            }
+            self.lines.push(Line::from(spans));
         }
     }
 

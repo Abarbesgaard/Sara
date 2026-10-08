@@ -57,7 +57,7 @@ impl<'a> Body<'a> {
         body.select_hint();
         body.typed_notes();
         body.blockers();
-        body.cited();
+        body.ledger();
         body.links();
         body.files();
         body.anchors();

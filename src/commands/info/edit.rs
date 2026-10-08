@@ -231,6 +231,17 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                     }
+                    Some(Focusable::Memory(i)) => {
+                        if let Some(entry) = st.detail.ledger.get(i) {
+                            let handle = entry.handle.clone();
+                            tui::suspend()?;
+                            let _ = crate::commands::dream::run(conn, &handle);
+                            tui::resume()?;
+                            terminal.clear()?;
+                            st.detail.ledger =
+                                super::handler::memory_ledger(conn, &st.detail.task.uuid);
+                        }
+                    }
                     Some(Focusable::Anchor(i)) => {
                         if let Some(anchor) = st.detail.anchors.get(i) {
                             let target = st
