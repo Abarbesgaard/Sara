@@ -124,6 +124,28 @@ pub fn set_look(palette: Palette, color: bool, truecolor: bool) {
     });
 }
 
+pub const SWATCH: [Ink; 8] = [
+    Ink::Text,
+    Ink::Accent,
+    Ink::Info,
+    Ink::Ok,
+    Ink::Warn,
+    Ink::Err,
+    Ink::Special,
+    Ink::Glow,
+];
+
+pub fn swatch(p: Palette) -> Option<Vec<Color>> {
+    let saved = LOOK.with(Cell::get);
+    if !saved.color {
+        return None;
+    }
+    set_look(p, true, saved.truecolor);
+    let out = SWATCH.into_iter().map(ink).collect();
+    LOOK.with(|l| l.set(saved));
+    Some(out)
+}
+
 pub fn palette() -> Palette {
     LOOK.with(|l| l.get().palette)
 }
