@@ -1153,7 +1153,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara denotate <annotation-id>`    | Remove an annotation (alias `uncomment`) |
 | `sara unlink <link-id>`            | Remove a link from a task |
 | `sara move <id> <project>`         | Move a task to another project (alias `mv`) |
-| `sara projects`                    | Browse every registered project |
+| `sara projects`                    | Browse every registered project with open/active/stale/feedback badges |
 | `sara board`                       | Interactive board of tasks across projects (`-p` to scope, `--finished` to include done) |
 | `sara plan import <file\|->`       | Bulk-create a task graph from JSON |
 | `sara plan show <id>`              | Dependency-ordered briefing for a task and its blockers |
@@ -1189,7 +1189,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara unlink-memory <from> <rel> <to>` | Remove a typed edge between memories |
 | `sara prune-memories`              | Preview (`--dry-run`, default) or archive (`--apply`) low-value memories |
 | `sara doctor`                      | Read-only memory-store health report with the fix for each finding, plus the knowledge-reuse share (`--json`, `--strict` exits 1 on warnings) |
-| `sara activity`                    | GitHub-style activity heatmap (`--project`, `-a`)        |
+| `sara activity`                    | Dotted activity heatmap; `↵` drills into a day's tasks (`--project`, `-a`) |
 | `sara follow [id]`                 | Live view of agents working tasks across all projects; `-m` minimal, `-p [project]` tie to one project, `--stall <min>` ([details](#following-agents-live-sara-follow)) |
 | `sara doing <id> <text>`           | Report what is being done on a task right now (shown in `sara follow`) |
 | `sara mcp`                         | Run a stdio MCP server exposing the agent loop as tools ([details](#mcp-server-sara-mcp)) |

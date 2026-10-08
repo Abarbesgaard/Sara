@@ -18,7 +18,10 @@ pub(super) struct ProjectRow {
     pub(super) goal: Option<String>,
     pub(super) stack: Option<String>,
     pub(super) pending: u32,
+    pub(super) active: u32,
     pub(super) done: u32,
+    pub(super) stale: u32,
+    pub(super) feedback: u32,
     pub(super) last_activity: Option<DateTime<Utc>>,
 }
 
@@ -67,11 +70,19 @@ fn build_rows(conn: &Connection) -> Result<Vec<ProjectRow>> {
         let profile = db::get_project(conn, &name)?;
         let stats = db::project_stats(conn, &name)?;
         let last_activity = db::project_last_activity(conn, &name)?;
+        let head = profile
+            .as_ref()
+            .and_then(|p| p.path.as_deref())
+            .and_then(|p| crate::infrastructure::git::head_commit(std::path::Path::new(p)));
+        let badges = db::project_badges(conn, &name, head.as_deref())?;
         rows.push(ProjectRow {
             goal: profile.as_ref().and_then(|p| p.goal.clone()),
             stack: profile.as_ref().and_then(|p| p.stack.clone()),
             pending: stats.pending,
+            active: stats.active,
             done: stats.completed_total,
+            stale: badges.stale,
+            feedback: badges.feedback,
             last_activity,
             name,
         });

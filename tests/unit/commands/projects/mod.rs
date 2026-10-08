@@ -6,7 +6,10 @@ fn row(name: &str, last: Option<DateTime<Utc>>) -> ProjectRow {
         goal: None,
         stack: None,
         pending: 0,
+        active: 0,
         done: 0,
+        stale: 0,
+        feedback: 0,
         last_activity: last,
     }
 }
