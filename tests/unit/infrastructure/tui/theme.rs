@@ -108,3 +108,81 @@ fn init_prefers_env_over_config_and_ignores_unknown_names() {
     assert_eq!(palette(), Palette::Classic);
     set_look(Palette::Classic, true, true);
 }
+
+#[test]
+fn every_palette_round_trips_its_name() {
+    for p in Palette::ALL {
+        assert_eq!(Palette::parse(p.name()), Some(p));
+    }
+    assert_eq!(Palette::parse("Tokyo_Night"), Some(Palette::TokyoNight));
+    assert_eq!(Palette::parse("rose pine"), Some(Palette::RosePine));
+}
+
+#[test]
+fn scheme_palettes_use_truecolor_and_fall_back_to_256_colours() {
+    for p in &Palette::ALL[2..] {
+        set_look(*p, true, true);
+        assert!(matches!(ink(Ink::Accent), Color::Rgb(..)), "{p:?}");
+        assert!(matches!(heat(10, 10), Color::Rgb(..)), "{p:?}");
+        assert_eq!(ink(Ink::Plain), Color::Reset, "{p:?}");
+        set_look(*p, true, false);
+        assert!(matches!(ink(Ink::Accent), Color::Indexed(..)), "{p:?}");
+        assert!(matches!(heat(10, 10), Color::Indexed(..)), "{p:?}");
+    }
+    set_look(Palette::Classic, true, true);
+}
+
+#[test]
+fn xterm256_picks_the_nearest_cube_or_grey_entry() {
+    assert_eq!(xterm256(0x000000), 16);
+    assert_eq!(xterm256(0xffffff), 231);
+    assert_eq!(xterm256(0x808080), 244);
+    assert_eq!(xterm256(0xff0000), 196);
+    assert_eq!(xterm256(0x00ffff), 51);
+}
+
+fn luminance(c: Color) -> f64 {
+    let Color::Rgb(r, g, b) = c else {
+        panic!("expected rgb, got {c:?}")
+    };
+    let lin = |v: u8| {
+        let s = v as f64 / 255.0;
+        if s <= 0.03928 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+fn contrast(a: Ink, b: Ink) -> f64 {
+    let (x, y) = (luminance(ink(a)), luminance(ink(b)));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+#[test]
+fn scheme_palettes_keep_text_readable() {
+    let mut weak = Vec::new();
+    for p in &Palette::ALL[2..] {
+        set_look(*p, true, true);
+        for (fg, bg, min) in [
+            (Ink::Text, Ink::Select, 4.5),
+            (Ink::Text, Ink::Header, 4.5),
+            (Ink::Text, Ink::Base, 4.5),
+            (Ink::Soft, Ink::Base, 4.5),
+            (Ink::Muted, Ink::Base, 2.5),
+            (Ink::Base, Ink::Accent, 3.0),
+            (Ink::Base, Ink::Ok, 3.0),
+            (Ink::Base, Ink::Warn, 3.0),
+            (Ink::Base, Ink::Err, 3.0),
+        ] {
+            let got = contrast(fg, bg);
+            if got < min {
+                weak.push(format!("{p:?}: {fg:?} on {bg:?} = {got:.2} < {min}"));
+            }
+        }
+    }
+    set_look(Palette::Classic, true, true);
+    assert!(weak.is_empty(), "{}", weak.join("\n"));
+}

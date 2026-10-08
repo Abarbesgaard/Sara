@@ -951,7 +951,7 @@ age        = 2.0
 age_max    = 365.0
 
 [tui]
-theme = "classic"           # "classic" (default) or "retro" (phosphor green)
+theme = "classic"           # see `sara theme` for every palette
 ```
 
 ### TUI palette
@@ -963,8 +963,13 @@ Every full-screen view (`info`, the board, `add`/`modify` review, `projects`,
 - **`retro`** — a phosphor look: pale green text, a cyan-green accent, amber
   warnings. It uses 24-bit colour when `COLORTERM` is `truecolor`/`24bit` and
   falls back to the 16 ANSI colours otherwise.
+- **Editor themes** — `dracula`, `nord`, `gruvbox`, `catppuccin` (mocha),
+  `tokyo-night`, `solarized-dark`, `solarized-light`, `one-dark`, `rose-pine`
+  and `high-contrast`. They use 24-bit colour on truecolor terminals and the
+  nearest xterm-256 colour otherwise. `solarized-light` expects a light
+  terminal background.
 
-Switch any time with `sara theme retro` or `sara theme classic`; plain
+Switch any time with `sara theme <name>` (e.g. `sara theme nord`); plain
 `sara theme` shows which one is active. The choice is saved as `[tui] theme`.
 For a one-off, override it per shell with `SARA_THEME=retro`.
 `NO_COLOR=1` turns colour off in every palette.
@@ -1126,7 +1131,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara undo`                        | Revert the most recent command                           |
 | `sara reset`                       | Delete a project's tasks and profile (`-p`, `-y`)        |
 | `sara paths`                       | Print config and data paths                              |
-| `sara theme [classic\|retro]`      | Show or switch the TUI palette                           |
+| `sara theme [name]`                | Show or switch the TUI palette                           |
 | `sara completions <shell>`         | Generate shell completions                               |
 
 Run `sara help` or `sara <command> --help` for full options.

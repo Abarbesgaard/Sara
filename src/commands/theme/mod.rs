@@ -8,7 +8,10 @@ pub fn run(cfg: &mut Config, chosen: Option<&str>) -> Result<String> {
         return Ok(status(cfg));
     };
     if Palette::parse(name).is_none() {
-        bail!("unknown theme `{name}` (use classic or retro)");
+        bail!(
+            "unknown theme `{name}` (use one of: {})",
+            Palette::NAMES.join(", ")
+        );
     }
     cfg.tui.theme = name.trim().to_ascii_lowercase();
     config::save(cfg)?;
@@ -18,12 +21,11 @@ pub fn run(cfg: &mut Config, chosen: Option<&str>) -> Result<String> {
 pub(super) fn status(cfg: &Config) -> String {
     let saved = Palette::parse(&cfg.tui.theme).unwrap_or_default();
     let mark = |p: Palette| if p == saved { "▸" } else { " " };
-    format!(
-        "{} classic\n{} retro{}",
-        mark(Palette::Classic),
-        mark(Palette::Retro),
-        env_note()
-    )
+    let rows: Vec<String> = Palette::ALL
+        .into_iter()
+        .map(|p| format!("{} {}", mark(p), p.name()))
+        .collect();
+    format!("{}{}", rows.join("\n"), env_note())
 }
 
 fn env_note() -> String {
