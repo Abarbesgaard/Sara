@@ -3,6 +3,7 @@ pub mod keymap;
 pub mod review_form;
 pub mod screen;
 pub mod theme;
+mod themes;
 
 use crate::infrastructure::tui::theme::{Ink, ink};
 use anyhow::Result;
