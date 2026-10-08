@@ -156,3 +156,28 @@ fn memory_ledger_groups_uses_per_memory_and_puts_cited_first() {
         (0, 0, 1)
     );
 }
+
+#[test]
+fn open_sections_default_then_persist_across_loads() {
+    use super::super::types::SectionId;
+    use crate::infrastructure::db;
+    let conn = db::open_in_memory_for_test();
+    let mut open = load_open_sections(&conn);
+    assert_eq!(open, SectionId::default_open());
+    toggle_section(&conn, &mut open, SectionId::Memory);
+    toggle_section(&conn, &mut open, SectionId::Steps);
+    let reloaded = load_open_sections(&conn);
+    assert_eq!(reloaded, open);
+    assert!(reloaded.contains(&SectionId::Memory));
+    assert!(!reloaded.contains(&SectionId::Steps));
+    db::meta_set(&conn, "tui.info.open", "links, bogus,feedback").unwrap();
+    let parsed = load_open_sections(&conn);
+    assert_eq!(
+        parsed,
+        [SectionId::Links, SectionId::Feedback]
+            .into_iter()
+            .collect()
+    );
+    db::meta_set(&conn, "tui.info.open", "").unwrap();
+    assert!(load_open_sections(&conn).is_empty());
+}

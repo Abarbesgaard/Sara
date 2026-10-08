@@ -484,14 +484,21 @@ every acceptance item shows its `verify` command and last result inline. The
 (`Enter` opens it in `sara dream`), and **AI activity** shows token usage per
 run with a total.
 
+Every section below the fields — Memory ledger, Links, files, Checklist,
+Verification, AI activity, Related tasks and Feedback — is **collapsible**. Its
+header shows `▾`/`▸` and an item count; select it and press `Enter` or `Space`
+to fold it. Checklist and Feedback start open, the rest folded, and your
+choice is remembered across sessions (stored under the `tui.info.open` meta
+key). Adding a step opens the Checklist.
+
 **Keys**
 
 | Key            | Action                                            |
 |----------------|---------------------------------------------------|
 | `↑` / `↓` (or `k` / `j`) | Move between fields and items            |
-| `Enter` / `e`  | Edit the selected field, open the selected file/link, or open the selected memory in `sara dream` |
+| `Enter` / `e`  | Edit the selected field, open the selected file/link, open the selected memory in `sara dream`, or fold/unfold the selected section |
 | `←` / `→`      | Cycle priority (when Priority is selected)        |
-| `Space`        | Toggle the selected checklist item                |
+| `Space`        | Toggle the selected checklist item, or fold/unfold the selected section |
 | `a`            | Add a new checklist step (Enter saves, Esc cancels) |
 | `⇧↑` / `⇧↓` (or `K` / `J`) | Reorder the selected checklist step within its kind |
 | `PgUp` / `PgDn`| Scroll                                            |

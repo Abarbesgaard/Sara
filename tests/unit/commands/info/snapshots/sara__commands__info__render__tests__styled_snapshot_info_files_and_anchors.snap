@@ -29,18 +29,18 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Relevant files                                                              │
+│                                        ││▾ Relevant files (2)                                                        │
 │                                        ││   src/commands/info/render.rs                                              │
 │                                        ││ ▶ src/main.rs                                                              │
 │                                        ││                                                                            │
-│                                        ││Possible relevant files                                                     │
+│                                        ││▾ Possible relevant files (2)                                               │
 │                                        ││   src/commands/info/handler.rs :: render (10-40) (ai)  — builds focusables │
 │                                        ││💬 1 ⟳                                                                       │
 │                                        ││      ╰ hh:mm ⟳  check this one                                             │
 │                                        ││      ╰ hh:mm  old remark                                                   │
 │                                        ││   src/infrastructure/tui/theme.rs :: render (10-40)                        │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
@@ -49,7 +49,7 @@ expression: out
 │                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
 abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddffffffffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaggggggggggggga
 hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
@@ -78,18 +78,18 @@ leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelirrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliiiiiiiiiiiiiiiiiiiiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelippppppppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelioooiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiihhhhhlllllllllllllllllllllei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliieisseeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllllllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelilllllllllllllllmmmmmmmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelioooiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
-leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
+leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelikkkkkkkkkkkkkkkooooooooooooooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeelillllllllllllllllllllllllllllllllllooooeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliooooooommmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei
 leeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeliiiiiiiikkkkkkkiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeei

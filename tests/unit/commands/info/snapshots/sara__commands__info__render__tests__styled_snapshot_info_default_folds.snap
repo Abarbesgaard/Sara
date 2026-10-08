@@ -2,20 +2,20 @@
 source: tests/unit/commands/info/render.rs
 expression: out
 ---
- ○ pending  │  · never validated  │  ⎇ tui/info-split  │  💬  0 open                                       #6 · 00000000
+ ○ pending  │  · never validated  │  ⎇ no branch  │  💬  1 open                                            #6 · 00000000
 ┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
 │ ← blocked by (1)                       ││Anchor                                                                      │
 │  └─✓ 1 task 1                          ││  Assignment  make the TUI coherent                                         │
 │────────────────────────────────────────││  Why         screens drifted apart                                         │
 │ ▶   6 root task                        ││                                                                            │
-│────────────────────────────────────────││ ▶ Description root task                                                    │
+│────────────────────────────────────────││   Description root task                                                    │
 │ blocks → (1)                           ││   Project     tk                                                           │
 │  └─○ 2 task 2                          ││   Priority    High                                                         │
 └────────────────────────────────────────┘│   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
 ┌ Git ───────────────────────────────────┐│   Tags        tui, theme                                                   │
-│  Branch  tui/info-split                ││   Estimate    -                                                            │
+│  No branch tied.                       ││   Estimate    -                                                            │
 │                                        ││   Recur       -                                                            │
-│                                        ││   Depends on  -                                                            │
+│  Run: sara <id> addbranch              ││   Depends on  -                                                            │
 │                                        ││  Time spent  -                                                             │
 │                                        ││  Urgency     7.5                                                           │
 │                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
@@ -29,30 +29,22 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
+│                                        ││▸ Memory ledger (1)  Enter opens in dream                                   │
+│                                        ││                                                                            │
+│                                        ││▸ Links (1)                                                                 │
+│                                        ││                                                                            │
 │                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
-│                                        ││         why recall                                                         │
-│                                        ││         → green                                                            │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
 │                                        ││         why observe                                                        │
 │                                        ││   [ ] snapshots pass [accept]                                              │
-│                                        ││         why snapshots pass                                                 │
 │                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
-│                                        ││▾ AI activity (2)                                                           │
-│                                        ││  plan via gpt [copilot] @ YYYY-MM-DD hh:mm                                 │
-│                                        ││  reflect via ? [?] @ YYYY-MM-DD hh:mm                                      │
-│                                        ││  2 runs                                                                    │
+│                                        ││▸ AI activity (1)                                                           │
 │                                        ││                                                                            │
-│                                        ││▾ Related tasks (shared tags) (4)                                           │
-│                                        ││  #12  theme the follow screen  urg 6.5                                     │
-│                                        ││  #13  split board render  urg 4.2                                          │
-│                                        ││  #11  tidy the board  urg 2.0                                              │
-│                                        ││  … 1 more                                                                  │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+│                                        ││▾ Feedback (1)                                                              │
+│                                        ││   YYYY-MM-DD hh:mm  looks good                                             │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -63,57 +55,49 @@ expression: out
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
  ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
 --- styles ---
-abbbbbbbbbcccccccccccccccccccccccccccddddddddddddddddccccccecccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafffffffffffffa
+abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafffffffffffffa
 gggggggggggggggggggggggggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
 giiiiiiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeghjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 gkkkklllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeghkkkkkkkkkkkkkkmmmmmmmmmmmmmmmmmmmmmeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 gkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkghkkkkkkkkkkkkkknnnnnnnnnnnnnnnnnnnnneeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 gooooooooooooooooeeeeeeeeeeeeeeeeeeeeeeeegheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkghooooooooooooooopppppppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+gkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkghkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 giiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeghkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkkhhhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeghkkkkkkkkkkkkkkkqqqqeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+gkkkkhhhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeghkkkkkkkkkkkkkkkppppeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 gggggggggggggggggggggggggggggggggggggggggghkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-kkkkkkkkkkkjjjjjjjjjjjjjjeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+kkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+knnnnnnnnnnnnnnnnnnnnnnnnnneeeeeeeeeeeeeekhkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkeeeeeeeeeeeeeeeekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhnnnnneeeeeeeeeeeeeeeeeeegggggeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhrrrrrrrrrrrrrrrrrrrrrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhoooooooooooooooooookkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjjjjjjjjjnnnnnnnnnnnnnnnnnnnnnnnnnnnneeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkknnnneeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhnnnnnnnlllllleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkssssssseeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhhhhhhhhjjjjjjjhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhnnnnnnneeeeeeeeeeeeeettttttttteeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkktttttttttteekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhnnnnnnneeeeeeeeeeeeeerrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkrrrrrrrrrreekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjjjjjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkeeeeeeeeeeeeeeeeeeeeeeekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkeeeeeeeeeeeeeeeeeekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkeeeeeeeeeeeeeekkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhrrrrrrrrrreeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
+keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
 keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
@@ -127,7 +111,7 @@ nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
 a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
 b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
 c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
-d fg=Some(Blue) bg=Some(Rgb(28, 30, 44)) mod=NONE
+d fg=Some(Cyan) bg=Some(Rgb(28, 30, 44)) mod=NONE
 e fg=Some(Reset) bg=Some(Reset) mod=NONE
 f fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
 g fg=Some(Magenta) bg=Some(Reset) mod=NONE
@@ -139,8 +123,6 @@ l fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
 m fg=Some(White) bg=Some(Reset) mod=NONE
 n fg=Some(Gray) bg=Some(Reset) mod=NONE
 o fg=Some(White) bg=Some(Blue) mod=BOLD
-p fg=Some(White) bg=Some(Blue) mod=NONE
-q fg=Some(Red) bg=Some(Reset) mod=NONE
-r fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
-s fg=Some(Green) bg=Some(Reset) mod=NONE
-t fg=Some(Blue) bg=Some(Reset) mod=NONE
+p fg=Some(Red) bg=Some(Reset) mod=NONE
+q fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+r fg=Some(Blue) bg=Some(Reset) mod=NONE

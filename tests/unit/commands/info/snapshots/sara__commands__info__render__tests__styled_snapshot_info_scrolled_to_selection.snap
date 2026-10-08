@@ -21,7 +21,7 @@ expression: out
 │                                        ││         why this step matters                          │
 │                                        ││         ╰ hh:mm  on step 26                            │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ?
 --- styles ---
 abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddaaaaaaaaaaaaaaaaaaaaaaaafffffffffffffa
 gggggggggggggggggggggggggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh

@@ -29,7 +29,7 @@ expression: out
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
@@ -78,7 +78,7 @@ jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
@@ -147,7 +147,7 @@ s fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
@@ -196,7 +196,7 @@ jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
@@ -265,7 +265,7 @@ s fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
 │                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
-│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
 │                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
 │                                        ││ ◆ [ ] observe  ← next                                                      │
@@ -314,7 +314,7 @@ jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddd
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
 jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
 jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg

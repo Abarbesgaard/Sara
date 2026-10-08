@@ -9,7 +9,7 @@ use crate::infrastructure::tui::theme::{Ink, ink};
 
 use super::super::lines::{nav_line, section};
 use super::Body;
-use crate::commands::info::types::Focusable;
+use crate::commands::info::types::{Focusable, SectionId};
 
 impl Body<'_> {
     pub(super) fn blockers(&mut self) {
@@ -37,19 +37,13 @@ impl Body<'_> {
         if d.ledger.is_empty() {
             return;
         }
-        self.lines.push(Line::from(""));
-        self.lines.push(Line::from(vec![
-            Span::styled(
-                format!("Memory ledger  ({})", d.ledger.len()),
-                Style::default()
-                    .fg(ink(Ink::Accent))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "  Enter opens in dream",
-                Style::default().fg(ink(Ink::Muted)),
-            ),
-        ]));
+        let hint = Span::styled(
+            "  Enter opens in dream",
+            Style::default().fg(ink(Ink::Muted)),
+        );
+        if !self.fold(SectionId::Memory, "Memory ledger", vec![hint]) {
+            return;
+        }
         for (i, e) in d.ledger.iter().enumerate() {
             let selected = self.sel == Some(Focusable::Memory(i));
             let bg = if selected {
@@ -105,8 +99,9 @@ impl Body<'_> {
     pub(super) fn links(&mut self) {
         let d = self.d;
         if !d.links.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Links"));
+            if !self.fold(SectionId::Links, "Links", vec![]) {
+                return;
+            }
             for (i, link) in d.links.iter().enumerate() {
                 let selected = self.sel == Some(Focusable::Link(i));
                 let (bg, fg) = if selected {
@@ -148,8 +143,9 @@ impl Body<'_> {
     pub(super) fn files(&mut self) {
         let d = self.d;
         if !d.manual_files.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Relevant files"));
+            if !self.fold(SectionId::Files, "Relevant files", vec![]) {
+                return;
+            }
             for file in &d.manual_files {
                 let selected = self.sel == Some(Focusable::File(file.to_string()));
                 if selected {
@@ -164,8 +160,9 @@ impl Body<'_> {
     pub(super) fn anchors(&mut self) {
         let d = self.d;
         if !d.anchors.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Possible relevant files"));
+            if !self.fold(SectionId::Anchors, "Possible relevant files", vec![]) {
+                return;
+            }
             for (ai, anchor) in d.anchors.iter().enumerate() {
                 let is_sel = self.sel == Some(Focusable::Anchor(ai));
                 let file_text = format!("{}{}", anchor.path, anchor.location());

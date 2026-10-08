@@ -6,9 +6,8 @@ use ratatui::{
 
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use super::super::lines::section;
 use super::Body;
-use crate::commands::info::types::Focusable;
+use crate::commands::info::types::{Focusable, SectionId};
 
 impl Body<'_> {
     pub(super) fn ai_activity(&mut self) {
@@ -16,8 +15,9 @@ impl Body<'_> {
         if d.ai_runs.is_empty() {
             return;
         }
-        self.lines.push(Line::from(""));
-        self.lines.push(section("AI activity"));
+        if !self.fold(SectionId::Ai, "AI activity", vec![]) {
+            return;
+        }
         for r in &d.ai_runs {
             let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
             let mut spans = vec![Span::styled(
@@ -63,8 +63,9 @@ impl Body<'_> {
             const RELATED_SHOWN: usize = 3;
             let mut similar: Vec<&(i64, String, f64)> = d.similar.iter().collect();
             similar.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Related tasks (shared tags)"));
+            if !self.fold(SectionId::Related, "Related tasks (shared tags)", vec![]) {
+                return;
+            }
             for (id, desc, urg) in similar.iter().take(RELATED_SHOWN) {
                 self.lines.push(Line::from(vec![
                     Span::styled(format!("  #{id:<3} "), Style::default().fg(ink(Ink::Muted))),
@@ -99,8 +100,9 @@ impl Body<'_> {
             .filter(|a| a.target_kind.as_deref() != Some("anchor"))
             .collect();
         if !unthreaded.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("Comments"));
+            if !self.fold(SectionId::Feedback, "Feedback", vec![]) {
+                return;
+            }
             let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =
                 all_comments.iter().map(|a| (a.id, *a)).collect();
             let checklist_map: std::collections::HashMap<i64, &str> = d

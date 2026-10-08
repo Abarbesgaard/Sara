@@ -87,6 +87,7 @@ fn base_state(detail: Detail) -> EditState {
         show_urgency_breakdown: false,
         verbose: false,
         show_notes: false,
+        open: super::super::types::SectionId::ALL.into_iter().collect(),
     }
 }
 
@@ -315,7 +316,7 @@ fn checklist_detail_shows_for_current_and_selected_rows_unless_verbose() {
     assert!(out.contains("do the first thing"));
     assert!(!out.contains("do the second thing"));
 
-    let idx = focusables(&st.detail, st.show_notes)
+    let idx = focusables(&st.detail, st.show_notes, &st.open)
         .iter()
         .position(|f| matches!(f, Focusable::Checklist(1)))
         .unwrap();
@@ -359,7 +360,7 @@ fn selection_follow_scrolls_highlighted_row_into_view() {
     let mut d = base_detail(task());
     d.checklist = many_steps(40);
     let mut st = base_state(d);
-    st.selected = focusables(&st.detail, st.show_notes)
+    st.selected = focusables(&st.detail, st.show_notes, &st.open)
         .iter()
         .position(|f| matches!(f, Focusable::Checklist(39)))
         .unwrap();
@@ -538,7 +539,7 @@ fn history_entry(
 }
 
 fn select(st: &mut EditState, target: Focusable) {
-    st.selected = focusables(&st.detail, st.show_notes)
+    st.selected = focusables(&st.detail, st.show_notes, &st.open)
         .iter()
         .position(|f| *f == target)
         .unwrap();
@@ -994,7 +995,10 @@ fn memory_ledger_lists_each_memory_with_use_counts_and_is_selectable() {
     ];
     let mut st = base_state(d);
     let out = draw(&mut st);
-    assert!(out.contains("Memory ledger  (2)"), "{out}");
+    assert!(
+        out.contains("▾ Memory ledger (2)  Enter opens in dream"),
+        "{out}"
+    );
     assert!(
         out.contains("m12   retry the flaky test  cited  recalled ×2"),
         "{out}"
@@ -1033,6 +1037,71 @@ fn styled_snapshot_info_memory_ledger_and_tokens() {
     d.ai_runs = vec![ai_run(1, Some(1200), Some(345), Some(1545))];
     let mut st = base_state(d);
     select(&mut st, Focusable::Memory(0));
+    let out = styled_snap(&mut st, 120, 52);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+fn folded_detail() -> Detail {
+    let mut d = styled_detail();
+    d.ledger = vec![ledger_entry("m12", "retry the flaky test", 1, 0, 0)];
+    d.links = vec![link(1, "https://example.com/pr/1", Some("PR"))];
+    d.ai_runs = vec![ai_run(1, Some(10), Some(5), Some(15))];
+    d.annotations
+        .push(comment(9, "looks good", None, "open", false));
+    d
+}
+
+#[test]
+fn collapsed_sections_show_counted_headers_and_hide_their_rows() {
+    use super::super::types::SectionId;
+    let mut st = base_state(folded_detail());
+    st.open = SectionId::default_open();
+    let out = draw(&mut st);
+    assert!(out.contains("▸ Memory ledger (1)"), "{out}");
+    assert!(!out.contains("retry the flaky test"), "{out}");
+    assert!(out.contains("▸ Links (1)"), "{out}");
+    assert!(!out.contains("example.com"), "{out}");
+    assert!(out.contains("▸ AI activity (1)"), "{out}");
+    assert!(!out.contains("1 run · 15 tokens"), "{out}");
+    assert!(out.contains("▾ Checklist (3)"), "{out}");
+    assert!(out.contains("observe"), "{out}");
+    assert!(out.contains("▾ Feedback (1)"), "{out}");
+    assert!(out.contains("looks good"), "{out}");
+
+    let items = focusables(&st.detail, st.show_notes, &st.open);
+    assert!(items.contains(&Focusable::Section(SectionId::Memory)));
+    assert!(!items.contains(&Focusable::Memory(0)));
+    assert!(!items.contains(&Focusable::Link(0)));
+    assert!(items.contains(&Focusable::Checklist(0)));
+    assert!(items.contains(&Focusable::Comment(0)));
+
+    st.open.insert(SectionId::Memory);
+    let out = draw(&mut st);
+    assert!(out.contains("▾ Memory ledger (1)"), "{out}");
+    assert!(out.contains("retry the flaky test"), "{out}");
+    let items = focusables(&st.detail, st.show_notes, &st.open);
+    let header = items
+        .iter()
+        .position(|f| *f == Focusable::Section(SectionId::Memory))
+        .unwrap();
+    assert!(items[header + 1] == Focusable::Memory(0));
+}
+
+#[test]
+fn empty_sections_have_no_header_or_focus_stop() {
+    let st = base_state(base_detail(task()));
+    let items = focusables(&st.detail, st.show_notes, &st.open);
+    assert!(!items.iter().any(|f| matches!(f, Focusable::Section(_))));
+}
+
+#[test]
+fn styled_snapshot_info_default_folds() {
+    use super::super::types::SectionId;
+    let mut st = base_state(folded_detail());
+    st.open = SectionId::default_open();
+    select(&mut st, Focusable::Section(SectionId::Memory));
     let out = styled_snap(&mut st, 120, 52);
     insta::with_settings!({filters => snap_filters()}, {
         insta::assert_snapshot!(out);

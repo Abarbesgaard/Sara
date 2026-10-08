@@ -13,11 +13,11 @@ use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
 use super::handler::{
     build_task_tree, checklist_focus_index, comment_target, depends_on_display,
-    edit_text_via_external_editor, feedback_for_focus, find_pr_url, focusables, open_in_editor,
-    open_url, reconcile_dependencies, reorder_focused_step,
+    edit_text_via_external_editor, feedback_for_focus, find_pr_url, focusables, load_open_sections,
+    open_in_editor, open_url, reconcile_dependencies, reorder_focused_step, toggle_section,
 };
 use super::render::render;
-use super::types::{Detail, EditField, EditState, Focusable};
+use super::types::{Detail, EditField, EditState, Focusable, SectionId};
 use crate::commands::shared::{parse_due, parse_duration_mins, split_csv};
 
 pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
@@ -41,6 +41,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
         show_urgency_breakdown: false,
         verbose: false,
         show_notes: false,
+        open: load_open_sections(conn),
     };
     let mut dispatcher = KeyDispatcher::new();
     let mut showing_help = false;
@@ -62,7 +63,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
             continue;
         }
 
-        let items = focusables(&st.detail, st.show_notes);
+        let items = focusables(&st.detail, st.show_notes, &st.open);
         if !items.is_empty() && st.selected >= items.len() {
             st.selected = items.len() - 1;
         }
@@ -98,8 +99,12 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                         .ok();
                         st.detail.checklist =
                             db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
+                        if !st.open.contains(&SectionId::Steps) {
+                            toggle_section(conn, &mut st.open, SectionId::Steps);
+                        }
                         if let Some(id) = new_id
-                            && let Some(p) = checklist_focus_index(&st.detail, st.show_notes, id)
+                            && let Some(p) =
+                                checklist_focus_index(&st.detail, st.show_notes, &st.open, id)
                         {
                             st.selected = p;
                         }
@@ -231,6 +236,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                                 db::get_checklist(conn, &st.detail.task.uuid).unwrap_or_default();
                         }
                     }
+                    Some(Focusable::Section(id)) => toggle_section(conn, &mut st.open, id),
                     Some(Focusable::Memory(i)) => {
                         if let Some(entry) = st.detail.ledger.get(i) {
                             let handle = entry.handle.clone();
@@ -288,7 +294,9 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                     Action::PageDown => st.scroll = st.scroll.saturating_add(5),
                     Action::PageUp => st.scroll = st.scroll.saturating_sub(5),
                     Action::ToggleMark => {
-                        if let Some(Focusable::Checklist(i)) = &current
+                        if let Some(Focusable::Section(id)) = &current {
+                            toggle_section(conn, &mut st.open, *id);
+                        } else if let Some(Focusable::Checklist(i)) = &current
                             && let Some(item) = st.detail.checklist.get(*i)
                         {
                             let _ = db::toggle_checklist_item(conn, item.id);
@@ -397,7 +405,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                         }
                         KeyCode::Char('n') => {
                             st.show_notes = !st.show_notes;
-                            let items = focusables(&st.detail, st.show_notes);
+                            let items = focusables(&st.detail, st.show_notes, &st.open);
                             if !items.is_empty() && st.selected >= items.len() {
                                 st.selected = items.len() - 1;
                             }

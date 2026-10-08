@@ -36,10 +36,10 @@ expression: out
 │Blocking                                                                                │
 │  #9 ship the release                                                                   │
 │                                                                                        │
-│Memory ledger  (1)  Enter opens in dream                                                │
+│▾ Memory ledger (1)  Enter opens in dream                                               │
 │   m12   prefer ink() over Color literals  cited                                        │
 │                                                                                        │
-│Checklist  1/2 steps · 0/1 acceptance                                                   │
+│▾ Checklist (3)  1/2 steps · 0/1 acceptance                                             │
 │  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                                  │
 │   [x] recall                                                                           │
 │ ◆ [ ] observe  ← next                                                                  │
@@ -51,7 +51,7 @@ expression: out
 │                                                                                        │
 │                                                                                        │
 └────────────────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand
+ ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v e
 --- styles ---
 abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaeeeeeeeeeeeeea
 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -87,10 +87,10 @@ fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 fggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fgggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddf
+fggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddf
 fiiiooooooddddddddddddddddddddddddddddddddpppppppddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fgggggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddf
+fgggggggggggggggjjjjjjjjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddf
 fhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhjjjjddddddddddddddddddddddddddddddddddddddddddddddddddf
 fjjjjjjjqqqqqqdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 ffffffffgggggggffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf

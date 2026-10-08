@@ -74,7 +74,7 @@ pub(super) fn add_step_box(st: &EditState, area: Rect, buf: &mut Buffer) {
 
 pub(super) fn comment_box(st: &EditState, area: Rect, buf: &mut Buffer) {
     let d = &st.detail;
-    let items = focusables(d, st.show_notes);
+    let items = focusables(d, st.show_notes, &st.open);
     let focus = items.get(st.selected).cloned();
     let (tk, tid) = comment_target(d, &focus);
     let target = match (tk, tid) {
@@ -138,7 +138,7 @@ pub(super) fn footer(st: &EditState, area: Rect, buf: &mut Buffer) {
     } else if st.editing {
         " type to edit  •  Enter/Ctrl+S confirm  •  Esc cancel ".to_string()
     } else {
-        " ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close "
+        " ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close "
             .to_string()
     };
     Paragraph::new(footer)
