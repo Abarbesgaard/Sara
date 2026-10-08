@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-08
+
 ### Added
 
 - **TUI palettes.** Choose `classic` (today's colours, the default) or `retro`
