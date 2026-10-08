@@ -2,21 +2,24 @@
 source: tests/unit/commands/info/render.rs
 expression: out
 ---
+ ○ pending  │  · never validated  │  ⎇ no branch  │  💬  0 open                                            #6 · 00000000
 ┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
-│ ← blocked by (1)                       ││   Description root task                                                    │
-│  └─✓ 1 task 1                          ││   Project     tk                                                           │
-│────────────────────────────────────────││   Priority    High                                                         │
-│ ▶   6 root task                        ││   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
-│────────────────────────────────────────││   Tags        tui, theme                                                   │
-│ blocks → (1)                           ││   Estimate    -                                                            │
-│  └─○ 2 task 2                          ││   Recur       -                                                            │
-└────────────────────────────────────────┘│   Depends on  -                                                            │
-┌ Git ───────────────────────────────────┐│  Time spent  -                                                             │
-│  No branch tied.                       ││  Urgency     7.5                                                           │
+│ ← blocked by (1)                       ││Anchor                                                                      │
+│  └─✓ 1 task 1                          ││  Assignment  make the TUI coherent                                         │
+│────────────────────────────────────────││  Why         screens drifted apart                                         │
+│ ▶   6 root task                        ││                                                                            │
+│────────────────────────────────────────││   Description root task                                                    │
+│ blocks → (1)                           ││   Project     tk                                                           │
+│  └─○ 2 task 2                          ││   Priority    High                                                         │
+└────────────────────────────────────────┘│   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
+┌ Git ───────────────────────────────────┐│   Tags        tui, theme                                                   │
+│  No branch tied.                       ││   Estimate    -                                                            │
+│                                        ││   Recur       -                                                            │
+│  Run: sara <id> addbranch              ││   Depends on  -                                                            │
+│                                        ││  Time spent  -                                                             │
+│                                        ││  Urgency     7.5                                                           │
 │                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
-│  Run: sara <id> addbranch              ││  Modified    YYYY-MM-DD hh:mm                                              │
-│                                        ││  Assignment  make the TUI coherent                                         │
-│                                        ││  Rationale   screens drifted apart                                         │
+│                                        ││  Modified    YYYY-MM-DD hh:mm                                              │
 │                                        ││                                                                            │
 │                                        ││  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve     │
 │                                        ││                                                                            │
@@ -27,15 +30,12 @@ expression: out
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
 │                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
-│                                        ││ ▶ [ ] observe                                                              │
+│                                        ││ ▶ [ ] observe  ← next                                                      │
 │                                        ││         why observe                                                        │
 │                                        ││   [ ] snapshots pass [accept]                                              │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+│                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -51,87 +51,95 @@ expression: out
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  type a comment  •  Enter/Ctrl+S save  •  Esc cancel
 --- styles ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-acccccccccccccccccdddddddddddddddddddddddabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aeeeeffffffffffddddddddddddddddddddddddddabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeabeeeeeeeeeeeeeeeggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-ahhhhhhhhhhhhhhhhddddddddddddddddddddddddabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-acccccccccccccdddddddddddddddddddddddddddabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aeeeebbbbbbbbbbddddddddddddddddddddddddddabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeebeeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eeeeeeeeeeeeeeeeeedddddddddddddddddddddddebeeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebeeeeeeeeeeeeeeddddddddddddddddeeeeeeeeedddddddddddddddddddddddddddddddddddddb
-eiiiiiiiiiiiiiiiiiiiiiiiiiiddddddddddddddebeeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebeeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjdddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebiiiiidddddddddddddddddddaaaaadddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjddb
-eddddddddddddddddddddddddddddddddddddddddebjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkdddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebiiiiiiiffffffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddeblllllllhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebiiiiiiiddddddddddddddmmmmmmmmmddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eddddddddddddddddddddddddddddddddddddddddebddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-nopppppppppppddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddn
-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
+ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+fhhhhhhhhhhhhhhhhhdddddddddddddddddddddddfgiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjkkkkkkkkkkddddddddddddddddddddddddddfgjjjjjjjjjjjjjjllllllllllllllllllllldddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddddddddddg
+fnnnnnnnnnnnnnnnnddddddddddddddddddddddddfgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fhhhhhhhhhhhhhdddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjggggggggggddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjoooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+ffffffffffffffffffffffffffffffffffffffffffgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjdddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jmmmmmmmmmmmmmmmmmmmmmmmmmmddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddjjjjjjjjjdddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppdddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
+jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgqqqqqqqnnnnnnnggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmddddddddddddddrrrrrrrrrddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjrrrrrrrrrrddjjjjjjjjjdddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+stuuuuuuuuuuudddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddds
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 --- legend ---
-a fg=Some(Magenta) bg=Some(Reset) mod=NONE
-b fg=Some(Cyan) bg=Some(Reset) mod=NONE
-c fg=Some(Gray) bg=Some(Reset) mod=BOLD
+a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
+b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
+c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
 d fg=Some(Reset) bg=Some(Reset) mod=NONE
-e fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-f fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-g fg=Some(Red) bg=Some(Reset) mod=NONE
-h fg=Some(White) bg=Some(Blue) mod=BOLD
-i fg=Some(Gray) bg=Some(Reset) mod=NONE
-j fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
-k fg=Some(Cyan) bg=Some(Reset) mod=BOLD
-l fg=Some(White) bg=Some(Blue) mod=NONE
-m fg=Some(Blue) bg=Some(Reset) mod=NONE
-n fg=Some(Yellow) bg=Some(Reset) mod=NONE
-o fg=Some(Reset) bg=Some(Reset) mod=REVERSED
-p fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
+e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+f fg=Some(Magenta) bg=Some(Reset) mod=NONE
+g fg=Some(Cyan) bg=Some(Reset) mod=NONE
+h fg=Some(Gray) bg=Some(Reset) mod=BOLD
+i fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+j fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+k fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+l fg=Some(White) bg=Some(Reset) mod=NONE
+m fg=Some(Gray) bg=Some(Reset) mod=NONE
+n fg=Some(White) bg=Some(Blue) mod=BOLD
+o fg=Some(Red) bg=Some(Reset) mod=NONE
+p fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+q fg=Some(White) bg=Some(Blue) mod=NONE
+r fg=Some(Blue) bg=Some(Reset) mod=NONE
+s fg=Some(Yellow) bg=Some(Reset) mod=NONE
+t fg=Some(Reset) bg=Some(Reset) mod=REVERSED
+u fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
 
+ ○ pending  │  · never validated  │  ⎇ no branch  │  💬  0 open                                            #6 · 00000000
 ┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
-│ ← blocked by (1)                       ││ ▶ Description root task                                                    │
-│  └─✓ 1 task 1                          ││   Project     tk                                                           │
-│────────────────────────────────────────││   Priority    High                                                         │
-│ ▶   6 root task                        ││   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
-│────────────────────────────────────────││   Tags        tui, theme                                                   │
-│ blocks → (1)                           ││   Estimate    -                                                            │
-│  └─○ 2 task 2                          ││   Recur       -                                                            │
-└────────────────────────────────────────┘│   Depends on  -                                                            │
-┌ Git ───────────────────────────────────┐│  Time spent  -                                                             │
-│  No branch tied.                       ││  Urgency     7.5                                                           │
+│ ← blocked by (1)                       ││Anchor                                                                      │
+│  └─✓ 1 task 1                          ││  Assignment  make the TUI coherent                                         │
+│────────────────────────────────────────││  Why         screens drifted apart                                         │
+│ ▶   6 root task                        ││                                                                            │
+│────────────────────────────────────────││ ▶ Description root task                                                    │
+│ blocks → (1)                           ││   Project     tk                                                           │
+│  └─○ 2 task 2                          ││   Priority    High                                                         │
+└────────────────────────────────────────┘│   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
+┌ Git ───────────────────────────────────┐│   Tags        tui, theme                                                   │
+│  No branch tied.                       ││   Estimate    -                                                            │
+│                                        ││   Recur       -                                                            │
+│  Run: sara <id> addbranch              ││   Depends on  -                                                            │
+│                                        ││  Time spent  -                                                             │
+│                                        ││  Urgency     7.5                                                           │
 │                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
-│  Run: sara <id> addbranch              ││  Modified    YYYY-MM-DD hh:mm                                              │
-│                                        ││  Assignment  make the TUI coherent                                         │
-│                                        ││  Rationale   screens drifted apart                                         │
+│                                        ││  Modified    YYYY-MM-DD hh:mm                                              │
 │                                        ││                                                                            │
 │                                        ││  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve     │
 │                                        ││                                                                            │
@@ -142,15 +150,12 @@ p fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
 │                                        ││needed for review  (n to view)                                              │
 │                                        ││                                                                            │
 │                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
 │                                        ││   [x] recall                                                               │
-│                                        ││   [ ] observe                                                              │
+│                                        ││ ◆ [ ] observe  ← next                                                      │
+│                                        ││         why observe                                                        │
 │                                        ││   [ ] snapshots pass [accept]                                              │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+│                                        ││         verify cargo test  → not run                                       │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -166,68 +171,73 @@ p fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  type a comment  •  Enter/Ctrl+S save  •  Esc cancel
 --- styles ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-acccccccccccccccccdddddddddddddddddddddddabeeeeeeeeeeeeeeefffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddb
-agggghhhhhhhhhhddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aggggggggggggggggggggggggggggggggggggggggabgggggggggggggggiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aeeeeeeeeeeeeeeeeddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aggggggggggggggggggggggggggggggggggggggggabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-acccccccccccccdddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aggggbbbbbbbbbbddddddddddddddddddddddddddabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabgggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-ggggggggggggggggggggggggggggggggggggggggggbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-ggggggggggggggggggdddddddddddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggddddddddddddddddgggggggggdddddddddddddddddddddddddddddddddddddb
-gjjjjjjjjjjjjjjjjjjjjjjjjjjddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbgggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkdddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbllllldddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbjjjjjdddddddddddddddddddaaaaadddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkddb
-gddddddddddddddddddddddddddddddddddddddddgbkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbllllllllllllllllllllllllllllllllllllldddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbjjjjjjjddddddddddddddmmmmmmmmmddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-gddddddddddddddddddddddddddddddddddddddddgbddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddb
-ggggggggggggggggggggggggggggggggggggggggggbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-nopppppppppppddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddn
-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
+ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+fhhhhhhhhhhhhhhhhhdddddddddddddddddddddddfgiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjkkkkkkkkkkddddddddddddddddddddddddddfgjjjjjjjjjjjjjjllllllllllllllllllllldddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddddddddddg
+fnnnnnnnnnnnnnnnnddddddddddddddddddddddddfgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgnnnnnnnnnnnnnnnoooooooooddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fhhhhhhhhhhhhhdddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjggggggggggddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjppppdddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+ffffffffffffffffffffffffffffffffffffffffffgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjdddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jmmmmmmmmmmmmmmmmmmmmmmmmmmddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddjjjjjjjjjdddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqdddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqddg
+jddddddddddddddddddddddddddddddddddddddddjgqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmddddddddddddddrrrrrrrrrddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjrrrrrrrrrrddjjjjjjjjjdddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+stuuuuuuuuuuudddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddds
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 --- legend ---
-a fg=Some(Magenta) bg=Some(Reset) mod=NONE
-b fg=Some(Cyan) bg=Some(Reset) mod=NONE
-c fg=Some(Gray) bg=Some(Reset) mod=BOLD
+a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
+b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
+c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
 d fg=Some(Reset) bg=Some(Reset) mod=NONE
-e fg=Some(White) bg=Some(Blue) mod=BOLD
-f fg=Some(White) bg=Some(Blue) mod=NONE
-g fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-h fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-i fg=Some(Red) bg=Some(Reset) mod=NONE
-j fg=Some(Gray) bg=Some(Reset) mod=NONE
-k fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
-l fg=Some(Cyan) bg=Some(Reset) mod=BOLD
-m fg=Some(Blue) bg=Some(Reset) mod=NONE
-n fg=Some(Yellow) bg=Some(Reset) mod=NONE
-o fg=Some(Reset) bg=Some(Reset) mod=REVERSED
-p fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED
+e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+f fg=Some(Magenta) bg=Some(Reset) mod=NONE
+g fg=Some(Cyan) bg=Some(Reset) mod=NONE
+h fg=Some(Gray) bg=Some(Reset) mod=BOLD
+i fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+j fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+k fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+l fg=Some(White) bg=Some(Reset) mod=NONE
+m fg=Some(Gray) bg=Some(Reset) mod=NONE
+n fg=Some(White) bg=Some(Blue) mod=BOLD
+o fg=Some(White) bg=Some(Blue) mod=NONE
+p fg=Some(Red) bg=Some(Reset) mod=NONE
+q fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+r fg=Some(Blue) bg=Some(Reset) mod=NONE
+s fg=Some(Yellow) bg=Some(Reset) mod=NONE
+t fg=Some(Reset) bg=Some(Reset) mod=REVERSED
+u fg=Some(Reset) bg=Some(Reset) mod=UNDERLINED

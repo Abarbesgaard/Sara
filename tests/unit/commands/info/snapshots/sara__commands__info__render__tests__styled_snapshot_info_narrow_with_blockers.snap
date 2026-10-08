@@ -2,7 +2,12 @@
 source: tests/unit/commands/info/render.rs
 expression: out
 ---
+ ○ pending  │  · never validated  │  ⎇ no branch  │  💬  0 open              #6 · 00000000
 ┌ Task 6 ────────────────────────────────────────────────────────────────────────────────┐
+│Anchor                                                                                  │
+│  Assignment  make the TUI coherent                                                     │
+│  Why         screens drifted apart                                                     │
+│                                                                                        │
 │   Description root task                                                                │
 │   Project     tk                                                                       │
 │ ▶ Priority    High                                                                     │
@@ -15,8 +20,6 @@ expression: out
 │  Urgency     7.5                                                                       │
 │  Entered     YYYY-MM-DD hh:mm  (today)                                                 │
 │  Modified    YYYY-MM-DD hh:mm                                                          │
-│  Assignment  make the TUI coherent                                                     │
-│  Rationale   screens drifted apart                                                     │
 │                                                                                        │
 │  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve                 │
 │                                                                                        │
@@ -37,15 +40,12 @@ expression: out
 │  m12 prefer ink() over Color literals                                                  │
 │                                                                                        │
 │Checklist  1/2 steps · 0/1 acceptance                                                   │
+│  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                                  │
 │   [x] recall                                                                           │
-│   [ ] observe                                                                          │
+│ ◆ [ ] observe  ← next                                                                  │
+│         why observe                                                                    │
 │   [ ] snapshots pass [accept]                                                          │
-│                                                                                        │
-│                                                                                        │
-│                                                                                        │
-│                                                                                        │
-│                                                                                        │
-│                                                                                        │
+│         verify cargo test  → not run                                                   │
 │                                                                                        │
 │                                                                                        │
 │                                                                                        │
@@ -53,65 +53,70 @@ expression: out
 └────────────────────────────────────────────────────────────────────────────────────────┘
  ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand
 --- styles ---
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-adddddddddddddddeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbccccccccccccccccbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccca
-abbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-afffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-agggggccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-ahhhhhccccccccccccccccccciiiiiccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-afffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffccca
-afffffffffffffffffffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-aggggggggggcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-aggggggggcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-aggggggggggggggcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-agggggggggggggggggggggggggggggggggggggccccccccccccccccccccccccccccccccccccccccccccccccccca
-ahhhhhhhjjjjjjccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-ahhhhhhhccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-ahhhhhhhcccccccccccccckkkkkkkkkcccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-acccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccca
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaeeeeeeeeeeeeea
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+fggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fkkkkkkkkkkkkkkklllldddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhddddddddddddddddhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fgggggdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fjjjjjdddddddddddddddddddnnnnndddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmdddf
+fmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fgggggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhjjjjddddddddddddddddddddddddddddddddddddddddddddddddddf
+fjjjjjjjoooooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+ffffffffgggggggffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fjjjjjjjddddddddddddddpppppppppddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhhppppppppppddhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
 --- legend ---
-a fg=Some(Cyan) bg=Some(Reset) mod=NONE
-b fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-c fg=Some(Reset) bg=Some(Reset) mod=NONE
-d fg=Some(White) bg=Some(Blue) mod=BOLD
-e fg=Some(White) bg=Some(Blue) mod=NONE
-f fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
+b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
+c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+d fg=Some(Reset) bg=Some(Reset) mod=NONE
+e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+f fg=Some(Cyan) bg=Some(Reset) mod=NONE
 g fg=Some(Cyan) bg=Some(Reset) mod=BOLD
-h fg=Some(Gray) bg=Some(Reset) mod=NONE
-i fg=Some(Magenta) bg=Some(Reset) mod=NONE
-j fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-k fg=Some(Blue) bg=Some(Reset) mod=NONE
+h fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+i fg=Some(White) bg=Some(Reset) mod=NONE
+j fg=Some(Gray) bg=Some(Reset) mod=NONE
+k fg=Some(White) bg=Some(Blue) mod=BOLD
+l fg=Some(White) bg=Some(Blue) mod=NONE
+m fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+n fg=Some(Magenta) bg=Some(Reset) mod=NONE
+o fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+p fg=Some(Blue) bg=Some(Reset) mod=NONE

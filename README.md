@@ -473,6 +473,14 @@ breakdown, a git panel, a project activity heatmap, and a live history log.
 
 It's also where you **edit** a task inline.
 
+A one-row **header bar** sits above the panes: status, a freshness badge
+(`✓ validated @ <commit>`, `⚠ stale` when HEAD moved, or `never validated`),
+the tied branch, open feedback (with `⟳` when a revision is requested), and
+the display id with the short uuid. The task's **Anchor** — assignment and
+why — leads the body. In the checklist, the step `sara next` would return is
+marked `◆ … ← next` with its intent, acceptance progress shows as a bar, and
+every acceptance item shows its `verify` command and last result inline.
+
 **Keys**
 
 | Key            | Action                                            |

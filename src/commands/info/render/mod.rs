@@ -1,4 +1,5 @@
 mod body;
+mod header;
 mod lines;
 mod panels;
 mod stats;
@@ -13,6 +14,7 @@ use ratatui::{
 
 use crate::commands::info::types::EditState;
 use body::{Body, body_pane};
+use header::header_bar;
 use panels::{add_step_box, comment_box, edit_box, footer, history_pane, side_panel};
 
 pub(super) const MIN_SIZE: (u16, u16) = (60, 16);
@@ -27,19 +29,24 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         (st.detail.history.len() as u16 + 2).min(6)
     };
     let chunks = screen_chunks(f.area(), st, history_height);
-    let show_panel = chunks[0].width >= 96;
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .split(chunks[0]);
+    let show_panel = rows[1].width >= 96;
     let (lines, sel_range) = Body::build(st, show_panel);
     let (main_area, panel_area) = if show_panel {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(42), Constraint::Min(50)])
-            .split(chunks[0]);
+            .split(rows[1]);
         (cols[1], Some(cols[0]))
     } else {
-        (chunks[0], None)
+        (rows[1], None)
     };
 
     let buf = f.buffer_mut();
+    header_bar(&st.detail, rows[0], buf);
     body_pane(st, lines, sel_range, main_area, buf);
     if let Some(panel) = panel_area {
         side_panel(st, panel, buf);
