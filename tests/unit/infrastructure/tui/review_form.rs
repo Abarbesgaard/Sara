@@ -1,7 +1,7 @@
 use super::*;
 use crate::test_support::{key, render_to_string};
 
-fn ctx_with_deps() -> FormContext {
+fn ctx_with_deps() -> FormContext<'static> {
     FormContext {
         initial: FormInput {
             description: "test".into(),
@@ -9,52 +9,78 @@ fn ctx_with_deps() -> FormContext {
             priority: Some(Priority::L),
             due: "today".into(),
             tags: "a,b".into(),
-            selected_deps: vec![],
-            selected_files: vec![],
+            ..Default::default()
         },
         available_deps: vec![("1".into(), "jshfgklfhg".into())],
         available_files: vec!["Cargo.toml".into(), "README.md".into()],
         suggested_dep_indices: vec![],
         suggested_files: vec![],
+        create: true,
+        lookup: None,
     }
 }
 
-#[test]
-#[ignore = "capture helper: run with --ignored to (re)write snapshot files"]
-fn write_render_snapshots() {
-    let dir = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/infrastructure/tui/snapshots"
-    );
-    std::fs::create_dir_all(dir).unwrap();
+fn edit_ctx() -> FormContext<'static> {
+    FormContext {
+        create: false,
+        ..ctx_with_deps()
+    }
+}
 
-    let mut state = FormState::new(ctx_with_deps());
-    let out = render_to_string(120, 40, |f| render(f, &mut state));
-    std::fs::write(format!("{dir}/review_form_normal.txt"), out).unwrap();
-
-    let mut state = FormState::new(ctx_with_deps());
-    let out = render_to_string(40, 10, |f| render(f, &mut state));
-    std::fs::write(format!("{dir}/review_form_small.txt"), out).unwrap();
+fn stub_lookup(calls: std::rc::Rc<std::cell::Cell<usize>>) -> HintLookup<'static> {
+    Box::new(move |q: &str| {
+        calls.set(calls.get() + 1);
+        vec![
+            Hint {
+                kind: HintKind::Task,
+                label: "12".into(),
+                title: format!("{q} for the API"),
+            },
+            Hint {
+                kind: HintKind::Memory,
+                label: "m864".into(),
+                title: "Board phase 3 patterns".into(),
+            },
+        ]
+    })
 }
 
 #[test]
 fn render_normal_matches_snapshot() {
     let mut state = FormState::new(ctx_with_deps());
-    let out = render_to_string(120, 40, |f| render(f, &mut state));
-    assert_eq!(
-        out,
-        include_str!("snapshots/review_form_normal.txt").replace("\r\n", "\n"),
-    );
+    insta::assert_snapshot!(render_to_string(120, 40, |f| render(f, &mut state)));
+}
+
+#[test]
+fn render_edit_mode_matches_snapshot() {
+    let mut state = FormState::new(edit_ctx());
+    insta::assert_snapshot!(render_to_string(100, 30, |f| render(f, &mut state)));
 }
 
 #[test]
 fn render_small_terminal_matches_snapshot() {
     let mut state = FormState::new(ctx_with_deps());
-    let out = render_to_string(40, 10, |f| render(f, &mut state));
-    assert_eq!(
-        out,
-        include_str!("snapshots/review_form_small.txt").replace("\r\n", "\n"),
-    );
+    insta::assert_snapshot!(render_to_string(40, 10, |f| render(f, &mut state)));
+}
+
+#[test]
+fn render_with_hints_matches_snapshot() {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut ctx = ctx_with_deps();
+    ctx.initial.description = "Login flow".into();
+    ctx.lookup = Some(stub_lookup(calls));
+    let mut state = FormState::new(ctx);
+    state.refresh_hints(Instant::now(), true);
+    insta::assert_snapshot!(render_to_string(130, 36, |f| render(f, &mut state)));
+}
+
+#[test]
+fn render_with_errors_matches_snapshot() {
+    let mut state = FormState::new(ctx_with_deps());
+    state.verify_area = single_line("cargo test");
+    state.estimate_area = single_line("soon");
+    state.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    insta::assert_snapshot!(render_to_string(110, 34, |f| render(f, &mut state)));
 }
 
 #[test]
@@ -95,6 +121,7 @@ fn tab_to(state: &mut FormState, target: Focus) {
 fn tab_cycles_through_all_fields_and_wraps() {
     let mut state = FormState::new(ctx_with_deps());
     assert_eq!(state.focus, Focus::Description);
+    assert_eq!(state.fields().len(), ALL_FIELDS.len());
     for expected in ALL_FIELDS.iter().skip(1) {
         state.handle_key(key(KeyCode::Tab));
         assert_eq!(state.focus, *expected);
@@ -175,7 +202,7 @@ fn up_from_top_of_dependencies_moves_to_previous_field() {
     let mut state = FormState::new(ctx_with_deps());
     tab_to(&mut state, Focus::Dependencies);
     state.handle_key(key(KeyCode::Up));
-    assert_eq!(state.focus, Focus::Tags);
+    assert_eq!(state.focus, Focus::Links);
 }
 
 #[test]
@@ -351,6 +378,145 @@ fn empty_deps_list_toggle_is_noop() {
 }
 
 #[test]
+fn edit_mode_skips_guide_fields() {
+    let mut state = FormState::new(edit_ctx());
+    tab_to(&mut state, Focus::Estimate);
+    state.handle_key(key(KeyCode::Tab));
+    assert_eq!(state.focus, Focus::Links);
+    assert!(!state.fields().iter().any(|f| f.is_guide()));
+}
+
+#[test]
+fn guide_fields_round_trip_in_create_mode() {
+    let mut state = FormState::new(ctx_with_deps());
+    tab_to(&mut state, Focus::Assignment);
+    for c in "asked".chars() {
+        state.handle_key(key(KeyCode::Char(c)));
+    }
+    tab_to(&mut state, Focus::Acceptance);
+    for c in "tests pass".chars() {
+        state.handle_key(key(KeyCode::Char(c)));
+    }
+    state.handle_key(key(KeyCode::Tab));
+    for c in "cargo test".chars() {
+        state.handle_key(key(KeyCode::Char(c)));
+    }
+    let out = state.collect_result();
+    assert_eq!(out.assignment, "asked");
+    assert_eq!(out.acceptance, "tests pass");
+    assert_eq!(out.verify, "cargo test");
+    assert!(out.has_guide());
+}
+
+#[test]
+fn edit_mode_never_returns_guide_fields() {
+    let mut ctx = edit_ctx();
+    ctx.initial.assignment = "stale".into();
+    let state = FormState::new(ctx);
+    assert_eq!(state.collect_result().assignment, "");
+}
+
+#[test]
+fn ctrl_s_from_any_field_saves_when_valid() {
+    let mut state = FormState::new(ctx_with_deps());
+    tab_to(&mut state, Focus::Estimate);
+    state.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    assert!(state.submitted);
+}
+
+#[test]
+fn verify_without_acceptance_blocks_save_and_focuses_it() {
+    let mut state = FormState::new(ctx_with_deps());
+    tab_to(&mut state, Focus::Verify);
+    for c in "cargo test".chars() {
+        state.handle_key(key(KeyCode::Char(c)));
+    }
+    tab_to(&mut state, Focus::Files);
+    state.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    assert!(!state.submitted);
+    assert_eq!(state.focus, Focus::Verify);
+    assert!(state.notice.as_deref().unwrap().contains("Verify"));
+    state.handle_key(key(KeyCode::Tab));
+    assert!(state.notice.is_none(), "any key clears the notice");
+}
+
+#[test]
+fn invalid_estimate_and_links_are_reported_inline() {
+    let mut state = FormState::new(ctx_with_deps());
+    state.estimate_area = single_line("soon");
+    state.links_area = single_line("not-a-url");
+    assert_eq!(state.error(Focus::Estimate), Some("use 90m or 1h30m"));
+    assert_eq!(state.error(Focus::Links), Some("expects URLs"));
+    assert!(!state.can_submit());
+    state.estimate_area = single_line("1h30m");
+    state.links_area = single_line("https://github.com/a/b/pull/1");
+    assert!(state.can_submit());
+}
+
+#[test]
+fn empty_title_is_required() {
+    let mut ctx = ctx_with_deps();
+    ctx.initial.description = String::new();
+    let mut state = FormState::new(ctx);
+    assert_eq!(state.error(Focus::Description), Some("required"));
+    tab_to(&mut state, Focus::Tags);
+    state.handle_key(key(KeyCode::Enter));
+    tab_to(&mut state, Focus::Submit);
+    state.handle_key(key(KeyCode::Enter));
+    assert!(!state.submitted);
+    assert_eq!(state.focus, Focus::Description);
+}
+
+#[test]
+fn hints_wait_for_the_debounce_and_skip_repeat_queries() {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut ctx = ctx_with_deps();
+    ctx.initial.description = String::new();
+    ctx.lookup = Some(stub_lookup(calls.clone()));
+    let mut state = FormState::new(ctx);
+
+    for c in "Login".chars() {
+        state.handle_key(key(KeyCode::Char(c)));
+    }
+    state.refresh_hints(Instant::now(), false);
+    assert_eq!(calls.get(), 0, "no lookup while still typing");
+
+    state.refresh_hints(Instant::now() + HINT_DEBOUNCE, false);
+    assert_eq!(calls.get(), 1);
+    assert_eq!(state.hints.len(), 2);
+    assert_eq!(state.hints[0].title, "Login for the API");
+
+    state.refresh_hints(Instant::now() + HINT_DEBOUNCE * 2, false);
+    assert_eq!(calls.get(), 1, "same title is not looked up again");
+}
+
+#[test]
+fn short_titles_clear_hints_without_a_lookup() {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut ctx = ctx_with_deps();
+    ctx.initial.description = "ab".into();
+    ctx.lookup = Some(stub_lookup(calls.clone()));
+    let mut state = FormState::new(ctx);
+    state.refresh_hints(Instant::now(), true);
+    assert_eq!(calls.get(), 0);
+    assert!(state.hints.is_empty());
+}
+
+#[test]
+fn hints_pane_hidden_on_narrow_terminals() {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut ctx = ctx_with_deps();
+    ctx.lookup = Some(stub_lookup(calls));
+    let mut state = FormState::new(ctx);
+    state.refresh_hints(Instant::now(), true);
+    let narrow = render_to_string(90, 34, |f| render(f, &mut state));
+    assert!(!narrow.contains("Similar work"), "{narrow}");
+    let wide = render_to_string(120, 34, |f| render(f, &mut state));
+    assert!(wide.contains("Similar work"), "{wide}");
+    assert!(wide.contains("m864]"), "{wide}");
+}
+
+#[test]
 fn styled_snapshot_review_form() {
     let mut state = FormState::new(ctx_with_deps());
     insta::assert_snapshot!(crate::test_support::render_to_styled_string(100, 34, |f| {
@@ -363,4 +529,13 @@ fn review_form_too_small_shows_fallback() {
     let mut state = FormState::new(ctx_with_deps());
     let out = render_to_string(39, 10, |f| render(f, &mut state));
     assert!(out.contains("Terminal too small"), "{out}");
+}
+
+#[test]
+fn short_terminal_scrolls_to_keep_focus_visible() {
+    let mut state = FormState::new(ctx_with_deps());
+    tab_to(&mut state, Focus::Submit);
+    let out = render_to_string(60, 12, |f| render(f, &mut state));
+    assert!(out.contains("Create  ^S"), "{out}");
+    assert!(!out.contains("1 · Task"), "{out}");
 }

@@ -205,3 +205,33 @@ fn invalid_estimate_is_rejected() {
         .is_err()
     );
 }
+
+#[test]
+fn form_edit_persists_estimate_and_adds_only_new_links() {
+    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let cfg = Config::default();
+    let task = crate::test_support::seed_task(&conn, "Edit me", "p");
+    crate::infrastructure::db::add_link(&conn, &task.uuid, "https://x.dev/1", None).unwrap();
+
+    let form = FormInput {
+        description: "Edit me".into(),
+        project: "p".into(),
+        estimate: "45m".into(),
+        links: "https://x.dev/1 https://x.dev/2".into(),
+        ..Default::default()
+    };
+    let updated = apply_form(&conn, &cfg, &task, form).unwrap();
+
+    assert_eq!(updated.estimate_mins, Some(45));
+    let stored = crate::infrastructure::db::resolve_task(&conn, &task.uuid.to_string()).unwrap();
+    assert_eq!(stored.estimate_mins, Some(45));
+    let urls: Vec<String> = crate::infrastructure::db::get_links(&conn, &task.uuid)
+        .unwrap()
+        .into_iter()
+        .map(|l| l.url)
+        .collect();
+    assert_eq!(
+        urls,
+        vec!["https://x.dev/1".to_string(), "https://x.dev/2".to_string()]
+    );
+}

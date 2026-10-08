@@ -1,0 +1,40 @@
+---
+source: tests/unit/infrastructure/tui/review_form.rs
+expression: "render_to_string(130, 36, |f| render(f, &mut state))"
+---
+┌ sara · new task ───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ▌ 1 · Task                                                                               │ ▌ Similar work                      │
+│ ▸ Title      Login flow                                                       what to do │                                     │
+│   Project    tk                                                                          │ [task 12] Login flow for the API    │
+│   Priority   L low                                                                       │ [memory m864] Board phase 3 patterns│
+│   Due        today                                                                       │                                     │
+│   Tags       a,b                                                                         │                                     │
+│   Estimate   ·                                                                           │                                     │
+│                                                                                          │                                     │
+│ ▌ 2 · Guide                                                                              │                                     │
+│   Assignment ·                                                                           │                                     │
+│   Why        ·                                                                           │                                     │
+│   Done when  ·                                                                           │                                     │
+│   Verify     ·                                                                           │                                     │
+│                                                                                          │                                     │
+│ ▌ 3 · Relations                                                                          │                                     │
+│   Links      ·                                                                           │                                     │
+│   Depends on                                                                             │                                     │
+│     [ ] 1 jshfgklfhg                                                                     │                                     │
+│   Files                                                                                  │                                     │
+│     [ ] Cargo.toml                                                                       │                                     │
+│     [ ] README.md                                                                        │                                     │
+│                                                                                          │                                     │
+│    Create  ^S     Cancel  Esc                                                            │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│                                                                                          │                                     │
+│ Tab next  ·  S-Tab prev  ·  ^S save  ·  Esc cancel                                                                             │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

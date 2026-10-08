@@ -772,7 +772,16 @@ sara add "write tests" -p web-app --priority H -t testing
 ```
 
 By default `sara add` opens an interactive review form so you can confirm the
-fields before saving. `--yes` saves immediately without the form. See
+fields before saving. `--yes` saves immediately without the form.
+
+The form is laid out in three steps — **Task** (title, project, priority, due,
+tags, estimate), **Guide** (assignment, why, done when, verify) and
+**Relations** (links, dependencies, files). Filling any Guide field founds the
+task exactly like `sara begin`: assignment (defaulting to the title), rationale,
+an acceptance criterion with its verify command, and the recall step. While you
+type the title, a **Similar work** pane (terminals ≥100 columns) lists related
+tasks and memories. Invalid fields are flagged inline, and `Ctrl+S` saves from
+any field — or jumps to the first problem. See
 [inline tokens](#inline-taskwarrior-style-tokens) for the `project:` / `+tag` /
 `pri:` shorthand.
 
@@ -790,7 +799,7 @@ sara add --priority H -t api --annotation "amounts in minor units" \
 ```
 
 ```bash
-sara modify 2        # edit via the review form
+sara modify 2        # edit via the review form (estimate and links too)
 # …or set fields non-interactively (no TUI):
 sara modify 2 --description "new text" --priority H --due 2026-12-31
 sara modify 2 --tag api --tag urgent   # replace tags (--clear-tags / --clear-due to unset)

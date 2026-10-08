@@ -16,6 +16,18 @@ use trace::Folded;
 
 use types::{RECALL_STEP_INTENT, RECALL_STEP_TEXT};
 
+pub(crate) fn seed_recall_step(conn: &Connection, id: &str) -> Result<Value> {
+    commands::guide::check_value(
+        conn,
+        id,
+        RECALL_STEP_TEXT,
+        Some(RECALL_STEP_INTENT),
+        Some("step"),
+        Some("sara"),
+        None,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn begin_value(
     conn: &Connection,
@@ -119,15 +131,7 @@ pub fn begin_value(
     };
 
     let t = std::time::Instant::now();
-    let recall_step = commands::guide::check_value(
-        conn,
-        &id,
-        RECALL_STEP_TEXT,
-        Some(RECALL_STEP_INTENT),
-        Some("step"),
-        Some("sara"),
-        None,
-    )?;
+    let recall_step = seed_recall_step(conn, &id)?;
 
     folded.emit("step", t, None);
 

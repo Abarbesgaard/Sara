@@ -1,0 +1,14 @@
+---
+source: tests/unit/infrastructure/tui/review_form.rs
+expression: "render_to_string(40, 10, |f| render(f, &mut state))"
+---
+┌ sara · new task ─────────────────────┐
+│ ▌ 1 · Task                           │
+│ ▸ Title      test         what to do │
+│   Project    tk                      │
+│   Priority   L low                   │
+│   Due        today                   │
+│   Tags       a,b                     │
+│   Estimate   ·                       │
+│ Tab next  ·  S-Tab prev  ·  ^S save  │
+└──────────────────────────────────────┘

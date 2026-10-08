@@ -1,0 +1,38 @@
+---
+source: tests/unit/infrastructure/tui/review_form.rs
+expression: "render_to_string(110, 34, |f| render(f, &mut state))"
+---
+┌ sara · new task ───────────────────────────────────────────────────────────────────────────────────────────┐
+│ ▌ 1 · Task                                                                                                 │
+│   Title      test                                                                                          │
+│   Project    tk                                                                                            │
+│   Priority   L low                                                                                         │
+│   Due        today                                                                                         │
+│   Tags       a,b                                                                                           │
+│ ▸ Estimate   soon                                                                       ⚠ use 90m or 1h30m │
+│                                                                                                            │
+│ ▌ 2 · Guide                                                                                                │
+│   Assignment ·                                                                                             │
+│   Why        ·                                                                                             │
+│   Done when  ·                                                                                             │
+│   Verify     cargo test                                                                ⚠ needs a Done when │
+│                                                                                                            │
+│ ▌ 3 · Relations                                                                                            │
+│   Links      ·                                                                                             │
+│   Depends on                                                                                               │
+│     [ ] 1 jshfgklfhg                                                                                       │
+│   Files                                                                                                    │
+│     [ ] Cargo.toml                                                                                         │
+│     [ ] README.md                                                                                          │
+│                                                                                                            │
+│    Create  ^S     Cancel  Esc                                                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│ Cannot save · Estimate: use 90m or 1h30m                                                                   │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

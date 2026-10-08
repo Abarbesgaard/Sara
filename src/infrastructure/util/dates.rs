@@ -52,6 +52,29 @@ pub fn parse_due(s: &str, dialect_str: &str) -> Option<DateTime<Utc>> {
     None
 }
 
+pub fn parse_duration_mins(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let s_lower = s.to_lowercase();
+    let rest = s_lower.as_str();
+    if let Some(h_pos) = rest.find('h')
+        && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
+    {
+        let mut total = h * 60;
+        let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
+        if !after_h.is_empty()
+            && let Ok(m) = after_h.parse::<i64>()
+        {
+            total += m;
+        }
+        return Some(total);
+    }
+    let m_part = rest.trim_end_matches('m').trim();
+    m_part.parse::<i64>().ok()
+}
+
 pub fn is_valid_due(s: &str) -> bool {
     let s = s.trim();
     s.is_empty() || parse_due(s, "uk").is_some()
