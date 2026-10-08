@@ -14,7 +14,7 @@ use crate::infrastructure::tui::theme::{Ink, ink};
 
 pub(super) fn header_bar(d: &Detail, area: Rect, buf: &mut Buffer) {
     let bg = ink(Ink::Header);
-    let sep = || Span::styled("  │  ", Style::default().fg(ink(Ink::Muted)));
+    let sep = || Span::raw("  ");
     let mut left = vec![Span::raw(" "), status_badge(d)];
     left.push(sep());
     left.push(freshness_badge(d));
@@ -36,14 +36,17 @@ pub(super) fn header_bar(d: &Detail, area: Rect, buf: &mut Buffer) {
 fn status_badge(d: &Detail) -> Span<'static> {
     let t = &d.task;
     let (text, color) = if t.is_active() {
-        ("● active".to_string(), ink(Ink::Ok))
+        ("[● ACTIVE]".to_string(), ink(Ink::Ok))
     } else {
         let color = match t.status {
             Status::Completed => ink(Ink::Ok),
             Status::Deleted => ink(Ink::Err),
             Status::Pending => ink(Ink::Text),
         };
-        (format!("○ {}", t.status), color)
+        (
+            format!("[○ {}]", t.status.to_string().to_uppercase()),
+            color,
+        )
     };
     Span::styled(
         text,
@@ -55,7 +58,7 @@ fn freshness_badge(d: &Detail) -> Span<'static> {
     match &d.guide.validated_commit {
         Some(v) if guide_is_stale(d) => Span::styled(
             format!(
-                "⚠ stale @ {} (HEAD {})",
+                "[⚠ STALE @{} · HEAD {}]",
                 short_id(v),
                 short_id(d.head_commit.as_deref().unwrap_or("-"))
             ),
@@ -64,11 +67,11 @@ fn freshness_badge(d: &Detail) -> Span<'static> {
                 .add_modifier(Modifier::BOLD),
         ),
         Some(v) => Span::styled(
-            format!("✓ validated @ {}", short_id(v)),
+            format!("[✓ VALID @{}]", short_id(v)),
             Style::default().fg(ink(Ink::Ok)),
         ),
         None => Span::styled(
-            "· never validated".to_string(),
+            "[· NOT VALIDATED]".to_string(),
             Style::default().fg(ink(Ink::Muted)),
         ),
     }
@@ -77,11 +80,11 @@ fn freshness_badge(d: &Detail) -> Span<'static> {
 fn branch_badge(d: &Detail) -> Span<'static> {
     match &d.branch {
         Some(b) => Span::styled(
-            format!("⎇ {}", b.branch),
+            format!("[⎇ {}]", b.branch),
             Style::default().fg(ink(Ink::Info)),
         ),
         None => Span::styled(
-            "⎇ no branch".to_string(),
+            "[⎇ NO BRANCH]".to_string(),
             Style::default().fg(ink(Ink::Muted)),
         ),
     }
@@ -94,23 +97,24 @@ fn feedback_badge(d: &Detail) -> Vec<Span<'static>> {
         .filter(|a| a.kind == "comment" && a.status == "open")
         .collect();
     let revise = open.iter().filter(|a| a.request_revision).count();
-    let mut spans = vec![Span::styled(
-        format!("💬 {} open", open.len()),
-        Style::default().fg(if open.is_empty() {
-            ink(Ink::Muted)
-        } else {
-            ink(Ink::Accent)
-        }),
-    )];
+    let mut text = if open.is_empty() {
+        "[· NO FEEDBACK".to_string()
+    } else {
+        format!("[! {} FEEDBACK", open.len())
+    };
+    let mut style = Style::default().fg(if open.is_empty() {
+        ink(Ink::Muted)
+    } else {
+        ink(Ink::Accent)
+    });
     if revise > 0 {
-        spans.push(Span::styled(
-            format!("  ⟳ {revise} needs revision"),
-            Style::default()
-                .fg(ink(Ink::Warn))
-                .add_modifier(Modifier::BOLD),
-        ));
+        text.push_str(&format!(" · ⟳ {revise} REVISE"));
+        style = Style::default()
+            .fg(ink(Ink::Warn))
+            .add_modifier(Modifier::BOLD);
     }
-    spans
+    text.push(']');
+    vec![Span::styled(text, style)]
 }
 
 fn id_badge(d: &Detail) -> Span<'static> {

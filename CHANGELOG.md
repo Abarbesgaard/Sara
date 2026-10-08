@@ -35,6 +35,13 @@
 
 ### Changed
 
+- **`sara info` visual overhaul.** A badge header bar, a title-first hero
+  with one meta line, the anchor as a quoted block, a two-column details grid,
+  uniform `▌ SECTION` rules with counts, `▰▱` progress bars, glyph-marked
+  checklist, ledger, links and files, hanging-indent wrapping, a double border
+  on the body, history moved into the side panel, and a footer that shows only
+  the keys for the selected item. All data, keys and plain/md/json output are
+  unchanged.
 - Every TUI screen now takes its colours from semantic roles in `tui::theme`
   instead of hard-coded colours; styled snapshot tests pin each screen.
 - `sara projects`, `sara activity` and `sara follow` read keys through the shared

@@ -2,120 +2,119 @@
 source: tests/unit/commands/info/render.rs
 expression: out
 ---
- ○ pending  │  · never validated  │  ⎇ no branch  │  💬  0 open                                            #6 · 00000000
-┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
-│ ← blocked by (1)                       ││Anchor                                                                      │
-│  └─✓ 1 task 1                          ││  Assignment  make the TUI coherent                                         │
-│────────────────────────────────────────││  Why         screens drifted apart                                         │
-│ ▶   6 root task                        ││                                                                            │
-│────────────────────────────────────────││ ▶ Description root task                                                    │
-│ blocks → (1)                           ││   Project     tk                                                           │
-│  └─○ 2 task 2                          ││   Priority    High                                                         │
-└────────────────────────────────────────┘│   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
-┌ Git ───────────────────────────────────┐│   Tags        tui, theme                                                   │
-│  No branch tied.                       ││   Estimate    -                                                            │
-│                                        ││   Recur       -                                                            │
-│  Run: sara <id> addbranch              ││   Depends on  -                                                            │
-│                                        ││  Time spent  -                                                             │
-│                                        ││  Urgency     7.5                                                           │
-│                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
-│                                        ││  Modified    YYYY-MM-DD hh:mm                                              │
-│                                        ││                                                                            │
-│                                        ││  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve     │
-│                                        ││                                                                            │
-│                                        ││Risks                                                                       │
-│                                        ││   • info render is huge (ai)                                               │
-│                                        ││                                                                            │
-│                                        ││Findings                                                                    │
-│                                        ││   • only text snapshots exist (ai)                                         │
-│                                        ││                                                                            │
-│                                        ││▾ Checklist (3)  1/2 steps · 0/1 acceptance                                 │
-│                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
-│                                        ││   [x] recall                                                               │
-│                                        ││         why recall                                                         │
-│                                        ││         → green                                                            │
-│                                        ││ ◆ [ ] observe  ← next                                                      │
-│                                        ││         why observe                                                        │
-│                                        ││   [ ] snapshots pass [accept]                                              │
-│                                        ││         why snapshots pass                                                 │
-│                                        ││         verify cargo test  → not run                                       │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-└────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+ [○ PENDING]  [· NOT VALIDATED]  [⎇ NO BRANCH]  [· NO FEEDBACK]                                           #6 · 00000000
+┌ TASK TREE ─────────────────────────────┐╔ tk ════════════════════════════════════════════════════════════════════════╗
+│ ← blocked by (1)                       │║                                                                            ║
+│  └─✓ 1 task 1                          │║ ▶ root task                                                                ║
+│────────────────────────────────────────│║   urgency 7.5  ·  created YYYY-MM-DD hh:mm (today)                         ║
+│ ▶   6 root task                        │║   modified YYYY-MM-DD hh:mm                                                ║
+│────────────────────────────────────────│║                                                                            ║
+│ blocks → (1)                           │║   ▎ asked  make the TUI coherent                                           ║
+│  └─○ 2 task 2                          │║   ▎ why    screens drifted apart                                           ║
+│                                        │║                                                                            ║
+│                                        │║ ▌ DETAILS ─────────────────────────────────────────────────────────────────║
+│                                        │║   Project    tk                         Priority   ▲ High                  ║
+│                                        │║   Due        YYYY-MM-DD hh:mm  (due in 3 days)                             ║
+│                                        │║   Tags       #tui #theme                Estimate   —                       ║
+│                                        │║   Recur      —                          Depends on —                       ║
+│                                        │║                                                                            ║
+│                                        │║ ▌ RISKS ───────────────────────────────────────────────────────────────────║
+│                                        │║   • info render is huge (ai)                                               ║
+│                                        │║                                                                            ║
+│                                        │║ ▌ FINDINGS ────────────────────────────────────────────────────────────────║
+│                                        │║   • only text snapshots exist (ai)                                         ║
+│                                        │║                                                                            ║
+│                                        │║ ▾ CHECKLIST  3 ────────────────────────────────────────────────────────────║
+│                                        │║   steps       ▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱  1/2                                    ║
+│                                        │║   acceptance  ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  0/1                                    ║
+│                                        │║   ✓ recall                                                                 ║
+│                                        │║     why recall                                                             ║
+│                                        │║     → green                                                                ║
+│                                        │║   ◉ observe  ← next                                                        ║
+│                                        │║     why observe                                                            ║
+│                                        │║   ◇ snapshots pass  acceptance                                             ║
+│                                        │║     why snapshots pass                                                     ║
+│                                        │║     $ cargo test  → not run                                                ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+│                                        │║                                                                            ║
+└────────────────────────────────────────┘╚════════════════════════════════════════════════════════════════════════════╝
+ e edit   j/k move   a add step   ? help   q close
 --- styles ---
-abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
-ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-fhhhhhhhhhhhhhhhhhdddddddddddddddddddddddfgiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-fjjjjkkkkkkkkkkddddddddddddddddddddddddddfgjjjjjjjjjjjjjjllllllllllllllllllllldddddddddddddddddddddddddddddddddddddddddg
-fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddddddddddg
-fnnnnnnnnnnnnnnnnddddddddddddddddddddddddfgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgnnnnnnnnnnnnnnnoooooooooddddddddddddddddddddddddddddddddddddddddddddddddddddg
-fhhhhhhhhhhhhhdddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-fjjjjggggggggggddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjppppdddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-ffffffffffffffffffffffffffffffffffffffffffgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jjjjjjjjjjjjjjjjjjdddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jmmmmmmmmmmmmmmmmmmmmmmmmmmddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddjjjjjjjjjdddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqdddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiimmmmmmmmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjrrrrrrrddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmddddddddddddddsssssssssddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjssssssssssddjjjjjjjjjdddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
-mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+abbbbbbbbbbbaacccccccccccccccccaacccccccccccccaacccccccccccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaddddddddddddda
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+eggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eiiiijjjjjjjjjjhhhhhhhhhhhhhhhhhhhhhhhhhhefkkkkkkkkkkkkhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiefhhhiiiiiiiillliiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhf
+ekkkkkkkkkkkkkkkkhhhhhhhhhhhhhhhhhhhhhhhhefhhhiiiiiiiiiiiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhheffffffiiiiiiimmmmmmmmmmmmmmmmmmmmmhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eiiiiffffffffffhhhhhhhhhhhhhhhhhhhhhhhhhheffffffiiiiiiilllllllllllllllllllllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefnnnnnnnnnnhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiif
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiioooooohhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiieeeeheeeeeehhhhhhhhhhhhhiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefnnnnnnnnhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiif
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheflllllhhhhhhhhhhhhhhhhhhheeeeehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefnnnnnnnnnnnhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiif
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhheflllllhhhhhhhhhhhhhhhhhhhhhhhhheeeeehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefnnnnnnnnnnnnlllhiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiif
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiippppppppppiiiiiiiiiiggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefmmmppjjjjjjhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiippppppphhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefmmmffqqqqqqqnnnnnnnnhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefmmmrrhhhhhhhhhhhhhhrrrrrrrrrrrrhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiiiiiiiiiiiiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefiiiiirrrrrrrrrrrrhhiiiiiiiiihhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+ehhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhefhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhf
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+hnlllllhhhnnnlllllhhhnlllllllllhhhnlllllhhhnllllllhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
 --- legend ---
 a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
 b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
 c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
-d fg=Some(Reset) bg=Some(Reset) mod=NONE
-e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
-f fg=Some(Magenta) bg=Some(Reset) mod=NONE
-g fg=Some(Cyan) bg=Some(Reset) mod=NONE
-h fg=Some(Gray) bg=Some(Reset) mod=BOLD
-i fg=Some(Cyan) bg=Some(Reset) mod=BOLD
-j fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-k fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-l fg=Some(White) bg=Some(Reset) mod=NONE
-m fg=Some(Gray) bg=Some(Reset) mod=NONE
-n fg=Some(White) bg=Some(Blue) mod=BOLD
-o fg=Some(White) bg=Some(Blue) mod=NONE
-p fg=Some(Red) bg=Some(Reset) mod=NONE
-q fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
-r fg=Some(Green) bg=Some(Reset) mod=NONE
-s fg=Some(Blue) bg=Some(Reset) mod=NONE
+d fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+e fg=Some(Magenta) bg=Some(Reset) mod=NONE
+f fg=Some(Cyan) bg=Some(Reset) mod=NONE
+g fg=Some(Gray) bg=Some(Reset) mod=BOLD
+h fg=Some(Reset) bg=Some(Reset) mod=NONE
+i fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+j fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+k fg=Some(White) bg=Some(Blue) mod=BOLD
+l fg=Some(Gray) bg=Some(Reset) mod=NONE
+m fg=Some(White) bg=Some(Reset) mod=NONE
+n fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+o fg=Some(Red) bg=Some(Reset) mod=NONE
+p fg=Some(Green) bg=Some(Reset) mod=NONE
+q fg=Some(White) bg=Some(Reset) mod=BOLD
+r fg=Some(Blue) bg=Some(Reset) mod=NONE

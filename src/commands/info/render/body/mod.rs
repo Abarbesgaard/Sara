@@ -8,12 +8,13 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::Style,
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+    text::Line,
+    widgets::{Block, BorderType, Borders, Paragraph, Widget},
 };
 
 use crate::infrastructure::tui::theme::{Ink, ink};
 
+use super::lines::{label_line, wrap_hanging};
 use crate::commands::info::handler::{focusables, section_len};
 use crate::commands::info::types::{Detail, EditState, Focusable, SectionId};
 
@@ -23,6 +24,7 @@ pub(super) struct Body<'a> {
     items: Vec<Focusable>,
     sel: Option<Focusable>,
     show_panel: bool,
+    width: usize,
     lines: Vec<Line<'static>>,
     sel_range: Option<(usize, usize)>,
 }
@@ -31,6 +33,7 @@ impl<'a> Body<'a> {
     pub(super) fn build(
         st: &'a EditState,
         show_panel: bool,
+        width: usize,
     ) -> (Vec<Line<'static>>, Option<(usize, usize)>) {
         let d = &st.detail;
         let items = focusables(d, st.show_notes, &st.open);
@@ -45,16 +48,13 @@ impl<'a> Body<'a> {
             items,
             sel,
             show_panel,
+            width,
             lines: vec![],
             sel_range: None,
         };
+        body.hero();
         body.anchor();
-        body.edit_rows();
-        body.status_row();
-        body.time_row();
-        body.urgency_row();
-        body.date_rows();
-        body.select_hint();
+        body.details();
         body.typed_notes();
         body.blockers();
         body.ledger();
@@ -66,31 +66,32 @@ impl<'a> Body<'a> {
         body.ai_activity();
         body.related_tasks();
         body.comments();
-        (body.lines, body.sel_range)
+        wrap_hanging(body.lines, width, body.sel_range)
     }
 }
 
 impl Body<'_> {
-    fn fold(&mut self, id: SectionId, title: &str, extra: Vec<Span<'static>>) -> bool {
+    fn label(&mut self, title: &str) {
+        self.lines.push(Line::from(""));
+        self.lines
+            .push(label_line("▌", title, None, self.width, false));
+    }
+
+    fn fold(&mut self, id: SectionId, title: &str) -> bool {
         let open = self.st.open.contains(&id);
         let selected = self.sel == Some(Focusable::Section(id));
-        let mut style = Style::default()
-            .fg(ink(Ink::Accent))
-            .add_modifier(ratatui::style::Modifier::BOLD);
-        if selected {
-            style = style.fg(ink(Ink::Text)).bg(ink(Ink::Select));
-        }
-        let arrow = if open { "▾" } else { "▸" };
-        let mut spans = vec![Span::styled(
-            format!("{arrow} {title} ({})", section_len(self.d, id)),
-            style,
-        )];
-        spans.extend(extra);
+        let glyph = if open { "▾" } else { "▸" };
         self.lines.push(Line::from(""));
         if selected {
             self.sel_range = Some((self.lines.len(), self.lines.len()));
         }
-        self.lines.push(Line::from(spans));
+        self.lines.push(label_line(
+            glyph,
+            title,
+            Some(section_len(self.d, id)),
+            self.width,
+            selected,
+        ));
         open
     }
 }
@@ -102,28 +103,14 @@ pub(super) fn body_pane(
     area: Rect,
     buf: &mut Buffer,
 ) {
-    let t = &st.detail.task;
-    let title = format!(
-        " Task {}{} ",
-        t.id.map(|i| i.to_string()).unwrap_or_else(|| "-".into()),
-        if t.is_active() { "  ● ACTIVE" } else { "" }
-    );
-
-    let inner_w = area.width.saturating_sub(2).max(1);
+    let project = &st.detail.task.project;
+    let title = format!(" {} ", if project.is_empty() { "task" } else { project });
     let viewport = area.height.saturating_sub(2) as usize;
     let selection_moved = st.last_selected != Some(st.selected);
     st.last_selected = Some(st.selected);
     if viewport > 0 {
-        if selection_moved && let Some((first, last)) = sel_range {
-            let top: usize = lines[..first]
-                .iter()
-                .map(|l| wrapped_rows(l, inner_w))
-                .sum();
-            let bottom: usize = top
-                + lines[first..=last]
-                    .iter()
-                    .map(|l| wrapped_rows(l, inner_w))
-                    .sum::<usize>();
+        if selection_moved && let Some((top, last)) = sel_range {
+            let bottom = last + 1;
             let mut scroll = st.scroll as usize;
             if bottom > scroll + viewport {
                 scroll = bottom - viewport;
@@ -133,51 +120,19 @@ pub(super) fn body_pane(
             }
             st.scroll = scroll.min(u16::MAX as usize) as u16;
         }
-        let total: usize = lines.iter().map(|l| wrapped_rows(l, inner_w)).sum();
         st.scroll = st
             .scroll
-            .min(total.saturating_sub(viewport).min(u16::MAX as usize) as u16);
+            .min(lines.len().saturating_sub(viewport).min(u16::MAX as usize) as u16);
     }
 
     Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Double)
                 .title(title)
                 .border_style(Style::default().fg(ink(Ink::Accent))),
         )
-        .wrap(Wrap { trim: false })
         .scroll((st.scroll, 0))
         .render(area, buf);
-}
-
-fn wrapped_rows(line: &Line, width: u16) -> usize {
-    let width = width.max(1) as usize;
-    if line.width() <= width {
-        return 1;
-    }
-    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-    let mut rows = 1usize;
-    let mut used = 0usize;
-    for word in text.split(' ') {
-        let w = Span::raw(word).width();
-        let sep = usize::from(used > 0);
-        if used + sep + w <= width {
-            used += sep + w;
-        } else if w > width {
-            if used > 0 {
-                rows += 1;
-            }
-            let mut rem = w;
-            while rem > width {
-                rows += 1;
-                rem -= width;
-            }
-            used = rem;
-        } else {
-            rows += 1;
-            used = w;
-        }
-    }
-    rows
 }

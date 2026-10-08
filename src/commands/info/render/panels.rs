@@ -9,57 +9,70 @@ use ratatui::{
 
 use crate::infrastructure::tui::theme::{Ink, ink};
 
+use super::lines::wrap_hanging;
 use super::tree::task_tree_lines;
 use crate::commands::info::handler::{comment_target, focusables};
-use crate::commands::info::types::{Detail, EDIT_FIELDS, EditField, EditState};
+use crate::commands::info::types::{Detail, EDIT_FIELDS, EditField, EditState, Focusable};
 
 pub(super) fn side_panel(st: &EditState, area: Rect, buf: &mut Buffer) {
     let d = &st.detail;
     let tree_lines = task_tree_lines(d, st);
-    let top_h: u16 = ((tree_lines.len() + 2) as u16).clamp(7, 24);
-
-    let panel_chunks = Layout::default()
+    let has_history = !d.history.is_empty();
+    let tree_h: u16 = ((tree_lines.len() + 2) as u16).clamp(5, 24);
+    let mut constraints = vec![if has_history || d.branch.is_some() {
+        Constraint::Length(tree_h)
+    } else {
+        Constraint::Min(tree_h)
+    }];
+    if d.branch.is_some() {
+        constraints.push(if has_history {
+            Constraint::Length(3)
+        } else {
+            Constraint::Min(3)
+        });
+    }
+    if has_history {
+        constraints.push(Constraint::Min(3));
+    }
+    let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(top_h), Constraint::Min(4)])
+        .constraints(constraints)
         .split(area);
 
     let tree_title = if st.tree_expanded {
-        " Task tree — expanded  (d to collapse) "
+        " TASK TREE · EXPANDED "
     } else {
-        " Task tree  (d to expand) "
+        " TASK TREE "
     };
     Paragraph::new(tree_lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(tree_title)
-                .border_style(Style::default().fg(ink(Ink::Special))),
-        )
-        .render(panel_chunks[0], buf);
-
-    git_panel(d, panel_chunks[1], buf);
+        .block(panel_block(tree_title, ink(Ink::Special)))
+        .render(chunks[0], buf);
+    let mut next = 1;
+    if d.branch.is_some() {
+        Paragraph::new(git_panel_lines(d))
+            .block(panel_block(" GIT ", ink(Ink::Muted)))
+            .render(chunks[next], buf);
+        next += 1;
+    }
+    if has_history {
+        let width = chunks[next].width.saturating_sub(2) as usize;
+        let (lines, _) = wrap_hanging(history_lines(&d.history, true), width, None);
+        Paragraph::new(lines)
+            .block(panel_block(" HISTORY ", ink(Ink::Muted)))
+            .render(chunks[next], buf);
+    }
 }
 
-fn git_panel(d: &Detail, area: Rect, buf: &mut Buffer) {
-    Paragraph::new(git_panel_lines(d))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Git ")
-                .border_style(Style::default().fg(ink(Ink::Muted))),
-        )
-        .wrap(Wrap { trim: false })
-        .render(area, buf);
+fn panel_block(title: &str, color: ratatui::style::Color) -> Block<'_> {
+    Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(color))
 }
 
 pub(super) fn history_pane(d: &Detail, area: Rect, buf: &mut Buffer) {
-    Paragraph::new(history_lines(&d.history))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" History ")
-                .border_style(Style::default().fg(ink(Ink::Muted))),
-        )
+    Paragraph::new(history_lines(&d.history, false))
+        .block(panel_block(" HISTORY ", ink(Ink::Muted)))
         .wrap(Wrap { trim: false })
         .render(area, buf);
 }
@@ -131,23 +144,63 @@ fn editor_box(st: &EditState, block: Block, area: Rect, buf: &mut Buffer) {
 }
 
 pub(super) fn footer(st: &EditState, area: Rect, buf: &mut Buffer) {
-    let footer = if st.adding_step {
-        " type a step  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
+    let keys: Vec<(&str, &str)> = if st.adding_step {
+        vec![("⏎", "save step"), ("Esc", "cancel")]
     } else if st.commenting {
-        " type a comment  •  Enter/Ctrl+S save  •  Esc cancel ".to_string()
+        vec![("⏎", "save comment"), ("Esc", "cancel")]
     } else if st.editing {
-        " type to edit  •  Enter/Ctrl+S confirm  •  Esc cancel ".to_string()
+        vec![("⏎", "confirm"), ("Esc", "cancel")]
     } else {
-        " ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close "
-            .to_string()
+        let items = focusables(&st.detail, st.show_notes, &st.open);
+        let mut keys = focus_keys(items.get(st.selected));
+        keys.extend([
+            ("j/k", "move"),
+            ("a", "add step"),
+            ("?", "help"),
+            ("q", "close"),
+        ]);
+        keys
     };
-    Paragraph::new(footer)
-        .style(Style::default().fg(ink(Ink::Soft)))
-        .render(area, buf);
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (k, label)) in keys.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("   ", Style::default()));
+        }
+        spans.push(Span::styled(
+            k.to_string(),
+            Style::default()
+                .fg(ink(Ink::Accent))
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {label}"),
+            Style::default().fg(ink(Ink::Soft)),
+        ));
+    }
+    Paragraph::new(Line::from(spans)).render(area, buf);
+}
+
+fn focus_keys(focus: Option<&Focusable>) -> Vec<(&'static str, &'static str)> {
+    match focus {
+        Some(Focusable::Field(EditField::Priority)) => vec![("←/→", "priority")],
+        Some(Focusable::Field(_)) => vec![("e", "edit")],
+        Some(Focusable::Section(_)) => vec![("⏎", "fold")],
+        Some(Focusable::Checklist(_)) => {
+            vec![("␣", "toggle"), ("K/J", "reorder"), ("c", "comment")]
+        }
+        Some(Focusable::Memory(_)) => vec![("⏎", "open in dream")],
+        Some(Focusable::Link(_)) => vec![("⏎", "open"), ("c", "comment")],
+        Some(Focusable::File(_)) => vec![("⏎", "open")],
+        Some(Focusable::Anchor(_)) => vec![("⏎", "open"), ("r", "reconsider"), ("x", "resolve")],
+        Some(Focusable::Note(_)) => vec![("c", "reply"), ("r", "reconsider"), ("x", "resolve")],
+        Some(Focusable::Comment(_)) => vec![("⏎", "reply"), ("x", "resolve")],
+        None => vec![],
+    }
 }
 
 pub(in crate::commands::info) fn history_lines(
     history: &[crate::infrastructure::db::HistoryEntry],
+    compact: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = vec![];
     for h in history.iter().rev() {
@@ -161,13 +214,25 @@ pub(in crate::commands::info) fn history_lines(
         } else {
             &h.field
         };
-        let mut spans = vec![
-            Span::styled(format!("  {date}  "), Style::default().fg(ink(Ink::Muted))),
+        let head = vec![
+            Span::styled(format!(" {date}  "), Style::default().fg(ink(Ink::Muted))),
             Span::styled(
-                format!("{:<11} ", label),
+                if compact {
+                    label.to_string()
+                } else {
+                    format!("{label:<11} ")
+                },
                 Style::default().fg(ink(Ink::Accent)),
             ),
         ];
+        let mut spans = if compact {
+            lines.push(Line::from(head));
+            vec![Span::raw("   ")]
+        } else {
+            let mut head = head;
+            head.insert(0, Span::raw(" "));
+            head
+        };
         let additive = matches!(
             h.field.as_str(),
             "annotation" | "link" | "dependency" | "checklist" | "file"
@@ -196,30 +261,16 @@ pub(in crate::commands::info) fn history_lines(
 }
 
 fn git_panel_lines(d: &Detail) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line<'static>> = vec![];
-
     let Some(rec) = &d.branch else {
-        lines.push(Line::from(Span::styled(
-            "  No branch tied.",
-            Style::default().fg(ink(Ink::Muted)),
-        )));
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  Run: sara <id> addbranch",
-            Style::default().fg(ink(Ink::Soft)),
-        )));
-        return lines;
+        return vec![];
     };
-
-    lines.push(Line::from(vec![
-        Span::styled("  Branch  ", Style::default().fg(ink(Ink::Muted))),
+    vec![Line::from(vec![
+        Span::styled(" ⎇ ", Style::default().fg(ink(Ink::Muted))),
         Span::styled(
             rec.branch.clone(),
             Style::default()
                 .fg(ink(Ink::Accent))
                 .add_modifier(Modifier::BOLD),
         ),
-    ]));
-
-    lines
+    ])]
 }

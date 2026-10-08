@@ -7,7 +7,7 @@ use ratatui::{
 use crate::infrastructure::db;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use super::super::lines::{nav_line, section};
+use super::super::lines::{feedback_mark, nav_line};
 use super::Body;
 use crate::commands::info::types::{Focusable, SectionId};
 
@@ -16,17 +16,15 @@ impl Body<'_> {
         let d = self.d;
         if !self.show_panel {
             if !d.blocked_by.is_empty() {
-                self.lines.push(Line::from(""));
-                self.lines.push(section("Blocked by"));
+                self.label("Blocked by");
                 for b in &d.blocked_by {
-                    self.lines.push(Line::from(format!("  {b}")));
+                    self.lines.push(Line::from(format!("   ← {b}")));
                 }
             }
             if !d.blocking.is_empty() {
-                self.lines.push(Line::from(""));
-                self.lines.push(section("Blocking"));
+                self.label("Blocking");
                 for b in &d.blocking {
-                    self.lines.push(Line::from(format!("  {b}")));
+                    self.lines.push(Line::from(format!("   → {b}")));
                 }
             }
         }
@@ -37,11 +35,7 @@ impl Body<'_> {
         if d.ledger.is_empty() {
             return;
         }
-        let hint = Span::styled(
-            "  Enter opens in dream",
-            Style::default().fg(ink(Ink::Muted)),
-        );
-        if !self.fold(SectionId::Memory, "Memory ledger", vec![hint]) {
+        if !self.fold(SectionId::Memory, "Memory ledger") {
             return;
         }
         for (i, e) in d.ledger.iter().enumerate() {
@@ -73,13 +67,13 @@ impl Body<'_> {
                 ),
             ];
             for (n, label, color) in [
-                (e.cited, "cited", ink(Ink::Ok)),
-                (e.recalled, "recalled", ink(Ink::Info)),
-                (e.surfaced, "surfaced", ink(Ink::Muted)),
+                (e.cited, "✓\u{a0}cited", ink(Ink::Ok)),
+                (e.recalled, "↺\u{a0}recalled", ink(Ink::Info)),
+                (e.surfaced, "·\u{a0}surfaced", ink(Ink::Muted)),
             ] {
                 if n > 0 {
                     let count = if n > 1 {
-                        format!(" ×{n}")
+                        format!("\u{a0}×{n}")
                     } else {
                         String::new()
                     };
@@ -99,7 +93,7 @@ impl Body<'_> {
     pub(super) fn links(&mut self) {
         let d = self.d;
         if !d.links.is_empty() {
-            if !self.fold(SectionId::Links, "Links", vec![]) {
+            if !self.fold(SectionId::Links, "Links") {
                 return;
             }
             for (i, link) in d.links.iter().enumerate() {
@@ -123,7 +117,7 @@ impl Body<'_> {
                     .bg(bg);
                 let mut spans = vec![
                     Span::styled(prefix.to_string(), meta_style),
-                    Span::styled(format!("[{}] ", link.id), meta_style),
+                    Span::styled("↗ ", meta_style),
                     Span::styled(link.display(), style),
                 ];
                 if link.display() != link.url {
@@ -132,6 +126,10 @@ impl Body<'_> {
                         Style::default().fg(ink(Ink::Muted)).bg(bg),
                     ));
                 }
+                spans.push(Span::styled(
+                    format!("  [{}]", link.id),
+                    Style::default().fg(ink(Ink::Muted)).bg(bg),
+                ));
                 if selected {
                     self.sel_range = Some((self.lines.len(), self.lines.len()));
                 }
@@ -143,7 +141,7 @@ impl Body<'_> {
     pub(super) fn files(&mut self) {
         let d = self.d;
         if !d.manual_files.is_empty() {
-            if !self.fold(SectionId::Files, "Relevant files", vec![]) {
+            if !self.fold(SectionId::Files, "Relevant files") {
                 return;
             }
             for file in &d.manual_files {
@@ -151,8 +149,12 @@ impl Body<'_> {
                 if selected {
                     self.sel_range = Some((self.lines.len(), self.lines.len()));
                 }
-                self.lines
-                    .push(nav_line(file, ink(Ink::Accent), false, selected));
+                self.lines.push(nav_line(
+                    &format!("▪ {file}"),
+                    ink(Ink::Accent),
+                    false,
+                    selected,
+                ));
             }
         }
     }
@@ -160,12 +162,12 @@ impl Body<'_> {
     pub(super) fn anchors(&mut self) {
         let d = self.d;
         if !d.anchors.is_empty() {
-            if !self.fold(SectionId::Anchors, "Possible relevant files", vec![]) {
+            if !self.fold(SectionId::Anchors, "Possible relevant files") {
                 return;
             }
             for (ai, anchor) in d.anchors.iter().enumerate() {
                 let is_sel = self.sel == Some(Focusable::Anchor(ai));
-                let file_text = format!("{}{}", anchor.path, anchor.location());
+                let file_text = format!("◌ {}{}", anchor.path, anchor.location());
                 let badge = if anchor.source == db::SOURCE_SUGGESTED {
                     " (ai)"
                 } else {
@@ -241,18 +243,7 @@ impl Body<'_> {
                             .bg(row_bg),
                     ));
                 }
-                if open_fb > 0 {
-                    spans.push(Span::styled(
-                        format!("  💬{open_fb}"),
-                        Style::default().fg(ink(Ink::Accent)).bg(row_bg),
-                    ));
-                }
-                if needs_reconsider {
-                    spans.push(Span::styled(
-                        " ⟳",
-                        Style::default().fg(ink(Ink::Warn)).bg(row_bg),
-                    ));
-                }
+                spans.extend(feedback_mark(open_fb, needs_reconsider, row_bg));
                 if is_sel {
                     self.sel_range = Some((self.lines.len(), self.lines.len()));
                 }
@@ -274,7 +265,7 @@ impl Body<'_> {
                         ""
                     };
                     self.lines.push(Line::from(vec![
-                        Span::styled("      ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
+                        Span::styled("     ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
                         Span::styled(
                             format!("{date}{flag}  "),
                             Style::default().fg(ink(Ink::Muted)),

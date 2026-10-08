@@ -104,7 +104,7 @@ fn task_tree_does_not_panic_when_empty() {
     let d = base_detail(task());
     let mut st = base_state(d);
     let out = draw(&mut st);
-    assert!(out.contains("Task tree"));
+    assert!(out.contains("TASK TREE"));
     assert!(out.contains("none"));
 }
 
@@ -206,15 +206,14 @@ fn status_row_hidden_when_pending_shown_otherwise() {
     let d = base_detail(task());
     let mut st = base_state(d);
     let out = draw(&mut st);
-    assert!(!out.lines().any(|l| l.trim_start().starts_with("Status")));
+    assert!(!out.contains("status pending"));
 
     let mut completed_task = task();
     completed_task.status = Status::Completed;
     let d2 = base_detail(completed_task);
     let mut st2 = base_state(d2);
     let out2 = draw(&mut st2);
-    assert!(out2.contains("Status"));
-    assert!(out2.contains("completed"));
+    assert!(out2.contains("status completed"));
 }
 
 #[test]
@@ -233,7 +232,6 @@ fn urgency_breakdown_hidden_by_default_and_shown_when_toggled() {
     });
     let mut st = base_state(d);
     let out = draw(&mut st);
-    assert!(out.contains("u for breakdown"));
     assert!(!out.contains("pri 3.0"));
 
     st.show_urgency_breakdown = true;
@@ -251,7 +249,7 @@ fn risk_notes_always_show_but_other_notes_collapse_until_toggled() {
     ];
     let mut st = base_state(d);
     let out = draw(&mut st);
-    assert!(out.contains("Risks"));
+    assert!(out.contains("RISKS"));
     assert!(out.contains("touches the shared urgency formula"));
     assert!(!out.contains("existing tests cover this path"));
     assert!(!out.contains("kept the old signature"));
@@ -853,10 +851,10 @@ fn header_shows_status_freshness_branch_feedback_and_ids() {
     d.task.uuid = uuid::Uuid::parse_str("f9ea645f-0f27-46de-a527-ff70e13e8c53").unwrap();
     let out = draw(&mut base_state(d));
     let head = out.lines().next().unwrap().to_string();
-    assert!(head.contains("○ pending"), "{head}");
-    assert!(head.contains("· never validated"), "{head}");
-    assert!(head.contains("⎇ no branch"), "{head}");
-    assert!(head.contains("0 open"), "{head}");
+    assert!(head.contains("[○ PENDING]"), "{head}");
+    assert!(head.contains("[· NOT VALIDATED]"), "{head}");
+    assert!(head.contains("[⎇ NO BRANCH]"), "{head}");
+    assert!(head.contains("[· NO FEEDBACK]"), "{head}");
     assert!(head.contains("#9 · f9ea645f"), "{head}");
 
     let mut d = base_detail(task());
@@ -872,10 +870,9 @@ fn header_shows_status_freshness_branch_feedback_and_ids() {
     ];
     let out = draw(&mut base_state(d));
     let head = out.lines().next().unwrap().to_string();
-    assert!(head.contains("✓ validated @ abc12345"), "{head}");
-    assert!(head.contains("⎇ feat/info"), "{head}");
-    assert!(head.contains("2 open"), "{head}");
-    assert!(head.contains("⟳ 1 needs revision"), "{head}");
+    assert!(head.contains("[✓ VALID @abc12345]"), "{head}");
+    assert!(head.contains("[⎇ feat/info]"), "{head}");
+    assert!(head.contains("[! 2 FEEDBACK · ⟳ 1 REVISE]"), "{head}");
 
     let mut d = base_detail(task());
     d.guide.validated_commit = Some("abc12345".into());
@@ -883,7 +880,7 @@ fn header_shows_status_freshness_branch_feedback_and_ids() {
     let out = draw(&mut base_state(d));
     let head = out.lines().next().unwrap().to_string();
     assert!(
-        head.contains("⚠ stale @ abc12345 (HEAD def67890)"),
+        head.contains("[⚠ STALE @abc12345 · HEAD def67890]"),
         "{head}"
     );
 
@@ -891,18 +888,18 @@ fn header_shows_status_freshness_branch_feedback_and_ids() {
     d.task.started_at = Some(Utc::now());
     let out = draw(&mut base_state(d));
     let head = out.lines().next().unwrap().to_string();
-    assert!(head.contains("● active"), "{head}");
+    assert!(head.contains("[● ACTIVE]"), "{head}");
 }
 
 #[test]
 fn anchor_block_leads_the_body_and_is_absent_without_guide() {
     let out = draw(&mut base_state(styled_detail()));
-    let anchor = out.find("Anchor").unwrap();
-    let desc = out.find("Description").unwrap();
-    assert!(anchor < desc, "{out}");
-    assert!(out.contains("Why         screens drifted apart"), "{out}");
+    let anchor = out.find("▎ asked").unwrap();
+    let details = out.find("DETAILS").unwrap();
+    assert!(anchor < details, "{out}");
+    assert!(out.contains("▎ why    screens drifted apart"), "{out}");
     let bare = draw(&mut base_state(base_detail(task())));
-    assert!(!bare.contains("Anchor"), "{bare}");
+    assert!(!bare.contains("▎ asked"), "{bare}");
 }
 
 #[test]
@@ -916,16 +913,16 @@ fn checklist_marks_current_step_and_shows_acceptance_bar_and_verify() {
         step(5, "clippy clean", false, "acceptance"),
     ];
     let out = draw(&mut base_state(d));
-    assert!(out.contains("◆ [ ] observe  ← next"), "{out}");
+    assert!(out.contains("◉ observe  ← next"), "{out}");
     assert!(!out.contains("build  ← next"), "{out}");
     assert!(out.contains("why observe"), "{out}");
     assert!(!out.contains("why build"), "{out}");
     assert!(
-        out.contains("acceptance  ██████████░░░░░░░░░░ 1/2"),
+        out.contains("acceptance  ▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱  1/2"),
         "{out}"
     );
-    assert!(out.contains("verify cargo test  → green"), "{out}");
-    assert!(out.contains("verify cargo test  → not run"), "{out}");
+    assert!(out.contains("$ cargo test  → green"), "{out}");
+    assert!(out.contains("$ cargo test  → not run"), "{out}");
 }
 
 #[test]
@@ -995,16 +992,13 @@ fn memory_ledger_lists_each_memory_with_use_counts_and_is_selectable() {
     ];
     let mut st = base_state(d);
     let out = draw(&mut st);
+    assert!(out.contains("▾ MEMORY LEDGER  2"), "{out}");
     assert!(
-        out.contains("▾ Memory ledger (2)  Enter opens in dream"),
+        out.contains("m12   retry the flaky test  ✓\u{a0}cited  ↺\u{a0}recalled\u{a0}×2"),
         "{out}"
     );
     assert!(
-        out.contains("m12   retry the flaky test  cited  recalled ×2"),
-        "{out}"
-    );
-    assert!(
-        out.contains("m7    prefer theme inks  surfaced ×3"),
+        out.contains("m7    prefer theme inks  ·\u{a0}surfaced\u{a0}×3"),
         "{out}"
     );
     select(&mut st, Focusable::Memory(1));
@@ -1059,15 +1053,15 @@ fn collapsed_sections_show_counted_headers_and_hide_their_rows() {
     let mut st = base_state(folded_detail());
     st.open = SectionId::default_open();
     let out = draw(&mut st);
-    assert!(out.contains("▸ Memory ledger (1)"), "{out}");
+    assert!(out.contains("▸ MEMORY LEDGER  1"), "{out}");
     assert!(!out.contains("retry the flaky test"), "{out}");
-    assert!(out.contains("▸ Links (1)"), "{out}");
+    assert!(out.contains("▸ LINKS  1"), "{out}");
     assert!(!out.contains("example.com"), "{out}");
-    assert!(out.contains("▸ AI activity (1)"), "{out}");
+    assert!(out.contains("▸ AI ACTIVITY  1"), "{out}");
     assert!(!out.contains("1 run · 15 tokens"), "{out}");
-    assert!(out.contains("▾ Checklist (3)"), "{out}");
+    assert!(out.contains("▾ CHECKLIST  3"), "{out}");
     assert!(out.contains("observe"), "{out}");
-    assert!(out.contains("▾ Feedback (1)"), "{out}");
+    assert!(out.contains("▾ FEEDBACK  1"), "{out}");
     assert!(out.contains("looks good"), "{out}");
 
     let items = focusables(&st.detail, st.show_notes, &st.open);
@@ -1079,7 +1073,7 @@ fn collapsed_sections_show_counted_headers_and_hide_their_rows() {
 
     st.open.insert(SectionId::Memory);
     let out = draw(&mut st);
-    assert!(out.contains("▾ Memory ledger (1)"), "{out}");
+    assert!(out.contains("▾ MEMORY LEDGER  1"), "{out}");
     assert!(out.contains("retry the flaky test"), "{out}");
     let items = focusables(&st.detail, st.show_notes, &st.open);
     let header = items

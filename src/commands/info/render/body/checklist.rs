@@ -8,6 +8,7 @@ use crate::commands::shared::short_id;
 use crate::infrastructure::db;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
+use super::super::lines::{bar, feedback_mark};
 use super::Body;
 use crate::commands::info::handler::verification_rows;
 use crate::commands::info::types::{Focusable, SectionId};
@@ -27,24 +28,17 @@ impl Body<'_> {
                     steps_done += it.done as i32;
                 }
             }
-            let mut progress = String::new();
-            if steps_total > 0 {
-                progress.push_str(&format!("{steps_done}/{steps_total} steps"));
-            }
-            if acc_total > 0 {
-                if !progress.is_empty() {
-                    progress.push_str(" · ");
-                }
-                progress.push_str(&format!("{acc_done}/{acc_total} acceptance"));
-            }
-            let progress =
-                Span::styled(format!("  {progress}"), Style::default().fg(ink(Ink::Soft)));
-            if !self.fold(SectionId::Steps, "Checklist", vec![progress]) {
+            if !self.fold(SectionId::Steps, "Checklist") {
                 return;
             }
-            if acc_total > 0 {
-                self.lines
-                    .push(progress_bar("acceptance", acc_done, acc_total));
+            for (label, done, total) in [
+                ("steps", steps_done, steps_total),
+                ("acceptance", acc_done, acc_total),
+            ] {
+                if total > 0 {
+                    self.lines
+                        .push(progress_bar(label, done as usize, total as usize));
+                }
             }
             let current = d
                 .checklist
@@ -60,31 +54,31 @@ impl Body<'_> {
                     ink(Ink::Plain)
                 };
 
-                let (box_str, text_style) = if item.done {
-                    (
-                        "[x]",
-                        Style::default()
-                            .fg(ink(Ink::Muted))
-                            .bg(row_bg)
-                            .add_modifier(Modifier::CROSSED_OUT),
-                    )
-                } else if is_sel {
-                    (
-                        "[ ]",
-                        Style::default()
-                            .fg(ink(Ink::Text))
-                            .bg(ink(Ink::Select))
-                            .add_modifier(Modifier::BOLD),
-                    )
+                let (mark, mark_color) = if item.done {
+                    ("✓", ink(Ink::Ok))
                 } else if is_current {
-                    (
-                        "[ ]",
-                        Style::default()
-                            .fg(ink(Ink::Accent))
-                            .add_modifier(Modifier::BOLD),
-                    )
+                    ("◉", ink(Ink::Accent))
+                } else if is_acc {
+                    ("◇", ink(Ink::Info))
                 } else {
-                    ("[ ]", Style::default())
+                    ("○", ink(Ink::Soft))
+                };
+                let text_style = if item.done {
+                    Style::default()
+                        .fg(ink(Ink::Muted))
+                        .bg(row_bg)
+                        .add_modifier(Modifier::CROSSED_OUT)
+                } else if is_sel {
+                    Style::default()
+                        .fg(ink(Ink::Text))
+                        .bg(row_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else if is_current {
+                    Style::default()
+                        .fg(ink(Ink::Text))
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
                 };
                 let target_k = if is_acc { "acceptance" } else { "step" };
                 let item_id_str = item.id.to_string();
@@ -98,37 +92,29 @@ impl Body<'_> {
                             && a.target_id.as_deref() == Some(item_id_str.as_str())
                     })
                     .collect();
-                let prefix = if is_sel {
-                    " ▶ "
-                } else if is_current {
-                    " ◆ "
-                } else {
-                    "   "
-                };
-                let box_style = Style::default()
-                    .fg(if is_sel {
-                        ink(Ink::Text)
-                    } else if is_current {
-                        ink(Ink::Accent)
-                    } else {
-                        ink(Ink::Soft)
-                    })
-                    .bg(row_bg);
+                let prefix_style = Style::default().fg(ink(Ink::Text)).bg(row_bg);
                 let mut spans = vec![
-                    Span::styled(prefix.to_string(), box_style),
-                    Span::styled(format!("{box_str} "), box_style),
+                    Span::styled(if is_sel { " ▶ " } else { "   " }, prefix_style),
+                    Span::styled(
+                        format!("{mark} "),
+                        Style::default()
+                            .fg(if is_sel { ink(Ink::Text) } else { mark_color })
+                            .bg(row_bg),
+                    ),
                     Span::styled(item.text.clone(), text_style),
                 ];
-                if is_acc {
-                    spans.push(Span::styled(
-                        " [accept]",
-                        Style::default().fg(ink(Ink::Info)),
-                    ));
-                }
                 if is_current {
                     spans.push(Span::styled(
                         "  ← next",
-                        Style::default().fg(ink(Ink::Accent)),
+                        Style::default()
+                            .fg(ink(Ink::Accent))
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                if is_acc {
+                    spans.push(Span::styled(
+                        "  acceptance",
+                        Style::default().fg(ink(Ink::Info)),
                     ));
                 }
                 if item.source == "ai" {
@@ -137,15 +123,11 @@ impl Body<'_> {
                         Style::default().fg(ink(Ink::Special)),
                     ));
                 }
-                if !fb.is_empty() {
-                    spans.push(Span::styled(
-                        format!("  💬{}", fb.len()),
-                        Style::default().fg(ink(Ink::Accent)),
-                    ));
-                }
-                if fb.iter().any(|a| a.request_revision) {
-                    spans.push(Span::styled(" ⟳", Style::default().fg(ink(Ink::Warn))));
-                }
+                spans.extend(feedback_mark(
+                    fb.len(),
+                    fb.iter().any(|a| a.request_revision),
+                    ink(Ink::Plain),
+                ));
                 if is_sel {
                     self.sel_range = Some((self.lines.len(), self.lines.len()));
                 }
@@ -155,7 +137,7 @@ impl Body<'_> {
                     && let Some(intent) = &item.intent
                 {
                     self.lines.push(Line::from(Span::styled(
-                        format!("         {intent}"),
+                        format!("     {intent}"),
                         Style::default().fg(ink(Ink::Muted)),
                     )));
                 }
@@ -179,7 +161,7 @@ impl Body<'_> {
                         .map(|w| format!("  {w}"))
                         .unwrap_or_default();
                     self.lines.push(Line::from(Span::styled(
-                        format!("         done {commit}{when}"),
+                        format!("     done {commit}{when}"),
                         Style::default().fg(ink(Ink::Muted)),
                     )));
                 }
@@ -187,10 +169,7 @@ impl Body<'_> {
                     let date = a.entry.with_timezone(&Local).format("%H:%M");
                     let flag = if a.request_revision { " ⟳" } else { "" };
                     self.lines.push(Line::from(vec![
-                        Span::styled(
-                            "         ╰ ".to_string(),
-                            Style::default().fg(ink(Ink::Muted)),
-                        ),
+                        Span::styled("     ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
                         Span::styled(
                             format!("{date}{flag}  "),
                             Style::default().fg(ink(Ink::Muted)),
@@ -209,22 +188,18 @@ impl Body<'_> {
         let d = self.d;
         let verif = verification_rows(d);
         if !verif.is_empty() {
-            let hint = Span::styled(
-                "  run: sara verify <id> --run",
-                Style::default().fg(ink(Ink::Muted)),
-            );
-            if !self.fold(SectionId::Verification, "Verification", vec![hint]) {
+            if !self.fold(SectionId::Verification, "Verification") {
                 return;
             }
             for (scope, label, cmd) in &verif {
                 self.lines.push(Line::from(vec![
                     Span::styled(
-                        format!("  {label:<7}"),
+                        format!("   {label:<7}"),
                         Style::default()
                             .fg(ink(Ink::Soft))
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(cmd.clone(), Style::default().fg(ink(Ink::Info))),
+                    Span::styled(format!("$ {cmd}"), Style::default().fg(ink(Ink::Info))),
                     Span::styled(format!("  ({scope})"), Style::default().fg(ink(Ink::Muted))),
                 ]));
             }
@@ -234,10 +209,12 @@ impl Body<'_> {
 
 fn verify_row(item: &db::ChecklistItem) -> Option<Line<'static>> {
     let muted = Style::default().fg(ink(Ink::Muted));
-    let mut spans = vec![Span::styled("         ".to_string(), muted)];
+    let mut spans = vec![Span::styled("     ".to_string(), muted)];
     if let Some(v) = &item.verify_cmd {
-        spans.push(Span::styled("verify ".to_string(), muted));
-        spans.push(Span::styled(v.clone(), Style::default().fg(ink(Ink::Info))));
+        spans.push(Span::styled(
+            format!("$ {v}"),
+            Style::default().fg(ink(Ink::Info)),
+        ));
         spans.push(Span::raw("  "));
     }
     match &item.result {
@@ -253,25 +230,21 @@ fn verify_row(item: &db::ChecklistItem) -> Option<Line<'static>> {
     Some(Line::from(spans))
 }
 
-pub(super) fn progress_bar(label: &str, done: i32, total: i32) -> Line<'static> {
-    const WIDTH: i32 = 20;
-    let filled = if total > 0 { done * WIDTH / total } else { 0 };
-    Line::from(vec![
-        Span::styled(
-            format!("  {label:<12}"),
-            Style::default().fg(ink(Ink::Muted)),
-        ),
-        Span::styled(
-            "█".repeat(filled as usize),
-            Style::default().fg(ink(Ink::Ok)),
-        ),
-        Span::styled(
-            "░".repeat((WIDTH - filled) as usize),
-            Style::default().fg(ink(Ink::Muted)),
-        ),
-        Span::styled(
-            format!(" {done}/{total}"),
-            Style::default().fg(ink(Ink::Soft)),
-        ),
-    ])
+pub(super) fn progress_bar(label: &str, done: usize, total: usize) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        format!("   {label:<12}"),
+        Style::default().fg(ink(Ink::Muted)),
+    )];
+    spans.extend(bar(done, total, 20));
+    spans.push(Span::styled(
+        format!("  {done}/{total}"),
+        Style::default()
+            .fg(if done == total {
+                ink(Ink::Ok)
+            } else {
+                ink(Ink::Soft)
+            })
+            .add_modifier(Modifier::BOLD),
+    ));
+    Line::from(spans)
 }

@@ -467,22 +467,32 @@ The **`DEPS`** column spells out the relationship the gutter hints at:
 
 ## The detail view (`sara info`)
 
-`sara info <id>` opens a full-screen, interactive view of a single task: all
-fields, dependencies, attached files, links, comments, a checklist, the urgency
-breakdown, a git panel, a project activity heatmap, and a live history log.
+`sara info <id>` opens a full-screen, interactive view of a single task: its
+title and timing, an anchor block, a details grid, notes, dependencies, the
+memory ledger, links, files, a checklist, verification, AI activity, related
+tasks and feedback. A side panel holds the task tree, the tied git branch and
+the history log (below the body on narrow terminals).
 
 It's also where you **edit** a task inline.
 
-A one-row **header bar** sits above the panes: status, a freshness badge
-(`✓ validated @ <commit>`, `⚠ stale` when HEAD moved, or `never validated`),
-the tied branch, open feedback (with `⟳` when a revision is requested), and
-the display id with the short uuid. The task's **Anchor** — assignment and
-why — leads the body. In the checklist, the step `sara next` would return is
-marked `◆ … ← next` with its intent, acceptance progress shows as a bar, and
-every acceptance item shows its `verify` command and last result inline. The
+A one-row **header bar** of bracketed badges sits on top: status
+(`[○ PENDING]`, `[● ACTIVE]`), guide freshness (`[✓ VALID @<commit>]`,
+`[⚠ STALE @<commit> · HEAD <head>]` or `[· NOT VALIDATED]`), the tied branch,
+open feedback (`[! 2 FEEDBACK · ⟳ 1 REVISE]`), and the display id with the
+short uuid. The body opens with the task title, a single meta line (status
+when not pending, time spent against the estimate, urgency, created and
+modified) and the **anchor** — assignment and why — as a quoted block. Fields
+sit in a two-column **Details** grid on wide terminals; priority shows as
+`▲ High` / `■ Medium` / `▼ Low` and tags as `#tag`. Every section starts with a
+`▌ TITLE` rule, and long lines wrap with a hanging indent.
+
+In the checklist, the step `sara next` would return is marked `◉ … ← next`
+with its intent; steps and acceptance progress show as `▰▱` bars, and every
+acceptance item shows its `$ verify` command and last result inline. The
 **Memory ledger** lists each memory surfaced, recalled or cited for the task
 (`Enter` opens it in `sara dream`), and **AI activity** shows token usage per
-run with a total.
+run with a `Σ` total. The footer lists only the keys that apply to the
+selected item.
 
 Every section below the fields — Memory ledger, Links, files, Checklist,
 Verification, AI activity, Related tasks and Feedback — is **collapsible**. Its
