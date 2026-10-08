@@ -36,8 +36,8 @@ expression: out
 │Blocking                                                                                │
 │  #9 ship the release                                                                   │
 │                                                                                        │
-│Cited memories                                                                          │
-│  m12 prefer ink() over Color literals                                                  │
+│Memory ledger  (1)  Enter opens in dream                                                │
+│   m12   prefer ink() over Color literals  cited                                        │
 │                                                                                        │
 │Checklist  1/2 steps · 0/1 acceptance                                                   │
 │  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                                  │
@@ -87,16 +87,16 @@ fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 fggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fggggggggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fgggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddf
+fiiiooooooddddddddddddddddddddddddddddddddpppppppddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fgggggggggggggggggggggggggggggggggggggdddddddddddddddddddddddddddddddddddddddddddddddddddf
 fhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhjjjjddddddddddddddddddddddddddddddddddddddddddddddddddf
-fjjjjjjjoooooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fjjjjjjjqqqqqqdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 ffffffffgggggggffffffffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fjjjjjjjddddddddddddddpppppppppddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
-fhhhhhhhhhhhhhhhhppppppppppddhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddf
+fjjjjjjjddddddddddddddrrrrrrrrrddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
+fhhhhhhhhhhhhhhhhrrrrrrrrrrddhhhhhhhhhdddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
 fddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddf
@@ -118,5 +118,7 @@ k fg=Some(White) bg=Some(Blue) mod=BOLD
 l fg=Some(White) bg=Some(Blue) mod=NONE
 m fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
 n fg=Some(Magenta) bg=Some(Reset) mod=NONE
-o fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-p fg=Some(Blue) bg=Some(Reset) mod=NONE
+o fg=Some(Magenta) bg=Some(Reset) mod=BOLD
+p fg=Some(Green) bg=Some(Reset) mod=NONE
+q fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+r fg=Some(Blue) bg=Some(Reset) mod=NONE

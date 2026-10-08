@@ -28,11 +28,21 @@ impl TaskTree {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct LedgerEntry {
+    pub(super) handle: String,
+    pub(super) snippet: String,
+    pub(super) cited: usize,
+    pub(super) recalled: usize,
+    pub(super) surfaced: usize,
+}
+
 pub(super) struct Detail {
     pub(super) task: Task,
     pub(super) blocked_by: Vec<String>,
     pub(super) blocking: Vec<String>,
     pub(super) cited: Vec<String>,
+    pub(super) ledger: Vec<LedgerEntry>,
     pub(super) depends_on_ids: Vec<i64>,
     pub(super) manual_files: Vec<String>,
     pub(super) suggested_files: Vec<String>,
@@ -101,6 +111,7 @@ pub(super) enum Focusable {
     Anchor(usize),
     Comment(usize),
     Note(usize),
+    Memory(usize),
 }
 
 pub(super) struct EditState {

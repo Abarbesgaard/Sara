@@ -13,22 +13,48 @@ use crate::commands::info::types::Focusable;
 impl Body<'_> {
     pub(super) fn ai_activity(&mut self) {
         let d = self.d;
-        if !d.ai_runs.is_empty() {
-            self.lines.push(Line::from(""));
-            self.lines.push(section("AI activity"));
-            for r in &d.ai_runs {
-                let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
-                self.lines.push(Line::from(Span::styled(
-                    format!(
-                        "  {} via {} [{}] @ {date}",
-                        r.kind,
-                        r.model.as_deref().unwrap_or("?"),
-                        r.provider.as_deref().unwrap_or("?"),
-                    ),
-                    Style::default().fg(ink(Ink::Muted)),
-                )));
-            }
+        if d.ai_runs.is_empty() {
+            return;
         }
+        self.lines.push(Line::from(""));
+        self.lines.push(section("AI activity"));
+        for r in &d.ai_runs {
+            let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
+            let mut spans = vec![Span::styled(
+                format!(
+                    "  {} via {} [{}] @ {date}",
+                    r.kind,
+                    r.model.as_deref().unwrap_or("?"),
+                    r.provider.as_deref().unwrap_or("?"),
+                ),
+                Style::default().fg(ink(Ink::Muted)),
+            )];
+            if let Some(total) = run_tokens(r) {
+                let split = match (r.prompt_tokens, r.completion_tokens) {
+                    (Some(p), Some(c)) => {
+                        format!(" ({} in / {} out)", thousands(p), thousands(c))
+                    }
+                    _ => String::new(),
+                };
+                spans.push(Span::styled(
+                    format!("  · {} tok{split}", thousands(total)),
+                    Style::default().fg(ink(Ink::Info)),
+                ));
+            }
+            self.lines.push(Line::from(spans));
+        }
+        let total: i64 = d.ai_runs.iter().filter_map(run_tokens).sum();
+        let runs = d.ai_runs.len();
+        let mut summary = format!("  {runs} run{}", if runs == 1 { "" } else { "s" });
+        if total > 0 {
+            summary.push_str(&format!(" · {} tokens", thousands(total)));
+        }
+        self.lines.push(Line::from(Span::styled(
+            summary,
+            Style::default()
+                .fg(ink(Ink::Soft))
+                .add_modifier(Modifier::BOLD),
+        )));
     }
 
     pub(super) fn related_tasks(&mut self) {
@@ -164,4 +190,24 @@ impl Body<'_> {
             }
         }
     }
+}
+
+fn run_tokens(r: &crate::infrastructure::db::AiRun) -> Option<i64> {
+    r.total_tokens
+        .or(match (r.prompt_tokens, r.completion_tokens) {
+            (None, None) => None,
+            (p, c) => Some(p.unwrap_or(0) + c.unwrap_or(0)),
+        })
+}
+
+pub(super) fn thousands(n: i64) -> String {
+    let digits = n.unsigned_abs().to_string();
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    if n < 0 { format!("-{out}") } else { out }
 }

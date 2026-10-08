@@ -5,7 +5,9 @@ use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::model::Task;
 
-use super::types::{Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, NOTE_KINDS, TaskTree};
+use super::types::{
+    Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, LedgerEntry, NOTE_KINDS, TaskTree,
+};
 
 const TREE_FETCH_MAX_DEPTH: usize = 6;
 const TREE_FETCH_MAX_NODES: usize = 40;
@@ -76,6 +78,7 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
         blocked_by: resolve_ids(blockers.clone()),
         blocking: resolve_ids(blocking_tasks.clone()),
         cited: crate::commands::shared::cited_labels(conn, &task.uuid),
+        ledger: memory_ledger(conn, &task.uuid),
         manual_files,
         suggested_files,
         links: db::get_links(conn, &task.uuid)?,
@@ -340,12 +343,46 @@ pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut De
     detail.tree = build_task_tree(conn, uuid);
 }
 
+pub(super) fn memory_ledger(conn: &Connection, task: &uuid::Uuid) -> Vec<LedgerEntry> {
+    use crate::commands::shared::{item_snippet, memory_handle};
+    let mut order: Vec<uuid::Uuid> = vec![];
+    let mut counts: std::collections::HashMap<uuid::Uuid, LedgerEntry> = Default::default();
+    for u in db::memory_uses_for_task(conn, task).unwrap_or_default() {
+        let entry = counts.entry(u.item_uuid).or_insert_with(|| {
+            order.push(u.item_uuid);
+            let item = db::get_item_by_uuid(conn, &u.item_uuid.to_string()).ok();
+            LedgerEntry {
+                handle: item
+                    .as_ref()
+                    .map(memory_handle)
+                    .unwrap_or_else(|| u.item_uuid.to_string()[..8].to_string()),
+                snippet: item
+                    .as_ref()
+                    .map(|i| item_snippet(i, 80))
+                    .unwrap_or_default(),
+                ..Default::default()
+            }
+        });
+        match u.kind {
+            db::MemoryUseKind::Cited => entry.cited += 1,
+            db::MemoryUseKind::Recalled => entry.recalled += 1,
+            db::MemoryUseKind::Surfaced => entry.surfaced += 1,
+        }
+    }
+    let mut ledger: Vec<LedgerEntry> = order.iter().filter_map(|u| counts.remove(u)).collect();
+    ledger.sort_by_key(|e| std::cmp::Reverse((e.cited > 0, e.recalled > 0)));
+    ledger
+}
+
 pub(super) fn focusables(d: &Detail, show_notes: bool) -> Vec<Focusable> {
     let mut v: Vec<Focusable> = EDIT_FIELDS.iter().map(|f| Focusable::Field(*f)).collect();
     for (i, note) in typed_notes(d).iter().enumerate() {
         if show_notes || note.kind == "risk" {
             v.push(Focusable::Note(i));
         }
+    }
+    for i in 0..d.ledger.len() {
+        v.push(Focusable::Memory(i));
     }
     for i in 0..d.links.len() {
         v.push(Focusable::Link(i));

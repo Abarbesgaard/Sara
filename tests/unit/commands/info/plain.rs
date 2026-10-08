@@ -115,6 +115,7 @@ fn detail(
         blocked_by: vec![],
         blocking: vec![],
         cited: vec![],
+        ledger: vec![],
         depends_on_ids: vec![],
         manual_files: vec![],
         suggested_files: vec![],

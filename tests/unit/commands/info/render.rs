@@ -48,6 +48,7 @@ fn base_detail(task: Task) -> Detail {
         blocked_by: vec![],
         blocking: vec![],
         cited: vec![],
+        ledger: vec![],
         depends_on_ids: vec![],
         manual_files: vec![],
         suggested_files: vec![],
@@ -552,7 +553,13 @@ fn styled_snapshot_info_narrow_with_blockers() {
     let mut d = styled_detail();
     d.blocked_by = vec!["#3 wire the theme".into(), "#4 pick colours".into()];
     d.blocking = vec!["#9 ship the release".into()];
-    d.cited = vec!["m12 prefer ink() over Color literals".into()];
+    d.ledger = vec![ledger_entry(
+        "m12",
+        "prefer ink() over Color literals",
+        1,
+        0,
+        0,
+    )];
     let mut st = base_state(d);
     st.selected = 2;
     let out = styled_snap(&mut st, 90, 50);
@@ -939,6 +946,94 @@ fn styled_snapshot_info_header_and_steps() {
     ));
     let mut st = base_state(d);
     let out = styled_snap(&mut st, 120, 48);
+    insta::with_settings!({filters => snap_filters()}, {
+        insta::assert_snapshot!(out);
+    });
+}
+
+fn ledger_entry(
+    handle: &str,
+    snippet: &str,
+    c: usize,
+    r: usize,
+    s: usize,
+) -> super::super::types::LedgerEntry {
+    super::super::types::LedgerEntry {
+        handle: handle.into(),
+        snippet: snippet.into(),
+        cited: c,
+        recalled: r,
+        surfaced: s,
+    }
+}
+
+fn ai_run(
+    id: i64,
+    p: Option<i64>,
+    c: Option<i64>,
+    t: Option<i64>,
+) -> crate::infrastructure::db::AiRun {
+    crate::infrastructure::db::AiRun {
+        id,
+        kind: "plan".into(),
+        model: Some("gpt".into()),
+        provider: Some("copilot".into()),
+        created_at: Utc::now(),
+        prompt_tokens: p,
+        completion_tokens: c,
+        total_tokens: t,
+    }
+}
+
+#[test]
+fn memory_ledger_lists_each_memory_with_use_counts_and_is_selectable() {
+    let mut d = base_detail(task());
+    d.ledger = vec![
+        ledger_entry("m12", "retry the flaky test", 1, 2, 0),
+        ledger_entry("m7", "prefer theme inks", 0, 0, 3),
+    ];
+    let mut st = base_state(d);
+    let out = draw(&mut st);
+    assert!(out.contains("Memory ledger  (2)"), "{out}");
+    assert!(
+        out.contains("m12   retry the flaky test  cited  recalled ×2"),
+        "{out}"
+    );
+    assert!(
+        out.contains("m7    prefer theme inks  surfaced ×3"),
+        "{out}"
+    );
+    select(&mut st, Focusable::Memory(1));
+    let out = draw(&mut st);
+    assert!(out.contains("▶ m7"), "{out}");
+}
+
+#[test]
+fn ai_activity_shows_tokens_per_run_and_a_total() {
+    let mut d = base_detail(task());
+    d.ai_runs = vec![
+        ai_run(1, Some(1200), Some(345), Some(1545)),
+        ai_run(2, Some(10), Some(5), None),
+        ai_run(3, None, None, None),
+    ];
+    let out = draw(&mut base_state(d));
+    assert!(out.contains("· 1,545 tok (1,200 in / 345 out)"), "{out}");
+    assert!(out.contains("· 15 tok (10 in / 5 out)"), "{out}");
+    assert!(out.contains("3 runs · 1,560 tokens"), "{out}");
+}
+
+#[test]
+fn styled_snapshot_info_memory_ledger_and_tokens() {
+    let mut d = styled_detail();
+    d.ledger = vec![
+        ledger_entry("m855", "one file per palette under tui/themes", 1, 1, 2),
+        ledger_entry("m829", "TUI inventory", 0, 1, 0),
+        ledger_entry("m487", "fold design analogue", 0, 0, 4),
+    ];
+    d.ai_runs = vec![ai_run(1, Some(1200), Some(345), Some(1545))];
+    let mut st = base_state(d);
+    select(&mut st, Focusable::Memory(0));
+    let out = styled_snap(&mut st, 120, 52);
     insta::with_settings!({filters => snap_filters()}, {
         insta::assert_snapshot!(out);
     });

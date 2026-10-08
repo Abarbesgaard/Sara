@@ -1,0 +1,131 @@
+---
+source: tests/unit/commands/info/render.rs
+expression: out
+---
+ ○ pending  │  · never validated  │  ⎇ no branch  │  💬  0 open                                            #6 · 00000000
+┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────────────────────────┐
+│ ← blocked by (1)                       ││Anchor                                                                      │
+│  └─✓ 1 task 1                          ││  Assignment  make the TUI coherent                                         │
+│────────────────────────────────────────││  Why         screens drifted apart                                         │
+│ ▶   6 root task                        ││                                                                            │
+│────────────────────────────────────────││   Description root task                                                    │
+│ blocks → (1)                           ││   Project     tk                                                           │
+│  └─○ 2 task 2                          ││   Priority    High                                                         │
+└────────────────────────────────────────┘│   Due         YYYY-MM-DD hh:mm  (due in 3 days)                            │
+┌ Git ───────────────────────────────────┐│   Tags        tui, theme                                                   │
+│  No branch tied.                       ││   Estimate    -                                                            │
+│                                        ││   Recur       -                                                            │
+│  Run: sara <id> addbranch              ││   Depends on  -                                                            │
+│                                        ││  Time spent  -                                                             │
+│                                        ││  Urgency     7.5                                                           │
+│                                        ││  Entered     YYYY-MM-DD hh:mm  (today)                                     │
+│                                        ││  Modified    YYYY-MM-DD hh:mm                                              │
+│                                        ││                                                                            │
+│                                        ││  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve     │
+│                                        ││                                                                            │
+│                                        ││Risks                                                                       │
+│                                        ││   • info render is huge (ai)                                               │
+│                                        ││                                                                            │
+│                                        ││  1 AI work note (1 findings)  — the AI's execution workpaper, not usually  │
+│                                        ││needed for review  (n to view)                                              │
+│                                        ││                                                                            │
+│                                        ││Memory ledger  (3)  Enter opens in dream                                    │
+│                                        ││ ▶ m855  one file per palette under tui/themes  cited  recalled  surfaced ×2│
+│                                        ││   m829  TUI inventory  recalled                                            │
+│                                        ││   m487  fold design analogue  surfaced ×4                                  │
+│                                        ││                                                                            │
+│                                        ││Checklist  1/2 steps · 0/1 acceptance                                       │
+│                                        ││  acceptance  ░░░░░░░░░░░░░░░░░░░░ 0/1                                      │
+│                                        ││   [x] recall                                                               │
+│                                        ││ ◆ [ ] observe  ← next                                                      │
+│                                        ││         why observe                                                        │
+│                                        ││   [ ] snapshots pass [accept]                                              │
+│                                        ││         verify cargo test  → not run                                       │
+│                                        ││                                                                            │
+│                                        ││AI activity                                                                 │
+│                                        ││  plan via gpt [copilot] @ YYYY-MM-DD hh:mm  · 1,545 tok (1,200 in / 345    │
+│                                        ││out)                                                                        │
+│                                        ││  1 run · 1,545 tokens                                                      │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────┘
+ ↑/↓ move • Enter edit/open • c comment • a step • d tree • n notes • u urgency • v expand • ? help • q close
+--- styles ---
+abbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccdcccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
+ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+fhhhhhhhhhhhhhhhhhdddddddddddddddddddddddfgiiiiiiddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjkkkkkkkkkkddddddddddddddddddddddddddfgjjjjjjjjjjjjjjllllllllllllllllllllldddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjmmmmmmmmmmmmmmmmmmmmmdddddddddddddddddddddddddddddddddddddddddg
+fnnnnnnnnnnnnnnnnddddddddddddddddddddddddfgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fhhhhhhhhhhhhhdddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+fjjjjggggggggggddddddddddddddddddddddddddfgjjjjjjjjjjjjjjjoooodddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+ffffffffffffffffffffffffffffffffffffffffffgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjdddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jmmmmmmmmmmmmmmmmmmmmmmmmmmddddddddddddddjgjjjjjjjjjjjjjjjdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddjjjjjjjjjdddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppdddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmdddddddddddddddddddfffffdddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppddg
+jddddddddddddddddddddddddddddddddddddddddjgppppppppppppppppppppppppppppppddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiijjjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgqqqrrrrrrqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsssssssttttttttttjjjjjjjjjjjjjg
+jddddddddddddddddddddddddddddddddddddddddjgllluuuuuudddddddddddddttttttttttddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgllluuuuuuddddddddddddddddddddjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjmmmmddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmkkkkkkdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjggggggggiiiiiiiggggggggddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgmmmmmmmddddddddddddddtttttttttddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjttttttttttddjjjjjjjjjdddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgiiiiiiiiiiidddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjtttttttttttttttttttttttttttttddddg
+jddddddddddddddddddddddddddddddddddddddddjgttttddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjghhhhhhhhhhhhhhhhhhhhhhddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jddddddddddddddddddddddddddddddddddddddddjgddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddg
+jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+--- legend ---
+a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
+b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
+c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+d fg=Some(Reset) bg=Some(Reset) mod=NONE
+e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+f fg=Some(Magenta) bg=Some(Reset) mod=NONE
+g fg=Some(Cyan) bg=Some(Reset) mod=NONE
+h fg=Some(Gray) bg=Some(Reset) mod=BOLD
+i fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+j fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+k fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+l fg=Some(White) bg=Some(Reset) mod=NONE
+m fg=Some(Gray) bg=Some(Reset) mod=NONE
+n fg=Some(White) bg=Some(Blue) mod=BOLD
+o fg=Some(Red) bg=Some(Reset) mod=NONE
+p fg=Some(DarkGray) bg=Some(Reset) mod=ITALIC
+q fg=Some(White) bg=Some(Blue) mod=NONE
+r fg=Some(Magenta) bg=Some(Blue) mod=BOLD
+s fg=Some(Green) bg=Some(Reset) mod=NONE
+t fg=Some(Blue) bg=Some(Reset) mod=NONE
+u fg=Some(Magenta) bg=Some(Reset) mod=BOLD
