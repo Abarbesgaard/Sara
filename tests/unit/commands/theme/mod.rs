@@ -5,9 +5,13 @@ fn theme_status_marks_the_saved_palette() {
     let mut env = crate::test_support::env_guard();
     env.remove("SARA_THEME");
     let mut cfg = Config::default();
-    assert_eq!(status(&cfg), "▸ classic\n  retro");
-    cfg.tui.theme = "retro".into();
-    assert_eq!(status(&cfg), "  classic\n▸ retro");
+    let out = status(&cfg);
+    assert!(out.starts_with("▸ classic\n  retro\n"), "{out}");
+    assert_eq!(out.lines().count(), Palette::ALL.len());
+    cfg.tui.theme = "tokyo-night".into();
+    let out = status(&cfg);
+    assert!(out.contains("▸ tokyo-night"), "{out}");
+    assert!(out.contains("  classic"), "{out}");
 }
 
 #[test]

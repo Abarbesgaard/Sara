@@ -550,7 +550,7 @@ pub enum Command {
     Paths,
 
     Theme {
-        #[arg(value_parser = ["classic", "retro"])]
+        #[arg(value_parser = clap::builder::PossibleValuesParser::new(crate::infrastructure::tui::theme::Palette::NAMES))]
         palette: Option<String>,
     },
 
