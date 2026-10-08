@@ -2,7 +2,6 @@ mod body;
 mod header;
 mod lines;
 mod panels;
-mod stats;
 mod tree;
 
 use std::rc::Rc;
@@ -19,11 +18,15 @@ use panels::{add_step_box, comment_box, edit_box, footer, history_pane, side_pan
 
 pub(super) const MIN_SIZE: (u16, u16) = (60, 16);
 
+pub(super) const PANEL_MIN_WIDTH: u16 = 96;
+const PANEL_WIDTH: u16 = 42;
+
 pub(super) fn render(f: &mut Frame, st: &mut EditState) {
     if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
         return;
     }
-    let history_height: u16 = if st.detail.history.is_empty() {
+    let show_panel = f.area().width >= PANEL_MIN_WIDTH;
+    let history_height: u16 = if show_panel || st.detail.history.is_empty() {
         0
     } else {
         (st.detail.history.len() as u16 + 2).min(6)
@@ -33,17 +36,17 @@ pub(super) fn render(f: &mut Frame, st: &mut EditState) {
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(1)])
         .split(chunks[0]);
-    let show_panel = rows[1].width >= 96;
-    let (lines, sel_range) = Body::build(st, show_panel);
     let (main_area, panel_area) = if show_panel {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(42), Constraint::Min(50)])
+            .constraints([Constraint::Length(PANEL_WIDTH), Constraint::Min(50)])
             .split(rows[1]);
         (cols[1], Some(cols[0]))
     } else {
         (rows[1], None)
     };
+    let inner_width = main_area.width.saturating_sub(2) as usize;
+    let (lines, sel_range) = Body::build(st, show_panel, inner_width);
 
     let buf = f.buffer_mut();
     header_bar(&st.detail, rows[0], buf);

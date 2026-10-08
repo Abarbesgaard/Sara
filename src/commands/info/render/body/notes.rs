@@ -7,24 +7,12 @@ use ratatui::{
 use crate::commands::shared::plural;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
-use super::super::lines::{collapsed_text, section};
+use super::super::lines::{collapsed_text, feedback_mark};
 use super::Body;
 use crate::commands::info::handler::notes_of_kind;
-use crate::commands::info::types::{EDIT_FIELDS, Focusable};
+use crate::commands::info::types::Focusable;
 
 impl Body<'_> {
-    pub(super) fn select_hint(&mut self) {
-        if self.items.len() > EDIT_FIELDS.len() {
-            self.lines.push(Line::from(""));
-            self.lines.push(Line::from(Span::styled(
-                "  ↑/↓ select · Enter open/toggle · c comment · r reconsider · x resolve",
-                Style::default()
-                    .fg(ink(Ink::Muted))
-                    .add_modifier(Modifier::ITALIC),
-            )));
-        }
-    }
-
     pub(super) fn typed_notes(&mut self) {
         let d = self.d;
         let st = self.st;
@@ -49,8 +37,7 @@ impl Body<'_> {
                 note_cursor += notes.len();
                 continue;
             }
-            self.lines.push(Line::from(""));
-            self.lines.push(section(label));
+            self.label(label);
             for n in &notes {
                 let note_idx = note_cursor;
                 note_cursor += 1;
@@ -124,18 +111,11 @@ impl Body<'_> {
                             .bg(row_bg),
                     ));
                 }
-                if !note_fb.is_empty() {
-                    spans.push(Span::styled(
-                        format!("  💬{}", note_fb.len()),
-                        Style::default().fg(ink(Ink::Accent)).bg(row_bg),
-                    ));
-                }
-                if note_fb.iter().any(|a| a.request_revision) {
-                    spans.push(Span::styled(
-                        " ⟳",
-                        Style::default().fg(ink(Ink::Warn)).bg(row_bg),
-                    ));
-                }
+                spans.extend(feedback_mark(
+                    note_fb.len(),
+                    note_fb.iter().any(|a| a.request_revision),
+                    row_bg,
+                ));
                 if is_sel {
                     self.sel_range = Some((self.lines.len(), self.lines.len()));
                 }
@@ -145,7 +125,7 @@ impl Body<'_> {
                     let date = a.entry.with_timezone(&Local).format("%H:%M");
                     let flag = if a.request_revision { " ⟳" } else { "" };
                     self.lines.push(Line::from(vec![
-                        Span::styled("      ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
+                        Span::styled("     ╰ ".to_string(), Style::default().fg(ink(Ink::Muted))),
                         Span::styled(
                             format!("{date}{flag}  "),
                             Style::default().fg(ink(Ink::Muted)),
@@ -164,14 +144,14 @@ impl Body<'_> {
                 .join(" · ");
             self.lines.push(Line::from(""));
             self.lines.push(Line::from(Span::styled(
-            format!(
-                "  {total} AI work note{} ({breakdown})  — the AI's execution workpaper, not usually needed for review  (n to view)",
-                plural(total)
-            ),
-            Style::default()
-                .fg(ink(Ink::Muted))
-                .add_modifier(Modifier::ITALIC),
-        )));
+                format!(
+                    "   ⋯ {total} AI work note{} hidden ({breakdown})  · n to view",
+                    plural(total)
+                ),
+                Style::default()
+                    .fg(ink(Ink::Muted))
+                    .add_modifier(Modifier::ITALIC),
+            )));
         }
     }
 }

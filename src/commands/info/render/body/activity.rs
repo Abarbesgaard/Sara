@@ -15,20 +15,23 @@ impl Body<'_> {
         if d.ai_runs.is_empty() {
             return;
         }
-        if !self.fold(SectionId::Ai, "AI activity", vec![]) {
+        if !self.fold(SectionId::Ai, "AI activity") {
             return;
         }
         for r in &d.ai_runs {
             let date = r.created_at.with_timezone(&Local).format("%Y-%m-%d %H:%M");
             let mut spans = vec![Span::styled(
+                format!("   ◇ {:<8}", r.kind),
+                Style::default().fg(ink(Ink::Text)),
+            )];
+            spans.push(Span::styled(
                 format!(
-                    "  {} via {} [{}] @ {date}",
-                    r.kind,
+                    "{} · {}  {date}",
                     r.model.as_deref().unwrap_or("?"),
                     r.provider.as_deref().unwrap_or("?"),
                 ),
                 Style::default().fg(ink(Ink::Muted)),
-            )];
+            ));
             if let Some(total) = run_tokens(r) {
                 let split = match (r.prompt_tokens, r.completion_tokens) {
                     (Some(p), Some(c)) => {
@@ -45,7 +48,7 @@ impl Body<'_> {
         }
         let total: i64 = d.ai_runs.iter().filter_map(run_tokens).sum();
         let runs = d.ai_runs.len();
-        let mut summary = format!("  {runs} run{}", if runs == 1 { "" } else { "s" });
+        let mut summary = format!("   Σ {runs} run{}", if runs == 1 { "" } else { "s" });
         if total > 0 {
             summary.push_str(&format!(" · {} tokens", thousands(total)));
         }
@@ -63,12 +66,15 @@ impl Body<'_> {
             const RELATED_SHOWN: usize = 3;
             let mut similar: Vec<&(i64, String, f64)> = d.similar.iter().collect();
             similar.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-            if !self.fold(SectionId::Related, "Related tasks (shared tags)", vec![]) {
+            if !self.fold(SectionId::Related, "Related tasks") {
                 return;
             }
             for (id, desc, urg) in similar.iter().take(RELATED_SHOWN) {
                 self.lines.push(Line::from(vec![
-                    Span::styled(format!("  #{id:<3} "), Style::default().fg(ink(Ink::Muted))),
+                    Span::styled(
+                        format!("   #{id:<4} "),
+                        Style::default().fg(ink(Ink::Muted)),
+                    ),
                     Span::raw(desc.clone()),
                     Span::styled(
                         format!("  urg {urg:.1}"),
@@ -78,7 +84,7 @@ impl Body<'_> {
             }
             if similar.len() > RELATED_SHOWN {
                 self.lines.push(Line::from(Span::styled(
-                    format!("  … {} more", similar.len() - RELATED_SHOWN),
+                    format!("   … {} more", similar.len() - RELATED_SHOWN),
                     Style::default()
                         .fg(ink(Ink::Muted))
                         .add_modifier(Modifier::ITALIC),
@@ -100,7 +106,7 @@ impl Body<'_> {
             .filter(|a| a.target_kind.as_deref() != Some("anchor"))
             .collect();
         if !unthreaded.is_empty() {
-            if !self.fold(SectionId::Feedback, "Feedback", vec![]) {
+            if !self.fold(SectionId::Feedback, "Feedback") {
                 return;
             }
             let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =

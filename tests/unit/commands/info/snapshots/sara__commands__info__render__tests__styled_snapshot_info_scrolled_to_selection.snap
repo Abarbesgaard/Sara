@@ -2,59 +2,61 @@
 source: tests/unit/commands/info/render.rs
 expression: out
 ---
- ○ pending  │  · never validated  │  ⎇ no branch  │  💬  1 open                        #6 · 00000000
-┌ Task tree  (d to expand) ──────────────┐┌ Task 6 ────────────────────────────────────────────────┐
-│ ← blocked by (1)                       ││   [ ] step number 12                                   │
-│  └─✓ 1 task 1                          ││   [ ] step number 13                                   │
-│────────────────────────────────────────││   [ ] step number 14                                   │
-│ ▶   6 root task                        ││   [ ] step number 15                                   │
-│────────────────────────────────────────││   [ ] step number 16                                   │
-│ blocks → (1)                           ││   [ ] step number 17                                   │
-│  └─○ 2 task 2                          ││   [ ] step number 18                                   │
-└────────────────────────────────────────┘│   [ ] step number 19                                   │
-┌ Git ───────────────────────────────────┐│   [ ] step number 20                                   │
-│  No branch tied.                       ││   [ ] step number 21                                   │
-│                                        ││   [ ] step number 22                                   │
-│  Run: sara <id> addbranch              ││   [ ] step number 23                                   │
-│                                        ││   [ ] step number 24                                   │
-│                                        ││ ▶ [ ] step number 25  💬 1                              │
-│                                        ││         why this step matters                          │
-│                                        ││         ╰ hh:mm  on step 26                            │
-└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
- ↑/↓ move • Enter edit/open/fold • c comment • a step • d tree • n notes • u urgency • v expand • ?
+ [○ PENDING]  [· NOT VALIDATED]  [⎇ NO BRANCH]  [! 1 FEEDBACK]                        #6 · 00000000
+┌ TASK TREE ─────────────────────────────┐╔ tk ════════════════════════════════════════════════════╗
+│ ← blocked by (1)                       │║   ○ step number 12                                     ║
+│  └─✓ 1 task 1                          │║   ○ step number 13                                     ║
+│────────────────────────────────────────│║   ○ step number 14                                     ║
+│ ▶   6 root task                        │║   ○ step number 15                                     ║
+│────────────────────────────────────────│║   ○ step number 16                                     ║
+│ blocks → (1)                           │║   ○ step number 17                                     ║
+│  └─○ 2 task 2                          │║   ○ step number 18                                     ║
+│                                        │║   ○ step number 19                                     ║
+│                                        │║   ○ step number 20                                     ║
+│                                        │║   ○ step number 21                                     ║
+│                                        │║   ○ step number 22                                     ║
+│                                        │║   ○ step number 23                                     ║
+│                                        │║   ○ step number 24                                     ║
+│                                        │║ ▶ ○ step number 25  ! 1                                ║
+│                                        │║     why this step matters                              ║
+│                                        │║     ╰ hh:mm  on step 26                                ║
+└────────────────────────────────────────┘╚════════════════════════════════════════════════════════╝
+ ␣ toggle   K/J reorder   c comment   j/k move   a add step   ? help   q close
 --- styles ---
-abbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccdedddddddaaaaaaaaaaaaaaaaaaaaaaaafffffffffffffa
-gggggggggggggggggggggggggggggggggggggggggghhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
-giiiiiiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkklllllllllleeeeeeeeeeeeeeeeeeeeeeeeeeghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gmmmmmmmmmmmmmmmmeeeeeeeeeeeeeeeeeeeeeeeeghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-giiiiiiiiiiiiieeeeeeeeeeeeeeeeeeeeeeeeeeeghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gkkkkhhhhhhhhhheeeeeeeeeeeeeeeeeeeeeeeeeeghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-gggggggggggggggggggggggggggggggggggggggggghjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkhjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-kkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-kjjjjjjjjjjjjjjjjjjjjjjjjjjeeeeeeeeeeeeeekhjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhjjjjjjjeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhnnnnnnnmmmmmmmmmmmmmmhhheheeeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeh
-keeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeekhkkkkkkkkkkkkkkkkkkkkkkkkkkkkeeeeeeeeeeeeeeeeeeeeeeeeeeeeh
-kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
-jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+abbbbbbbbbbbaacccccccccccccccccaacccccccccccccaaddddddddddddddaaaaaaaaaaaaaaaaaaaaaaaaeeeeeeeeeeeeea
+ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+fhhhhhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fllllmmmmmmmmmmiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fllllllllllllllllllllllllllllllllllllllllfgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fnnnnnnnnnnnnnnnniiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fllllllllllllllllllllllllllllllllllllllllfgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fhhhhhhhhhhhhhiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fllllggggggggggiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgjjjkkiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifgooooonnnnnnnnnnnnnnpppppiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifglllllllllllllllllllllllllliiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+fiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiifglllllllllllllllllllllllliiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiig
+ffffffffffffffffffffffffffffffffffffffffffgggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
+ipkkkkkkkiiipppkkkkkkkkiiipkkkkkkkkiiipppkkkkkiiipkkkkkkkkkiiipkkkkkiiipkkkkkkiiiiiiiiiiiiiiiiiiiiii
 --- legend ---
 a fg=Some(Reset) bg=Some(Rgb(28, 30, 44)) mod=NONE
 b fg=Some(White) bg=Some(Rgb(28, 30, 44)) mod=BOLD
 c fg=Some(DarkGray) bg=Some(Rgb(28, 30, 44)) mod=NONE
 d fg=Some(Cyan) bg=Some(Rgb(28, 30, 44)) mod=NONE
-e fg=Some(Reset) bg=Some(Reset) mod=NONE
-f fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
-g fg=Some(Magenta) bg=Some(Reset) mod=NONE
-h fg=Some(Cyan) bg=Some(Reset) mod=NONE
-i fg=Some(Gray) bg=Some(Reset) mod=BOLD
-j fg=Some(Gray) bg=Some(Reset) mod=NONE
-k fg=Some(DarkGray) bg=Some(Reset) mod=NONE
-l fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
-m fg=Some(White) bg=Some(Blue) mod=BOLD
-n fg=Some(White) bg=Some(Blue) mod=NONE
+e fg=Some(Gray) bg=Some(Rgb(28, 30, 44)) mod=NONE
+f fg=Some(Magenta) bg=Some(Reset) mod=NONE
+g fg=Some(Cyan) bg=Some(Reset) mod=NONE
+h fg=Some(Gray) bg=Some(Reset) mod=BOLD
+i fg=Some(Reset) bg=Some(Reset) mod=NONE
+j fg=Some(White) bg=Some(Reset) mod=NONE
+k fg=Some(Gray) bg=Some(Reset) mod=NONE
+l fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+m fg=Some(DarkGray) bg=Some(Reset) mod=CROSSED_OUT
+n fg=Some(White) bg=Some(Blue) mod=BOLD
+o fg=Some(White) bg=Some(Blue) mod=NONE
+p fg=Some(Cyan) bg=Some(Reset) mod=BOLD
