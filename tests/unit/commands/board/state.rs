@@ -107,3 +107,59 @@ fn imported_tracks_github_synced_tasks() {
     assert!(st.imported.contains(&synced.uuid.to_string()));
     assert!(!st.imported.contains(&plain.uuid.to_string()));
 }
+
+#[test]
+fn card_info_collects_guide_feedback_and_blockers() {
+    use super::super::types::Freshness;
+    let conn = db::open_in_memory_for_test();
+    let a = task(&conn, "a");
+    let blocker = task(&conn, "blocker");
+    db::add_step(
+        &conn,
+        &a.uuid,
+        "first",
+        None,
+        db::STEP_KIND_STEP,
+        "human",
+        None,
+    )
+    .unwrap();
+    db::add_step(
+        &conn,
+        &a.uuid,
+        "ok",
+        None,
+        db::STEP_KIND_ACCEPTANCE,
+        "human",
+        None,
+    )
+    .unwrap();
+    db::add_annotation_full(&conn, &a.uuid, "fix", "comment", "me", None, None, true).unwrap();
+    db::set_validated(&conn, &a.uuid, "abc").unwrap();
+    db::add_dependency(&conn, &a.uuid, &blocker.uuid).unwrap();
+
+    let st = build_state(&conn, "tk".to_string(), false, None).unwrap();
+    let card = &st.cards[&a.uuid.to_string()];
+
+    assert_eq!(card.freshness, Freshness::Valid);
+    assert_eq!((card.accept_done, card.accept_total), (0, 1));
+    assert_eq!(card.step.as_deref(), Some("first"));
+    assert_eq!((card.feedback, card.revise), (1, 1));
+    assert_eq!(card.blocked_by, vec![blocker.id.unwrap()]);
+    assert_eq!(
+        st.cards[&blocker.uuid.to_string()].freshness,
+        Freshness::Unvalidated
+    );
+}
+
+#[test]
+fn filter_and_preview_carry_over_across_a_reload() {
+    let conn = db::open_in_memory_for_test();
+    task(&conn, "a");
+    let mut st = build_state(&conn, "tk".to_string(), false, None).unwrap();
+    st.filter = "a".into();
+    st.preview = true;
+    let st = build_state(&conn, "tk".to_string(), false, Some(&st)).unwrap();
+    assert_eq!(st.filter, "a");
+    assert!(st.preview);
+}

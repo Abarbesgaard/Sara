@@ -1,0 +1,28 @@
+---
+source: tests/unit/commands/board/render.rs
+expression: "crate::test_support::render_to_string(130, 24, |f|\n{ render_with(f, &st, &lines, Some(&pane)) })"
+---
+[ Total: 4 | Active: 1 | Issues: 2 | Done: 0 ]                                                         [ Next: #1 wire the theme ]
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+
+Priority:
+High [███] 25%   Med [███] 25%   Low [███] 25%   None [███] 25%
+
+╭ tk ──────────────────────────────────────────────────────────────────╮╭ preview ───────────────────────────────────────────────╮
+│     ID  PRI AGE           DESCRIPTION                                ││wire the theme                                          │
+│▌▾        H  0m            #225 o/r  ▱▱▱▱▱▱▱▱▱▱ 0/2                   ││▌ CHECKLIST  1/2                                        │
+│▶ ├─  1   H  0m       PR   wire the theme                             ││                                                        │
+│ │                         ★ NEXT  ⚠ stale  ☐ 1/2  ! 1 feedback  ◷ due││                                                        │
+│  └─  2   M  0m            pin snapshots                              ││                                                        │
+│                           ✓ valid  ☐ 2/2  · no feedback  ⊘ blocked #1││                                                        │
+│▌▸        L  0m            #224 o/r  ▱▱▱▱▱▱▱▱▱▱ 0/1                   ││                                                        │
+│      4   -  0m            loose end                                  ││                                                        │
+│                           · unvalidated  ☐ no criteria  · no feedback││                                                        │
+│                                                                      ││                                                        │
+│                                                                      ││                                                        │
+│                                                                      ││                                                        │
+│                                                                      ││                                                        │
+│                                                                      ││                                                        │
+│                                                                      ││                                                        │
+╰──────────────────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ j/k move  ·  Enter open  ·  / filter  ·  p hide preview  ·  ? help  ·  q quit

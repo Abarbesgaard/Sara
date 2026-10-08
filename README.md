@@ -549,6 +549,33 @@ stable, omits the unbounded History log by default, and needs no reshaping.
 
 ---
 
+## The board (`sara board`)
+
+`sara board` groups the project's tasks under the GitHub issue they link to.
+Every task is a two-line card: the row (ID, priority, age, PR/issue badge,
+description), then a strip of state you can read at a glance:
+
+```
+▶ ├─  1   H  0m       PR   wire the theme
+  │                        ★ NEXT  ⚠ stale  ☐ 1/2  ! 1 feedback  ◷ due 3d  ⎇ feat/theme  ▸ Pin the palette
+```
+
+The strip always shows guide validation (`✓ valid` / `⚠ stale` /
+`· unvalidated`), acceptance criteria met (`☐ n/m`) and open feedback
+(`! n`, with `⟳ n revise` when a revision is requested). Blockers (`⊘ blocked
+#4`), the due date (`◷`), the tied branch (`⎇`) and the current step (`▸`)
+appear when present. `★` marks the most urgent pending task, the one the
+`Next:` label names. Issue headers carry a `▰▱` progress bar.
+
+| Key | Action |
+|-----|--------|
+| `/` | Filter by text, or `+tag` for an exact tag; terms are ANDed. `Enter` keeps the filter, `Esc` clears it |
+| `p` | Toggle a preview pane (terminals ≥ 110 columns) that shows the selected task with the `info` widgets |
+| `h` / `l` | Collapse / expand an issue |
+| `Enter` | Open the task in `sara info` |
+
+---
+
 ## Following agents live (`sara follow`)
 
 `sara follow` is a live, read-only view of agents working through tasks. It

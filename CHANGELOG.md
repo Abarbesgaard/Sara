@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- `sara board` cards: every task now shows a second line with guide validation,
+  acceptance progress and open feedback, plus blockers, due date, branch and
+  current step when present.
+- `sara board` marks the most urgent pending task with `★ NEXT`.
+- `sara board` filter: `/` filters by text or `+tag`.
+- `sara board` preview: `p` toggles a preview pane that reuses the `info` widgets.
+
+### Changed
+
+- `sara board` issue headers use a `▰▱` progress bar and the footer lists the
+  keys for the selected row.
+- Help overlays grow to fit their bindings on short terminals.
+
 ## [2.4.0] - 2026-10-08
 
 ### Added

@@ -16,6 +16,7 @@ use crate::infrastructure::model::{Priority, Status, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
+use super::types::{CardInfo, Freshness};
 use super::{BoardAction, BoardState, IssueNode};
 use crate::commands::shared::truncate;
 
@@ -28,39 +29,108 @@ pub(super) enum Row {
     Standalone(usize),
 }
 
-pub(super) fn visible_rows(st: &BoardState) -> Vec<Row> {
-    let mut rows = Vec::new();
-    for (gi, issue) in st.issues.iter().enumerate() {
-        rows.push(Row::Issue(gi));
-        if issue.expanded {
-            for ti in 0..issue.tasks.len() {
-                rows.push(Row::Task(gi, ti));
+pub(super) fn matches_filter(task: &Task, filter: &str) -> bool {
+    let desc = task.description.to_lowercase();
+    filter.split_whitespace().all(|term| {
+        let term = term.to_lowercase();
+        match term.strip_prefix('+') {
+            Some(tag) => task.tags.iter().any(|t| t.to_lowercase() == tag),
+            None => {
+                desc.contains(&term) || task.tags.iter().any(|t| t.to_lowercase().contains(&term))
             }
         }
+    })
+}
+
+pub(super) fn visible_rows(st: &BoardState) -> Vec<Row> {
+    let filtering = !st.filter.trim().is_empty();
+    let mut rows = Vec::new();
+    for (gi, issue) in st.issues.iter().enumerate() {
+        let hits: Vec<usize> = (0..issue.tasks.len())
+            .filter(|&ti| !filtering || matches_filter(&issue.tasks[ti], &st.filter))
+            .collect();
+        if filtering && hits.is_empty() {
+            continue;
+        }
+        rows.push(Row::Issue(gi));
+        if issue.expanded || filtering {
+            rows.extend(hits.into_iter().map(|ti| Row::Task(gi, ti)));
+        }
     }
-    for si in 0..st.standalone.len() {
-        rows.push(Row::Standalone(si));
+    for (si, t) in st.standalone.iter().enumerate() {
+        if !filtering || matches_filter(t, &st.filter) {
+            rows.push(Row::Standalone(si));
+        }
     }
     rows
 }
 
+pub(super) fn next_pick(st: &BoardState) -> Option<&Task> {
+    st.issues
+        .iter()
+        .flat_map(|i| &i.tasks)
+        .chain(st.standalone.iter())
+        .filter(|t| t.status == Status::Pending)
+        .max_by(|a, b| {
+            a.urgency
+                .partial_cmp(&b.urgency)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn selected_uuid(st: &BoardState, rows: &[Row]) -> Option<String> {
+    match rows.get(st.selected).copied()? {
+        Row::Task(gi, ti) => Some(st.issues[gi].tasks[ti].uuid.to_string()),
+        Row::Standalone(si) => Some(st.standalone[si].uuid.to_string()),
+        Row::Issue(_) => None,
+    }
+}
+
+pub(super) const PREVIEW_MIN_WIDTH: u16 = 110;
+
+pub(super) fn preview_width(total: u16) -> Option<u16> {
+    (total >= PREVIEW_MIN_WIDTH).then(|| (total * 45 / 100).saturating_sub(2))
+}
+
+pub(super) type PreviewLoader<'a> = dyn FnMut(&str, u16) -> Vec<Line<'static>> + 'a;
+
 pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
     terminal: &mut Terminal<B>,
     st: &mut BoardState,
+    load_preview: &mut PreviewLoader,
 ) -> Result<BoardAction> {
     let mut dispatcher = KeyDispatcher::new();
     let mut showing_help = false;
+    let mut cache: std::collections::HashMap<(String, u16), Vec<Line<'static>>> =
+        std::collections::HashMap::new();
     loop {
         let size = terminal.size()?;
         let viewport = size.height.saturating_sub(FIXED_OVERHEAD);
         let rows = visible_rows(st);
         let (lines, row_line) = build_lines(st, &rows);
         if let Some(&line) = row_line.get(st.selected) {
+            let tail = if matches!(rows.get(st.selected), Some(Row::Issue(_))) {
+                line
+            } else {
+                line + 1
+            };
+            crate::infrastructure::tui::scroll_into_view(&mut st.scroll, tail, viewport);
             crate::infrastructure::tui::scroll_into_view(&mut st.scroll, line, viewport);
         }
 
+        let pane = match (st.preview, preview_width(size.width)) {
+            (true, Some(w)) => Some(match selected_uuid(st, &rows) {
+                Some(uuid) => cache
+                    .entry((uuid.clone(), w))
+                    .or_insert_with(|| load_preview(&uuid, w))
+                    .clone(),
+                None => vec![],
+            }),
+            _ => None,
+        };
+
         terminal.draw(|f| {
-            render(f, st, &lines);
+            render_with(f, st, &lines, pane.as_deref());
             if showing_help {
                 tui::render_help_overlay(f, "Board", &help_bindings());
             }
@@ -72,6 +142,31 @@ pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
 
         if showing_help {
             showing_help = false;
+            continue;
+        }
+
+        if st.filtering {
+            match key.code {
+                KeyCode::Esc => {
+                    st.filter.clear();
+                    st.filtering = false;
+                }
+                KeyCode::Enter => st.filtering = false,
+                KeyCode::Backspace => {
+                    st.filter.pop();
+                }
+                KeyCode::Char(c) => st.filter.push(c),
+                _ => {}
+            }
+            st.selected = 0;
+            st.scroll = 0;
+            continue;
+        }
+
+        if key.code == KeyCode::Esc && !st.filter.is_empty() {
+            st.filter.clear();
+            st.selected = 0;
+            st.scroll = 0;
             continue;
         }
 
@@ -138,6 +233,12 @@ pub(super) fn board_loop<B: Backend<Error: Send + Sync + 'static>>(
             Action::Raw(k) if k.code == KeyCode::Char('?') => {
                 showing_help = true;
             }
+            Action::Raw(k) if k.code == KeyCode::Char('/') => {
+                st.filtering = true;
+            }
+            Action::Raw(k) if k.code == KeyCode::Char('p') => {
+                st.preview = !st.preview;
+            }
             _ => {}
         }
     }
@@ -152,6 +253,8 @@ fn help_bindings() -> Vec<(&'static str, &'static str)> {
         ("o / Space / Enter", "expand / collapse an issue"),
         ("l / →", "expand an issue"),
         ("h / ←", "collapse an issue (or its parent)"),
+        ("/", "filter by text or +tag (Esc clears)"),
+        ("p", "toggle the task preview pane"),
         CONFIRM,
         QUIT,
         HELP,
@@ -159,7 +262,8 @@ fn help_bindings() -> Vec<(&'static str, &'static str)> {
 }
 
 fn build_lines(st: &BoardState, rows: &[Row]) -> (Vec<Line<'static>>, Vec<u16>) {
-    let mut lines: Vec<Line> = Vec::with_capacity(rows.len());
+    let next = next_pick(st).map(|t| t.uuid);
+    let mut lines: Vec<Line> = Vec::with_capacity(rows.len() * 2);
     let mut row_line: Vec<u16> = vec![0; rows.len()];
 
     for (i, row) in rows.iter().enumerate() {
@@ -170,25 +274,135 @@ fn build_lines(st: &BoardState, rows: &[Row]) -> (Vec<Line<'static>>, Vec<u16>) 
             Row::Task(gi, ti) => {
                 let issue = &st.issues[gi];
                 let task = &issue.tasks[ti];
-                let connector = if ti + 1 == issue.tasks.len() {
-                    "└─"
-                } else {
-                    "├─"
-                };
+                let last = !matches!(rows.get(i + 1), Some(Row::Task(g, _)) if *g == gi);
+                let connector = if last { "└─" } else { "├─" };
                 lines.push(task_line_for(
                     task,
                     is_sel,
                     Some(connector),
                     badge_for(st, task),
+                    next == Some(task.uuid),
                 ));
+                lines.push(card_strip(st, task, is_sel, Some(!last)));
             }
             Row::Standalone(si) => {
                 let task = &st.standalone[si];
-                lines.push(task_line_for(task, is_sel, None, badge_for(st, task)));
+                lines.push(task_line_for(
+                    task,
+                    is_sel,
+                    None,
+                    badge_for(st, task),
+                    next == Some(task.uuid),
+                ));
+                lines.push(card_strip(st, task, is_sel, None));
             }
         }
     }
     (lines, row_line)
+}
+
+const STRIP_INDENT: usize = 1 + TREE_W + ID_W + 2 + PRI_W + 1 + AGE_W + 2 + BADGE_W;
+
+pub(super) fn card_strip(
+    st: &BoardState,
+    task: &Task,
+    is_sel: bool,
+    rail: Option<bool>,
+) -> Line<'static> {
+    let card = st
+        .cards
+        .get(&task.uuid.to_string())
+        .cloned()
+        .unwrap_or_default();
+    let bg = if is_sel {
+        ink(Ink::Select)
+    } else {
+        ink(Ink::Plain)
+    };
+    let done = task.status == Status::Completed;
+    let tone = |role: Ink| {
+        let fg = if done { ink(Ink::Muted) } else { ink(role) };
+        Style::default().fg(fg).bg(bg)
+    };
+    let lead = match rail {
+        Some(true) => format!(" │{}", " ".repeat(STRIP_INDENT - 2)),
+        _ => " ".repeat(STRIP_INDENT),
+    };
+    let mut spans = vec![Span::styled(lead, tone(Ink::Muted))];
+    let mut push = |text: String, style: Style| {
+        if spans.len() > 1 {
+            spans.push(Span::styled("  ", Style::default().bg(bg)));
+        }
+        spans.push(Span::styled(text, style));
+    };
+    if next_pick(st).is_some_and(|n| n.uuid == task.uuid) {
+        push(
+            "★\u{a0}NEXT".to_string(),
+            tone(Ink::Accent).add_modifier(Modifier::BOLD),
+        );
+    }
+    for (text, style) in strip_badges(task, &card, done) {
+        push(text, tone(style));
+    }
+    Line::from(spans)
+}
+
+pub(super) fn strip_badges(task: &Task, card: &CardInfo, done: bool) -> Vec<(String, Ink)> {
+    let mut out = vec![match card.freshness {
+        Freshness::Valid => ("✓\u{a0}valid".to_string(), Ink::Ok),
+        Freshness::Stale => ("⚠\u{a0}stale".to_string(), Ink::Warn),
+        Freshness::Unvalidated => ("·\u{a0}unvalidated".to_string(), Ink::Muted),
+    }];
+    out.push(if card.accept_total == 0 {
+        ("☐\u{a0}no\u{a0}criteria".to_string(), Ink::Muted)
+    } else {
+        let role = if card.accept_done == card.accept_total {
+            Ink::Ok
+        } else {
+            Ink::Soft
+        };
+        (
+            format!("☐\u{a0}{}/{}", card.accept_done, card.accept_total),
+            role,
+        )
+    });
+    out.push(match (card.feedback, card.revise) {
+        (0, _) => ("·\u{a0}no\u{a0}feedback".to_string(), Ink::Muted),
+        (n, 0) => (format!("!\u{a0}{n}\u{a0}feedback"), Ink::Accent),
+        (n, r) => (format!("!\u{a0}{n}\u{a0}⟳\u{a0}{r}\u{a0}revise"), Ink::Warn),
+    });
+    if !card.blocked_by.is_empty() {
+        let ids: Vec<String> = card.blocked_by.iter().map(|i| format!("#{i}")).collect();
+        out.push((format!("⊘\u{a0}blocked\u{a0}{}", ids.join(" ")), Ink::Err));
+    }
+    if !done && let Some(due) = task.due {
+        out.push(due_badge(due));
+    }
+    if let Some(b) = &card.branch {
+        out.push((format!("⎇\u{a0}{}", truncate(b, 28)), Ink::Info));
+    }
+    if !done && let Some(step) = &card.step {
+        out.push((format!("▸\u{a0}{}", truncate(step, 40)), Ink::Soft));
+    }
+    out
+}
+
+fn due_badge(due: DateTime<Utc>) -> (String, Ink) {
+    let secs = (due - Utc::now()).num_seconds();
+    let days = secs.abs() / 86400;
+    let hours = secs.abs() / 3600;
+    let span = if days >= 1 {
+        format!("{days}d")
+    } else {
+        format!("{hours}h")
+    };
+    if secs < 0 {
+        (format!("◷\u{a0}overdue\u{a0}{span}"), Ink::Err)
+    } else if secs < 2 * 86400 {
+        (format!("◷\u{a0}due\u{a0}{span}"), Ink::Warn)
+    } else {
+        (format!("◷\u{a0}due\u{a0}{span}"), Ink::Soft)
+    }
 }
 
 fn badge_for(st: &BoardState, task: &Task) -> Span<'static> {
@@ -350,7 +564,6 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
         ),
         None => format!("#{} {}", issue.number, issue.owner_repo),
     };
-    let count_str = format!("  [{done}/{total} done]");
 
     let meta = if is_sel {
         Style::default().fg(ink(Ink::Text)).bg(bg)
@@ -358,8 +571,8 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
         Style::default().fg(ink(Ink::Muted)).bg(bg)
     };
 
-    Line::from(vec![
-        Span::styled(if is_sel { "▶" } else { " " }, meta),
+    let mut spans = vec![
+        Span::styled(if is_sel { "▶" } else { "▌" }, meta.fg(ink(Ink::Accent))),
         Span::styled(format!("{expand_icon:<w$}", w = TREE_W), meta),
         Span::styled(" ".repeat(ID_W), meta),
         Span::styled("  ", meta),
@@ -375,8 +588,15 @@ fn issue_header(issue: &IssueNode, is_sel: bool) -> Line<'static> {
                 .bg(bg)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(count_str, meta),
-    ])
+        Span::styled("  ", meta),
+    ];
+    spans.extend(
+        tui::screen::bar(done, total, 10)
+            .into_iter()
+            .map(|sp| sp.patch_style(Style::default().bg(bg))),
+    );
+    spans.push(Span::styled(format!(" {done}/{total}"), meta));
+    Line::from(spans)
 }
 
 fn task_line_for(
@@ -384,6 +604,7 @@ fn task_line_for(
     is_sel: bool,
     connector: Option<&'static str>,
     badge_span: Span<'static>,
+    is_next: bool,
 ) -> Line<'static> {
     let bg = if is_sel {
         ink(Ink::Select)
@@ -435,7 +656,7 @@ fn task_line_for(
             Style::default().bg(bg),
         )
     };
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(format!("{sel_ch}{tree}"), meta_s),
         Span::styled(format!("{id_str}  "), id_s),
         priority_chip(task.priority.as_ref(), is_sel, bg),
@@ -444,6 +665,15 @@ fn task_line_for(
         badge_span,
         Span::styled(task.description.clone(), desc_s),
     ];
+    if is_next && !is_sel {
+        spans[0] = Span::styled(
+            format!("★{tree}"),
+            Style::default()
+                .fg(ink(Ink::Accent))
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
+        );
+    }
     Line::from(spans)
 }
 
@@ -457,18 +687,7 @@ fn active_count(st: &BoardState) -> usize {
 }
 
 fn next_task_label(st: &BoardState) -> String {
-    let next = st
-        .issues
-        .iter()
-        .flat_map(|i| &i.tasks)
-        .chain(st.standalone.iter())
-        .filter(|t| t.status == Status::Pending)
-        .max_by(|a, b| {
-            a.urgency
-                .partial_cmp(&b.urgency)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-    match next {
+    match next_pick(st) {
         Some(t) => {
             let id = t.id.map(|i| format!("#{i} ")).unwrap_or_default();
             format!("{}{}", id, truncate(&t.description, 24))
@@ -628,6 +847,10 @@ fn render_priority_legend(f: &mut Frame, st: &BoardState, area: Rect) {
 pub(super) const MIN_SIZE: (u16, u16) = (60, 12);
 
 fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
+    render_with(f, st, lines, None);
+}
+
+fn render_with(f: &mut Frame, st: &BoardState, lines: &[Line], pane: Option<&[Line<'static>]>) {
     if crate::infrastructure::tui::screen::too_small(f, MIN_SIZE.0, MIN_SIZE.1) {
         return;
     }
@@ -650,8 +873,21 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
     render_progress_bar(f, st, chunks[1]);
     render_priority_legend(f, st, chunks[3]);
 
-    let box_area = chunks[5];
-    let title = format!(" {} ", st.project);
+    let (box_area, pane_area) = match (pane, preview_width(area.width)) {
+        (Some(_), Some(w)) => {
+            let split = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Min(0), Constraint::Length(w + 2)])
+                .split(chunks[5]);
+            (split[0], Some(split[1]))
+        }
+        _ => (chunks[5], None),
+    };
+
+    let mut title = format!(" {} ", st.project);
+    if !st.filter.is_empty() && !st.filtering {
+        title.push_str(&format!("· / {} ", st.filter));
+    }
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -671,55 +907,110 @@ fn render(f: &mut Frame, st: &BoardState, lines: &[Line]) {
         .split(inner);
 
     f.render_widget(Paragraph::new(col_header_line()), inner_chunks[0]);
-    f.render_widget(
-        Paragraph::new(lines.to_vec()).scroll((st.scroll, 0)),
-        inner_chunks[1],
-    );
+    if lines.is_empty() && !st.filter.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!("  no tasks match “{}”", st.filter),
+                Style::default().fg(ink(Ink::Muted)),
+            ))),
+            inner_chunks[1],
+        );
+    } else {
+        f.render_widget(
+            Paragraph::new(lines.to_vec()).scroll((st.scroll, 0)),
+            inner_chunks[1],
+        );
+    }
 
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
+    if let (Some(area), Some(body)) = (pane_area, pane) {
+        render_preview(f, area, body);
+    }
+
+    f.render_widget(Paragraph::new(footer_line(st)), chunks[6]);
+}
+
+fn render_preview(f: &mut Frame, area: Rect, body: &[Line<'static>]) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(ink(Ink::Muted)))
+        .title(Span::styled(
+            " preview ",
+            Style::default()
+                .fg(ink(Ink::Accent))
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if body.is_empty() {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                " select a task to preview it",
+                Style::default().fg(ink(Ink::Muted)),
+            ))),
+            inner,
+        );
+    } else {
+        f.render_widget(Paragraph::new(body.to_vec()), inner);
+    }
+}
+
+fn footer_line(st: &BoardState) -> Line<'static> {
+    let key = Style::default()
+        .fg(ink(Ink::Text))
+        .add_modifier(Modifier::BOLD);
+    let label = Style::default().fg(ink(Ink::Muted));
+    if st.filtering {
+        return Line::from(vec![
             Span::styled(
-                " j/k",
+                " / ",
                 Style::default()
-                    .fg(ink(Ink::Text))
+                    .fg(ink(Ink::Accent))
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Select", Style::default().fg(ink(Ink::Muted))),
-            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
-            Span::styled(
-                "h/l",
-                Style::default()
-                    .fg(ink(Ink::Text))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Collapse/Expand", Style::default().fg(ink(Ink::Muted))),
-            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
-            Span::styled(
-                "Enter",
-                Style::default()
-                    .fg(ink(Ink::Text))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Open", Style::default().fg(ink(Ink::Muted))),
-            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
-            Span::styled(
-                "?",
-                Style::default()
-                    .fg(ink(Ink::Text))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Help", Style::default().fg(ink(Ink::Muted))),
-            Span::styled("  |  ", Style::default().fg(ink(Ink::Muted))),
-            Span::styled(
-                "q",
-                Style::default()
-                    .fg(ink(Ink::Text))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Quit", Style::default().fg(ink(Ink::Muted))),
-        ])),
-        chunks[6],
-    );
+            Span::styled(st.filter.clone(), key),
+            Span::styled("▏", Style::default().fg(ink(Ink::Accent))),
+            Span::styled("   Enter", key),
+            Span::styled(" keep", label),
+            Span::styled("  ·  ", label),
+            Span::styled("Esc", key),
+            Span::styled(" clear", label),
+            Span::styled("  ·  ", label),
+            Span::styled("+tag", key),
+            Span::styled(" match a tag", label),
+        ]);
+    }
+    let rows = visible_rows(st);
+    let on_issue = matches!(rows.get(st.selected), Some(Row::Issue(_)));
+    let mut pairs: Vec<(&str, &str)> = vec![("j/k", "move")];
+    if on_issue {
+        pairs.push(("h/l", "fold"));
+    } else {
+        pairs.push(("Enter", "open"));
+    }
+    pairs.push(("/", "filter"));
+    if !st.filter.is_empty() {
+        pairs.push(("Esc", "clear filter"));
+    }
+    pairs.push((
+        "p",
+        if st.preview {
+            "hide preview"
+        } else {
+            "preview"
+        },
+    ));
+    pairs.push(("?", "help"));
+    pairs.push(("q", "quit"));
+    let mut spans = vec![Span::raw(" ")];
+    for (i, (k, l)) in pairs.into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ·  ", label));
+        }
+        spans.push(Span::styled(k.to_string(), key));
+        spans.push(Span::styled(format!(" {l}"), label));
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]

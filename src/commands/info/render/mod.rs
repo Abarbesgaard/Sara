@@ -16,6 +16,10 @@ use body::{Body, body_pane};
 use header::header_bar;
 use panels::{add_step_box, comment_box, edit_box, footer, history_pane, side_panel};
 
+pub(super) fn preview(st: &EditState, width: usize) -> Vec<ratatui::text::Line<'static>> {
+    Body::build(st, false, width).0
+}
+
 pub(super) const MIN_SIZE: (u16, u16) = (60, 16);
 
 pub(super) const PANEL_MIN_WIDTH: u16 = 96;
