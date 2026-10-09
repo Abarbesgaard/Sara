@@ -464,3 +464,128 @@ fn get_blockers_only_counts_pending_blockers() {
         "the dependency row still exists, so `get_blocking` still lists the dependent"
     );
 }
+
+fn set_completed(conn: &Connection, task: &mut Task) {
+    task.status = Status::Completed;
+    update_task(conn, task).unwrap();
+}
+
+#[test]
+fn find_by_uuid_fragment_matches_substring_across_statuses_pending_first() {
+    let conn = mem();
+    let pending = task_with_uuid(&conn, "11110000-7777-0000-0000-00000000000a", "pending one");
+    let mut completed = task_with_uuid(&conn, "22227777-0000-0000-0000-00000000000b", "done one");
+    set_completed(&conn, &mut completed);
+
+    let hits = find_tasks_by_uuid_fragment(&conn, "7777", None, FindStatus::All, 20).unwrap();
+    let uuids: Vec<_> = hits.iter().map(|t| t.uuid).collect();
+    assert_eq!(
+        uuids,
+        vec![pending.uuid, completed.uuid],
+        "both statuses match '7777', pending listed first"
+    );
+}
+
+#[test]
+fn find_by_uuid_fragment_matches_across_a_hyphen_boundary() {
+    let conn = mem();
+    let t = task_with_uuid(&conn, "895670a1-8b41-4a23-81e1-3e74469ed3d6", "boundary");
+
+    // "a18b41" spans the '895670a1-8b41' hyphen; the stored uuid never contains it literally.
+    let hits = find_tasks_by_uuid_fragment(&conn, "a18b41", None, FindStatus::All, 20).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].uuid, t.uuid);
+}
+
+#[test]
+fn find_by_uuid_fragment_is_hyphen_agnostic_in_the_query() {
+    let conn = mem();
+    let t = task_with_uuid(&conn, "4c449b0e-0000-0000-0000-00000000000a", "dashed");
+
+    let a = find_tasks_by_uuid_fragment(&conn, "4c44-9b0e", None, FindStatus::All, 20).unwrap();
+    let b = find_tasks_by_uuid_fragment(&conn, "4c449b0e", None, FindStatus::All, 20).unwrap();
+    assert_eq!(a.len(), 1);
+    assert_eq!(b.len(), 1);
+    assert_eq!(a[0].uuid, t.uuid);
+    assert_eq!(b[0].uuid, t.uuid);
+}
+
+#[test]
+fn find_by_uuid_fragment_treats_like_wildcards_literally() {
+    let conn = mem();
+    task_with_uuid(
+        &conn,
+        "89996000-0000-0000-0000-00000000000a",
+        "has 8999 and 6000",
+    );
+
+    // '%' and '_' must be literal, not SQL wildcards.
+    assert!(
+        find_tasks_by_uuid_fragment(&conn, "89%0", None, FindStatus::All, 20)
+            .unwrap()
+            .is_empty(),
+        "'%' is a literal character, not a wildcard"
+    );
+    assert!(
+        find_tasks_by_uuid_fragment(&conn, "89_6", None, FindStatus::All, 20)
+            .unwrap()
+            .is_empty(),
+        "'_' is a literal character, not a single-char wildcard"
+    );
+}
+
+#[test]
+fn find_by_uuid_fragment_rejects_short_fragments() {
+    let conn = mem();
+    let err = find_tasks_by_uuid_fragment(&conn, "89", None, FindStatus::All, 20)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("too short"), "{err}");
+
+    // Hyphens don't count toward the minimum length.
+    assert!(
+        find_tasks_by_uuid_fragment(&conn, "8-9-a", None, FindStatus::All, 20).is_err(),
+        "'8-9-a' is only 3 hex chars after stripping hyphens"
+    );
+}
+
+#[test]
+fn find_by_uuid_fragment_filters_status_and_project() {
+    let conn = mem();
+    let mut a = Task::new("pending in alpha".into(), "alpha".into());
+    a.uuid = uuid::Uuid::parse_str("abcd0000-0000-0000-0000-00000000000a").unwrap();
+    insert_task(&conn, &mut a).unwrap();
+    let mut b = Task::new("done in beta".into(), "beta".into());
+    b.uuid = uuid::Uuid::parse_str("abcd1111-0000-0000-0000-00000000000b").unwrap();
+    insert_task(&conn, &mut b).unwrap();
+    set_completed(&conn, &mut b);
+
+    let pending_only =
+        find_tasks_by_uuid_fragment(&conn, "abcd", None, FindStatus::Pending, 20).unwrap();
+    assert_eq!(pending_only.len(), 1);
+    assert_eq!(pending_only[0].uuid, a.uuid);
+
+    let completed_only =
+        find_tasks_by_uuid_fragment(&conn, "abcd", None, FindStatus::Completed, 20).unwrap();
+    assert_eq!(completed_only.len(), 1);
+    assert_eq!(completed_only[0].uuid, b.uuid);
+
+    let beta_scope =
+        find_tasks_by_uuid_fragment(&conn, "abcd", Some("beta"), FindStatus::All, 20).unwrap();
+    assert_eq!(beta_scope.len(), 1);
+    assert_eq!(beta_scope[0].uuid, b.uuid);
+}
+
+#[test]
+fn find_by_uuid_fragment_honours_the_limit() {
+    let conn = mem();
+    for i in 0..5 {
+        task_with_uuid(
+            &conn,
+            &format!("dddd000{i}-0000-0000-0000-00000000000a"),
+            &format!("task {i}"),
+        );
+    }
+    let hits = find_tasks_by_uuid_fragment(&conn, "dddd", None, FindStatus::All, 3).unwrap();
+    assert_eq!(hits.len(), 3, "limit caps the result set");
+}

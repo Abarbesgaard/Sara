@@ -23,6 +23,26 @@ impl SaraServer {
     }
 
     #[tool(
+        description = "Search tasks by a partial uuid and return every match (not a single task). Case-insensitive SUBSTRING match on the uuid, hyphens optional — '4c449b0e' matches '…-4c44-9b0e-…'. `%`, `_` and `\\` are literal. `fragment` must be >= 4 chars after hyphens are stripped, else an error. Searches `all` statuses by default (`status`: pending|completed|all; deleted never returned), scoped to the project at `project_path` unless `all: true`. Sorted pending-first then most recently modified, capped at `limit` (default 20). Returns `{matches: [{uuid, id, project, status, description}]}`. Read-only: it never resolves to one task, so no mutation can target it — use it to look up a task you only hold a uuid fragment for.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn find(&self, Parameters(p): Parameters<FindParams>) -> Result<String, String> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp find", |conn, cfg| {
+                commands::find::find_value(
+                    conn,
+                    cfg,
+                    &p.fragment,
+                    p.status.as_deref(),
+                    p.all.unwrap_or(false),
+                    p.limit.unwrap_or(commands::find::DEFAULT_LIMIT),
+                )
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
         description = "Full task guide as JSON: description, steps, acceptance criteria, notes, links, freshness and open feedback. Includes a `similar_work` array when Strong memories (strength >= 2.0) match the task's description or tags; read it before starting.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]

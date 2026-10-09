@@ -203,6 +203,24 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             commands::list::run(&conn, &cfg, all, project.as_deref(), json, by_issue)?;
         }
 
+        Command::Find {
+            fragment,
+            status,
+            all,
+            limit,
+            json,
+        } => {
+            commands::find::run(
+                &conn,
+                &cfg,
+                &fragment,
+                status.as_deref(),
+                all,
+                limit.unwrap_or(commands::find::DEFAULT_LIMIT),
+                json,
+            )?;
+        }
+
         Command::Done { id, force, used } => {
             commands::done::run(&conn, &cfg, &id, force, &used)?;
         }

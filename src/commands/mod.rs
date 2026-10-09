@@ -12,6 +12,7 @@ pub mod doing;
 pub mod done;
 pub mod dream;
 pub mod export;
+pub mod find;
 pub mod follow;
 pub mod forget;
 pub mod guide;

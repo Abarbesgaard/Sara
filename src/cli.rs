@@ -177,6 +177,23 @@ pub enum Command {
         by_issue: bool,
     },
 
+    /// Search tasks by a partial uuid (case-insensitive substring, hyphens optional).
+    Find {
+        /// uuid fragment to search for; at least 4 characters (hyphens don't count).
+        fragment: String,
+        /// Status scope: pending, completed or all (default all).
+        #[arg(long)]
+        status: Option<String>,
+        /// Search every project, not just the current one.
+        #[arg(short, long)]
+        all: bool,
+        /// Maximum matches to return (default 20).
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+
     Done {
         #[arg(add = ArgValueCandidates::new(task_ids))]
         id: String,

@@ -118,6 +118,26 @@ pub(crate) struct ListParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct FindParams {
+    #[schemars(
+        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
+    )]
+    pub(crate) project_path: Option<String>,
+    #[schemars(
+        description = "uuid fragment to search for. Case-insensitive SUBSTRING match, not a prefix; hyphens are optional, so '4c449b0e' matches '…-4c44-9b0e-…'. '%', '_' and '\\' are matched literally. Must be at least 4 characters once hyphens are removed."
+    )]
+    pub(crate) fragment: String,
+    #[schemars(
+        description = "Status scope: 'pending', 'completed' or 'all' (default 'all'). Deleted tasks are never returned."
+    )]
+    pub(crate) status: Option<String>,
+    #[schemars(description = "Search every project instead of only the one at project_path.")]
+    pub(crate) all: Option<bool>,
+    #[schemars(description = "Maximum matches to return (default 20).")]
+    pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct IdParams {
     #[schemars(
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
