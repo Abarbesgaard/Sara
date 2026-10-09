@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-10-09
+
 ### Added
+- Partial-uuid task search (#223): `sara find <fragment>` and the MCP
+  `find` tool return every task whose uuid contains the fragment
+  (case-insensitive, hyphens optional), across all statuses, pending
+  first then most-recently modified. Read-only; `resolve` stays strict.
 - Review form Phase 4 (#228): `sara add` and `sara modify` use a stepped
   form (Task · Guide · Relations) with a focus marker, inline validation,
   a contextual footer and `Ctrl+S` from any field (jumping to the first
