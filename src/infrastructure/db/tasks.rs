@@ -224,6 +224,81 @@ pub(crate) fn like_prefix_pattern(prefix: &str) -> String {
     format!("{escaped}%")
 }
 
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+/// Minimum fragment length (hyphen-free hex chars) accepted by `find`, so a
+/// trivially short fragment cannot match nearly every task.
+pub const MIN_UUID_FRAGMENT_LEN: usize = 4;
+
+/// Status scope for [`find_tasks_by_uuid_fragment`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindStatus {
+    Pending,
+    Completed,
+    /// Pending and completed (never deleted).
+    All,
+}
+
+/// Search tasks whose uuid *contains* `fragment` as a substring, hyphens
+/// optional: both the fragment and each stored uuid are lowercased and have
+/// their hyphens stripped before matching, so `4c449b0e` matches
+/// `…-4c44-9b0e-…`. LIKE wildcards (`%`, `_`, `\`) in the fragment are escaped
+/// and matched literally. Results are sorted pending-first then most recently
+/// modified, capped at `limit`.
+///
+/// Returns `Err` if `fragment` (after stripping hyphens) is shorter than
+/// [`MIN_UUID_FRAGMENT_LEN`]. A read-only search: unlike [`resolve_task`] it
+/// never resolves to a single task, so it cannot target a mutation.
+pub fn find_tasks_by_uuid_fragment(
+    conn: &Connection,
+    fragment: &str,
+    project: Option<&str>,
+    status: FindStatus,
+    limit: usize,
+) -> Result<Vec<Task>> {
+    let normalized: String = fragment
+        .chars()
+        .filter(|c| *c != '-')
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    if normalized.len() < MIN_UUID_FRAGMENT_LEN {
+        return Err(anyhow::anyhow!(
+            "uuid fragment '{fragment}' is too short — give at least {MIN_UUID_FRAGMENT_LEN} characters (hyphens don't count)"
+        ));
+    }
+    let pattern = format!("%{}%", like_escape(&normalized));
+
+    let status_clause = match status {
+        FindStatus::Pending => " AND status='pending'",
+        FindStatus::Completed => " AND status='completed'",
+        FindStatus::All => " AND status IN ('pending','completed')",
+    };
+    let project_clause = if project.is_some() {
+        " AND project=?2"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT {TASK_COLUMNS} FROM tasks
+         WHERE REPLACE(LOWER(uuid),'-','') LIKE ?1 ESCAPE '\\'{status_clause}{project_clause}
+         ORDER BY status='pending' DESC, modified DESC
+         LIMIT {limit}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = if let Some(p) = project {
+        stmt.query_map(params![pattern, p], row_to_task)?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        stmt.query_map([pattern], row_to_task)?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    Ok(rows)
+}
+
 pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option<Task>> {
     let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(

@@ -89,3 +89,63 @@ fn begin_learn_recall_payloads() {
     );
     assert_json_snapshot!("mcp_recall", redact(recall));
 }
+
+#[test]
+fn find_tool_searches_tasks_by_partial_uuid() {
+    let s = Sara::new();
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+
+    let begin = mcp.call_result(
+        "begin",
+        json!({
+            "description": "Locate me by a uuid fragment",
+            "project_path": project,
+        }),
+    );
+    let uuid = begin["uuid"].as_str().expect("begin returns a uuid");
+
+    // A hyphen-free fragment spanning the first hyphen boundary (chars 6..8 + 9..11),
+    // which the stored uuid never contains literally.
+    let fragment: String = format!("{}{}", &uuid[6..8], &uuid[9..11]);
+    assert!(!fragment.contains('-'));
+
+    let found = mcp.call_result(
+        "find",
+        json!({"fragment": fragment, "project_path": project}),
+    );
+    let matches = found["matches"].as_array().expect("matches is an array");
+    assert_eq!(
+        matches.len(),
+        1,
+        "the hyphen-spanning fragment matches the task: {found}"
+    );
+    assert_eq!(matches[0]["uuid"], uuid);
+    assert_eq!(matches[0]["description"], "Locate me by a uuid fragment");
+    assert_json_snapshot!("mcp_find", redact(found));
+
+    // Fragments shorter than the minimum are a domain error, not a protocol error.
+    let short = mcp.call("find", json!({"fragment": "ab", "project_path": project}));
+    assert!(
+        short.get("error").is_none(),
+        "domain failure, not JSON-RPC error: {short}"
+    );
+    assert_eq!(short["result"]["isError"], true, "{short}");
+    let text = short["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.contains("too short"),
+        "clear message reaches the model: {short}"
+    );
+
+    // LIKE wildcards in the fragment are literal, so a '%'-bearing fragment matches nothing.
+    let wild = mcp.call_result("find", json!({"fragment": "ab%d", "project_path": project}));
+    assert!(
+        wild["matches"]
+            .as_array()
+            .expect("matches array")
+            .is_empty(),
+        "'%' is literal, not a wildcard: {wild}"
+    );
+}

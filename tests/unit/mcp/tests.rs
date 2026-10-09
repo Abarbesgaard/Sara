@@ -27,9 +27,10 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 45, "expected 45 tools, got {names:?}");
+    assert_eq!(names.len(), 46, "expected 46 tools, got {names:?}");
     for expected in [
         "list",
+        "find",
         "info",
         "next",
         "steps",
@@ -740,6 +741,7 @@ fn step_done_by_step_id_ticks_the_right_item() {
 fn tools_carry_annotations() {
     const READ_ONLY: &[&str] = &[
         "list",
+        "find",
         "info",
         "next",
         "steps",
@@ -768,7 +770,7 @@ fn tools_carry_annotations() {
         "rationale",
     ];
     let tools = SaraServer::all_router().list_all();
-    assert_eq!(tools.len(), 45);
+    assert_eq!(tools.len(), 46);
     for t in &tools {
         let name = t.name.as_ref();
         let a = t

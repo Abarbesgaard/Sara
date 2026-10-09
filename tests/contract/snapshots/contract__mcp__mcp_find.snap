@@ -1,0 +1,15 @@
+---
+source: tests/contract/mcp.rs
+expression: redact(found)
+---
+{
+  "matches": [
+    {
+      "description": "Locate me by a uuid fragment",
+      "id": 1,
+      "project": "Demo",
+      "status": "pending",
+      "uuid": "[redacted]"
+    }
+  ]
+}

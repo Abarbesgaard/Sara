@@ -463,6 +463,42 @@ The **`DEPS`** column spells out the relationship the gutter hints at:
 
 > Tip: set `NO_COLOR=1` to disable colors (e.g. for piping or screenshots).
 
+### Finding a task by uuid fragment (`sara find`)
+
+When you only hold a *piece* of a uuid — from a log line, a PR body, a commit,
+telemetry or another agent's output — `sara find` lists every task whose uuid
+contains it. Unlike targeting a task by id or a unique prefix (which must be
+exact), `find` is a case-insensitive **substring** search and returns *all*
+matches.
+
+```bash
+sara find 4c449b0e              # every task whose uuid contains this fragment
+sara find 4c44-9b0e             # hyphens are optional — same result as above
+sara find 88 --status pending   # restrict to a status (pending | completed | all)
+sara find 88 -a                 # search every project, not just the current one
+sara find 88 --limit 50         # cap the result set (default 20)
+sara find 88 --json             # machine-readable {"matches": [...]}
+```
+
+Behaviour:
+
+- **Substring, hyphen-agnostic:** both the fragment and each stored uuid are
+  lowercased and have hyphens stripped before matching, so `4c449b0e` matches
+  `…-4c44-9b0e-…`.
+- **Literal wildcards:** `%`, `_` and `\` in the fragment are matched literally,
+  never as SQL wildcards.
+- **All statuses by default** (`--status pending|completed|all`); deleted tasks
+  are never returned.
+- **Current project by default**, `-a`/`--all` searches every project.
+- **Minimum 4 characters** (hyphens don't count) — shorter fragments are
+  rejected with a clear message, so a fragment can't match nearly everything.
+- **Sorted** pending first, then most recently modified, capped at `--limit`
+  (default 20).
+
+`find` is strictly read-only: it never resolves to a single task, so it can't be
+used to target a mutation — commands that change a task still require an exact id
+or unique prefix.
+
 ---
 
 ## The detail view (`sara info`)
@@ -634,6 +670,7 @@ from reading and planning a task through to completing it:
 | Tool | Purpose |
 |------|---------|
 | `list` | Pending tasks for a project (or all) |
+| `find` | Find tasks by a partial uuid (substring, hyphens optional; all statuses by default) |
 | `projects` | List every registered project |
 | `move_task` | Move a task to another project |
 | `info` | Full task guide: steps, acceptance, notes, links, freshness, feedback |
@@ -1164,6 +1201,7 @@ Run `sara paths` to see the exact locations on your machine.
 | `sara reindex-embeddings`          | Rebuild the semantic index over all memories |
 | `sara telemetry [action]`          | Telemetry controls: `on`, `off`, `status` (default), `--show` (`--json`) |
 | `sara list`                        | List tasks (`-a` all, `-p`/`--project <name>`)           |
+| `sara find <fragment>`             | Find tasks by partial uuid (substring, hyphens optional; `--status`, `-a`, `--limit`, `--json`) |
 | `sara modify <id>`                 | Edit via the review form, or set fields non-interactively (`--description`, `--priority`, `--due`/`--clear-due`, `--tag`/`--clear-tags`) |
 | `sara info <id>`                   | Open the interactive detail view (`--md`/`--plain`/`--json`, `--history`) |
 | `sara done <id>`                   | Complete a task (`--force` if blocked, `--used mN` to cite memories) |
