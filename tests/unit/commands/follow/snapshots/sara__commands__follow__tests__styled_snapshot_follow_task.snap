@@ -2,39 +2,39 @@
 source: tests/unit/commands/follow/tests.rs
 expression: "styled(&app, 60, 16)"
 ---
- sara  ▸ follow · 26                              LIVE  10s
+ sara  ▸ follow · 26                            ⠋ LIVE  10s
  task 26
- 26 ●◆○ 1/3
- ◆ step 2
+ 26 ●◆○ 1/3  sara · 10s elapsed
+ ── plan ───────────────────────────────────────────────────
+ ● step 1
+ ◆ step 2                                                10s
+ ○ step 3
  ▸ wiring the CLI
- ── flow ──────────────────────────────────────────────────…
+ ── flow ───────────────────────────────────────────────────
  10m ○ step added: step 1
   5m ● step 1
   2m » risk: lexer is lossy
   1m ≈ recalled m12
  10s ▸ wiring the CLI
 
-
-
-
-esc quit  m minimal  q quit
+↑↓ scroll  G latest  o info  ? help  q quit
 --- styles ---
-aaaaaabbbbbbbbbbbbbbcccccccccccccccccccccccccccccddddddeeeee
+aaaaaabbbbbbbbbbbbbbcccccccccccccccccccccccccccddddddddeeeee
 bbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccc
-cbbcfbeeeeeccccccccccccccccccccccccccccccccccccccccccccccccc
-bbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cbbcfbeeeeeeeeeeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccc
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+fffccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccbbb
+eeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccc
 eeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccc
 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 eeeeeeeeeeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccc
 eeeeeffffffffccccccccccccccccccccccccccccccccccccccccccccccc
 eeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 eeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-eeeeebbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-bbbeeeeeeebeeeeeeeeeebeeeeeccccccccccccccccccccccccccccccccc
+bbeeeeeeeeebeeeeeeeeebeeeeeeebeeeeeeebeeeeeccccccccccccccccc
 --- legend ---
 a fg=Some(Black) bg=Some(Cyan) mod=BOLD
 b fg=Some(Cyan) bg=Some(Reset) mod=BOLD

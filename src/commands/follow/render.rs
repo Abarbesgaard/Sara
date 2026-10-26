@@ -1,30 +1,38 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::infrastructure::db::{FlowEvent, FlowKind};
+use crate::infrastructure::tui::keymap::help;
+use crate::infrastructure::tui::render_help_overlay;
 use crate::infrastructure::tui::screen::{chrome, render_footer, render_header};
 use crate::infrastructure::tui::theme::{
     GLYPH_CURRENT, GLYPH_DONE, GLYPH_OPEN, GLYPH_PROMPT, Theme, Tone,
 };
 
-use super::state::{App, Card, Mode, Pulse, in_feed, is_minimal};
+use super::state::{App, Card, Mode, Pulse, in_feed, is_fresh, is_minimal, is_split};
+
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPARK: [&str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+const SPARK_MIN_WIDTH: usize = 60;
+
+type FeedRow<'a> = (Option<String>, &'a FlowEvent);
 
 pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
     let area = f.area();
     let minimal = is_minimal(app.minimal, area.width, area.height);
     match (app.mode, &app.focus) {
         (Mode::Task(_), Some(focus)) if minimal => {
-            let feed: Vec<(Option<String>, &FlowEvent)> = focus
+            let feed: Vec<FeedRow> = focus
                 .events
                 .iter()
                 .filter(|e| in_feed(e))
                 .map(|e| (None, e))
                 .collect();
-            render_minimal(f, area, &[&focus.card], &feed, app.now, theme)
+            render_minimal(f, area, app, &[&focus.card], &feed, theme)
         }
         (Mode::Task(_), Some(focus)) => {
             render_task(f, area, app, &focus.card, &focus.events, theme)
@@ -32,24 +40,46 @@ pub fn render(f: &mut Frame, app: &App, theme: &Theme) {
         (Mode::Task(_), None) => {}
         (Mode::Mission, _) if minimal => {
             let cards = app.visible_cards(true);
-            let many = cards.len() > 1;
-            let grouped = is_grouped(&cards);
-            let feed: Vec<(Option<String>, &FlowEvent)> = app
-                .visible_feed(true)
-                .into_iter()
-                .map(|i| {
-                    let label = if grouped {
-                        Some(format!("{} {}", i.project, i.label))
-                    } else {
-                        many.then(|| i.label.clone())
-                    };
-                    (label, &i.event)
-                })
-                .collect();
-            render_minimal(f, area, &cards, &feed, app.now, theme)
+            let feed = feed_rows(app, &cards, true);
+            render_minimal(f, area, app, &cards, &feed, theme)
         }
         (Mode::Mission, _) => render_mission(f, area, app, theme),
     }
+    if app.help {
+        let title = match app.mode {
+            Mode::Mission => "follow · mission control",
+            Mode::Task(_) => "follow · task",
+        };
+        render_help_overlay(f, title, &help_bindings(app));
+    }
+}
+
+fn help_bindings(app: &App) -> Vec<(&'static str, &'static str)> {
+    let mut b = match app.mode {
+        Mode::Mission => vec![
+            help::MOVE,
+            help::TOP_BOTTOM,
+            ("Enter", "follow the selected task"),
+            ("o", "open the selected task in sara info"),
+            ("/", "filter by text (Esc clears)"),
+            ("i", "hide / show idle tasks"),
+            ("p", "all projects / this project"),
+        ],
+        Mode::Task(_) => vec![
+            ("j/k, ↓/↑", "scroll the flow"),
+            help::PAGE,
+            ("gg / G", "oldest / follow the latest"),
+            ("o", "open the task in sara info"),
+            ("Esc", "back to mission control"),
+        ],
+    };
+    b.extend([
+        ("m", "toggle minimal mode"),
+        ("Space", "pause / resume live updates"),
+        ("q", "quit"),
+        help::HELP,
+    ]);
+    b
 }
 
 pub fn age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
@@ -58,6 +88,17 @@ pub fn age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
         0..60 => format!("{s}s"),
         60..3600 => format!("{}m", s / 60),
         3600..86400 => format!("{}h", s / 3600),
+        _ => format!("{}d", s / 86400),
+    }
+}
+
+/// A compact duration: `45s`, `12m`, `1h05m`, `3d`.
+pub fn span(d: Duration) -> String {
+    let s = d.num_seconds().max(0);
+    match s {
+        0..60 => format!("{s}s"),
+        60..3600 => format!("{}m", s / 60),
+        3600..86400 => format!("{}h{:02}m", s / 3600, s % 3600 / 60),
         _ => format!("{}d", s / 86400),
     }
 }
@@ -75,6 +116,10 @@ fn fit(s: &str, width: usize) -> String {
     out
 }
 
+fn width_of(spans: &[Span]) -> usize {
+    spans.iter().map(Span::width).sum()
+}
+
 fn pulse_tone(p: Pulse) -> Tone {
     match p {
         Pulse::Live => Tone::Ok,
@@ -83,13 +128,29 @@ fn pulse_tone(p: Pulse) -> Tone {
     }
 }
 
-fn pulse_badge(p: Pulse, theme: &Theme) -> Span<'static> {
+fn pulse_badge(p: Pulse, frame: usize, theme: &Theme) -> Span<'static> {
     let text = match p {
-        Pulse::Live => " LIVE ",
-        Pulse::Stalled => " STALLED ",
-        Pulse::Idle => " IDLE ",
+        Pulse::Live => format!(" {} LIVE ", SPINNER[frame % SPINNER.len()]),
+        Pulse::Stalled => " STALLED ".to_string(),
+        Pulse::Idle => " IDLE ".to_string(),
     };
     Span::styled(text, theme.badge(pulse_tone(p)))
+}
+
+fn paused_badge(app: &App, theme: &Theme) -> Option<Span<'static>> {
+    app.paused
+        .then(|| Span::styled(" PAUSED ", theme.badge(Tone::Warn)))
+}
+
+pub fn sparkline(buckets: &[u32], theme: &Theme) -> Vec<Span<'static>> {
+    let max = buckets.iter().copied().max().unwrap_or(0) as usize;
+    buckets
+        .iter()
+        .map(|&c| match c as usize {
+            0 => Span::styled(SPARK[0], theme.muted()),
+            c => Span::styled(SPARK[(1 + (c * 7 - 1) / max).min(7)], theme.accent()),
+        })
+        .collect()
 }
 
 pub fn rail(card: &Card, width: usize, theme: &Theme) -> Vec<Span<'static>> {
@@ -171,27 +232,87 @@ fn doing_line(doing: &str, width: usize, indent: &str, theme: &Theme) -> Line<'s
     ])
 }
 
+fn filter_prompt(app: &App, width: usize, theme: &Theme) -> Line<'static> {
+    let hint = "  ⏎ keep · esc clear";
+    let room = width.saturating_sub(2 + hint.chars().count());
+    let shown: String = {
+        let n = app.filter.chars().count();
+        app.filter.chars().skip(n.saturating_sub(room)).collect()
+    };
+    Line::from(vec![
+        Span::styled("/", theme.accent()),
+        Span::raw(shown),
+        Span::styled("▏", theme.accent()),
+        Span::styled(hint, theme.muted()),
+    ])
+}
+
+fn feed_rows<'a>(app: &'a App, cards: &[&Card], minimal: bool) -> Vec<FeedRow<'a>> {
+    let many = cards.len() > 1;
+    let grouped = is_grouped(cards);
+    app.visible_feed(minimal)
+        .into_iter()
+        .map(|i| {
+            let label = if grouped {
+                Some(format!("{} {}", i.project, i.label))
+            } else {
+                many.then(|| i.label.clone())
+            };
+            (label, &i.event)
+        })
+        .collect()
+}
+
 pub fn render_minimal(
     f: &mut Frame,
     area: Rect,
+    app: &App,
     cards: &[&Card],
-    feed: &[(Option<String>, &FlowEvent)],
-    now: DateTime<Utc>,
+    feed: &[FeedRow],
     theme: &Theme,
 ) {
     let width = area.width as usize;
-    let height = area.height as usize;
+    let mut height = area.height as usize;
+    let prompt =
+        (app.filtering || !app.filter.is_empty()).then(|| filter_prompt(app, width, theme));
+    if prompt.is_some() && height > 1 {
+        height -= 1;
+    }
+    let mut lines = minimal_lines(
+        cards,
+        feed,
+        app.now,
+        width,
+        height,
+        app.is_narrowed(),
+        theme,
+    );
+    if let Some(p) = prompt {
+        lines.resize(height, Line::raw(""));
+        lines.push(p);
+    }
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn minimal_lines(
+    cards: &[&Card],
+    feed: &[FeedRow],
+    now: DateTime<Utc>,
+    width: usize,
+    height: usize,
+    narrowed: bool,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
     if cards.is_empty() {
-        let line = Line::styled(fit("sara · no active tasks", width), theme.muted());
-        f.render_widget(Paragraph::new(line), area);
-        return;
+        let text = if narrowed {
+            "sara · no tasks match"
+        } else {
+            "sara · no active tasks"
+        };
+        return vec![Line::styled(fit(text, width), theme.muted())];
     }
     if feed.is_empty() {
-        f.render_widget(
-            Paragraph::new(rails_with_doing(cards, width, height, theme)),
-            area,
-        );
-        return;
+        return rails_with_doing(cards, width, height, theme);
     }
     let budget = (height / 2).max(1);
     let mut lines = rail_block(cards, width, budget, theme, |card, room, lines| {
@@ -209,7 +330,7 @@ pub fn render_minimal(
         lines.push(feed_line(label.as_deref(), e, now, width, theme));
     }
     lines.truncate(height);
-    f.render_widget(Paragraph::new(lines), area);
+    lines
 }
 
 fn rails_with_doing(
@@ -276,6 +397,15 @@ fn rail_block(
     lines
 }
 
+fn age_span(now: DateTime<Utc>, at: DateTime<Utc>, pad: &str, theme: &Theme) -> Span<'static> {
+    let style = if is_fresh(at, now) {
+        theme.accent()
+    } else {
+        theme.muted()
+    };
+    Span::styled(format!("{pad}{:>3} ", age(now, at)), style)
+}
+
 fn feed_line(
     label: Option<&str>,
     e: &FlowEvent,
@@ -283,13 +413,10 @@ fn feed_line(
     width: usize,
     theme: &Theme,
 ) -> Line<'static> {
-    let when = format!("{:>3} ", age(now, e.at));
+    let when = age_span(now, e.at, "", theme);
     let glyph = format!("{} ", event_glyph(&e.kind));
-    let mut spans = vec![
-        Span::styled(when.clone(), theme.muted()),
-        Span::styled(glyph.clone(), event_style(&e.kind, theme)),
-    ];
-    let mut used = when.chars().count() + glyph.chars().count();
+    let mut used = when.width() + glyph.chars().count();
+    let mut spans = vec![when, Span::styled(glyph, event_style(&e.kind, theme))];
     if let Some(l) = label {
         let tag = format!("{l} ");
         used += tag.chars().count();
@@ -303,7 +430,7 @@ fn feed_line(
 fn mission_card_lines(
     card: &Card,
     selected: bool,
-    now: DateTime<Utc>,
+    app: &App,
     width: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
@@ -312,9 +439,9 @@ fn mission_card_lines(
     } else {
         Span::raw("  ")
     };
-    let badge = pulse_badge(card.pulse, theme);
+    let badge = pulse_badge(card.pulse, app.frame, theme);
     let label = card.label();
-    let right = format!("{} · {}", card.project, age(now, card.last));
+    let right = format!("{} · {}", card.project, age(app.now, card.last));
     let fixed = 2 + badge.width() + 1 + label.chars().count() + 2 + 1 + right.chars().count();
     let desc = fit(&card.description, width.saturating_sub(fixed));
     let gap = width.saturating_sub(fixed + desc.chars().count()) + 1;
@@ -334,19 +461,33 @@ fn mission_card_lines(
         Span::styled(right, theme.muted()),
     ]);
 
+    let spark = if width >= SPARK_MIN_WIDTH {
+        sparkline(&card.spark, theme)
+    } else {
+        Vec::new()
+    };
+    let spark_w = if spark.is_empty() {
+        0
+    } else {
+        width_of(&spark) + 2
+    };
     let mut step = vec![Span::raw("    ")];
     let count = format!(" {}/{}", card.done_count(), card.steps.len());
     let rail_room = (width / 3).max(4);
-    let rail = rail(card, rail_room.min(card.steps.len()), theme);
-    let rail_w: usize = rail.iter().map(Span::width).sum();
-    step.extend(rail);
-    step.push(Span::styled(count.clone(), theme.muted()));
+    step.extend(rail(card, rail_room.min(card.steps.len()), theme));
+    step.push(Span::styled(count, theme.muted()));
+    let used = width_of(&step);
     if let Some(cur) = card.current() {
-        let room = width.saturating_sub(4 + rail_w + count.chars().count() + 2);
+        let room = width.saturating_sub(used + 2 + spark_w);
         step.push(Span::raw("  "));
         step.push(Span::raw(fit(&card.steps[cur].text, room)));
     } else if !card.steps.is_empty() {
         step.push(Span::styled("  all steps done", theme.ok()));
+    }
+    if !spark.is_empty() {
+        let pad = width.saturating_sub(width_of(&step) + width_of(&spark));
+        step.push(Span::raw(" ".repeat(pad)));
+        step.extend(spark);
     }
 
     let mut lines = vec![head, Line::from(step)];
@@ -356,68 +497,167 @@ fn mission_card_lines(
     lines
 }
 
-pub fn render_mission(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let c = chrome(area);
-    let cards = app.visible_cards(false);
+fn mission_status(app: &App, cards: &[&Card], room: usize, theme: &Theme) -> Vec<Span<'static>> {
     let live = cards.iter().filter(|c| c.pulse == Pulse::Live).count();
     let stalled = cards.iter().filter(|c| c.pulse == Pulse::Stalled).count();
-    let all = app.shows_all_projects();
-    let scope = if all {
+    let scope = if app.shows_all_projects() {
         "all projects".to_string()
     } else {
         app.project.clone().unwrap_or_default()
     };
-    let mut status = vec![Span::styled(format!("{scope} · "), theme.muted())];
-    status.push(Span::styled(format!("{live} live"), theme.ok()));
+    let paused = paused_badge(app, theme).map(|b| vec![b, Span::raw(" ")]);
+    let filter = (!app.filter.is_empty() && !app.filtering)
+        .then(|| vec![Span::styled(format!("/{} · ", app.filter), theme.accent())]);
+    let idle = app
+        .hide_idle
+        .then(|| vec![Span::styled("idle hidden · ", theme.muted())]);
+    let scope = vec![Span::styled(format!("{scope} · "), theme.muted())];
+    let mut counts = vec![Span::styled(format!("{live} live"), theme.ok())];
     if stalled > 0 {
-        status.push(Span::styled(format!(" · {stalled} stalled"), theme.warn()));
+        counts.push(Span::styled(format!(" · {stalled} stalled"), theme.warn()));
     }
-    status.push(Span::raw(" "));
-    render_header(f, c.header, theme, "follow · mission control", &status);
+    counts.push(Span::raw(" "));
 
-    let width = c.body.width as usize;
-    if cards.is_empty() {
-        let lines = vec![
-            Line::raw(""),
-            Line::styled("  No agent activity in the last 24h.", theme.muted()),
-            Line::styled(
-                "  Agents report what they are doing with the `doing` MCP tool.",
-                theme.muted(),
-            ),
-        ];
-        f.render_widget(Paragraph::new(lines), c.body);
+    // Shed the least important parts until the status fits beside the title.
+    let mut parts: Vec<Option<Vec<Span<'static>>>> =
+        vec![paused, filter, idle, Some(scope), Some(counts)];
+    for drop in [3, 2, 1] {
+        let w: usize = parts.iter().flatten().map(|p| width_of(p)).sum();
+        if w <= room {
+            break;
+        }
+        parts[drop] = None;
+    }
+    parts.into_iter().flatten().flatten().collect()
+}
+
+pub fn render_mission(f: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let c = chrome(area);
+    let cards = app.visible_cards(false);
+    let title = "follow · mission control";
+    let room = (area.width as usize).saturating_sub(title.chars().count() + 10);
+    render_header(
+        f,
+        c.header,
+        theme,
+        title,
+        &mission_status(app, &cards, room, theme),
+    );
+
+    let (list, side) = if is_split(area.width) {
+        let [l, r] = Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .areas(c.body);
+        (
+            Rect {
+                width: l.width.saturating_sub(1),
+                ..l
+            },
+            Some(r),
+        )
     } else {
-        let blocks: Vec<Vec<Line>> = cards
-            .iter()
-            .enumerate()
-            .map(|(i, card)| mission_card_lines(card, i == app.selected, app.now, width, theme))
-            .collect();
-        let height = c.body.height as usize;
-        let mut start = 0;
-        while start < app.selected
-            && blocks[start..=app.selected]
-                .iter()
-                .map(|b| b.len() + 1)
-                .sum::<usize>()
-                > height
-        {
-            start += 1;
-        }
-        let mut lines = Vec::new();
-        for b in &blocks[start..] {
-            lines.extend(b.iter().cloned());
-            lines.push(Line::raw(""));
-        }
-        f.render_widget(Paragraph::new(lines), c.body);
+        (c.body, None)
+    };
+    render_cards(f, list, app, &cards, theme);
+    if let Some(side) = side {
+        render_side_feed(f, side, app, &cards, theme);
     }
 
-    let scope_hint = if all { "this project" } else { "all projects" };
-    let mut hints = vec![("↑↓", "select"), ("⏎", "follow")];
-    if app.project.is_some() {
-        hints.push(("p", scope_hint));
+    if app.filtering {
+        f.render_widget(
+            Paragraph::new(filter_prompt(app, c.footer.width as usize, theme)),
+            c.footer,
+        );
+        return;
     }
-    hints.extend([("m", "minimal"), ("q", "quit")]);
-    render_footer(f, c.footer, theme, &hints);
+    let idle = if app.hide_idle {
+        "show idle"
+    } else {
+        "hide idle"
+    };
+    render_footer(
+        f,
+        c.footer,
+        theme,
+        &[
+            ("↑↓", "select"),
+            ("⏎", "follow"),
+            ("o", "info"),
+            ("/", "filter"),
+            ("i", idle),
+            ("?", "help"),
+            ("q", "quit"),
+        ],
+    );
+}
+
+fn render_cards(f: &mut Frame, area: Rect, app: &App, cards: &[&Card], theme: &Theme) {
+    let width = area.width as usize;
+    if cards.is_empty() {
+        let lines = if app.cards.is_empty() {
+            vec![
+                Line::raw(""),
+                Line::styled("  No agent activity in the last 24h.", theme.muted()),
+                Line::styled(
+                    "  Agents report what they are doing with the `doing` MCP tool.",
+                    theme.muted(),
+                ),
+            ]
+        } else {
+            vec![
+                Line::raw(""),
+                Line::styled("  No tasks match.", theme.muted()),
+                Line::styled(
+                    "  Esc clears the filter, i shows idle tasks, p widens the scope.",
+                    theme.muted(),
+                ),
+            ]
+        };
+        f.render_widget(Paragraph::new(lines), area);
+        return;
+    }
+    let blocks: Vec<Vec<Line>> = cards
+        .iter()
+        .enumerate()
+        .map(|(i, card)| mission_card_lines(card, i == app.selected, app, width, theme))
+        .collect();
+    let height = area.height as usize;
+    let mut start = 0;
+    while start < app.selected
+        && blocks[start..=app.selected]
+            .iter()
+            .map(|b| b.len() + 1)
+            .sum::<usize>()
+            > height
+    {
+        start += 1;
+    }
+    let mut lines = Vec::new();
+    for b in &blocks[start..] {
+        lines.extend(b.iter().cloned());
+        lines.push(Line::raw(""));
+    }
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn render_side_feed(f: &mut Frame, area: Rect, app: &App, cards: &[&Card], theme: &Theme) {
+    let block = Block::new()
+        .borders(Borders::LEFT)
+        .border_style(theme.muted())
+        .title(Span::styled(" live feed ", theme.muted()));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let feed = feed_rows(app, cards, false);
+    let width = inner.width as usize;
+    let lines: Vec<Line> = if feed.is_empty() {
+        vec![Line::styled(" nothing yet", theme.muted())]
+    } else {
+        feed.iter()
+            .rev()
+            .take(inner.height as usize)
+            .map(|(label, e)| feed_line(label.as_deref(), e, app.now, width, theme))
+            .collect()
+    };
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 fn event_glyph(kind: &FlowKind) -> &'static str {
@@ -455,6 +695,103 @@ fn event_style(kind: &FlowKind, theme: &Theme) -> Style {
     }
 }
 
+fn rule(title: &str, width: usize, theme: &Theme) -> Line<'static> {
+    let head = format!(" ── {title} ");
+    let pad = width.saturating_sub(head.chars().count());
+    Line::styled(
+        fit(&format!("{head}{}", "─".repeat(pad)), width),
+        theme.muted(),
+    )
+}
+
+fn task_meta_line(card: &Card, now: DateTime<Utc>, width: usize, theme: &Theme) -> Line<'static> {
+    let mut tail = vec![Span::styled(
+        format!("  {} · {} elapsed", card.project, span(now - card.entry)),
+        theme.muted(),
+    )];
+    if width >= SPARK_MIN_WIDTH && !card.spark.is_empty() {
+        tail.push(Span::raw("  "));
+        tail.extend(sparkline(&card.spark, theme));
+    }
+    let tail_w = width_of(&tail);
+    let Line { mut spans, .. } = card_rail_line(card, width.saturating_sub(tail_w), " ", theme);
+    if width_of(&spans) + tail_w <= width {
+        spans.extend(tail);
+    }
+    Line::from(spans)
+}
+
+fn plan_line(
+    card: &Card,
+    i: usize,
+    took: Option<Duration>,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let step = &card.steps[i];
+    let current = card.current() == Some(i);
+    let (glyph, glyph_style, text_style) = match (step.done, current) {
+        (true, _) => (GLYPH_DONE, theme.ok(), Style::new()),
+        (false, true) => (GLYPH_CURRENT, theme.accent(), theme.accent()),
+        (false, false) => (GLYPH_OPEN, theme.muted(), theme.muted()),
+    };
+    let right = took.map(span).unwrap_or_default();
+    let right_style = if current {
+        theme.accent()
+    } else {
+        theme.muted()
+    };
+    let lead = format!(" {glyph} ");
+    let room = width.saturating_sub(lead.chars().count() + right.chars().count() + 1);
+    let text = fit(&step.text, room);
+    let mut spans = vec![
+        Span::styled(lead, glyph_style),
+        Span::styled(text.clone(), text_style),
+    ];
+    let mut used = text.chars().count();
+    if let Some(result) = step.result.as_deref()
+        && room > used + 4
+    {
+        let r = fit(&format!(" — {result}"), room - used);
+        used += r.chars().count();
+        spans.push(Span::styled(r, theme.muted()));
+    }
+    spans.push(Span::raw(" ".repeat(room - used + 1)));
+    spans.push(Span::styled(right, right_style));
+    Line::from(spans)
+}
+
+fn plan_lines(
+    card: &Card,
+    now: DateTime<Utc>,
+    budget: usize,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let n = card.steps.len();
+    let budget = budget.max(3).min(n);
+    if budget == 0 {
+        return Vec::new();
+    }
+    let times = card.step_times(now);
+    let cur = card.current().unwrap_or(n - 1);
+    let start = cur.saturating_sub(budget / 3).min(n - budget);
+    let end = start + budget;
+    let from = start + usize::from(start > 0);
+    let to = end - usize::from(end < n);
+    let mut lines = Vec::new();
+    if from > start {
+        lines.push(Line::styled(format!("   ⋮ {from} earlier"), theme.muted()));
+    }
+    for (i, took) in times.iter().enumerate().take(to).skip(from) {
+        lines.push(plan_line(card, i, *took, width, theme));
+    }
+    if to < end {
+        lines.push(Line::styled(format!("   ⋮ {} more", n - to), theme.muted()));
+    }
+    lines
+}
+
 pub fn render_task(
     f: &mut Frame,
     area: Rect,
@@ -464,10 +801,15 @@ pub fn render_task(
     theme: &Theme,
 ) {
     let c = chrome(area);
-    let status = vec![
-        pulse_badge(card.pulse, theme),
-        Span::styled(format!(" {} ", age(app.now, card.last)), theme.muted()),
-    ];
+    let mut status = Vec::new();
+    if let Some(b) = paused_badge(app, theme) {
+        status.extend([b, Span::raw(" ")]);
+    }
+    status.push(pulse_badge(card.pulse, app.frame, theme));
+    status.push(Span::styled(
+        format!(" {} ", age(app.now, card.last)),
+        theme.muted(),
+    ));
     render_header(
         f,
         c.header,
@@ -477,60 +819,56 @@ pub fn render_task(
     );
 
     let width = c.body.width as usize;
+    let height = c.body.height as usize;
     let mut lines = vec![
         Line::styled(
             fit(&format!(" {}", card.description), width),
             theme.accent(),
         ),
-        card_rail_line(card, width, " ", theme),
+        task_meta_line(card, app.now, width, theme),
     ];
-    match card.current() {
-        Some(i) => lines.push(Line::from(vec![
-            Span::styled(format!(" {GLYPH_CURRENT} "), theme.accent()),
-            Span::raw(fit(&card.steps[i].text, width.saturating_sub(3))),
-        ])),
-        None if !card.steps.is_empty() => {
-            lines.push(Line::styled(
-                format!(" {GLYPH_DONE} all steps done"),
-                theme.ok(),
-            ));
-        }
-        None => {}
+    if !card.steps.is_empty() {
+        lines.push(rule("plan", width, theme));
+        let budget = height.saturating_sub(6) / 2;
+        lines.extend(plan_lines(card, app.now, budget, width, theme));
     }
     if let Some(d) = &card.doing {
         lines.push(doing_line(d, width, " ", theme));
     }
-    lines.push(Line::styled(
-        fit(&format!(" ── flow {}", "─".repeat(width)), width),
-        theme.muted(),
-    ));
 
-    let room = (c.body.height as usize).saturating_sub(lines.len());
-    let tail = &events[events.len().saturating_sub(room)..];
-    for e in tail {
-        let when = format!(" {:>3} ", age(app.now, e.at));
+    let room = height.saturating_sub(lines.len() + 1);
+    app.flow_room.set(Some(room));
+    let scroll = app.scroll.min(events.len().saturating_sub(room.max(1)));
+    let flow = if scroll > 0 {
+        format!("flow · ↓ {scroll} newer")
+    } else {
+        "flow".to_string()
+    };
+    lines.push(rule(&flow, width, theme));
+
+    let end = events.len() - scroll;
+    for e in &events[end.saturating_sub(room)..end] {
+        let when = age_span(app.now, e.at, " ", theme);
         let glyph = event_glyph(&e.kind);
-        let text = fit(
-            &event_text(e),
-            width.saturating_sub(when.chars().count() + 2),
-        );
+        let text = fit(&event_text(e), width.saturating_sub(when.width() + 2));
         lines.push(Line::from(vec![
-            Span::styled(when, theme.muted()),
+            when,
             Span::styled(format!("{glyph} "), event_style(&e.kind, theme)),
             Span::styled(text, event_style(&e.kind, theme)),
         ]));
     }
     f.render_widget(Paragraph::new(lines), c.body);
 
-    let back = if app.opened_from_mission {
-        "back"
-    } else {
-        "quit"
-    };
-    render_footer(
-        f,
-        c.footer,
-        theme,
-        &[("esc", back), ("m", "minimal"), ("q", "quit")],
-    );
+    let mut hints = Vec::new();
+    if app.opened_from_mission {
+        hints.push(("esc", "back"));
+    }
+    hints.extend([
+        ("↑↓", "scroll"),
+        ("G", "latest"),
+        ("o", "info"),
+        ("?", "help"),
+        ("q", "quit"),
+    ]);
+    render_footer(f, c.footer, theme, &hints);
 }

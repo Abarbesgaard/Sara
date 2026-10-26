@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+- `sara follow` overhaul. The task view shows the full plan: every step
+  with how long it took, done steps with their result, and long plans
+  windowed around the current step.
+- The task view's flow timeline scrolls (`j/k`, `PgUp/PgDn`, `gg`/`G`) and
+  stays anchored while new events arrive (`↓ N newer`).
+- Motion: an animated spinner on `LIVE` badges, a one-hour activity
+  sparkline per task, and fresh events (≤15s) highlighted.
+- At ≥110 columns, mission control splits into the task list and a live
+  feed beside it.
+- In mission control, `/` filters tasks by text and `i` hides idle tasks.
+- `o` opens the selected or followed task in `sara info` and returns to
+  follow afterwards.
+- `Space` pauses or resumes live updates, and `?` shows a help overlay.
+
+### Fixed
+- `sara follow`: the mission control header status no longer disappears
+  when it is wider than the terminal. It drops its least important parts
+  instead.
+- `sara follow`: the task view footer no longer shows `esc quit` and
+  `q quit` side by side.
+
 ## [2.5.1] - 2026-10-09
 
 ### Added
