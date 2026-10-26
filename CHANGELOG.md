@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-26
+
 ### Added
 - `sara follow` overhaul. The task view shows the full plan: every step
   with how long it took, done steps with their result, and long plans
