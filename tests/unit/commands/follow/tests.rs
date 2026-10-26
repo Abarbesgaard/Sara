@@ -1,4 +1,4 @@
-use super::render::{age, rail, render};
+use super::render::{age, rail, render, span, sparkline};
 use super::state::*;
 use crate::infrastructure::db::{self, FlowEvent, FlowKind};
 use crate::infrastructure::tui::theme::Theme;
@@ -28,6 +28,8 @@ fn mk_card(
         .map(|i| Step {
             text: format!("step {}", i + 1),
             done: i < done,
+            done_at: None,
+            result: None,
         })
         .collect();
     Card {
@@ -38,7 +40,9 @@ fn mk_card(
         pulse: pulse(last, now(), total - done, stall()),
         steps,
         doing: doing.map(str::to_owned),
+        entry: last,
         last,
+        spark: Vec::new(),
     }
 }
 
@@ -255,7 +259,7 @@ fn follow_render_mission_shows_pulse_rail_and_doing() {
     );
     let out = draw(&app, 80, 14);
     assert!(out.contains("all projects · 1 live · 1 stalled"), "{out}");
-    assert!(out.contains("▸  LIVE  26  task 26"), "{out}");
+    assert!(out.contains("▸  ⠋ LIVE  26  task 26"), "{out}");
     assert!(out.contains("sara · 30s"), "{out}");
     assert!(out.contains("●●◆○ 2/4  step 3"), "{out}");
     assert!(out.contains("▸ writing tests"), "{out}");
@@ -265,7 +269,7 @@ fn follow_render_mission_shows_pulse_rail_and_doing() {
         out.lines()
             .last()
             .unwrap()
-            .starts_with("↑↓ select  ⏎ follow  m minimal  q quit"),
+            .starts_with("↑↓ select  ⏎ follow  o info  / filter  i hide idle  ? help  q quit"),
         "{out}"
     );
 }
@@ -311,7 +315,13 @@ fn follow_render_task_shows_flow_timeline_newest_last() {
     assert!(out.contains("1m ≈ recalled m12"), "{out}");
     let pos = |s: &str| out.find(s).unwrap();
     assert!(pos("step added") < pos("10s ▸ wiring the CLI"));
-    assert!(out.lines().last().unwrap().starts_with("esc quit"), "{out}");
+    assert!(
+        out.lines()
+            .last()
+            .unwrap()
+            .starts_with("↑↓ scroll  G latest  o info  ? help  q quit"),
+        "{out}"
+    );
 }
 
 fn fev(secs: i64, kind: FlowKind, text: &str) -> FlowEvent {
@@ -553,4 +563,354 @@ fn follow_keys_support_jump_to_top_and_bottom() {
     app.handle_key(key(KeyCode::Char('g')), false);
     app.handle_key(key(KeyCode::Char('g')), false);
     assert_eq!(app.selected, 0);
+}
+
+fn task_app(card: Card, events: Vec<FlowEvent>) -> App {
+    let mut app = App::new(Mode::Task(card.uuid), false, None, false, stall());
+    app.now = now();
+    app.focus = Some(Focus { card, events });
+    app
+}
+
+fn timed(mut c: Card, entry_mins: i64, done_mins: &[(i64, Option<&str>)]) -> Card {
+    c.entry = now() - Duration::minutes(entry_mins);
+    for (s, (ago, result)) in c.steps.iter_mut().zip(done_mins) {
+        s.done = true;
+        s.done_at = Some(now() - Duration::minutes(*ago));
+        s.result = result.map(str::to_owned);
+    }
+    c
+}
+
+#[test]
+fn follow_step_times_measure_each_step_from_the_previous_one() {
+    let c = timed(
+        mk_card(1, "sara", 0, 4, None, 5),
+        30,
+        &[(25, None), (10, None)],
+    );
+    let t = c.step_times(now());
+    assert_eq!(
+        t,
+        vec![
+            Some(Duration::minutes(5)),
+            Some(Duration::minutes(15)),
+            Some(Duration::minutes(10)),
+            None,
+        ]
+    );
+}
+
+#[test]
+fn follow_span_is_compact() {
+    assert_eq!(span(Duration::seconds(45)), "45s");
+    assert_eq!(span(Duration::minutes(12)), "12m");
+    assert_eq!(span(Duration::minutes(65)), "1h05m");
+    assert_eq!(span(Duration::days(3)), "3d");
+    assert_eq!(span(Duration::seconds(-4)), "0s");
+}
+
+#[test]
+fn follow_spark_buckets_feed_events_over_the_last_hour() {
+    let events = vec![
+        fev(10, FlowKind::Doing, "a"),
+        fev(20, FlowKind::StepDone, "b"),
+        fev(60 * 7, FlowKind::Doing, "c"),
+        fev(60 * 61, FlowKind::Doing, "too old"),
+        fev(30, FlowKind::Change("modified".into()), "noise"),
+    ];
+    let b = spark(&events, now());
+    assert_eq!(b.len(), SPARK_BUCKETS);
+    assert_eq!(b[SPARK_BUCKETS - 1], 2);
+    assert_eq!(b[SPARK_BUCKETS - 2], 1);
+    assert_eq!(b.iter().sum::<u32>(), 3);
+
+    let theme = Theme::new(false);
+    let s: String = sparkline(&[0, 1, 4, 8], &theme)
+        .iter()
+        .map(|s| s.content.to_string())
+        .collect();
+    assert_eq!(s, "▁▂▅█");
+}
+
+#[test]
+fn follow_card_from_db_carries_step_timing_results_and_spark() {
+    let conn = db::open_in_memory_for_test();
+    let t = crate::test_support::seed_task(&conn, "build it", "p");
+    db::add_checklist_item(&conn, &t.uuid, "one").unwrap();
+    db::add_checklist_item(&conn, &t.uuid, "two").unwrap();
+    let first = db::get_checklist(&conn, &t.uuid).unwrap().remove(0);
+    db::set_step_done(&conn, first.id, true, Some("tests green"), None).unwrap();
+    db::record_doing(&conn, &t.uuid, "on two", None).unwrap();
+    let c = &mission_cards(&conn, Utc::now(), stall()).unwrap()[0];
+    assert!(c.steps[0].done_at.is_some());
+    assert_eq!(c.steps[0].result.as_deref(), Some("tests green"));
+    assert!(c.spark.iter().sum::<u32>() >= 2, "{:?}", c.spark);
+}
+
+#[test]
+fn follow_render_task_shows_the_full_plan_with_durations_and_results() {
+    let card = timed(
+        mk_card(26, "sara", 0, 4, Some("wiring"), 10),
+        30,
+        &[(25, Some("recalled m12")), (10, None)],
+    );
+    let out = draw(&task_app(card, vec![]), 60, 20);
+    let line = |needle: &str| {
+        out.lines()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("{needle} missing:\n{out}"))
+            .to_string()
+    };
+    assert!(out.contains(" ── plan "), "{out}");
+    let first = line("● step 1");
+    assert!(first.contains("— recalled m12"), "{out}");
+    assert!(first.trim_end().ends_with("5m"), "{out}");
+    assert!(line("● step 2").trim_end().ends_with("15m"), "{out}");
+    assert!(line("◆ step 3").trim_end().ends_with("10m"), "{out}");
+    assert!(line("○ step 4").trim_end().ends_with("step 4"), "{out}");
+    assert!(out.contains("sara · 30m elapsed"), "{out}");
+}
+
+#[test]
+fn follow_render_task_windows_a_long_plan_around_the_current_step() {
+    let card = mk_card(1, "sara", 20, 40, None, 5);
+    let out = draw(&task_app(card, vec![]), 60, 20);
+    assert!(out.contains("◆ step 21"), "{out}");
+    assert!(out.contains("⋮") && out.contains("earlier"), "{out}");
+    assert!(out.contains("more"), "{out}");
+    assert!(!out.contains("step 1 "), "{out}");
+}
+
+#[test]
+fn follow_task_scroll_moves_back_in_time_and_g_returns_to_the_tail() {
+    let card = mk_card(1, "sara", 0, 1, None, 5);
+    let events: Vec<FlowEvent> = (0..30)
+        .map(|i| fev(1000 - i * 10, FlowKind::Doing, &format!("ev{i:02}")))
+        .collect();
+    let mut app = task_app(card, events);
+    let tail = draw(&app, 60, 16);
+    assert!(tail.contains("ev29"), "{tail}");
+
+    app.handle_key(key(KeyCode::Char('k')), false);
+    app.handle_key(key(KeyCode::PageUp), false);
+    assert_eq!(app.scroll, 11);
+    let back = draw(&app, 60, 16);
+    assert!(back.contains("flow · ↓ 11 newer"), "{back}");
+    assert!(back.contains("ev18") && !back.contains("ev19"), "{back}");
+
+    app.handle_key(key(KeyCode::Char('g')), false);
+    app.handle_key(key(KeyCode::Char('g')), false);
+    let room = app.flow_room.get().unwrap();
+    assert_eq!(app.scroll, 30 - room);
+    let top = draw(&app, 60, 16);
+    assert!(top.contains("ev00"), "{top}");
+    assert!(top.contains(&format!("ev{:02}", room - 1)), "{top}");
+    assert!(!top.contains(&format!("ev{room:02}")), "{top}");
+    app.handle_key(key(KeyCode::Char('G')), false);
+    assert_eq!(app.scroll, 0);
+    app.handle_key(key(KeyCode::Char('j')), false);
+    assert_eq!(app.scroll, 0);
+}
+
+#[test]
+fn follow_task_scroll_is_a_no_op_when_the_flow_fits() {
+    let card = mk_card(1, "sara", 0, 1, None, 5);
+    let events: Vec<FlowEvent> = (0..3)
+        .map(|i| fev(1000 - i * 10, FlowKind::Doing, &format!("ev{i:02}")))
+        .collect();
+    let mut app = task_app(card, events);
+    draw(&app, 60, 16);
+    app.handle_key(key(KeyCode::Char('k')), false);
+    app.handle_key(key(KeyCode::Char('g')), false);
+    app.handle_key(key(KeyCode::Char('g')), false);
+    assert_eq!(app.scroll, 0);
+    let out = draw(&app, 60, 16);
+    assert!(out.contains("ev00") && out.contains("ev02"), "{out}");
+    assert!(!out.contains("newer"), "{out}");
+}
+
+#[test]
+fn follow_filter_narrows_cards_and_esc_clears_it() {
+    let mut a = mk_card(1, "sara", 0, 2, Some("parser tests"), 5);
+    a.description = "Lexer rewrite".into();
+    let b = mk_card(2, "pling", 0, 2, None, 5);
+    let mut app = mission(vec![a, b], None);
+    app.handle_key(key(KeyCode::Char('/')), false);
+    assert!(app.filtering);
+    for c in "LEX".chars() {
+        app.handle_key(key(KeyCode::Char(c)), false);
+    }
+    assert_eq!(app.visible_cards(false).len(), 1);
+    let typing = draw(&app, 80, 14);
+    assert!(
+        typing.lines().last().unwrap().starts_with("/LEX▏"),
+        "{typing}"
+    );
+    app.handle_key(key(KeyCode::Enter), false);
+    assert!(!app.filtering);
+    let kept = draw(&app, 80, 14);
+    assert!(kept.lines().next().unwrap().contains("/LEX · "), "{kept}");
+
+    app.filter = "parser".into();
+    assert_eq!(app.visible_cards(false).len(), 1);
+    app.filter = "nothing".into();
+    let none = draw(&app, 80, 14);
+    assert!(none.contains("No tasks match."), "{none}");
+    assert_eq!(app.handle_key(key(KeyCode::Esc), false), Outcome::Continue);
+    assert!(app.filter.is_empty());
+    assert_eq!(app.visible_cards(false).len(), 2);
+}
+
+#[test]
+fn follow_i_hides_idle_tasks() {
+    let mut app = mission(
+        vec![
+            mk_card(1, "sara", 0, 2, None, 5),
+            mk_card(2, "sara", 0, 2, None, 60 * 5),
+            mk_card(3, "sara", 0, 2, None, 60 * 60),
+        ],
+        None,
+    );
+    app.handle_key(key(KeyCode::Char('i')), false);
+    let ids: Vec<Option<i64>> = app.visible_cards(false).iter().map(|c| c.id).collect();
+    assert_eq!(ids, [Some(1), Some(3)]);
+    assert!(draw(&app, 80, 14).contains("idle hidden"));
+    app.handle_key(key(KeyCode::Char('i')), false);
+    assert_eq!(app.visible_cards(false).len(), 3);
+}
+
+#[test]
+fn follow_o_opens_the_selected_or_followed_task_in_info() {
+    let mut app = mission(
+        vec![
+            mk_card(1, "sara", 0, 2, None, 5),
+            mk_card(2, "sara", 0, 2, None, 6),
+        ],
+        None,
+    );
+    app.handle_key(key(KeyCode::Down), false);
+    let second = app.cards[1].uuid;
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('o')), false),
+        Outcome::Open(second)
+    );
+    let card = mk_card(9, "sara", 0, 2, None, 5);
+    let uuid = card.uuid;
+    let mut task = task_app(card, vec![]);
+    assert_eq!(
+        task.handle_key(key(KeyCode::Char('o')), false),
+        Outcome::Open(uuid)
+    );
+    assert_eq!(
+        mission(vec![], None).handle_key(key(KeyCode::Char('o')), false),
+        Outcome::Continue
+    );
+}
+
+#[test]
+fn follow_space_pauses_and_help_overlay_closes_on_any_key() {
+    let mut app = mission(vec![mk_card(1, "sara", 0, 2, None, 5)], None);
+    app.handle_key(key(KeyCode::Char(' ')), false);
+    assert!(app.paused);
+    assert!(
+        draw(&app, 80, 14)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("PAUSED")
+    );
+    app.handle_key(key(KeyCode::Char('?')), false);
+    assert!(app.help);
+    let out = draw(&app, 80, 24);
+    assert!(out.contains("pause / resume live updates"), "{out}");
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('q')), false),
+        Outcome::Continue
+    );
+    assert!(!app.help);
+    app.handle_key(key(KeyCode::Char(' ')), false);
+    assert!(!app.paused);
+}
+
+#[test]
+fn follow_live_badge_spins_with_the_frame() {
+    let mut app = mission(vec![mk_card(1, "sara", 0, 2, None, 5)], None);
+    assert!(draw(&app, 80, 14).contains(" ⠋ LIVE "));
+    app.frame = 3;
+    assert!(draw(&app, 80, 14).contains(" ⠸ LIVE "));
+}
+
+#[test]
+fn follow_render_wide_mission_splits_off_a_live_feed() {
+    let a = mk_card(7, "sara", 1, 2, Some("wiring"), 5);
+    let feed = vec![
+        item(&a, fev(300, FlowKind::StepDone, "recall")),
+        item(&a, fev(5, FlowKind::Doing, "wiring")),
+    ];
+    let mut app = mission(vec![a], None);
+    app.feed = feed;
+    let wide = draw(&app, 120, 14);
+    assert!(wide.contains("│ live feed"), "{wide}");
+    let row = |s: &str| wide.lines().position(|l| l.contains(s)).unwrap();
+    assert!(row("5s ▸ wiring") < row("5m ● recall"), "{wide}");
+    assert!(!draw(&app, 100, 14).contains("live feed"));
+}
+
+#[test]
+fn follow_refresh_keeps_a_scrolled_task_view_anchored() {
+    let conn = db::open_in_memory_for_test();
+    let t = crate::test_support::seed_task(&conn, "anchor", "p");
+    for i in 0..5 {
+        db::record_doing(&conn, &t.uuid, &format!("e{i}"), None).unwrap();
+    }
+    let mut app = App::new(Mode::Task(t.uuid), false, None, false, stall());
+    app.refresh(&conn, Utc::now()).unwrap();
+    app.scroll = 2;
+    db::record_doing(&conn, &t.uuid, "new", None).unwrap();
+    app.refresh(&conn, Utc::now()).unwrap();
+    assert_eq!(app.scroll, 3);
+}
+
+#[test]
+fn styled_snapshot_follow_mission_wide() {
+    let mut a = fixed(mk_card(26, "sara", 2, 4, Some("writing tests"), 30), 1);
+    a.spark = vec![0, 0, 1, 0, 2, 3, 1, 0, 4, 6, 2, 5];
+    let mut b = fixed(mk_card(3, "pling", 1, 3, None, 60 * 20), 2);
+    b.spark = vec![2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let feed = vec![
+        item(&b, fev(1200, FlowKind::StepDone, "recall")),
+        item(
+            &a,
+            fev(120, FlowKind::Note("finding".into()), "lexer lossy"),
+        ),
+        item(&a, fev(5, FlowKind::Doing, "writing tests")),
+    ];
+    let mut app = mission(vec![a, b], None);
+    app.feed = feed;
+    insta::assert_snapshot!(styled(&app, 120, 12));
+}
+
+#[test]
+fn styled_snapshot_follow_task_rich() {
+    let mut card = timed(
+        fixed(mk_card(26, "sara", 0, 5, Some("wiring the CLI"), 10), 1),
+        42,
+        &[
+            (40, Some("recalled m12, m834")),
+            (25, Some("tests pinned")),
+            (12, None),
+        ],
+    );
+    card.spark = vec![0, 0, 0, 0, 1, 0, 2, 3, 1, 0, 4, 6];
+    let events = vec![
+        fev(60 * 40, FlowKind::StepDone, "step 1"),
+        fev(60 * 25, FlowKind::StepDone, "step 2"),
+        fev(60 * 12, FlowKind::StepDone, "step 3"),
+        fev(120, FlowKind::Note("risk".into()), "lexer is lossy"),
+        fev(8, FlowKind::Doing, "wiring the CLI"),
+    ];
+    let mut app = task_app(card, events);
+    app.opened_from_mission = true;
+    insta::assert_snapshot!(styled(&app, 72, 18));
 }

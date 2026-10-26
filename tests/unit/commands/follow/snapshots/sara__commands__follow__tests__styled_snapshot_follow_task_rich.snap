@@ -1,0 +1,48 @@
+---
+source: tests/unit/commands/follow/tests.rs
+expression: "styled(&app, 72, 18)"
+---
+ sara  ▸ follow · 26                                        ⠋ LIVE  10s
+ task 26
+ 26 ●●●◆○ 3/5  sara · 42m elapsed  ▁▁▁▁▃▁▄▅▃▁▆█
+ ── plan ───────────────────────────────────────────────────────────────
+ ● step 1 — recalled m12, m834                                        2m
+ ● step 2 — tests pinned                                             15m
+ ● step 3                                                            13m
+ ◆ step 4                                                            12m
+ ○ step 5
+ ▸ wiring the CLI
+ ── flow ───────────────────────────────────────────────────────────────
+ 40m ● step 1
+ 25m ● step 2
+ 12m ● step 3
+  2m » risk: lexer is lossy
+  8s ▸ wiring the CLI
+
+esc back  ↑↓ scroll  G latest  o info  ? help  q quit
+--- styles ---
+aaaaaabbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccddddddddeeeee
+bbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cbbcfffbeeeeeeeeeeeeeeeeeeeeeeeeecceeeebebbbebbccccccccccccccccccccccccc
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+fffcccccceeeeeeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccee
+fffcccccceeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccceee
+fffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccceee
+bbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccbbb
+eeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeeeeeeeeeeeeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+eeeeeffffffffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeeeffffffffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeeeffffffffccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+eeeeeccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+bbbeeeeeeebbeeeeeeeeebeeeeeeeeebeeeeeeebeeeeeeebeeeeeccccccccccccccccccc
+--- legend ---
+a fg=Some(Black) bg=Some(Cyan) mod=BOLD
+b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
+c fg=Some(Reset) bg=Some(Reset) mod=NONE
+d fg=Some(Black) bg=Some(Green) mod=BOLD
+e fg=Some(DarkGray) bg=Some(Reset) mod=NONE
+f fg=Some(Green) bg=Some(Reset) mod=NONE

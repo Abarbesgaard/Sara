@@ -36,7 +36,7 @@ pub struct FlowEvent {
     pub detail: Option<String>,
 }
 
-fn parse_at(s: &str) -> DateTime<Utc> {
+pub fn parse_at(s: &str) -> DateTime<Utc> {
     str_to_dt(s)
         .or_else(|_| {
             chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")

@@ -628,16 +628,31 @@ sara follow --stall 5      # flag tasks as STALLED after 5 quiet minutes (defaul
 ```
 
 - **Mission control** lists every open task, most recently active first, with a pulse badge
-  (`LIVE` for activity in the last 2 minutes, `STALLED` when steps are open but
-  nothing has happened past the stall threshold, otherwise `IDLE`), its step
-  rail (`●` done, `◆` current, `○` open), the current step, and what the agent
-  says it is doing. It covers every project unless `-p` ties it to one: `-p`
-  alone means the project of the current folder, `-p <name>` a named project.
-  `↑↓` selects a task, `⏎` follows it, `p` switches between all projects and
-  this project, `m` toggles minimal mode, and `q` quits.
-- **Task view** adds a timeline of the task's flow: steps added and done,
-  notes, memories recalled or cited, "now doing" lines, and other changes,
-  with the newest at the bottom.
+  (`LIVE` with a spinner for activity in the last 2 minutes, `STALLED` when
+  steps are open but nothing has happened past the stall threshold, otherwise
+  `IDLE`), its step rail (`●` done, `◆` current, `○` open), the current step,
+  a one-hour activity sparkline, and what the agent says it is doing. It covers
+  every project unless `-p` ties it to one: `-p` alone means the project of the
+  current folder, `-p <name>` a named project. At 110 columns or wider, a live
+  feed of every visible task's events runs alongside the list.
+  - `↑↓` selects a task and `⏎` follows it.
+  - `o` opens the task in `sara info`, and quitting info returns here.
+  - `/` filters by text (description, project, id, current step or "now
+    doing"), and `Esc` clears the filter.
+  - `i` hides idle tasks.
+  - `p` switches between all projects and this project.
+  - `m` toggles minimal mode, `Space` pauses or resumes live updates, `?`
+    shows every key, and `q` quits.
+- **Task view** shows the full plan: each step with how long it took, measured
+  from the previous step's completion, and done steps with their recorded
+  result. Long plans are windowed around the current step. Below the plan is a
+  timeline of the task's flow: steps added and done, notes, memories recalled or
+  cited, "now doing" lines, and other changes, newest at the bottom.
+  - Events from the last 15 seconds are highlighted.
+  - `j/k`, `PgUp/PgDn` and `gg` scroll back in time, and `G` returns to the
+    latest event.
+  - While you are scrolled back, new events don't move the view, and the
+    divider counts them (`↓ N newer`).
 - **Minimal mode** (`-m`) shows one step rail per active task with the name of
   the active step (`◆ …`) beneath it, grouped under a `── project ──` header
   when several projects are active (most recently active first). Below is a

@@ -622,6 +622,7 @@ pub fn dispatch(command: Command, mut conn: Connection, cfg: config::Config) -> 
             });
             commands::follow::run(
                 &conn,
+                &cfg,
                 commands::follow::FollowOptions {
                     id,
                     minimal,

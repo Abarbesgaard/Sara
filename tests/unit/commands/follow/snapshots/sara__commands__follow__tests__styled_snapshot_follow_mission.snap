@@ -3,7 +3,7 @@ source: tests/unit/commands/follow/tests.rs
 expression: "styled(&app, 80, 16)"
 ---
  sara  ▸ follow · mission control             all projects · 1 live · 1 stalled
-▸  LIVE  26  task 26                                                  sara · 30s
+▸  ⠋ LIVE  26  task 26                                                sara · 30s
     ●●◆○ 2/4  step 3
     ▸ writing tests
 
@@ -17,10 +17,10 @@ expression: "styled(&app, 80, 16)"
 
 
 
-↑↓ select  ⏎ follow  m minimal  q quit
+↑↓ select  ⏎ follow  o info  / filter  i hide idle  ? help  q quit
 --- styles ---
 aaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccdddddddddddddddeeeeeeffffffffffffc
-bbggggggcbbccaaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddd
+bbggggggggcbbccaaaaaaaccccccccccccccccccccccccccccccccccccccccccccccccdddddddddd
 cccceebdddddcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 dddddddddddddddddddccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -34,7 +34,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-bbdddddddddbdddddddddbddddddddddbdddddcccccccccccccccccccccccccccccccccccccccccc
+bbdddddddddbdddddddddbdddddddbdddddddddbddddddddddddbdddddddbdddddcccccccccccccc
 --- legend ---
 a fg=Some(Black) bg=Some(Cyan) mod=BOLD
 b fg=Some(Cyan) bg=Some(Reset) mod=BOLD
