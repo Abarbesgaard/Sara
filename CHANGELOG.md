@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-26
+
 ### Added
 - `sara follow` overhaul. The task view shows the full plan: every step
   with how long it took, done steps with their result, and long plans
@@ -23,6 +25,9 @@
   instead.
 - `sara follow`: the task view footer no longer shows `esc quit` and
   `q quit` side by side.
+- Dependencies: rustls 0.23.46, rustls-webpki 0.103.16 and webpki-roots
+  1.0.11 fix RUSTSEC-2026-0346/0347/0348/0349/0381/0382. tokio 1.54.1 fixes
+  RUSTSEC-2026-0386.
 
 ## [2.5.1] - 2026-10-09
 
