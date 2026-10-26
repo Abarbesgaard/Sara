@@ -25,21 +25,27 @@ tool takes an optional `project_path` — set it to the absolute path of the tar
 git repo so the tool resolves/creates tasks there; omit it to use the directory the \
 server was launched in. Target tasks by their 8-char UUID prefix (stable), not the \
 recycled numeric display id. Never read the sara SQLite DB directly.\n\n\
-Execution loop: start new work with `begin` (or `list`/`info` to resume a task). \
-`begin` seeds a first step to recall prior art — decide what knowledge bears on the \
+Execution loop: start new work with `begin`; to pick up work in progress (after a \
+context reset or in a new session) call `resume` — omit `id` for the project's most \
+recently active task. `begin` seeds a first step to recall prior art — decide what knowledge bears on the \
 task and call `recall` yourself, passing the task as `task`. Lay out the work with `check` (steps, or \
 acceptance criteria with kind=\"acceptance\" and a `verify` command), then repeat: \
 `next` for the current step → do the work → `step_done` with a result (and `used`: the memories that helped). Record \
 findings and decisions with `annotate`. Whenever you switch activity, report one short line with `doing` (or the \
 `doing` param on `step_done`/`annotate`) so a human watching `sara follow` sees what you are working on. `validate` runs every acceptance \
 criterion's verify command and stamps the guide green at git HEAD.\n\n\
+Task results (begin, check, step_done, step_undone, step_remove, next, link, validate, resume, finish) carry \
+`next_actions`: the tool calls that move the task forward from its current state, each with `args` and a `why`. \
+Follow them instead of reconstructing the workflow.\n\n\
 Memory: `recall` before solving, with `task` set when it serves a task (heed its `patterns`, `confidence`, and `stale` \
 flags); `learn` one distilled insight when you finish, tagged and bound to its \
-files; `relearn`/`forget` to correct or retire memories, `reflect` and `doctor` to \
-keep the store healthy.\n\n\
+files — check `tags` first, and act on the `possible_duplicates` it returns (link typed with `supersedes`/\
+`derived_from`/`similar_to`, or relearn the existing memory). `relearn`/`forget` correct or retire memories; \
+`doctor` reports store health and `maintain` runs the fix (diagnose, consolidate, reflect, prune, reindex).\n\n\
 A failed tool call returns a result with isError set and the reason as text — read \
-it and correct the call. To finish, link the PR (`link`) and call `done` only once \
-that PR has merged — opening a PR is not completion.";
+it and correct the call. To finish, open the PR and call `finish` with its url: before the merge it just links \
+it; once merged (base branch checked out and pulled) it validates and marks the task done. Opening a PR is not \
+completion.";
 
 pub(crate) struct CwdGuard {
     prev: Option<PathBuf>,
@@ -130,6 +136,21 @@ impl SaraServer {
         let _cwd = CwdGuard::enter(project_path)?;
         db::begin_undo_batch(label);
         f(&conn, &self.cfg)
+    }
+
+    /// [`Self::with_project`] for a call on task `id`: the result also carries
+    /// `next_actions`, the tool calls that move the task forward from there.
+    pub(crate) fn with_task(
+        &self,
+        project_path: Option<&str>,
+        label: &str,
+        id: &str,
+        f: impl FnOnce(&Connection, &Config) -> anyhow::Result<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.with_project(project_path, label, |conn, cfg| {
+            let v = f(conn, cfg)?;
+            Ok(crate::commands::agent::with_next_actions(conn, id, v))
+        })
     }
 
     /// Route a tool call exactly as `#[tool_handler]`'s generated default does.

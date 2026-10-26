@@ -36,6 +36,10 @@ impl SaraServer {
                     p.check.as_deref(),
                     p.verify.as_deref(),
                 )
+                .map(|v| match v["uuid"].as_str().map(str::to_string) {
+                    Some(id) => commands::agent::with_next_actions(conn, &id, v),
+                    None => v,
+                })
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -87,30 +91,39 @@ impl SaraServer {
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp step_done", |conn, _cfg| {
-                let used = p.used.as_deref().unwrap_or(&[]);
-                commands::shared::with_citation(conn, &p.id, used, || {
-                    if let Some(step_id) = p.step_id {
-                        commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
-                    } else if let Some(n) = p.n {
-                        commands::guide::step_done_value(
-                            conn,
-                            &p.id,
-                            n,
-                            p.result.as_deref(),
-                            p.kind.as_deref(),
-                        )
-                    } else {
-                        commands::guide::step_done_current_value(
-                            conn,
-                            &p.id,
-                            p.result.as_deref(),
-                            p.kind.as_deref(),
-                        )
-                    }
-                })
-                .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
-            })
+            .with_task(
+                p.project_path.as_deref(),
+                "mcp step_done",
+                &p.id,
+                |conn, _cfg| {
+                    let used = p.used.as_deref().unwrap_or(&[]);
+                    commands::shared::with_citation(conn, &p.id, used, || {
+                        if let Some(step_id) = p.step_id {
+                            commands::guide::step_done_by_id_value(
+                                conn,
+                                step_id,
+                                p.result.as_deref(),
+                            )
+                        } else if let Some(n) = p.n {
+                            commands::guide::step_done_value(
+                                conn,
+                                &p.id,
+                                n,
+                                p.result.as_deref(),
+                                p.kind.as_deref(),
+                            )
+                        } else {
+                            commands::guide::step_done_current_value(
+                                conn,
+                                &p.id,
+                                p.result.as_deref(),
+                                p.kind.as_deref(),
+                            )
+                        }
+                    })
+                    .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -191,17 +204,22 @@ impl SaraServer {
     )]
     fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp check", |conn, _cfg| {
-                commands::guide::check_value(
-                    conn,
-                    &p.id,
-                    &p.text,
-                    p.intent.as_deref(),
-                    p.kind.as_deref(),
-                    p.source.as_deref(),
-                    p.verify.as_deref(),
-                )
-            })
+            .with_task(
+                p.project_path.as_deref(),
+                "mcp check",
+                &p.id,
+                |conn, _cfg| {
+                    commands::guide::check_value(
+                        conn,
+                        &p.id,
+                        &p.text,
+                        p.intent.as_deref(),
+                        p.kind.as_deref(),
+                        p.source.as_deref(),
+                        p.verify.as_deref(),
+                    )
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -217,9 +235,10 @@ impl SaraServer {
     )]
     fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
         let v = self
-            .with_project(
+            .with_task(
                 p.project_path.as_deref(),
                 "mcp step_undone",
+                &p.id,
                 |conn, _cfg| {
                     if let Some(step_id) = p.step_id {
                         commands::guide::step_undone_by_id_value(conn, step_id)
@@ -246,9 +265,10 @@ impl SaraServer {
     )]
     fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
         let v = self
-            .with_project(
+            .with_task(
                 p.project_path.as_deref(),
                 "mcp step_remove",
+                &p.id,
                 |conn, _cfg| {
                     if let Some(step_id) = p.step_id {
                         commands::guide::step_remove_by_id_value(conn, step_id)
@@ -260,42 +280,6 @@ impl SaraServer {
                     }
                 },
             )
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Set (replace) a task's assignment: the originating request, in the requester's words.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn assignment(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp assignment", |conn, _cfg| {
-                commands::guide::assignment_value(conn, &p.id, &p.text)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Set (replace) a task's rationale: why the task exists.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn rationale(&self, Parameters(p): Parameters<GuideTextParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp rationale", |conn, _cfg| {
-                commands::guide::rationale_value(conn, &p.id, &p.text)
-            })
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -327,7 +311,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Save one distilled insight as a memory. Bodies over 2000 characters or that look like secrets are refused; force=true skips those checks and the canonical auto-link below. Run `recall` first and check `tags` to reuse existing tag names. `files` binds the memory to files (relative paths resolve against `project_path`) so later edits can flag it stale; `tasks` links tasks by id or UUID prefix; `projects` scopes it. If its tags place it inside an established canonical pattern (a same-project near-duplicate, or >= 50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from`. Returns the new memory's `label`. To mark it as superseding or related to an existing memory, call `link_memory` afterwards.",
+        description = "Save one distilled insight as a memory. Bodies over 2000 characters or that look like secrets are refused; force=true skips those checks and the canonical auto-link below. Run `recall` first and check `tags` to reuse existing tag names. `files` binds the memory to files (relative paths resolve against `project_path`) so later edits can flag it stale; `tasks` links tasks by id or UUID prefix; `projects` scopes it. If its tags place it inside an established canonical pattern (a same-project near-duplicate, or >= 50% tag overlap with a canonical), it is auto-linked `derived_from` that canonical and reported in `auto_derived_from`. Link it typed in the same call with `supersedes` (it replaces those), `derived_from` (it applies or specialises them) or `similar_to`. Returns the new memory's `label` and `possible_duplicates`: existing memories with the same tags, a shared file or near-identical text, each with a `suggestion` — act on them (link_memory, or forget the new one and relearn the old) instead of leaving duplicates.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -340,6 +324,9 @@ impl SaraServer {
         let projects = p.projects.unwrap_or_default();
         let tasks = p.tasks.unwrap_or_default();
         let files = p.files.unwrap_or_default();
+        let supersedes = p.supersedes.unwrap_or_default();
+        let derived_from = p.derived_from.unwrap_or_default();
+        let similar_to = p.similar_to.unwrap_or_default();
         let v = self
             .with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
                 commands::learn::learn_value(
@@ -352,6 +339,9 @@ impl SaraServer {
                         tasks: &tasks,
                         files: &files,
                         force: p.force.unwrap_or(false),
+                        supersedes: &supersedes,
+                        derived_from: &derived_from,
+                        similar_to: &similar_to,
                         ..Default::default()
                     },
                 )

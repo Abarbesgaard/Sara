@@ -1,8 +1,10 @@
 mod files;
 mod hints;
+mod report;
 mod tags;
 mod warn;
 
+pub(super) use report::possible_duplicates;
 pub(super) use tags::TagOverlap;
 pub(super) use warn::warn_overlap;
 

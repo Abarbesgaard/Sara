@@ -679,7 +679,7 @@ drive sara with structured JSON in and out — no flag-ordering, UUID-juggling, 
 TUI pitfalls. It's a thin adapter over the same code the CLI uses, so there is a
 single source of truth.
 
-The server exposes forty-five tools — the non-interactive agent loop end to end,
+The server exposes forty-one tools — the non-interactive agent loop end to end,
 from reading and planning a task through to completing it:
 
 | Tool | Purpose |
@@ -689,6 +689,7 @@ from reading and planning a task through to completing it:
 | `projects` | List every registered project |
 | `move_task` | Move a task to another project |
 | `info` | Full task guide: steps, acceptance, notes, links, freshness, feedback |
+| `resume` | One-call briefing to pick a task back up: progress, open steps, acceptance, recent notes, links, relevant memories and `next_actions` (defaults to the project's most recent pending task) |
 | `begin` | Start work: create the task, set assignment/rationale, add an optional acceptance criterion, recall related memories and attach them as a finding |
 | `add` | Create a task (never opens the review form) |
 | `next` | The execution cursor — first not-done step |
@@ -697,15 +698,13 @@ from reading and planning a task through to completing it:
 | `doing` | Report a one-line "now doing" status, shown live in `sara follow` |
 | `verify` | Read-only: the verification commands + acceptance criteria (does **not** run them) |
 | `recall` | Cross-task keyword search + memory lookup |
-| `memories` | Browse all saved memories (with strength labels) |
+| `memories` | Browse saved memories with strength labels (`scope` = `project` (default, plus global) / `all`; `limit`, default 50) |
 | `forget` | Archive a memory by label |
-| `learn` | Save a knowledge memory (tags, file bindings, task links) |
+| `learn` | Save a knowledge memory (tags, file bindings, task links, typed `supersedes` / `derived_from` / `similar_to`); reports `possible_duplicates` |
 | `relearn` | Edit a memory in place, keeping its label, links and dates |
-| `tags` | List the whole tag vocabulary with usage counts |
+| `tags` | Tag vocabulary with usage counts (`scope`, `prefix`, `limit`) |
 | `promote` | Accept a provisional auto-memory as permanent |
-| `link_memory` | Create a typed edge between two memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
-| `unlink_memory` | Remove a typed edge between two memories |
-| `prune_memories` | Dry-run or apply archival of low-value memories |
+| `link_memory` | Create (or with `remove`, delete) a typed edge between two memories (`supersedes`, `similar_to`, `derived_from`, `used_in`) |
 | `annotate` | Add a comment / finding / decision |
 | `denotate` | Remove an annotation by its id |
 | `plan_import` | Bulk-ingest a task graph from an inline JSON plan |
@@ -717,24 +716,25 @@ from reading and planning a task through to completing it:
 | `link` | Attach a URL (e.g. a PR) to a task |
 | `unlink` | Remove a link by its id |
 | `attach` | Attach a file or code anchor (`reason`, `symbol`, `lines`, `source`); a URL becomes a link |
-| `assignment` | Set the task's assignment (the originating prompt / what to build) |
-| `rationale` | Set the task's rationale (why it exists) |
-| `modify` | Set task fields non-interactively (never opens the review form; at least one field required) |
+| `modify` | Set task fields non-interactively, including `assignment` and `rationale` (never opens the review form; at least one field required) |
 | `validate` | Run every acceptance criterion's verify command and stamp the guide against git HEAD only if all pass (fails closed) |
 | `feedback` | List a task's open human feedback |
 | `resolve` | Resolve a feedback item by its id |
 | `record_run` | Log an AI/LLM interaction against a task; returns a `run_id` that `resolve` can cite |
-| `done` | Complete a task (errors if blocked unless `force`; spawns the next recurrence) |
-| `consolidate` | Recompute `co_activated` synapses between memories recalled together (sliding window, idempotent) |
-| `reflect` | Cluster co-firing memories, nominate a canonical; `apply` writes `derived_from` |
+| `done` | Complete a task (errors if blocked unless `force`; `validate=true` runs `validate` first; spawns the next recurrence) |
+| `finish` | Close out after the PR: link `pr_url` once, check the merge (`gh`, or `merged`), then validate at HEAD and complete the task |
+| `maintain` | Memory-store maintenance: `action` = `diagnose` / `consolidate` / `reflect` / `prune` / `reindex` |
 | `doctor` | One-call memory-store health report (embeddings, orphaned links, duplicates, superseded, provisional backlog, decay, stale file anchors) with a fix per finding |
-| `diagnose_memories` | Conflict report: unlinked memory pairs that share a file or tag set and are semantically close |
-| `reindex_embeddings` | Rebuild the semantic index over all memories |
 
 Every tool carries MCP **annotations** (`readOnlyHint`, `destructiveHint`,
 `idempotentHint`, `openWorldHint`): the read/report tools are marked read-only and
 the ones that delete or overwrite (`done`, `forget`, `step_remove`, `modify`, …)
 destructive, so clients can auto-approve reads and confirm the rest.
+
+Task-mutating tools (`begin`, `next`, `step_done`, `check`, `link`, `validate`,
+`finish`, …) return a `next_actions` list — `{tool, args, why}` entries naming
+the next lifecycle call (finish the open step, tick acceptance, validate, link
+the PR, finish) — so an agent never has to guess what comes next.
 
 When a tool fails for a domain reason (unknown task id, blocked `done`, failing
 `validate`, …) it returns a normal tool result with `isError: true` and the

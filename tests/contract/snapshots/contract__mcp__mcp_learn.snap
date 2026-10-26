@@ -8,6 +8,7 @@ expression: redact(learn)
   "files": [],
   "label": "m1",
   "linked_tasks": [],
+  "possible_duplicates": [],
   "similar_to": [],
   "superseded": [],
   "tags": [],

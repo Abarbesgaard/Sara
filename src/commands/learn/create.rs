@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::files::collect_files;
 use super::links::{auto_link_canonical, link_handles};
-use super::overlap::{TagOverlap, warn_overlap};
+use super::overlap::{TagOverlap, possible_duplicates, warn_overlap};
 use super::persist::save;
 use super::types::LearnRequest;
 use crate::commands::shared::{memory_handle, summarize};
@@ -16,6 +16,7 @@ pub(super) fn learn(conn: &Connection, cfg: &Config, req: &LearnRequest) -> Resu
     let text = req.text.trim();
     let files = collect_files(req.files, req.auto_files)?;
     let mut auto_canonical = Vec::new();
+    let mut overlap = None;
     if !req.force {
         safety::check_size(text)?;
         safety::check_secrets(text)?;
@@ -24,9 +25,10 @@ pub(super) fn learn(conn: &Connection, cfg: &Config, req: &LearnRequest) -> Resu
             .first()
             .cloned()
             .or_else(|| detect_current_project(conn, cfg).ok().map(|(p, _)| p));
-        let overlap = TagOverlap::compute(conn, req.tags)?;
-        warn_overlap(conn, &overlap, &files, primary_project.as_deref())?;
-        auto_canonical = overlap.canonical_candidates(conn);
+        let computed = TagOverlap::compute(conn, req.tags)?;
+        warn_overlap(conn, &computed, &files, primary_project.as_deref())?;
+        auto_canonical = computed.canonical_candidates(conn);
+        overlap = Some(computed);
     }
 
     let item = save(conn, cfg, text, req.tags, req.projects, req.tasks, &files)?;
@@ -59,6 +61,11 @@ pub(super) fn learn(conn: &Connection, cfg: &Config, req: &LearnRequest) -> Resu
         .chain(&similar_to)
         .collect();
     let auto_derived = auto_link_canonical(conn, &new_uuid, &auto_canonical, &explicit)?;
+    let linked: Vec<&String> = explicit.iter().copied().chain(&auto_derived).collect();
+    let duplicates = overlap
+        .as_ref()
+        .map(|o| possible_duplicates(conn, &item.uuid, o, &files, &linked))
+        .unwrap_or_default();
 
     let linked_tasks: Vec<Value> = item
         .linked_tasks
@@ -83,5 +90,6 @@ pub(super) fn learn(conn: &Connection, cfg: &Config, req: &LearnRequest) -> Resu
         "derived_from": derived_from,
         "similar_to": similar_to,
         "auto_derived_from": auto_derived,
+        "possible_duplicates": duplicates,
     }))
 }

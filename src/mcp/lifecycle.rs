@@ -10,7 +10,7 @@ use super::server::{SaraServer, mcp_err, ok_json};
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
     #[tool(
-        description = "Mark a task complete: stops its timer, renumbers display ids (keep using the UUID), and spawns the next occurrence of a recurring task. Errors if the task is blocked by unfinished dependencies, or if it is targeted by display id from a different git branch than it is tied to; force=true overrides both. Call it only once the task's PR has merged, not when the PR is opened. Pass `used` with the memory labels that helped the task, to cite them; an unknown label fails the call before the task is closed.",
+        description = "Mark a task complete: stops its timer, renumbers display ids (keep using the UUID), and spawns the next occurrence of a recurring task. Errors if the task is blocked by unfinished dependencies, or if it is targeted by display id from a different git branch than it is tied to; force=true overrides both. Refuses a task whose acceptance criteria were not validated at the current HEAD: pass validate=true to run the gate first, or use `finish` (link PR + validate + done in one call). Call it only once the task's PR has merged, not when the PR is opened. Pass `used` with the memory labels that helped the task, to cite them; an unknown label fails the call before the task is closed.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -22,9 +22,19 @@ impl SaraServer {
         let v = self
             .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
                 let used = p.used.as_deref().unwrap_or(&[]);
+                if p.validate.unwrap_or(false) {
+                    commands::guide::validate_value(
+                        conn,
+                        &p.id,
+                        false,
+                        commands::guide::GateOutput::Capture,
+                        false,
+                    )?;
+                }
                 let v = commands::shared::with_citation(conn, &p.id, used, || {
                     commands::done::done_value(conn, cfg, &p.id, p.force.unwrap_or(false))
-                })?;
+                })
+                .map_err(with_done_hint)?;
                 commands::done::report_outcome(conn, cfg, Source::Mcp, &v);
                 Ok(v)
             })
@@ -43,9 +53,14 @@ impl SaraServer {
     )]
     fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp link", |conn, _cfg| {
-                commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref())
-            })
+            .with_task(
+                p.project_path.as_deref(),
+                "mcp link",
+                &p.id,
+                |conn, _cfg| {
+                    commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref())
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -99,21 +114,26 @@ impl SaraServer {
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp validate", |conn, _cfg| {
-                commands::guide::validate_value(
-                    conn,
-                    &p.id,
-                    false,
-                    commands::guide::GateOutput::Capture,
-                    false,
-                )
-            })
+            .with_task(
+                p.project_path.as_deref(),
+                "mcp validate",
+                &p.id,
+                |conn, _cfg| {
+                    commands::guide::validate_value(
+                        conn,
+                        &p.id,
+                        false,
+                        commands::guide::GateOutput::Capture,
+                        false,
+                    )
+                },
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
 
     #[tool(
-        description = "Set task fields without opening the TUI; pass at least one. `tags` REPLACES the whole tag set. Clear fields with `clear_due`, `clear_tags`, `clear_estimate` or `clear_recur`.",
+        description = "Set task fields without opening the TUI; pass at least one. `tags` REPLACES the whole tag set. `assignment` and `rationale` replace the guide's originating request and its why. Clear fields with `clear_due`, `clear_tags`, `clear_estimate` or `clear_recur`.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -123,9 +143,29 @@ impl SaraServer {
     )]
     fn modify(&self, Parameters(p): Parameters<ModifyParams>) -> Result<String, String> {
         let tags = p.tags.clone().unwrap_or_default();
+        let fields = p.description.is_some()
+            || p.priority.is_some()
+            || p.due.is_some()
+            || p.clear_due.unwrap_or(false)
+            || !tags.is_empty()
+            || p.clear_tags.unwrap_or(false)
+            || p.estimate.is_some()
+            || p.clear_estimate.unwrap_or(false)
+            || p.every.is_some()
+            || p.clear_recur.unwrap_or(false);
         let v = self
             .with_project(p.project_path.as_deref(), "mcp modify", |conn, cfg| {
-                commands::modify::modify_value(
+                let mut out = serde_json::json!({});
+                if let Some(text) = p.assignment.as_deref() {
+                    out["assignment"] = commands::guide::assignment_value(conn, &p.id, text)?;
+                }
+                if let Some(text) = p.rationale.as_deref() {
+                    out["rationale"] = commands::guide::rationale_value(conn, &p.id, text)?;
+                }
+                if !fields && out.as_object().is_some_and(|o| !o.is_empty()) {
+                    return Ok(out);
+                }
+                let mut v = commands::modify::modify_value(
                     conn,
                     cfg,
                     &p.id,
@@ -139,7 +179,44 @@ impl SaraServer {
                     p.clear_estimate.unwrap_or(false),
                     p.every.as_deref(),
                     p.clear_recur.unwrap_or(false),
+                )?;
+                if let (Some(obj), Some(extra)) = (v.as_object_mut(), out.as_object()) {
+                    obj.extend(extra.clone());
+                }
+                Ok(v)
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
+        description = "Close a task from its pull request in one call. Links `pr_url` (once; omit it to use the PR already linked), then checks whether the PR has merged (`merged`, or else `gh pr view`). Not merged yet: returns status=waiting_for_merge and changes nothing else, so it is safe to call right after opening the PR. Merged: runs the acceptance gate at the current HEAD (as `validate` does; check out and pull the base branch first) and marks the task done, citing `used` memories. Prefer it over link -> validate -> done.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    fn finish(&self, Parameters(p): Parameters<FinishParams>) -> Result<String, String> {
+        let used = p.used.clone().unwrap_or_default();
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp finish", |conn, cfg| {
+                let v = commands::agent::finish_value(
+                    conn,
+                    cfg,
+                    &commands::agent::FinishRequest {
+                        id: &p.id,
+                        pr_url: p.pr_url.as_deref(),
+                        merged: p.merged,
+                        used: &used,
+                    },
                 )
+                .map_err(with_done_hint)?;
+                if v["status"] == "done" {
+                    commands::done::report_outcome(conn, cfg, Source::Mcp, &v["done"]);
+                }
+                Ok(v)
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -247,5 +324,20 @@ impl SaraServer {
             })
             .map_err(mcp_err)?;
         ok_json(v)
+    }
+}
+
+/// `done` refusals are phrased for the CLI; point MCP callers at the tool
+/// arguments that get them past the gate.
+fn with_done_hint(e: anyhow::Error) -> anyhow::Error {
+    let msg = format!("{e:#}");
+    if msg.contains("is not validated") {
+        anyhow::anyhow!(
+            "{msg} From MCP: call `done` with validate=true to run the acceptance gate first, \
+             or `finish` with the PR url once it has merged; force=true closes without proof \
+             (discouraged)."
+        )
+    } else {
+        e
     }
 }
