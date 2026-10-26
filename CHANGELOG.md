@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-26
+
 ### Added
 - MCP: task tools (`begin`, `next`, `step_done`, `check`, `step_undone`,
   `step_remove`, `link`, `validate`, `finish`) return `next_actions`, a list
