@@ -182,6 +182,23 @@ pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
     Ok(items)
 }
 
+/// Memories scoped to `project`, plus unscoped (global) ones, newest first.
+pub fn list_memories_for_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
+         FROM items i WHERE status IN ('active','provisional') AND kind = 'memory'
+           AND (EXISTS (SELECT 1 FROM item_projects ip WHERE ip.item_uuid = i.uuid AND ip.project = ?1)
+                OR NOT EXISTS (SELECT 1 FROM item_projects ip WHERE ip.item_uuid = i.uuid))
+         ORDER BY created DESC",
+    )?;
+    let rows = stmt.query_map([project], row_to_item)?;
+    let mut items = vec![];
+    for r in rows {
+        items.push(r?);
+    }
+    Ok(items)
+}
+
 pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
     let handle = handle.trim().to_lowercase();
     let (kind, id_str) = if let Some(rest) = handle.strip_prefix('n') {
@@ -518,6 +535,28 @@ pub fn list_tags_with_counts(conn: &Connection) -> Result<Vec<(String, i64)>> {
     )?;
     let rows = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Tag counts over memories scoped to `project`, plus unscoped (global) ones.
+pub fn list_tags_with_counts_for_project(
+    conn: &Connection,
+    project: &str,
+) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT it.tag, COUNT(*) FROM item_tags it
+         JOIN items i ON i.uuid = it.item_uuid
+         WHERE i.status IN ('active','provisional')
+           AND (EXISTS (SELECT 1 FROM item_projects ip WHERE ip.item_uuid = i.uuid AND ip.project = ?1)
+                OR NOT EXISTS (SELECT 1 FROM item_projects ip WHERE ip.item_uuid = i.uuid))
+         GROUP BY it.tag ORDER BY COUNT(*) DESC, it.tag ASC",
+    )?;
+    let rows = stmt
+        .query_map([project], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)

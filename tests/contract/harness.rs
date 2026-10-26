@@ -234,6 +234,14 @@ pub fn redact(mut value: Value) -> Value {
 fn scrub(value: &mut Value) {
     match value {
         Value::Object(map) => {
+            // `next_actions` entries address their task by uuid prefix.
+            if map.contains_key("tool")
+                && let Some(Value::Object(args)) = map.get_mut("args")
+                && let Some(id) = args.get_mut("id")
+                && id.is_string()
+            {
+                *id = Value::String("[redacted]".into());
+            }
             for (k, v) in map.iter_mut() {
                 if VOLATILE.contains(&k.as_str()) && !v.is_null() {
                     *v = Value::String("[redacted]".into());

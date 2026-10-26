@@ -23,6 +23,15 @@ expression: redact(begin)
     "total": 1,
     "verify_cmd": null
   },
+  "next_actions": [
+    {
+      "args": {
+        "id": "[redacted]"
+      },
+      "tool": "step_done",
+      "why": "do step 1/1 — Recall prior art before doing anything else — then tick it with a result"
+    }
+  ],
   "project": "Demo",
   "rationale": null,
   "recall_step": {

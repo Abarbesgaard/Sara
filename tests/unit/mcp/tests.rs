@@ -27,7 +27,7 @@ fn exposes_the_agent_loop_tools() {
         .iter()
         .map(|t| t.name.to_string())
         .collect();
-    assert_eq!(names.len(), 46, "expected 46 tools, got {names:?}");
+    assert_eq!(names.len(), 41, "expected 41 tools, got {names:?}");
     for expected in [
         "list",
         "find",
@@ -49,8 +49,6 @@ fn exposes_the_agent_loop_tools() {
         "check",
         "step_undone",
         "step_remove",
-        "assignment",
-        "rationale",
         "attach",
         "learn",
         "forget",
@@ -66,10 +64,11 @@ fn exposes_the_agent_loop_tools() {
         "resolve",
         "record_run",
         "move_task",
-        "consolidate",
-        "reflect",
-        "diagnose_memories",
-        "reindex_embeddings",
+        "maintain",
+        "link_memory",
+        "memories",
+        "finish",
+        "resume",
         "doing",
     ] {
         assert!(
@@ -753,7 +752,7 @@ fn tools_carry_annotations() {
         "memories",
         "projects",
         "doctor",
-        "diagnose_memories",
+        "resume",
     ];
     const DESTRUCTIVE: &[&str] = &[
         "done",
@@ -761,16 +760,15 @@ fn tools_carry_annotations() {
         "step_remove",
         "unlink",
         "denotate",
-        "unlink_memory",
-        "prune_memories",
+        "link_memory",
+        "maintain",
         "modify",
         "relearn",
         "dep",
-        "assignment",
-        "rationale",
+        "finish",
     ];
     let tools = SaraServer::all_router().list_all();
-    assert_eq!(tools.len(), 46);
+    assert_eq!(tools.len(), 41);
     for t in &tools {
         let name = t.name.as_ref();
         let a = t
@@ -781,7 +779,7 @@ fn tools_carry_annotations() {
         assert_eq!(a.read_only_hint, Some(read_only), "`{name}` readOnlyHint");
         assert_eq!(
             a.open_world_hint,
-            Some(name == "validate"),
+            Some(matches!(name, "validate" | "finish")),
             "`{name}` openWorldHint"
         );
         if read_only {
@@ -876,4 +874,455 @@ fn mcp_doing_report_piggybacks_on_another_result() {
         })
         .expect("report");
     assert!(untouched.get("doing").is_none());
+}
+
+fn action_tools(v: &serde_json::Value) -> Vec<String> {
+    v["next_actions"]
+        .as_array()
+        .expect("next_actions array")
+        .iter()
+        .map(|a| a["tool"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
+fn actions_for(server: &SaraServer, id: &str) -> Vec<String> {
+    let v = server
+        .with_project(None, "t", |conn, _cfg| {
+            let task = db::resolve_task(conn, id)?;
+            Ok(serde_json::json!({
+                "next_actions": commands::agent::next_actions(conn, &task)?
+            }))
+        })
+        .unwrap();
+    action_tools(&v)
+}
+
+#[test]
+fn next_actions_walk_the_task_lifecycle() {
+    let server = server_with(db::open_in_memory_for_test());
+    let id = seed_returning(&server, "proj", "ship the thing");
+    assert_eq!(actions_for(&server, &id), ["check"], "no plan yet");
+
+    server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::guide::check_value(conn, &id, "write it", None, None, None, None)
+        })
+        .unwrap();
+    assert_eq!(actions_for(&server, &id), ["step_done"], "open step");
+
+    let ticked = server
+        .with_task(None, "t", &id, |conn, _cfg| {
+            commands::guide::step_done_current_value(conn, &id, Some("written"), None)
+        })
+        .unwrap();
+    assert_eq!(
+        action_tools(&ticked),
+        ["check", "link"],
+        "with_task attaches next_actions: no acceptance criterion, no PR"
+    );
+
+    server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::guide::check_value(
+                conn,
+                &id,
+                "tests pass",
+                None,
+                Some("acceptance"),
+                None,
+                Some("true"),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        actions_for(&server, &id),
+        ["step_done"],
+        "unticked criterion"
+    );
+
+    server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::guide::step_done_current_value(conn, &id, Some("green"), Some("acceptance"))
+        })
+        .unwrap();
+    assert_eq!(actions_for(&server, &id), ["validate", "link"]);
+
+    server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::annotate::link_value(conn, &id, "https://github.com/o/r/pull/7", None)
+        })
+        .unwrap();
+    assert_eq!(actions_for(&server, &id), ["validate", "finish"]);
+
+    server
+        .with_project(None, "t", |conn, cfg| {
+            commands::done::done_value(conn, cfg, &id, true)
+        })
+        .unwrap();
+    assert!(actions_for(&server, &id).is_empty(), "completed task");
+}
+
+#[test]
+fn finish_waits_for_the_merge_and_links_the_pr_once() {
+    let server = server_with(db::open_in_memory_for_test());
+    let id = seed_returning(&server, "proj", "finish me");
+    let url = "https://github.com/o/r/pull/9";
+    for _ in 0..2 {
+        let v = server
+            .with_project(None, "t", |conn, cfg| {
+                commands::agent::finish_value(
+                    conn,
+                    cfg,
+                    &commands::agent::FinishRequest {
+                        id: &id,
+                        pr_url: Some(url),
+                        merged: Some(false),
+                        used: &[],
+                    },
+                )
+            })
+            .unwrap();
+        assert_eq!(v["status"], "waiting_for_merge");
+        assert_eq!(v["next_actions"][0]["tool"], "finish");
+    }
+    let (links, status) = server
+        .with_project(None, "t", |conn, _cfg| {
+            let t = db::resolve_task(conn, &id)?;
+            Ok((db::get_links(conn, &t.uuid)?.len(), t.status))
+        })
+        .unwrap();
+    assert_eq!(links, 1, "the PR is linked exactly once");
+    assert_eq!(status, crate::infrastructure::model::Status::Pending);
+
+    let err = server
+        .with_project(None, "t", |conn, cfg| {
+            commands::agent::finish_value(
+                conn,
+                cfg,
+                &commands::agent::FinishRequest {
+                    id: &id,
+                    merged: Some(true),
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap_err();
+    assert!(
+        format!("{err:#}").contains("stays open"),
+        "a red gate keeps the task open: {err:#}"
+    );
+}
+
+#[test]
+fn finish_closes_a_merged_task_validated_at_head() {
+    let server = server_with(db::open_in_memory_for_test());
+    let repo = crate::test_support::git_repo();
+    std::fs::write(repo.path().join("f.txt"), "hi").unwrap();
+    crate::test_support::commit_all(repo.path(), "init");
+    let id = seed_returning(&server, "proj", "merged work");
+    let v = server
+        .with_project(None, "t", |conn, cfg| {
+            db::upsert_project_seen(conn, "proj", Some(repo.path().to_str().unwrap()))?;
+            commands::guide::check_value(
+                conn,
+                &id,
+                "true holds",
+                None,
+                Some("acceptance"),
+                None,
+                Some("true"),
+            )?;
+            commands::guide::step_done_current_value(conn, &id, Some("ok"), Some("acceptance"))?;
+            commands::agent::finish_value(
+                conn,
+                cfg,
+                &commands::agent::FinishRequest {
+                    id: &id,
+                    pr_url: Some("https://github.com/o/r/pull/3"),
+                    merged: Some(true),
+                    used: &[],
+                },
+            )
+        })
+        .unwrap();
+    assert_eq!(v["status"], "done", "{v}");
+    assert!(v["validated_commit"].is_string());
+    assert_eq!(v["done"]["uuid"], id);
+}
+
+#[test]
+fn resume_briefs_the_most_recent_task() {
+    let server = server_with(db::open_in_memory_for_test());
+    let empty = server
+        .with_project(None, "t", |conn, cfg| {
+            commands::agent::resume_value(conn, cfg, None)
+        })
+        .unwrap();
+    assert!(empty["task"].is_null());
+    assert_eq!(empty["next_actions"][0]["tool"], "begin");
+
+    let project = server
+        .with_project(None, "t", |conn, cfg| {
+            Ok(crate::infrastructure::project::detect_current_project(conn, cfg)?.0)
+        })
+        .unwrap();
+    let id = seed_returning(&server, &project, "pick me up");
+    let v = server
+        .with_project(None, "t", |conn, cfg| {
+            commands::guide::check_value(conn, &id, "first", None, None, None, None)?;
+            commands::guide::check_value(conn, &id, "second", None, None, None, None)?;
+            commands::guide::step_done_current_value(conn, &id, Some("did first"), None)?;
+            commands::doing::doing_value(conn, &id, "reading the code", None)?;
+            commands::agent::resume_value(conn, cfg, None)
+        })
+        .unwrap();
+    assert_eq!(v["task"]["uuid"], id);
+    assert_eq!(v["progress"], "1/2 steps, 0/0 acceptance");
+    assert_eq!(v["done_steps"][0]["result"], "did first");
+    assert_eq!(v["open_steps"][0]["text"], "second");
+    assert_eq!(v["doing"]["text"], "reading the code");
+    assert_eq!(v["next_actions"][0]["tool"], "step_done");
+}
+
+fn learn(server: &SaraServer, text: &str, tags: &[&str], projects: &[&str]) -> String {
+    let tags: Vec<String> = tags.iter().map(|s| s.to_string()).collect();
+    let projects: Vec<String> = projects.iter().map(|s| s.to_string()).collect();
+    server
+        .with_project(None, "t", |conn, cfg| {
+            commands::learn::learn_value(
+                conn,
+                cfg,
+                &commands::learn::LearnRequest {
+                    text,
+                    tags: &tags,
+                    projects: &projects,
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap()["label"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn tags_and_memories_are_scoped_to_the_project() {
+    let server = server_with(db::open_in_memory_for_test());
+    let project = server
+        .with_project(None, "t", |conn, cfg| {
+            Ok(crate::infrastructure::project::detect_current_project(conn, cfg)?.0)
+        })
+        .unwrap();
+    learn(&server, "mine", &["mcp-here"], &[&project]);
+    learn(&server, "theirs", &["elsewhere"], &["other-project"]);
+    let global = learn(&server, "everywhere", &["mcp-global"], &[]);
+    server
+        .with_project(None, "t", |conn, _cfg| {
+            let item = db::get_item_by_handle(conn, &global)?;
+            db::set_item_projects(conn, &item.uuid, &[])
+        })
+        .unwrap();
+
+    let (tags, all_tags, prefixed, memories, capped) = server
+        .with_project(None, "t", |conn, cfg| {
+            use commands::agent::{Scope, memories_value, tags_value};
+            Ok((
+                tags_value(conn, cfg, Scope::Project, None, None)?,
+                tags_value(conn, cfg, Scope::All, None, None)?,
+                tags_value(conn, cfg, Scope::All, Some("MCP"), Some(1))?,
+                memories_value(conn, cfg, Scope::Project, None)?,
+                memories_value(conn, cfg, Scope::All, Some(1))?,
+            ))
+        })
+        .unwrap();
+    let names = |v: &serde_json::Value| -> Vec<String> {
+        let mut n: Vec<String> = v["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["tag"].as_str().unwrap().to_string())
+            .collect();
+        n.sort();
+        n
+    };
+    assert_eq!(names(&tags), ["mcp-global", "mcp-here"]);
+    assert_eq!(tags["scope"], project);
+    assert_eq!(names(&all_tags).len(), 3);
+    assert_eq!(all_tags["scope"], "all");
+    assert_eq!(prefixed["tags"].as_array().unwrap().len(), 1);
+    assert_eq!(prefixed["total"], 2);
+    assert_eq!(prefixed["truncated"], true);
+    assert_eq!(
+        memories["total"], 2,
+        "own + global, not the other project's"
+    );
+    assert_eq!(capped["total"], 3);
+    assert_eq!(capped["memories"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn scope_rejects_unknown_values() {
+    assert!(commands::agent::Scope::parse(Some("everything")).is_err());
+    assert_eq!(
+        commands::agent::Scope::parse(None).unwrap(),
+        commands::agent::Scope::Project
+    );
+}
+
+#[test]
+fn learn_reports_possible_duplicates_and_links_typed() {
+    let server = server_with(db::open_in_memory_for_test());
+    let first = learn(&server, "retry the flaky upload", &["upload", "retry"], &[]);
+    let v = server
+        .with_project(None, "t", |conn, cfg| {
+            let tags = vec!["upload".to_string(), "retry".to_string()];
+            commands::learn::learn_value(
+                conn,
+                cfg,
+                &commands::learn::LearnRequest {
+                    text: "uploads need a retry with backoff",
+                    tags: &tags,
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+    let dupes = v["possible_duplicates"].as_array().unwrap();
+    assert_eq!(dupes.len(), 1, "{v}");
+    assert_eq!(dupes[0]["label"], first);
+    assert!(
+        dupes[0]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&"same_tags".into())
+    );
+    assert!(
+        dupes[0]["suggestion"]
+            .as_str()
+            .unwrap()
+            .contains("supersedes")
+    );
+
+    let linked = server
+        .with_project(None, "t", |conn, cfg| {
+            let tags = vec!["upload".to_string(), "retry".to_string()];
+            let supersedes = vec![first.clone()];
+            commands::learn::learn_value(
+                conn,
+                cfg,
+                &commands::learn::LearnRequest {
+                    text: "uploads retry three times with jittered backoff",
+                    tags: &tags,
+                    supersedes: &supersedes,
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+    assert_eq!(linked["superseded"][0], first);
+    assert!(
+        !linked["possible_duplicates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["label"] == first),
+        "a memory linked in the same call is not reported as a duplicate"
+    );
+}
+
+#[test]
+fn recall_matches_relative_file_filters() {
+    let server = server_with(db::open_in_memory_for_test());
+    let label = server
+        .with_project(None, "t", |conn, cfg| {
+            let files = vec!["src/mcp/read.rs".to_string()];
+            commands::learn::learn_value(
+                conn,
+                cfg,
+                &commands::learn::LearnRequest {
+                    text: "read tools live in read.rs",
+                    files: &files,
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap()["label"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    for filter in ["src/mcp/read.rs", "src/mcp/"] {
+        let v = server
+            .with_project(None, "t", |conn, cfg| {
+                commands::recall::recall_value(
+                    conn,
+                    cfg,
+                    "",
+                    &[],
+                    &[],
+                    &[filter.to_string()],
+                    10,
+                    false,
+                )
+            })
+            .unwrap();
+        let hits = v["keyword"].as_array().unwrap();
+        assert!(
+            hits.iter().any(|h| h["label"] == label),
+            "relative filter {filter:?} should match: {v}"
+        );
+    }
+}
+
+#[test]
+fn maintain_dispatches_actions() {
+    let server = server_with(db::open_in_memory_for_test());
+    let v = server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::agent::maintain_value(
+                conn,
+                &commands::agent::MaintainRequest {
+                    action: "consolidate",
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+    assert_eq!(v["action"], "consolidate");
+    assert!(v["result"]["reinforced"].is_number());
+    let err = server
+        .with_project(None, "t", |conn, _cfg| {
+            commands::agent::maintain_value(
+                conn,
+                &commands::agent::MaintainRequest {
+                    action: "explode",
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap_err();
+    assert!(err.to_string().contains("diagnose"));
+}
+
+#[test]
+fn new_tool_params_are_exposed() {
+    for (tool, prop) in [
+        ("done", "validate"),
+        ("modify", "assignment"),
+        ("modify", "rationale"),
+        ("link_memory", "remove"),
+        ("learn", "supersedes"),
+        ("learn", "derived_from"),
+        ("learn", "similar_to"),
+        ("tags", "scope"),
+        ("tags", "prefix"),
+        ("memories", "limit"),
+        ("finish", "merged"),
+        ("maintain", "action"),
+    ] {
+        assert!(
+            tool_props(tool).contains_key(prop),
+            "`{tool}` should accept `{prop}`"
+        );
+    }
 }

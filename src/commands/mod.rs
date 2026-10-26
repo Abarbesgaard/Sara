@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod add;
+pub mod agent;
 pub mod annotate;
 pub mod begin;
 pub mod board;

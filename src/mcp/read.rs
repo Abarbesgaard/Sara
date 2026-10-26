@@ -56,14 +56,30 @@ impl SaraServer {
     }
 
     #[tool(
+        description = "Pick a task back up after a context reset or in a new session, in one compact call: description, assignment and rationale, done steps with their recorded results, open steps, acceptance status, whether it is validated at HEAD, what you were last `doing`, the latest notes, links, memories it cited or that are anchored to its files, and `next_actions`. Omit `id` to resume the project's most recently active pending task. Call it first when you return to work in progress; use `info` when you need the full guide.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    fn resume(&self, Parameters(p): Parameters<ResumeParams>) -> Result<String, String> {
+        let v = self
+            .with_project(p.project_path.as_deref(), "mcp resume", |conn, cfg| {
+                commands::agent::resume_value(conn, cfg, p.id.as_deref())
+            })
+            .map_err(mcp_err)?;
+        ok_json(v)
+    }
+
+    #[tool(
         description = "The execution cursor: the first not-done step of a task (steps only, not acceptance criteria), with its 1-based `index`, `total`, `text`, `intent` and `verify_cmd`. Returns `done: true` once every step is done. Includes `relevant_memories` when Strong memories match the task. Call `step_done` without `n` to complete this step.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp next", |conn, _cfg| {
-                commands::guide::next_value(conn, &p.id)
-            })
+            .with_task(
+                p.project_path.as_deref(),
+                "mcp next",
+                &p.id,
+                |conn, _cfg| commands::guide::next_value(conn, &p.id),
+            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -95,7 +111,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Search memories and tasks for prior work. `query` is full-text keyword search (FTS5) over task descriptions, notes, steps, links and memories; `tag`, `project` and `files` filter memories exactly (a `files` entry ending in `/` matches everything under it). With no arguments it returns the most recent memories; `limit` defaults to 10. When `[recall] semantic = true` is set in config.toml, memories are also matched by meaning (embeddings). Always read `confidence` (high|medium|low|semantic|none) and `caveat`: `none` only means no keyword matched, not that no related work exists. `spread: true` also returns graph-related memories that share no keyword, in `associative` (recall also does this by itself when hits are weak). Hits may carry `stale` (an anchored file changed or was deleted: re-check, then `relearn`) and `cluster` (a canonical family collapsed to one hit; `nearest` names the best-matching hidden member). `patterns` lists recurring solutions with their prior `instances`: reuse a pattern's `text` as the task's steps rather than re-deriving it, then `learn` the outcome and `link_memory` it `derived_from` the canonical.",
+        description = "Search memories and tasks for prior work. `query` is full-text keyword search (FTS5) over task descriptions, notes, steps, links and memories; `tag`, `project` and `files` filter memories exactly (relative `files` resolve against `project_path`; an entry ending in `/` matches everything under it). With no arguments it returns the most recent memories; `limit` defaults to 10. When `[recall] semantic = true` is set in config.toml, memories are also matched by meaning (embeddings). Always read `confidence` (high|medium|low|semantic|none) and `caveat`: `none` only means no keyword matched, not that no related work exists. `spread: true` also returns graph-related memories that share no keyword, in `associative` (recall also does this by itself when hits are weak). Hits may carry `stale` (an anchored file changed or was deleted: re-check, then `relearn`) and `cluster` (a canonical family collapsed to one hit; `nearest` names the best-matching hidden member). `patterns` lists recurring solutions with their prior `instances`: reuse a pattern's `text` as the task's steps rather than re-deriving it, then `learn` the outcome and `link_memory` it `derived_from` the canonical.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
@@ -146,65 +162,28 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "List every tag on active memories with how many memories use it. Check it before `learn` so you reuse existing tags instead of creating near-duplicates (`service-a` vs `serviceA`).",
+        description = "List memory tags with how many memories use each, most-used first. Scoped to the current project's memories plus global ones by default (scope=\"all\" for every project); narrow with `prefix` and cap with `limit`. Check it before `learn` so you reuse existing tags instead of creating near-duplicates (`service-a` vs `serviceA`).",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp tags", |conn, _cfg| {
-                let counts = crate::infrastructure::db::list_tags_with_counts(conn)?;
-                Ok(serde_json::json!(
-                    counts
-                        .into_iter()
-                        .map(|(tag, count)| serde_json::json!({ "tag": tag, "count": count }))
-                        .collect::<Vec<_>>()
-                ))
+            .with_project(p.project_path.as_deref(), "mcp tags", |conn, cfg| {
+                let scope = commands::agent::Scope::parse(p.scope.as_deref())?;
+                commands::agent::tags_value(conn, cfg, scope, p.prefix.as_deref(), p.limit)
             })
             .map_err(mcp_err)?;
         ok_json(v)
     }
 
     #[tool(
-        description = "List every active and provisional memory, newest first, with its label (e.g. m3), body, tags, files, `strength` and `strength_label` (Strong >= 2.0, Linked >= 1.5, otherwise Weak). Use it to audit what recall trusts or to find a label for `relearn`, `promote` or `forget`.",
+        description = "List active and provisional memories, newest first, with label (e.g. m3), body, tags, files, `strength` and `strength_label` (Strong >= 2.0, Linked >= 1.5, otherwise Weak). Scoped to the current project plus global memories by default (scope=\"all\" for every project) and capped at `limit` (default 50; `total` and `truncated` say what was left out). Use it to audit what recall trusts or to find a label for `relearn`, `promote` or `forget`; to search, use `recall`.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, String> {
         let v = self
-            .with_project(p.project_path.as_deref(), "mcp memories", |conn, _cfg| {
-                let items = crate::infrastructure::db::list_memories(conn)?;
-                let strengths = crate::infrastructure::db::item_strengths(conn, &items);
-                let rows: Vec<serde_json::Value> = items
-                    .iter()
-                    .map(|m| {
-                        let strength = strengths.get(&m.uuid).copied().unwrap_or(1.0);
-                        let label = format!(
-                            "{}{}",
-                            m.kind.chars().next().unwrap_or('m'),
-                            m.display_id.unwrap_or(0)
-                        );
-                        let strength_label = if strength >= 2.0 {
-                            "Strong"
-                        } else if strength >= 1.5 {
-                            "Linked"
-                        } else {
-                            "Weak"
-                        };
-                        let files = crate::infrastructure::db::get_item_files(conn, &m.uuid)
-                            .unwrap_or_default();
-                        serde_json::json!({
-                            "label": label,
-                            "title": m.title,
-                            "body": m.body,
-                            "strength": strength,
-                            "strength_label": strength_label,
-                            "tags": m.tags,
-                            "files": files,
-                            "created": m.created.to_rfc3339(),
-                            "modified": m.modified.to_rfc3339(),
-                        })
-                    })
-                    .collect();
-                Ok(serde_json::json!({ "memories": rows }))
+            .with_project(p.project_path.as_deref(), "mcp memories", |conn, cfg| {
+                let scope = commands::agent::Scope::parse(p.scope.as_deref())?;
+                commands::agent::memories_value(conn, cfg, scope, p.limit)
             })
             .map_err(mcp_err)?;
         ok_json(v)
@@ -239,10 +218,10 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Create a typed, directed link from memory `from` to memory `to` (labels such as m3). Relations: `supersedes` (from replaces to; recall flags to as superseded and `prune_memories` can archive it), `derived_from` (from applies or builds on to, usually a canonical pattern), `similar_to` (related content), `used_in` (from was used in to's context). `weight` defaults to 1.0. A memory cannot link to itself, and `supersedes`/`derived_from` links that would form a cycle are refused. To retire an outdated memory, prefer `supersedes` over `forget` so the history stays traceable.",
+        description = "Create (or with remove=true, delete) a typed, directed link from memory `from` to memory `to` (labels such as m3). Relations: `supersedes` (from replaces to; recall flags to as superseded and `maintain action=prune` can archive it), `derived_from` (from applies or builds on to, usually a canonical pattern), `similar_to` (related content), `used_in` (from was used in to's context). `weight` defaults to 1.0. A memory cannot link to itself, and `supersedes`/`derived_from` links that would form a cycle are refused. To retire an outdated memory, prefer `supersedes` over `forget` so the history stays traceable. Removing returns `removed` (0 if no such link existed).",
         annotations(
             read_only_hint = false,
-            destructive_hint = false,
+            destructive_hint = true,
             idempotent_hint = true,
             open_world_hint = false
         )
@@ -253,13 +232,17 @@ impl SaraServer {
                 p.project_path.as_deref(),
                 "mcp link_memory",
                 |conn, _cfg| {
-                    commands::link_memory::link_memory_value(
-                        conn,
-                        &p.from,
-                        &p.relation,
-                        &p.to,
-                        p.weight.unwrap_or(1.0),
-                    )
+                    if p.remove.unwrap_or(false) {
+                        commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to)
+                    } else {
+                        commands::link_memory::link_memory_value(
+                            conn,
+                            &p.from,
+                            &p.relation,
+                            &p.to,
+                            p.weight.unwrap_or(1.0),
+                        )
+                    }
                 },
             )
             .map_err(mcp_err)?;
@@ -267,7 +250,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove the `relation` link from memory `from` to memory `to`. Returns `removed` (0 if no such link existed).",
+        description = "Memory-store maintenance, one `action` per call. diagnose: read-only conflict report of unlinked memory pairs that share a file or tag set AND are semantically close (cosine >= `threshold`), worst first — use it to decide what to relearn, link or forget. consolidate: Hebbian pass setting `co_activated` links between memories recalled within `bucket_secs` of each other over the last `window_days`; idempotent, run it periodically so related memories surface together. reflect: propose canonical clusters among co-recalled but unlinked memories; apply=true creates the `derived_from` links. prune: archive superseded, stale-provisional and old weak memories; dry_run defaults to true (preview), pass dry_run=false to archive (hidden from recall, not deleted). reindex: rebuild the semantic embedding index after enabling semantic recall or bulk imports. Run `doctor` first to see which is needed.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -275,132 +258,29 @@ impl SaraServer {
             open_world_hint = false
         )
     )]
-    fn unlink_memory(
-        &self,
-        Parameters(p): Parameters<UnlinkMemoryParams>,
-    ) -> Result<String, String> {
+    fn maintain(&self, Parameters(p): Parameters<MaintainParams>) -> Result<String, String> {
         let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp unlink_memory",
-                |conn, _cfg| commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to),
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Find and optionally archive low-value memories: (1) superseded, i.e. targeted by a `supersedes` link; (2) provisional and not reviewed within `provisional_days`; (3) weak (no task link) and older than `weak_days`. `dry_run` defaults to true and only previews; pass dry_run=false to archive. Archived memories are hidden from recall but not deleted.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn prune_memories(
-        &self,
-        Parameters(p): Parameters<PruneMemoriesParams>,
-    ) -> Result<String, String> {
-        use crate::commands::prune_memories::{DEFAULT_PROVISIONAL_DAYS, DEFAULT_WEAK_DAYS};
-        let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp prune_memories",
-                |conn, _cfg| {
-                    crate::commands::prune_memories::prune_value(
-                        conn,
-                        p.weak_days.unwrap_or(DEFAULT_WEAK_DAYS),
-                        p.provisional_days.unwrap_or(DEFAULT_PROVISIONAL_DAYS),
-                        p.dry_run.unwrap_or(true),
-                    )
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Hebbian consolidation: sweep the last `window_days` of recall history and set a `co_activated` link between every pair of memories recalled within `bucket_secs` of each other, weighted by how often they co-fired. The wiring is recomputed from the window on every run, so it is idempotent and pairs that no longer co-fire decay away. This is what makes related memories surface together, so run it periodically. Returns `reinforced`: the number of co_activated links.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn consolidate(&self, Parameters(p): Parameters<ConsolidateParams>) -> Result<String, String> {
-        let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp consolidate",
-                |conn, _cfg| {
-                    let reinforced = crate::infrastructure::memory::graph::consolidate(
-                        conn,
-                        p.window_days.unwrap_or(30),
-                        chrono::Duration::seconds(p.bucket_secs.unwrap_or(5)),
-                        p.delta.unwrap_or(0.1),
-                        p.max_bucket.unwrap_or(5),
-                    )?;
-                    Ok(serde_json::json!({ "reinforced": reinforced }))
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Find clusters of memories that keep being recalled together but are not yet linked, and nominate a canonical memory for each. Read-only by default: returns the proposal for review. Pass apply=true to create the proposed `derived_from` links (each other member -> the canonical); links that would form a cycle are skipped and reported.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn reflect(&self, Parameters(p): Parameters<ReflectParams>) -> Result<String, String> {
-        let min_weight = p
-            .min_weight
-            .unwrap_or(crate::commands::reflect::DEFAULT_MIN_WEIGHT);
-        let max_cluster = p
-            .max_cluster
-            .unwrap_or(crate::commands::reflect::DEFAULT_MAX_CLUSTER);
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp reflect", |conn, _cfg| {
-                if p.apply.unwrap_or(false) {
-                    commands::reflect::apply_value(conn, min_weight, max_cluster)
-                } else {
-                    commands::reflect::reflect_value(conn, min_weight, max_cluster)
-                }
+            .with_project(p.project_path.as_deref(), "mcp maintain", |conn, _cfg| {
+                commands::agent::maintain_value(
+                    conn,
+                    &commands::agent::MaintainRequest {
+                        action: p.action.trim(),
+                        dry_run: p.dry_run,
+                        apply: p.apply,
+                        weak_days: p.weak_days,
+                        provisional_days: p.provisional_days,
+                        window_days: p.window_days,
+                        bucket_secs: p.bucket_secs,
+                        delta: p.delta,
+                        max_bucket: p.max_bucket,
+                        min_weight: p.min_weight,
+                        max_cluster: p.max_cluster,
+                        threshold: p.threshold,
+                        project: p.project.as_deref(),
+                        limit: p.limit,
+                    },
+                )
             })
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Read-only conflict report: unlinked memory pairs that share a file or have identical tag sets AND are semantically close (cosine >= `threshold`), worst first. Archives nothing. Use it to decide what to `relearn`, `link_memory`, `forget` or `prune_memories`.",
-        annotations(read_only_hint = true, open_world_hint = false)
-    )]
-    fn diagnose_memories(
-        &self,
-        Parameters(p): Parameters<DiagnoseMemoriesParams>,
-    ) -> Result<String, String> {
-        let threshold = p
-            .threshold
-            .unwrap_or(commands::diagnose_memories::DEFAULT_CONFLICT_THRESHOLD);
-        let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp diagnose_memories",
-                |conn, _cfg| {
-                    commands::diagnose_memories::diagnose_value(
-                        conn,
-                        threshold,
-                        p.project.as_deref(),
-                        p.limit,
-                    )
-                },
-            )
             .map_err(mcp_err)?;
         ok_json(v)
     }
@@ -415,32 +295,6 @@ impl SaraServer {
                 let project = commands::doctor::current_project(conn, cfg);
                 commands::doctor::doctor_value(conn, project.as_deref())
             })
-            .map_err(mcp_err)?;
-        ok_json(v)
-    }
-
-    #[tool(
-        description = "Rebuild the semantic embedding index over all memories. Needed after enabling semantic recall, after bulk imports, or when semantic recall misses obviously relevant memories. Returns `embedded`: the number of memories indexed.",
-        annotations(
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    fn reindex_embeddings(
-        &self,
-        Parameters(p): Parameters<ReindexEmbeddingsParams>,
-    ) -> Result<String, String> {
-        let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp reindex_embeddings",
-                |conn, _cfg| {
-                    let embedded = crate::infrastructure::memory::embedding::reindex_all(conn)?;
-                    Ok(serde_json::json!({ "embedded": embedded }))
-                },
-            )
             .map_err(mcp_err)?;
         ok_json(v)
     }

@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### Added
+- MCP: task tools (`begin`, `next`, `step_done`, `check`, `step_undone`,
+  `step_remove`, `link`, `validate`, `finish`) return `next_actions`, a list
+  of `{tool, args, why}` entries for the next lifecycle call.
+- MCP `resume`: a one-call briefing for picking a task back up. It covers
+  progress, done and open steps, acceptance, validation state, recent notes,
+  links, cited and file-bound memories, and `next_actions`. With no `id`, it
+  picks the project's most recent pending task.
+- MCP `finish`: links the PR once and checks whether it has merged (`gh pr
+  view`, or `merged=true`). After the merge, it validates at HEAD and
+  completes the task. Until then it returns `waiting_for_merge`.
+- MCP `learn` reports `possible_duplicates`, meaning existing memories with
+  the same tags, a shared file or similar text, each with a suggested
+  `link_memory`. It also accepts typed `supersedes`, `derived_from` and
+  `similar_to` links.
+- MCP `done` accepts `validate=true`, which runs `validate` first. A refusal
+  because the task is not validated now names the fix.
+- A regression test confirms that `recall` resolves relative `files`
+  against the project.
+
+### Changed
+- MCP `tags` and `memories` default to the current project plus global
+  memories (`scope=all` for everything). They take a `limit` (memories
+  default to 50). `tags` also takes a `prefix`. Both return
+  `{scope, total, truncated, …}`; `tags` used to return a bare array.
+- MCP `modify` sets `assignment` and `rationale`, and `link_memory` removes an
+  edge when given `remove=true`.
+
+### Removed
+- MCP tools `assignment` and `rationale` (use `modify`) and `unlink_memory`
+  (use `link_memory remove=true`).
+- MCP tools `consolidate`, `reflect`, `diagnose_memories`, `prune_memories`
+  and `reindex_embeddings` (use `maintain` with `action`). The MCP server
+  now has 41 tools. The CLI is unchanged.
+
 ## [2.6.0] - 2026-10-26
 
 ### Added

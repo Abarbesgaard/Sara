@@ -329,8 +329,14 @@ pub(crate) struct DoneParams {
     pub(crate) project_path: Option<String>,
     #[schemars(description = "Task UUID prefix (stable, preferred) or numeric display id.")]
     pub(crate) id: String,
-    #[schemars(description = "Complete even if blocked or targeted from a different branch.")]
+    #[schemars(
+        description = "Complete even if blocked, unvalidated, or targeted from a different branch."
+    )]
     pub(crate) force: Option<bool>,
+    #[schemars(
+        description = "Run the acceptance gate (as `validate` does) first, so an unvalidated task can close in one call."
+    )]
+    pub(crate) validate: Option<bool>,
     #[schemars(
         description = "Memory labels (e.g. [\"m12\"]) that actually helped. Records them as cited by this task, the strongest signal that a memory is useful. Every label must name an active memory, or the call fails and nothing is changed."
     )]
@@ -412,6 +418,12 @@ pub(crate) struct ModifyParams {
     #[schemars(description = "Recurrence interval, e.g. daily, weekly or 2w.")]
     pub(crate) every: Option<String>,
     pub(crate) clear_recur: Option<bool>,
+    #[schemars(
+        description = "Replace the guide's assignment: the originating request, in the requester's words."
+    )]
+    pub(crate) assignment: Option<String>,
+    #[schemars(description = "Replace the guide's rationale: why the task exists.")]
+    pub(crate) rationale: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -466,17 +478,6 @@ pub(crate) struct StepEditParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct GuideTextParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Task UUID prefix (stable, preferred) or numeric display id.")]
-    pub(crate) id: String,
-    pub(crate) text: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct AttachParams {
     #[schemars(
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
@@ -517,6 +518,17 @@ pub(crate) struct LearnParams {
     pub(crate) files: Option<Vec<String>>,
     #[schemars(description = "Skip the size, secret and overlap checks.")]
     pub(crate) force: Option<bool>,
+    #[schemars(description = "Memory labels this one replaces (links `supersedes`).")]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) supersedes: Option<Vec<String>>,
+    #[schemars(
+        description = "Memory labels this one applies or specialises, usually a canonical (links `derived_from`)."
+    )]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) derived_from: Option<Vec<String>>,
+    #[schemars(description = "Related memory labels (links `similar_to`).")]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) similar_to: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -567,6 +579,14 @@ pub(crate) struct TagsParams {
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
     )]
     pub(crate) project_path: Option<String>,
+    #[schemars(
+        description = "project (default): tags on this project's memories plus global ones; all: every project."
+    )]
+    pub(crate) scope: Option<String>,
+    #[schemars(description = "Only tags starting with this, e.g. \"mcp\".")]
+    pub(crate) prefix: Option<String>,
+    #[schemars(description = "Return at most this many tags, most-used first.")]
+    pub(crate) limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -575,6 +595,12 @@ pub(crate) struct MemoriesParams {
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
     )]
     pub(crate) project_path: Option<String>,
+    #[schemars(
+        description = "project (default): this project's memories plus global ones; all: every project."
+    )]
+    pub(crate) scope: Option<String>,
+    #[schemars(description = "Return at most this many, newest first (default 50).")]
+    pub(crate) limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -631,80 +657,8 @@ pub(crate) struct LinkMemoryParams {
     pub(crate) to: String,
     #[schemars(description = "Link weight (default 1.0).")]
     pub(crate) weight: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct UnlinkMemoryParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Source memory label.")]
-    pub(crate) from: String,
-    #[schemars(description = "Relation to remove.")]
-    pub(crate) relation: String,
-    #[schemars(description = "Target memory label.")]
-    pub(crate) to: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct PruneMemoriesParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Preview only (default true).")]
-    pub(crate) dry_run: Option<bool>,
-    #[schemars(description = "Age before an unlinked weak memory is pruned (default 90).")]
-    pub(crate) weak_days: Option<i64>,
-    #[schemars(
-        description = "Age before an unreviewed provisional memory is pruned (default 30)."
-    )]
-    pub(crate) provisional_days: Option<i64>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct ConsolidateParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Days of recall history to sweep (default 30).")]
-    pub(crate) window_days: Option<i64>,
-    #[schemars(description = "Recalls this many seconds apart count as co-firing (default 5).")]
-    pub(crate) bucket_secs: Option<i64>,
-    #[schemars(description = "Weight added per co-firing (default 0.1).")]
-    pub(crate) delta: Option<f64>,
-    #[schemars(description = "Skip buckets with more memories than this (default 5).")]
-    pub(crate) max_bucket: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct ReflectParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Minimum co_activated weight to cluster on (default 0.5).")]
-    pub(crate) min_weight: Option<f64>,
-    #[schemars(description = "Maximum memories per cluster (default 8).")]
-    pub(crate) max_cluster: Option<usize>,
-    #[schemars(description = "Create the proposed derived_from links.")]
-    pub(crate) apply: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct DiagnoseMemoriesParams {
-    #[schemars(
-        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
-    )]
-    pub(crate) project_path: Option<String>,
-    #[schemars(description = "Minimum cosine similarity to report (default 0.75).")]
-    pub(crate) threshold: Option<f32>,
-    #[schemars(description = "Only this project.")]
-    pub(crate) project: Option<String>,
-    #[schemars(description = "Maximum pairs to return.")]
-    pub(crate) limit: Option<usize>,
+    #[schemars(description = "Remove this link instead of creating it.")]
+    pub(crate) remove: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -716,11 +670,85 @@ pub(crate) struct DoctorParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct ReindexEmbeddingsParams {
+pub(crate) struct MaintainParams {
     #[schemars(
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
     )]
     pub(crate) project_path: Option<String>,
+    #[schemars(
+        description = "diagnose (read-only conflict report), consolidate (Hebbian co-recall wiring), reflect (propose canonical clusters; apply=true links them), prune (archive low-value memories; dry_run defaults to true) or reindex (rebuild semantic embeddings)."
+    )]
+    pub(crate) action: String,
+    #[schemars(description = "prune: preview only (default true).")]
+    pub(crate) dry_run: Option<bool>,
+    #[schemars(description = "reflect: create the proposed derived_from links.")]
+    pub(crate) apply: Option<bool>,
+    #[schemars(description = "prune: age before an unlinked weak memory is pruned (default 90).")]
+    pub(crate) weak_days: Option<i64>,
+    #[schemars(
+        description = "prune: age before an unreviewed provisional memory is pruned (default 30)."
+    )]
+    pub(crate) provisional_days: Option<i64>,
+    #[schemars(description = "consolidate: days of recall history to sweep (default 30).")]
+    pub(crate) window_days: Option<i64>,
+    #[schemars(
+        description = "consolidate: recalls this many seconds apart count as co-firing (default 5)."
+    )]
+    pub(crate) bucket_secs: Option<i64>,
+    #[schemars(description = "consolidate: weight added per co-firing (default 0.1).")]
+    pub(crate) delta: Option<f64>,
+    #[schemars(
+        description = "consolidate: skip buckets with more memories than this (default 5)."
+    )]
+    pub(crate) max_bucket: Option<usize>,
+    #[schemars(description = "reflect: minimum co_activated weight to cluster on (default 0.5).")]
+    pub(crate) min_weight: Option<f64>,
+    #[schemars(description = "reflect: maximum memories per cluster (default 8).")]
+    pub(crate) max_cluster: Option<usize>,
+    #[schemars(description = "diagnose: minimum cosine similarity to report (default 0.75).")]
+    pub(crate) threshold: Option<f32>,
+    #[schemars(description = "diagnose: only this project.")]
+    pub(crate) project: Option<String>,
+    #[schemars(description = "diagnose: maximum pairs to return.")]
+    pub(crate) limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct FinishParams {
+    #[schemars(
+        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
+    )]
+    pub(crate) project_path: Option<String>,
+    #[schemars(description = "Task UUID prefix (stable, preferred) or numeric display id.")]
+    #[serde(alias = "task", alias = "task_id", deserialize_with = "de_id")]
+    pub(crate) id: String,
+    #[schemars(
+        description = "The task's pull request URL; linked once. Omit to use the PR already linked."
+    )]
+    #[serde(alias = "url")]
+    pub(crate) pr_url: Option<String>,
+    #[schemars(
+        description = "Whether the PR has merged. Omit to ask the GitHub CLI (`gh pr view`)."
+    )]
+    pub(crate) merged: Option<bool>,
+    #[schemars(
+        description = "Memory labels (e.g. [\"m12\"]) that actually helped; cited when the task closes."
+    )]
+    #[serde(default, deserialize_with = "de_opt_string_list")]
+    pub(crate) used: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ResumeParams {
+    #[schemars(
+        description = "Absolute path to the target project's repo; omit to use the server's launch directory."
+    )]
+    pub(crate) project_path: Option<String>,
+    #[schemars(
+        description = "Task UUID prefix or display id; omit to resume the project's most recently active pending task."
+    )]
+    #[serde(default, alias = "task", alias = "task_id")]
+    pub(crate) id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
