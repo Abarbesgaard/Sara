@@ -112,10 +112,11 @@ follow-up.
   registered via `sqlite3_auto_extension`).
 - Real `sara recall` takes 77 ms wall. Process start (`sara --version`) is
   51 ms, and the semantic step is about 1 ms.
-- Risks: an open Windows MSVC build issue (asg017/sqlite-vec#21), musl
-  (asg017/sqlite-vec#314; sara doesn't ship musl), and a maintenance gap in
-  late 2025 (releases resumed in 2026). `.github/workflows/spike-vector-bench.yml`
-  builds and runs the bench on Linux x64 and arm64, macOS and Windows.
+- Risks: musl (asg017/sqlite-vec#314; sara doesn't ship musl), and a
+  maintenance gap in late 2025 (releases resumed in 2026). The open Windows
+  MSVC issue (asg017/sqlite-vec#21) did not bite:
+  `.github/workflows/spike-vector-bench.yml` builds and runs vec0 on Linux x64
+  and arm64, macOS and Windows (CI p50 at 10k: 3.7–8.5 ms, top-10 agreement 1.00).
 
 ### Experiment C: coverage
 
