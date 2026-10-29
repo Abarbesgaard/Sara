@@ -1607,3 +1607,5 @@ fn recall_task_unknown_id_is_an_error() {
     assert!(use_task(&conn, Some("zzzzzzzz")).is_err());
     assert_eq!(use_task(&conn, None).unwrap(), None);
 }
+
+mod eval_spike;

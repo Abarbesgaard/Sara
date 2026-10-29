@@ -1,0 +1,23 @@
+# Standalone spike bench (not part of the sara crate or its release).
+# cargo skips nested packages when packaging sara, so this never ships.
+[package]
+name = "vector-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = ["vec"]
+vec = ["dep:sqlite-vec"]
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1"
+sqlite-vec = { version = "=0.1.9", optional = true }
+
+# Same shipped-binary profile as sara, so the size probe is comparable.
+[profile.release]
+panic = "abort"
+strip = true

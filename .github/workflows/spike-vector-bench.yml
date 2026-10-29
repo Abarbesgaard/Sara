@@ -1,0 +1,31 @@
+name: spike-vector-bench
+
+# Spike-only (task 442af1d1): proves sqlite-vec builds and runs with rusqlite's
+# bundled SQLite on every OS sara's CI covers. Only runs when the bench changes.
+on:
+  pull_request:
+    paths:
+      - "spikes/vector-index/bench/**"
+      - ".github/workflows/spike-vector-bench.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: spikes/vector-index/bench
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release
+      - name: Run (1k, 10k)
+        run: cargo run --release -- 1000 10000
