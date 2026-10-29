@@ -382,9 +382,10 @@ labels or ids, and they measure whether Sara's memory helps across installs.
 ### Benchmarks
 
 [Criterion.rs](https://github.com/criterion-rs/criterion.rs) benchmarks in
-`benches/` time the real `sara` binary (`list`, `recall`) against a seeded,
-isolated temp home. Run them with `cargo bench`; HTML reports land in
-`target/criterion/`.
+`benches/` time the real `sara` binary (`list`, `recall` by query/tag/file,
+`add`, `begin`) against two seeded, isolated temp homes: 200 tasks/100 memories
+and 1000 tasks/1000 memories. Run them with `cargo bench` (seeding the large
+home takes a couple of minutes); HTML reports land in `target/criterion/`.
 
 ---
 
