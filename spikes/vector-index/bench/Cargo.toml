@@ -5,6 +5,7 @@ name = "vector-bench"
 version = "0.0.0"
 edition = "2024"
 publish = false
+default-run = "vector-bench"
 
 [workspace]
 
