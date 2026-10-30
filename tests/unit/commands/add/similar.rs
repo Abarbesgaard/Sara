@@ -60,6 +60,21 @@ fn task_hits_still_surface_as_snippet_pointers() {
 }
 
 #[test]
+fn reordered_words_still_find_the_task_by_tokens() {
+    let conn = db::open_in_memory_for_test();
+    let cfg = Config::default();
+
+    crate::test_support::seed_task(&conn, "fix the flaky payment retry logic", "proj");
+
+    let hits = find_similar(&conn, &cfg, "payment retry flaky", &[], "proj", 5).unwrap();
+    let task_hit = hits
+        .iter()
+        .find(|h| h["ref_kind"] == "task")
+        .expect("the phrase misses, so the token search must find the task");
+    assert_eq!(task_hit["confidence"], "medium");
+}
+
+#[test]
 fn same_project_memory_hits_rank_first_and_are_labeled() {
     let conn = db::open_in_memory_for_test();
     let cfg = Config::default();
