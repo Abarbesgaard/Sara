@@ -6,6 +6,7 @@ mod cite;
 mod cli_errors;
 mod cli_json;
 mod doctor;
+mod links;
 mod mcp;
 mod provenance;
 mod recall;
