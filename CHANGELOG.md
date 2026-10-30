@@ -5,6 +5,7 @@
 ### Changed
 - `sara link` / MCP `link`: linking a URL the task already has no longer adds a
   duplicate; it reports `already linked` (`already_linked: true` in JSON).
+- MCP `unlink`: remove a link by task `id` and `url`, not only by `link_id`.
 
 ### Fixed
 - `--due +Nd` / `+Nw` and `--estimate` no longer crash on huge numbers; an
