@@ -11,6 +11,8 @@
 - `--due +Nd` / `+Nw` and `--estimate` no longer crash on huge numbers; an
   out-of-range value is rejected as invalid instead.
 - `--estimate` rejects negative durations such as `-30m` instead of saving them.
+- `done`'s auto-created memory is embedded when it is written, so semantic
+  recall can find it by meaning, not only by keyword.
 
 ## [2.7.0] - 2026-10-26
 

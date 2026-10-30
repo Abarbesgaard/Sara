@@ -118,6 +118,13 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         });
     }
 
+    let auto_memory = db::synthesize_done_memory(conn, &task.uuid, &task.project).unwrap_or(None);
+    if let Some(label) = &auto_memory
+        && let Ok(item) = db::get_item_by_handle(conn, label)
+    {
+        crate::infrastructure::memory::embedding::index_memory(conn, &item);
+    }
+
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
@@ -126,8 +133,7 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         "status": "completed",
         "recurrence": recurrence,
         "validation": validation_note,
-        "auto_memory": db::synthesize_done_memory(conn, &task.uuid, &task.project)
-            .unwrap_or(None),
+        "auto_memory": auto_memory,
         "hygiene": db::hygiene_pass(conn).map(|h| json!({
             "archived": h.archived,
             "review_pending": h.review_pending,
@@ -223,3 +229,7 @@ mod hygiene_tests;
 #[cfg(test)]
 #[path = "../../../tests/unit/commands/done/mod__validation_gate_tests.rs"]
 mod validation_gate_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/done/mod__auto_memory_tests.rs"]
+mod auto_memory_tests;
