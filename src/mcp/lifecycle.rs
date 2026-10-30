@@ -273,7 +273,7 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Remove a link from a task by its link id (shown in `info`).",
+        description = "Remove a link from a task: by `link_id` (shown in `info`), or by the task `id` and the linked `url`.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -282,11 +282,22 @@ impl SaraServer {
         )
     )]
     fn unlink(&self, Parameters(p): Parameters<UnlinkParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp unlink", |conn, _cfg| {
-                commands::annotate::unlink_value(conn, p.link_id)
-            })
-            .map_err(mcp_err)?;
+        let v = match (p.link_id, p.id.as_deref(), p.url.as_deref()) {
+            (Some(link_id), None, None) => {
+                self.with_project(p.project_path.as_deref(), "mcp unlink", |conn, _cfg| {
+                    commands::annotate::unlink_value(conn, link_id)
+                })
+            }
+            (None, Some(id), Some(url)) => {
+                self.with_task(p.project_path.as_deref(), "mcp unlink", id, |conn, _cfg| {
+                    commands::annotate::unlink_url_value(conn, id, url)
+                })
+            }
+            _ => Err(anyhow::anyhow!(
+                "Pass either `link_id`, or both `id` and `url`"
+            )),
+        }
+        .map_err(mcp_err)?;
         ok_json(v)
     }
 

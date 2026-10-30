@@ -617,8 +617,12 @@ pub(crate) struct UnlinkParams {
         description = "Absolute path to the target project's repo; omit to use the server's launch directory."
     )]
     pub(crate) project_path: Option<String>,
-    #[schemars(description = "Link id shown in info.")]
-    pub(crate) link_id: i64,
+    #[schemars(description = "Link id shown in info. Pass this, or `id` and `url`.")]
+    pub(crate) link_id: Option<i64>,
+    #[schemars(description = "Task id or uuid prefix whose link to `url` should be removed.")]
+    pub(crate) id: Option<String>,
+    #[schemars(description = "URL of the link to remove from task `id`.")]
+    pub(crate) url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -62,3 +62,53 @@ fn mcp_link_reports_already_linked() {
     );
     assert_eq!(mcp.call_result("link", args)["already_linked"], true);
 }
+
+#[test]
+fn mcp_unlink_by_task_and_url() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "Ship it"]);
+    s.run(&["link", "1", "https://example.com/pr/1"]);
+    s.run(&["link", "1", "https://example.com/pr/2"]);
+    let mut mcp = s.mcp();
+
+    let removed = mcp.call_result(
+        "unlink",
+        json!({ "id": "1", "url": "https://example.com/pr/1" }),
+    );
+    assert_eq!(removed["removed"], true);
+    assert_eq!(removed["link_id"], 1);
+    assert_eq!(
+        s.json(&["info", "1", "--json"])["links"],
+        json!([{ "id": 2, "label": null, "url": "https://example.com/pr/2" }]),
+    );
+
+    let missing = mcp.call(
+        "unlink",
+        json!({ "id": "1", "url": "https://example.com/pr/1" }),
+    );
+    assert!(
+        missing
+            .to_string()
+            .contains("has no link to https://example.com/pr/1"),
+        "{missing}"
+    );
+}
+
+#[test]
+fn mcp_unlink_needs_link_id_or_task_and_url() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "Ship it"]);
+    let mut mcp = s.mcp();
+
+    for args in [
+        json!({}),
+        json!({ "id": "1" }),
+        json!({ "link_id": 1, "url": "https://example.com" }),
+    ] {
+        let env = mcp.call("unlink", args.clone());
+        assert!(
+            env.to_string().contains("Pass either `link_id`"),
+            "{args}: {env}"
+        );
+    }
+}

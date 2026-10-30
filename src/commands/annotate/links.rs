@@ -45,6 +45,24 @@ pub fn unlink_value(conn: &Connection, link_id: i64) -> Result<Value> {
     }
 }
 
+pub fn unlink_url_value(conn: &Connection, id_or_uuid: &str, url: &str) -> Result<Value> {
+    let task = db::resolve_task(conn, id_or_uuid)?;
+    let Some(link) = db::get_links(conn, &task.uuid)?
+        .into_iter()
+        .find(|l| l.url == url)
+    else {
+        anyhow::bail!("Task {id_or_uuid} has no link to {url}")
+    };
+    db::delete_link(conn, link.id)?;
+    Ok(json!({
+        "task": task.id,
+        "uuid": task.uuid.to_string(),
+        "url": url,
+        "link_id": link.id,
+        "removed": true,
+    }))
+}
+
 pub fn unlink(conn: &Connection, link_id: i64) -> Result<()> {
     unlink_value(conn, link_id)?;
     println!("Removed link {link_id}.");
