@@ -109,6 +109,14 @@ telemetry = ["dep:ureq", "dep:libc"]
 panic = "abort"      # drops landing pads and unwinding tables: the bulk of the win
 strip = true         # symbols are not useful in a shipped CLI
 
+# Keep debug/test build artifacts small: line-tables-only still gives usable
+# backtraces but avoids the full DWARF that bloated target/ to tens of GB.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
+
 [dev-dependencies]
 assert_cmd = "2.2.2"
 criterion = "0.8.2"
