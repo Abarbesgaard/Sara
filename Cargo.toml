@@ -118,6 +118,7 @@ debug = "line-tables-only"
 [dev-dependencies]
 assert_cmd = "2.2.2"
 criterion = "0.8.2"
+proptest = "1"
 insta = { version = "1.48.0", features = ["json", "redactions", "filters"] }
 serde_json = "1"
 tempfile = "3.27.0"
