@@ -1,0 +1,11 @@
+# cargo-mutants config: https://mutants.rs/
+# Interactive TUI drawing is checked by eye, not by tests, so its mutants
+# would only add noise. Plain/piped output stays in: tests assert on it.
+exclude_globs = [
+  "src/infrastructure/tui/**",
+  "src/commands/board/**",
+  "src/commands/follow/**",
+  "src/commands/dream/interactive/**",
+  "src/commands/dream/render/**",
+  "src/commands/info/render/**",
+]

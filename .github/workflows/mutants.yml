@@ -1,0 +1,59 @@
+name: Mutants
+
+# Mutation testing on the lines a PR changes: each mutant is a small injected
+# bug, and a "missed" one means no test noticed it. A full run is too slow for
+# every PR, so this only mutates the PR's diff. Config: .cargo/mutants.toml.
+
+on:
+  pull_request:
+    branches: [ main, master, nightly ]
+    paths:
+      - ".cargo/mutants.toml"
+      - ".github/workflows/mutants.yml"
+      - "Cargo.*"
+      - "src/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  incremental-mutants:
+    name: Mutants (PR diff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff against base
+        run: git diff origin/${{ github.base_ref }}.. | tee git.diff
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: mutants
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: Mutants
+        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants.out
+          path: mutants.out
