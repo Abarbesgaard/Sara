@@ -306,8 +306,12 @@ pub struct SearchHit {
     pub text: String,
 }
 
+fn fts_phrase(text: &str) -> String {
+    format!("\"{}\"", text.replace('"', "\"\""))
+}
+
 pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
-    let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+    let fts_query = fts_phrase(query);
     let mut stmt = conn.prepare(
         "SELECT ref_kind, task_uuid, text FROM search_index
          WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
@@ -335,7 +339,7 @@ pub fn search_fts_tokens(
     }
     let fts_query = tokens
         .iter()
-        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .map(|t| fts_phrase(t))
         .collect::<Vec<_>>()
         .join(" ");
     let mut stmt = conn.prepare(
@@ -365,7 +369,7 @@ pub fn search_fts_tokens_or(
     }
     let fts_query = tokens
         .iter()
-        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .map(|t| fts_phrase(t))
         .collect::<Vec<_>>()
         .join(" OR ");
     let mut stmt = conn.prepare(
