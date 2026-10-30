@@ -13,6 +13,8 @@
 - `--estimate` rejects negative durations such as `-30m` instead of saving them.
 - `done`'s auto-created memory is embedded when it is written, so semantic
   recall can find it by meaning, not only by keyword.
+- Startup now embeds any active memory that has no vector, so memories saved
+  before that fix (or by any path that skipped embedding) heal on their own.
 
 ## [2.7.0] - 2026-10-26
 

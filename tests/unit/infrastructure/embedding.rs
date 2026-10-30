@@ -108,6 +108,35 @@ fn ensure_index_current_reindexes_once_then_noops() {
 }
 
 #[test]
+fn ensure_index_current_backfills_a_memory_saved_without_a_vector() {
+    use crate::infrastructure::db;
+    use crate::infrastructure::model::Item;
+
+    let conn = db::open_in_memory_for_test();
+    ensure_index_current(&conn).unwrap();
+
+    let mut mem = Item::new_memory(
+        "flaky retry".into(),
+        "the payment retry test is flaky on slow runners".into(),
+        None,
+    );
+    mem.path = Some(String::new());
+    db::insert_item(&conn, &mut mem).unwrap();
+    let uuid = mem.uuid.to_string();
+    assert!(db::get_embedding(&conn, &uuid).unwrap().is_none());
+
+    assert!(
+        !ensure_index_current(&conn).unwrap(),
+        "a current scheme must not trigger a full reindex"
+    );
+    assert!(
+        db::get_embedding(&conn, &uuid).unwrap().is_some(),
+        "the missing vector must be filled in"
+    );
+    assert_eq!(backfill_missing(&conn).unwrap(), 0, "nothing left to fill");
+}
+
+#[test]
 fn ensure_index_current_reindexes_after_a_scheme_bump() {
     use crate::infrastructure::db;
 
