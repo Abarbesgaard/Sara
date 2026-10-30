@@ -183,18 +183,16 @@ pub fn list_memories(conn: &Connection) -> Result<Vec<Item>> {
 }
 
 /// Memories scoped to `project`, plus unscoped (global) ones, newest first.
-pub fn memories_without_embedding(conn: &Connection) -> Result<Vec<Item>> {
+pub fn memory_uuids_without_embedding(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid
-         FROM items i WHERE status IN ('active','provisional') AND kind = 'memory'
+        "SELECT uuid FROM items i
+         WHERE status IN ('active','provisional') AND kind = 'memory'
            AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.ref_uuid = i.uuid)",
     )?;
-    let rows = stmt.query_map([], row_to_item)?;
-    let mut items = vec![];
-    for r in rows {
-        items.push(r?);
-    }
-    Ok(items)
+    let uuids = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(uuids)
 }
 
 pub fn list_memories_for_project(conn: &Connection, project: &str) -> Result<Vec<Item>> {

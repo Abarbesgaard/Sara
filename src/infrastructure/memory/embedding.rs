@@ -235,9 +235,11 @@ pub fn index_memory(conn: &rusqlite::Connection, item: &crate::infrastructure::m
 /// Embeds active memories that have no vector yet, so a memory written by a
 /// path that skipped `index_memory` still becomes findable by meaning.
 pub fn backfill_missing(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
-    let missing = crate::infrastructure::db::memories_without_embedding(conn)?;
-    for m in &missing {
-        index_memory(conn, m);
+    let missing = crate::infrastructure::db::memory_uuids_without_embedding(conn)?;
+    for uuid in &missing {
+        if let Ok(item) = crate::infrastructure::db::get_item_by_uuid(conn, uuid) {
+            index_memory(conn, &item);
+        }
     }
     Ok(missing.len())
 }
