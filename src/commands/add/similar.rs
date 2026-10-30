@@ -87,7 +87,8 @@ pub(super) fn find_similar(
     let tokens = meaningful_tokens(description);
     let capped: Vec<String> = tokens.into_iter().take(MAX_AND_TOKENS).collect();
     if !capped.is_empty() {
-        let token_hits = db::search_fts_tokens(conn, &capped, limit).unwrap_or_default();
+        let token_hits =
+            db::search_fts_tokens(conn, &capped, db::TokenMatch::All, limit).unwrap_or_default();
         for h in &token_hits {
             if token_overlap(&capped, &h.text) < capped.len().div_ceil(2) {
                 continue;

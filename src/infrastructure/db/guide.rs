@@ -328,41 +328,34 @@ fn fts_match(conn: &Connection, fts_query: &str, limit: i64) -> Result<Vec<Searc
     Ok(rows)
 }
 
-fn fts_match_tokens(
+pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
+    fts_match(conn, &fts_phrase(query), limit)
+}
+
+/// Whether a token search needs every token in a hit, or any one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenMatch {
+    All,
+    Any,
+}
+
+pub fn search_fts_tokens(
     conn: &Connection,
     tokens: &[String],
-    joiner: &str,
+    mode: TokenMatch,
     limit: i64,
 ) -> Result<Vec<SearchHit>> {
     if tokens.is_empty() {
         return Ok(vec![]);
     }
+    let joiner = match mode {
+        TokenMatch::All => " ",
+        TokenMatch::Any => " OR ",
+    };
     let fts_query = tokens
         .iter()
         .map(|t| fts_phrase(t))
         .collect::<Vec<_>>()
         .join(joiner);
     fts_match(conn, &fts_query, limit)
-}
-
-pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
-    fts_match(conn, &fts_phrase(query), limit)
-}
-
-/// Hits that contain every token.
-pub fn search_fts_tokens(
-    conn: &Connection,
-    tokens: &[String],
-    limit: i64,
-) -> Result<Vec<SearchHit>> {
-    fts_match_tokens(conn, tokens, " ", limit)
-}
-
-/// Hits that contain any token.
-pub fn search_fts_tokens_or(
-    conn: &Connection,
-    tokens: &[String],
-    limit: i64,
-) -> Result<Vec<SearchHit>> {
-    fts_match_tokens(conn, tokens, " OR ", limit)
 }

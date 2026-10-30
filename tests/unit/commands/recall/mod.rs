@@ -786,6 +786,7 @@ fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
             "archive".into(),
             "garbage".into(),
         ],
+        db::TokenMatch::All,
         50,
     )
     .unwrap();
