@@ -11,18 +11,29 @@ pub fn link_value(
     label: Option<&str>,
 ) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
-    db::add_link(conn, &task.uuid, url, label)?;
+    let already_linked = db::get_links(conn, &task.uuid)?
+        .iter()
+        .any(|l| l.url == url);
+    if !already_linked {
+        db::add_link(conn, &task.uuid, url, label)?;
+    }
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "url": url,
         "label": label,
+        "already_linked": already_linked,
     }))
 }
 
 pub fn link(conn: &Connection, id_or_uuid: &str, url: &str, label: Option<&str>) -> Result<()> {
     let v = link_value(conn, id_or_uuid, url, label)?;
-    println!("Linked task {}: {}", v["task"].as_i64().unwrap_or(0), url);
+    let task = v["task"].as_i64().unwrap_or(0);
+    if v["already_linked"].as_bool() == Some(true) {
+        println!("Task {task} is already linked to {url}");
+    } else {
+        println!("Linked task {task}: {url}");
+    }
     Ok(())
 }
 

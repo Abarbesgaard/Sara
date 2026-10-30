@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- `sara link` / MCP `link`: linking a URL the task already has no longer adds a
+  duplicate; it reports `already linked` (`already_linked: true` in JSON).
+
 ## [2.7.0] - 2026-10-26
 
 ### Added
