@@ -175,18 +175,13 @@ jobs:
         with:
           tool: similarity-rs
 
-      # Annotates near-duplicate functions in the files this PR touches, as a
-      # hint to reuse or extract a helper. Never fails the build.
-      - name: Report similar functions in changed files
+      # Annotates functions this PR adds or edits that look like an existing
+      # function, as a hint to reuse or extract a helper. Never fails the build.
+      - name: Report similar functions the PR changed
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          mapfile -t changed < <(git diff --name-only --diff-filter=AM "origin/${BASE_REF}...HEAD" -- 'src/*.rs')
-          if [ "${#changed[@]}" -eq 0 ]; then
-            echo "No Rust source files changed."
-            exit 0
-          fi
-          scripts/similar-code.sh "${changed[@]}" | tee report.txt
+          scripts/similar-code.sh "origin/${BASE_REF}" | tee report.txt
           {
             echo "### Similar code"
             echo '```'
