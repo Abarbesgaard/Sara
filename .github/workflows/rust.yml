@@ -1,5 +1,14 @@
 name: Rust CI
 
+# One gated pipeline. Each stage starts only when the one before it passes:
+#
+#   changes ─┬─ lint: fmt, clippy, unused deps ─── test matrix, build ─── mutants (PRs)
+#            ├─ workflow security (zizmor), when .github/ changes
+#            └─ dependency audit, when Cargo.toml/Cargo.lock change
+#
+# "CI gate" waits for all of them and is the single required status check.
+# Jobs skipped because their files did not change count as passing.
+
 on:
   push:
     branches: [ main, master, nightly ]
@@ -17,10 +26,147 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      deps: ${{ steps.filter.outputs.deps }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify changed files
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            printf 'rust=true\ndeps=true\nworkflows=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "origin/${BASE_REF}...HEAD" > changed.txt
+          cat changed.txt
+          has() { grep -qE "$1" changed.txt && echo true || echo false; }
+          {
+            echo "rust=$(has '^(src/|tests/|benches/|assets/|\.cargo/|Cargo\.(toml|lock)$|\.github/workflows/rust\.yml$)')"
+            echo "deps=$(has '^Cargo\.(toml|lock)$')"
+            echo "workflows=$(has '^\.github/')"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # ── Stage 1: fast checks ──────────────────────────────────────────────
+
+  fmt:
+    name: Formatting
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  clippy:
+    name: Clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Run clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run clippy (no default features)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+  unused-deps:
+    name: Unused dependencies
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-machete
+
+      - name: Run cargo-machete
+        run: cargo machete
+
+  zizmor:
+    name: Workflow security
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          advanced-security: false
+          annotations: true
+          min-severity: low
+
+  audit:
+    name: Dependency audit
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-audit
+
+      - name: Run cargo-audit
+        run: cargo audit
+
+  # ── Stage 2: tests and build, only once the fast checks pass ──────────
+
   test:
     name: Test
+    needs: [fmt, clippy, unused-deps]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable, beta]
@@ -42,14 +188,18 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.rust }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests
         run: cargo test --verbose
 
   test-no-telemetry:
     name: Test (no telemetry)
+    needs: [fmt, clippy, unused-deps]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
@@ -61,65 +211,16 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: no-telemetry
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests
         run: cargo test --verbose --no-default-features
 
-  fmt:
-    name: Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: clippy
-
-      - name: Run clippy (default features)
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Run clippy (no default features)
-        run: cargo clippy --all-targets --no-default-features -- -D warnings
-
-  unused-deps:
-    name: Unused dependencies
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
-        with:
-          tool: cargo-machete
-
-      - name: Run cargo-machete
-        run: cargo machete
-
   build:
     name: Build
+    needs: [fmt, clippy, unused-deps]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -129,6 +230,69 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build
         run: cargo build --release --verbose
+
+  # ── Stage 3: mutation testing on the PR's diff, only once tests pass ──
+  # Each mutant is a small injected bug; a "missed" one means no test noticed
+  # it. A full run takes hours, so this only mutates the lines the PR changes.
+  # Config: .cargo/mutants.toml.
+
+  mutants:
+    name: Mutants (PR diff)
+    needs: [test, test-no-telemetry]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Diff against base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git diff "origin/${BASE_REF}.." | tee git.diff
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: mutants
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-mutants
+
+      - name: Mutants
+        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants.out
+          path: mutants.out
+
+  # ── Gate: the one check branch protection requires ────────────────────
+
+  gate:
+    name: CI gate
+    needs: [changes, fmt, clippy, unused-deps, zizmor, audit, test, test-no-telemetry, build, mutants]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every stage to pass or be skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
+          if echo "$NEEDS" | jq -e 'any(.[]; .result == "failure" or .result == "cancelled")' > /dev/null; then
+            echo "::error::A required CI stage failed or was cancelled"
+            exit 1
+          fi
