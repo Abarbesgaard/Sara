@@ -403,6 +403,17 @@ git diff main > /tmp/sara.diff && cargo mutants --in-diff /tmp/sara.diff  # your
 
 Results land in `mutants.out/` (`missed.txt` lists the gaps).
 
+### Dependency policy
+
+[cargo-deny](https://embarkstudios.github.io/cargo-deny/) checks dependencies
+for RustSec advisories, licenses outside the allow-list, wildcard versions and
+crates from unknown sources. CI runs it when `Cargo.*` or `deny.toml` change.
+
+```bash
+cargo install --locked cargo-deny
+cargo deny check
+```
+
 ---
 
 ## Quick start

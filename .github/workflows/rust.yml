@@ -4,7 +4,7 @@ name: Rust CI
 #
 #   changes ─┬─ lint: fmt, clippy, unused deps ─── test matrix, build ─── mutants (PRs)
 #            ├─ workflow security (zizmor), when .github/ changes
-#            └─ dependency audit, when Cargo.toml/Cargo.lock change
+#            └─ dependency policy (cargo-deny), when Cargo.*/deny.toml change
 #
 # Stages whose files did not change are skipped.
 
@@ -54,7 +54,7 @@ jobs:
           has() { grep -qE "$1" changed.txt && echo true || echo false; }
           {
             echo "rust=$(has '^(src/|tests/|benches/|assets/|\.cargo/|Cargo\.(toml|lock)$|\.github/workflows/rust\.yml$)')"
-            echo "deps=$(has '^Cargo\.(toml|lock)$')"
+            echo "deps=$(has '^(Cargo\.(toml|lock)|deny\.toml)$')"
             echo "workflows=$(has '^\.github/')"
           } | tee -a "$GITHUB_OUTPUT"
 
@@ -139,8 +139,8 @@ jobs:
           annotations: true
           min-severity: low
 
-  audit:
-    name: Dependency audit
+  deny:
+    name: Dependency policy
     needs: changes
     if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
@@ -152,10 +152,11 @@ jobs:
 
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: cargo-audit
+          tool: cargo-deny
 
-      - name: Run cargo-audit
-        run: cargo audit
+      # Advisories, licenses, banned crates and sources; config: deny.toml.
+      - name: Run cargo-deny
+        run: cargo deny --all-features check
 
   # ── Stage 2: tests and build, only once the fast checks pass ──────────
 
