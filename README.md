@@ -387,6 +387,22 @@ labels or ids, and they measure whether Sara's memory helps across installs.
 and 1000 tasks/1000 memories. Run them with `cargo bench` (seeding the large
 home takes a couple of minutes); HTML reports land in `target/criterion/`.
 
+### Mutation testing
+
+[cargo-mutants](https://mutants.rs/) checks that the tests actually catch bugs:
+it injects small changes (flip a `>`, return an empty value, skip a body) and
+reports each one no test noticed as `MISSED`. CI runs it on every PR's diff
+only; a full run takes hours. Interactive TUI drawing is excluded in
+`.cargo/mutants.toml`.
+
+```bash
+cargo install --locked cargo-mutants
+cargo mutants -f src/commands/recall/mod.rs     # one file
+git diff main > /tmp/sara.diff && cargo mutants --in-diff /tmp/sara.diff  # your changes
+```
+
+Results land in `mutants.out/` (`missed.txt` lists the gaps).
+
 ---
 
 ## Quick start
