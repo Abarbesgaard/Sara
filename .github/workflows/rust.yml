@@ -96,6 +96,19 @@ jobs:
       - name: Run clippy (no default features)
         run: cargo clippy --all-targets --no-default-features -- -D warnings
 
+  unused-deps:
+    name: Unused dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+
+      - name: Run cargo-machete
+        run: cargo machete
+
   build:
     name: Build
     runs-on: ubuntu-latest
