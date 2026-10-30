@@ -62,6 +62,11 @@ proptest! {
     }
 
     #[test]
+    fn parse_duration_is_never_negative(s in "\\PC{0,30}") {
+        prop_assert!(parse_duration_mins(&s).is_none_or(|m| m >= 0));
+    }
+
+    #[test]
     fn parse_duration_minutes_only(m in 0i64..1_000_000) {
         prop_assert_eq!(parse_duration_mins(&format!("{m}m")), Some(m));
         prop_assert_eq!(parse_duration_mins(&m.to_string()), Some(m));
@@ -72,4 +77,11 @@ proptest! {
 fn parse_due_iso_date_keeps_year_month_day() {
     let due = parse_due("2026-02-28", "uk").unwrap();
     assert_eq!((due.year(), due.month(), due.day()), (2026, 2, 28));
+}
+
+#[test]
+fn parse_duration_rejects_negative_values() {
+    for s in ["-30m", "-30", "-2h", "1h-30m", "-1h30m"] {
+        assert_eq!(parse_duration_mins(s), None, "{s}");
+    }
 }

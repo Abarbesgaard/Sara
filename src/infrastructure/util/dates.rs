@@ -59,20 +59,21 @@ pub fn parse_duration_mins(s: &str) -> Option<i64> {
     }
     let s_lower = s.to_lowercase();
     let rest = s_lower.as_str();
+    let non_negative = |t: &str| t.trim().parse::<i64>().ok().filter(|n| *n >= 0);
     if let Some(h_pos) = rest.find('h')
-        && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
+        && let Some(h) = non_negative(&rest[..h_pos])
     {
         let mut total = h.checked_mul(60)?;
         let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
-        if !after_h.is_empty()
-            && let Ok(m) = after_h.parse::<i64>()
-        {
+        if let Ok(m) = after_h.parse::<i64>() {
+            if m < 0 {
+                return None;
+            }
             total = total.checked_add(m)?;
         }
         return Some(total);
     }
-    let m_part = rest.trim_end_matches('m').trim();
-    m_part.parse::<i64>().ok()
+    non_negative(rest.trim_end_matches('m'))
 }
 
 pub fn is_valid_due(s: &str) -> bool {
