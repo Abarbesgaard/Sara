@@ -43,11 +43,11 @@ impl SaraServer {
     }
 
     #[tool(
-        description = "Attach a URL, such as a PR or issue, to a task. `label` is optional display text.",
+        description = "Attach a URL, such as a PR or issue, to a task. `label` is optional display text. Linking a URL the task already has is a no-op and returns `already_linked: true`.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
-            idempotent_hint = false,
+            idempotent_hint = true,
             open_world_hint = false
         )
     )]
