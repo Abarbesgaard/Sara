@@ -1,0 +1,37 @@
+name: zizmor
+
+# Static analysis of GitHub Actions workflows: template injection, leaked
+# credentials, over-broad permissions and unpinned actions.
+# https://docs.zizmor.sh/
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/**"
+  pull_request:
+    branches: [ main, master, nightly ]
+    paths:
+      - ".github/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: Workflow security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          advanced-security: false
+          annotations: true
+          min-severity: low

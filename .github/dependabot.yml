@@ -1,0 +1,13 @@
+# Keeps the commit-SHA pins on GitHub Actions current: Dependabot opens a PR
+# that bumps the SHA and its version comment together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

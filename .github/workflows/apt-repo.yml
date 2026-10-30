@@ -26,9 +26,10 @@ jobs:
         id: tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           else
             latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
             echo "tag=$latest" >> "$GITHUB_OUTPUT"
@@ -39,18 +40,20 @@ jobs:
 
       # Existing repo (to carry old package versions forward). May not exist yet.
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         continue-on-error: true
         with:
+          persist-credentials: false
           ref: gh-pages
           path: pages
 
       - name: Download release .deb assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mkdir -p staging
-          gh release download "${{ steps.tag.outputs.tag }}" \
+          gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir staging
 
       - name: Assemble apt repository
@@ -92,7 +95,7 @@ jobs:
           gpg --batch --yes --armor --export "$KEYID" > ../../sara-archive-keyring.asc
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public

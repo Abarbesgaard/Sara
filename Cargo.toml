@@ -52,11 +52,9 @@ crossterm = "0.29"
 ratatui-textarea = "0.9"
 directories = "5"
 anyhow = "1"
-thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 toml = "0.8"
-nucleo-matcher = "0.3"
 interim = { version = "0.1", features = ["chrono"] }
 base64 = "0.22"
 
@@ -108,6 +106,14 @@ telemetry = ["dep:ureq", "dep:libc"]
 [profile.release]
 panic = "abort"      # drops landing pads and unwinding tables: the bulk of the win
 strip = true         # symbols are not useful in a shipped CLI
+
+# Keep debug/test build artifacts small: line-tables-only still gives usable
+# backtraces but avoids the full DWARF that bloated target/ to tens of GB.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

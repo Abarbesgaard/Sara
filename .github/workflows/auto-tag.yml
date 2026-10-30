@@ -13,7 +13,7 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           # The default (true) leaves GITHUB_TOKEN in an http.extraheader for
@@ -30,8 +30,10 @@ jobs:
 
       - name: Check if tag already exists
         id: check
+        env:
+          TAG: ${{ steps.version.outputs.version }}
         run: |
-          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -43,6 +45,7 @@ jobs:
           # Must use a PAT (not GITHUB_TOKEN) so the tag push triggers release.yml.
           # GITHUB_TOKEN-created events do not cascade into further workflow runs.
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAG: ${{ steps.version.outputs.version }}
         run: |
           # Fail loudly rather than tagging with no release. When RELEASE_TOKEN
           # is empty the push URL degrades to an anonymous/GITHUB_TOKEN push that
@@ -55,8 +58,8 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.version.outputs.version }}"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${{ steps.version.outputs.version }}"
+          git tag "$TAG"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TAG"
 
       # A tag with no release is the exact failure that hid v1.2.0, v1.2.1 and
       # v1.3.0. Confirm the push actually cascaded instead of assuming it did.
@@ -64,11 +67,11 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.version }}
         run: |
-          TAG="${{ steps.version.outputs.version }}"
           for i in $(seq 1 10); do
             sleep 15
-            if gh run list --repo "${{ github.repository }}" \
+            if gh run list --repo "$GITHUB_REPOSITORY" \
                  --workflow release.yml --branch "$TAG" \
                  --limit 1 --json databaseId --jq '.[0].databaseId' \
                | grep -q '[0-9]'; then
