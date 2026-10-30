@@ -379,6 +379,14 @@ labels or ids, and they measure whether Sara's memory helps across installs.
 `sara telemetry off` or `SARA_NO_TELEMETRY=1`, or build without it entirely:
 `cargo install --path . --no-default-features`.
 
+### Benchmarks
+
+[Criterion.rs](https://github.com/criterion-rs/criterion.rs) benchmarks in
+`benches/` time the real `sara` binary (`list`, `recall` by query/tag/file,
+`add`, `begin`) against two seeded, isolated temp homes: 200 tasks/100 memories
+and 1000 tasks/1000 memories. Run them with `cargo bench` (seeding the large
+home takes a couple of minutes); HTML reports land in `target/criterion/`.
+
 ### Mutation testing
 
 [cargo-mutants](https://mutants.rs/) checks that the tests actually catch bugs:
