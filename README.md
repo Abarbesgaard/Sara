@@ -391,8 +391,8 @@ home takes a couple of minutes); HTML reports land in `target/criterion/`.
 
 [cargo-mutants](https://mutants.rs/) checks that the tests actually catch bugs:
 it injects small changes (flip a `>`, return an empty value, skip a body) and
-reports each one no test noticed as `MISSED`. CI runs it on every PR's diff
-only; a full run takes hours. Interactive TUI drawing is excluded in
+reports each one no test noticed as `MISSED`. CI runs it on each PR's diff,
+once the tests pass; a full run takes hours. Interactive TUI drawing is excluded in
 `.cargo/mutants.toml`.
 
 ```bash
