@@ -64,6 +64,18 @@ fn mcp_link_reports_already_linked() {
 }
 
 #[test]
+fn mcp_unlink_by_link_id() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "Ship it"]);
+    s.run(&["link", "1", "https://example.com/pr/1"]);
+    let mut mcp = s.mcp();
+
+    let removed = mcp.call_result("unlink", json!({ "link_id": 1 }));
+    assert_eq!(removed, json!({ "link_id": 1, "removed": true }));
+    assert_eq!(s.json(&["info", "1", "--json"])["links"], json!([]));
+}
+
+#[test]
 fn mcp_unlink_by_task_and_url() {
     let s = Sara::new();
     s.run(&["add", "-y", "Ship it"]);
