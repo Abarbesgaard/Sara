@@ -6,6 +6,10 @@
 - `sara link` / MCP `link`: linking a URL the task already has no longer adds a
   duplicate; it reports `already linked` (`already_linked: true` in JSON).
 
+### Fixed
+- `--due +Nd` / `+Nw` and `--estimate` no longer crash on huge numbers; an
+  out-of-range value is rejected as invalid instead.
+
 ## [2.7.0] - 2026-10-26
 
 ### Added

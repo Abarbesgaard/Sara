@@ -36,12 +36,12 @@ pub fn parse_due(s: &str, dialect_str: &str) -> Option<DateTime<Utc>> {
         if let Some(days_str) = rest.strip_suffix('d')
             && let Ok(days) = days_str.trim().parse::<i64>()
         {
-            return Some(Utc::now() + chrono::Duration::days(days));
+            return Utc::now().checked_add_signed(chrono::Duration::try_days(days)?);
         }
         if let Some(weeks_str) = rest.strip_suffix('w')
             && let Ok(weeks) = weeks_str.trim().parse::<i64>()
         {
-            return Some(Utc::now() + chrono::Duration::weeks(weeks));
+            return Utc::now().checked_add_signed(chrono::Duration::try_weeks(weeks)?);
         }
     }
 
@@ -62,12 +62,12 @@ pub fn parse_duration_mins(s: &str) -> Option<i64> {
     if let Some(h_pos) = rest.find('h')
         && let Ok(h) = rest[..h_pos].trim().parse::<i64>()
     {
-        let mut total = h * 60;
+        let mut total = h.checked_mul(60)?;
         let after_h = rest[h_pos + 1..].trim().trim_end_matches('m').trim();
         if !after_h.is_empty()
             && let Ok(m) = after_h.parse::<i64>()
         {
-            total += m;
+            total = total.checked_add(m)?;
         }
         return Some(total);
     }
@@ -79,3 +79,7 @@ pub fn is_valid_due(s: &str) -> bool {
     let s = s.trim();
     s.is_empty() || parse_due(s, "uk").is_some()
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/infrastructure/dates.rs"]
+mod tests;
