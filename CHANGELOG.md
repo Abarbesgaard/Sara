@@ -9,6 +9,7 @@
 ### Fixed
 - `--due +Nd` / `+Nw` and `--estimate` no longer crash on huge numbers; an
   out-of-range value is rejected as invalid instead.
+- `--estimate` rejects negative durations such as `-30m` instead of saving them.
 
 ## [2.7.0] - 2026-10-26
 
