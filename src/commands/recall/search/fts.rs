@@ -34,12 +34,13 @@ pub(in crate::commands::recall) fn search(
             if tokens.is_empty() {
                 (vec![], false)
             } else {
-                let and_hits = db::search_fts_tokens(conn, &tokens, limit.max(50))?;
+                let and_hits =
+                    db::search_fts_tokens(conn, &tokens, db::TokenMatch::All, limit.max(50))?;
                 if !and_hits.is_empty() || tokens.len() < 2 {
                     (and_hits, false)
                 } else {
                     (
-                        db::search_fts_tokens_or(conn, &tokens, limit.max(50))?,
+                        db::search_fts_tokens(conn, &tokens, db::TokenMatch::Any, limit.max(50))?,
                         true,
                     )
                 }

@@ -306,8 +306,11 @@ pub struct SearchHit {
     pub text: String,
 }
 
-pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
-    let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+fn fts_phrase(text: &str) -> String {
+    format!("\"{}\"", text.replace('"', "\"\""))
+}
+
+fn fts_match(conn: &Connection, fts_query: &str, limit: i64) -> Result<Vec<SearchHit>> {
     let mut stmt = conn.prepare(
         "SELECT ref_kind, task_uuid, text FROM search_index
          WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
@@ -323,64 +326,36 @@ pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<Sear
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
+}
+
+pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {
+    fts_match(conn, &fts_phrase(query), limit)
+}
+
+/// Whether a token search needs every token in a hit, or any one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenMatch {
+    All,
+    Any,
 }
 
 pub fn search_fts_tokens(
     conn: &Connection,
     tokens: &[String],
+    mode: TokenMatch,
     limit: i64,
 ) -> Result<Vec<SearchHit>> {
     if tokens.is_empty() {
         return Ok(vec![]);
     }
+    let joiner = match mode {
+        TokenMatch::All => " ",
+        TokenMatch::Any => " OR ",
+    };
     let fts_query = tokens
         .iter()
-        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .map(|t| fts_phrase(t))
         .collect::<Vec<_>>()
-        .join(" ");
-    let mut stmt = conn.prepare(
-        "SELECT ref_kind, task_uuid, text FROM search_index
-         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
-    )?;
-    let rows = stmt
-        .query_map(params![fts_query, limit], |r| {
-            Ok(SearchHit {
-                ref_kind: r.get(0)?,
-                task_uuid: r.get(1)?,
-                text: r.get(2)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
-}
-
-pub fn search_fts_tokens_or(
-    conn: &Connection,
-    tokens: &[String],
-    limit: i64,
-) -> Result<Vec<SearchHit>> {
-    if tokens.is_empty() {
-        return Ok(vec![]);
-    }
-    let fts_query = tokens
-        .iter()
-        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
-        .collect::<Vec<_>>()
-        .join(" OR ");
-    let mut stmt = conn.prepare(
-        "SELECT ref_kind, task_uuid, text FROM search_index
-         WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
-    )?;
-    let rows = stmt
-        .query_map(params![fts_query, limit], |r| {
-            Ok(SearchHit {
-                ref_kind: r.get(0)?,
-                task_uuid: r.get(1)?,
-                text: r.get(2)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
+        .join(joiner);
+    fts_match(conn, &fts_query, limit)
 }
