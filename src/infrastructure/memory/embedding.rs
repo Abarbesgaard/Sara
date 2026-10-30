@@ -197,6 +197,7 @@ pub fn ensure_index_current(conn: &rusqlite::Connection) -> anyhow::Result<bool>
     let current = scheme_version();
     let stored = crate::infrastructure::db::meta_get(conn, SCHEME_VERSION_KEY)?;
     if !needs_reindex(stored.as_deref(), &current) {
+        backfill_missing(conn)?;
         return Ok(false);
     }
     reindex_all(conn)?;
@@ -229,6 +230,16 @@ pub fn index_memory(conn: &rusqlite::Connection, item: &crate::infrastructure::m
     }
     let v = bundled().embed(&text);
     let _ = crate::infrastructure::db::upsert_embedding(conn, &item.uuid.to_string(), &v);
+}
+
+/// Embeds active memories that have no vector yet, so a memory written by a
+/// path that skipped `index_memory` still becomes findable by meaning.
+pub fn backfill_missing(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
+    let missing = crate::infrastructure::db::memories_without_embedding(conn)?;
+    for m in &missing {
+        index_memory(conn, m);
+    }
+    Ok(missing.len())
 }
 
 pub fn reindex_all(conn: &rusqlite::Connection) -> anyhow::Result<usize> {
