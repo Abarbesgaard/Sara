@@ -37,8 +37,8 @@ fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
 }
 
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
-    let mut task = db::resolve_task(conn, id_or_uuid)?;
-    guard_branch_mutation(conn, id_or_uuid, &task, force)?;
+    let (mut task, matched) = db::resolve_task_matched(conn, id_or_uuid)?;
+    guard_branch_mutation(conn, matched, &task, force)?;
 
     let blockers = db::get_blockers(conn, &task.uuid)?;
     if !blockers.is_empty() && !force {

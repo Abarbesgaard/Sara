@@ -14,8 +14,8 @@ pub fn validate_value(
     mode: GateOutput,
     fresh: bool,
 ) -> Result<serde_json::Value> {
-    let task = db::resolve_task(conn, id)?;
-    guard_branch_mutation(conn, id, &task, false)?;
+    let (task, matched) = db::resolve_task_matched(conn, id)?;
+    guard_branch_mutation(conn, matched, &task, false)?;
     let head = project_head(conn, &task.project)
         .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
 
