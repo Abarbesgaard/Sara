@@ -51,6 +51,10 @@ pub fn head_commit(repo: &Path) -> Option<String> {
     if sha.is_empty() { None } else { Some(sha) }
 }
 
+pub fn is_repo(repo: &Path) -> bool {
+    git_output(repo, &["rev-parse", "--git-dir"]).is_ok()
+}
+
 pub fn is_clean(repo: &Path) -> Option<bool> {
     let out = std::process::Command::new("git")
         .arg("-C")

@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::super::gate::run_acceptance_gate;
 use super::super::types::GateOutput;
-use crate::commands::shared::{guard_branch_mutation, project_head};
+use crate::commands::shared::{guard_branch_mutation, require_project_head};
 use crate::infrastructure::db;
 
 pub fn validate_value(
@@ -16,8 +16,7 @@ pub fn validate_value(
 ) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     guard_branch_mutation(conn, id, &task, false)?;
-    let head = project_head(conn, &task.project)
-        .ok_or_else(|| anyhow::anyhow!("task's project is not in a git repo"))?;
+    let head = require_project_head(conn, &task.project);
 
     let mut gate_ran = 0usize;
     let mut gate_cached = 0usize;
@@ -34,6 +33,13 @@ pub fn validate_value(
         gate_ran = gate.ran;
         gate_cached = gate.cached;
     }
+    let head = head.map_err(|e| {
+        if skip_gate {
+            e
+        } else {
+            anyhow::anyhow!("acceptance gate is green, but {e}")
+        }
+    })?;
 
     db::set_validated(conn, &task.uuid, &head)?;
 
