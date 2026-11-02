@@ -95,6 +95,22 @@ fn import_raw_rejects_an_empty_plan() {
 }
 
 #[test]
+fn import_raw_names_the_bad_task_counting_from_one() {
+    let conn = db::testing::open_in_memory_for_test();
+    let cfg = Config::default();
+    let err = import_raw(
+        &conn,
+        &cfg,
+        r#"{"project":"x","tasks":[{"description":"ok"},{"description":" "}]}"#,
+    )
+    .expect_err("a task without a description must be refused");
+    assert!(
+        err.to_string().contains("plan task 2 "),
+        "error should name the second task: {err}"
+    );
+}
+
+#[test]
 fn import_raw_rejects_invalid_json() {
     let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
