@@ -27,7 +27,11 @@ fn done_refuses_unvalidated_task_with_acceptance_criteria() {
         "error should name the missing validation: {err}"
     );
     let still = db::resolve_task(&conn, &task.uuid.to_string()).unwrap();
-    assert_ne!(still.status, Status::Completed, "refused task stays open");
+    assert_ne!(
+        still.status,
+        crate::domain::Status::Completed,
+        "refused task stays open"
+    );
 }
 
 #[test]

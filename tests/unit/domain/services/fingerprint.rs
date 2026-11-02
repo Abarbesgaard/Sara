@@ -40,11 +40,11 @@ fn fingerprint_drift_is_share_of_vanished_lines() {
 }
 
 #[test]
-fn anchor_state_of_flags_drift_at_threshold() {
+fn fingerprint_judge_flags_drift_at_threshold() {
     let fp = encode(&sketch(&body(0..10)));
-    assert_eq!(AnchorState::of(&fp, &body(0..10)), AnchorState::Fresh);
+    assert_eq!(judge(&fp, &body(0..10)), AnchorState::Fresh);
     assert_eq!(
-        AnchorState::of(&fp, &format!("{}\n{}", body(0..6), body(50..54))),
+        judge(&fp, &format!("{}\n{}", body(0..6), body(50..54))),
         AnchorState::Drifted(0.4)
     );
 }

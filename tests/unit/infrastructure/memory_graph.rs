@@ -370,7 +370,11 @@ fn co_activated_weight(conn: &Connection, a: &Uuid, b: &Uuid) -> Option<f64> {
     db::all_memory_links(conn)
         .unwrap()
         .into_iter()
-        .find(|l| l.relation == "co_activated" && l.from_uuid == from && l.to_uuid == to)
+        .find(|l| {
+            l.relation == crate::domain::Relation::CoActivated
+                && l.from_uuid == from
+                && l.to_uuid == to
+        })
         .map(|l| l.weight)
 }
 
@@ -420,7 +424,7 @@ fn consolidate_leaves_deliberate_links_untouched() {
     consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
     let links = db::all_memory_links(&conn).unwrap();
     assert_eq!(links.len(), 1);
-    assert_eq!(links[0].relation, "similar_to");
+    assert_eq!(links[0].relation, crate::domain::Relation::SimilarTo);
 }
 
 #[test]

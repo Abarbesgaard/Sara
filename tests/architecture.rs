@@ -327,8 +327,15 @@ fn infrastructure_modules_depend_inwards() {
 
 // ── Domain ─────────────────────────────────────────────────────────────────────
 //
-// `src/domain` holds the entities and value objects. It is pure: no framework,
-// no persistence, no I/O, and one entity per file.
+// `src/domain` is pure: no framework, no persistence, no I/O. It is split the
+// way a DDD domain project is:
+//
+//   error            DomainError — what a domain rule rejects
+//   value_objects    immutable values, validated on construction (MemoryBody)
+//   entities         things with identity and a lifecycle (Task::complete)
+//   services         rules over several types (urgency, memory strength,
+//                    fingerprint drift); they take their weights and `now`
+//                    as arguments instead of reading config or the clock
 #[test]
 fn domain_is_framework_free() {
     let rule = project_files()
@@ -366,12 +373,57 @@ fn domain_does_no_io() {
     assert_passes!(rule);
 }
 
-/// Each domain file defines one entity — at most one `pub struct` — and is named
-/// after it (`BranchRecord` → `branch_record.rs`). A file without a struct is
-/// named after its `pub enum` (`AnchorState` → `anchor_state.rs`). Enums and
-/// helpers that only that entity uses may live alongside it.
 #[test]
-fn domain_has_one_entity_per_file() {
+fn domain_parts_depend_inwards() {
+    let rule = project_layers()
+        .layer("error")
+        .defined_by("src/domain/error.rs")
+        .layer("value_objects")
+        .defined_by("src/domain/value_objects/**")
+        .layer("entities")
+        .defined_by("src/domain/entities/**")
+        .layer("services")
+        .defined_by("src/domain/services/**")
+        .where_layer("error")
+        .may_only_depend_on_layers(&[])
+        .where_layer("value_objects")
+        .may_only_depend_on_layers(&["error"])
+        .where_layer("entities")
+        .may_only_depend_on_layers(&["value_objects", "error"])
+        .where_layer("services")
+        .may_only_depend_on_layers(&["entities", "value_objects", "error"]);
+
+    assert_passes!(rule);
+}
+
+/// `crate::domain::Task` resolves through the `mod.rs` re-exports, which belong
+/// to no layer, so `domain_parts_depend_inwards` would not see it. Inside the
+/// domain, name the part: `crate::domain::entities::Task`.
+#[test]
+fn domain_names_the_part_it_depends_on() {
+    const PARTS: &[&str] = &["error::", "value_objects::", "entities::", "services::"];
+    let rule = project_files()
+        .in_path(pattern("src/domain/**").except_with_name("mod.rs"))
+        .should()
+        .adhere_to(
+            |f: &FileInfo| {
+                f.content
+                    .match_indices("crate::domain::")
+                    .map(|(i, m)| &f.content[i + m.len()..])
+                    .all(|rest| PARTS.iter().any(|p| rest.starts_with(p)))
+            },
+            "reference other domain types through their part (crate::domain::entities::…)",
+        );
+
+    assert_passes!(rule);
+}
+
+/// Each entity and value object lives in its own file, named after it
+/// (`BranchRecord` → `branch_record.rs`): at most one `pub struct`, or, for a
+/// file without one, a `pub enum` of that name. Helpers that only that type
+/// uses may live alongside it. Services and `error.rs` are not types-per-file.
+#[test]
+fn domain_has_one_type_per_file() {
     fn snake_case(name: &str) -> String {
         let mut out = String::new();
         for (i, c) in name.chars().enumerate() {
@@ -391,25 +443,29 @@ fn domain_has_one_entity_per_file() {
             .collect()
     }
 
-    let rule = project_files()
-        .in_path(pattern("src/domain/**").except_with_name("mod.rs"))
-        .should()
-        .adhere_to(
-            |f: &FileInfo| {
-                let stem = f.name.trim_end_matches(".rs");
-                let structs = pub_types(&f.content, "pub struct ");
-                match structs.as_slice() {
-                    [entity] => snake_case(entity) == stem,
-                    [] => pub_types(&f.content, "pub enum ")
-                        .iter()
-                        .any(|e| snake_case(e) == stem),
-                    _ => false,
-                }
-            },
-            "define one entity (at most one pub struct), named after the file",
-        );
+    let one_type = |f: &FileInfo| {
+        let stem = f.name.trim_end_matches(".rs");
+        let structs = pub_types(&f.content, "pub struct ");
+        match structs.as_slice() {
+            [ty] => snake_case(ty) == stem,
+            [] => pub_types(&f.content, "pub enum ")
+                .iter()
+                .any(|e| snake_case(e) == stem),
+            _ => false,
+        }
+    };
+    let message = "define one type (at most one pub struct), named after the file";
 
-    assert_passes!(rule);
+    let entities = project_files()
+        .in_path(pattern("src/domain/entities/**").except_with_name("mod.rs"))
+        .should()
+        .adhere_to(one_type, message);
+    let value_objects = project_files()
+        .in_path(pattern("src/domain/value_objects/**").except_with_name("mod.rs"))
+        .should()
+        .adhere_to(one_type, message);
+
+    assert_all_pass(&[&entities, &value_objects]);
 }
 
 // ── Frameworks stay at the edges ───────────────────────────────────────────────

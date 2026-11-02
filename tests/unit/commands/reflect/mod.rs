@@ -202,7 +202,7 @@ fn derived_from_count(conn: &rusqlite::Connection, uuids: &[&Uuid]) -> usize {
             db::get_memory_links_from(conn, &u.to_string())
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|l| l.relation == "derived_from")
+                .filter(|l| l.relation == crate::domain::Relation::DerivedFrom)
                 .count()
         })
         .sum()
@@ -305,12 +305,14 @@ fn reflect_apply_skips_cycle_violations() {
     assert!(
         c_links
             .iter()
-            .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom
+                && l.to_uuid == a.to_string())
     );
     let b_links = db::get_memory_links_from(&conn, &b.to_string()).unwrap();
     assert!(
         !b_links
             .iter()
-            .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom
+                && l.to_uuid == a.to_string())
     );
 }

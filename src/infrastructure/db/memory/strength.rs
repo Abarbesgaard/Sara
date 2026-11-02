@@ -1,5 +1,8 @@
 use super::super::*;
-use crate::domain::{Item, Status};
+use crate::domain::services::memory_strength::{
+    RECALL_BOOST_WINDOW_DAYS, base_strength, derived_bonus, recall_boost,
+};
+use crate::domain::{Item, Relation, Status};
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
@@ -30,50 +33,30 @@ fn canonical_derived_bonus(conn: &Connection, item_uuid: &Uuid) -> f64 {
     let count = get_memory_links_to(conn, &item_uuid.to_string())
         .unwrap_or_default()
         .into_iter()
-        .filter(|l| l.relation == "derived_from")
+        .filter(|l| l.relation == Relation::DerivedFrom)
         .count();
-    (count as f64 * 0.1).min(0.5)
+    derived_bonus(count)
 }
 
 fn item_base_strength(conn: &Connection, item: &Item) -> f64 {
-    let base = 'base: {
-        if let Some(source) = item.source_task_uuid {
-            match get_task_by_uuid_prefix(conn, &source.to_string()) {
-                Ok(Some(task)) if task.status == Status::Completed => break 'base 2.0,
-                Ok(Some(_)) => break 'base 1.5,
-                _ => {}
-            }
-        }
-        let linked: Vec<Status> = get_item_task_links(conn, &item.uuid)
+    let source = item
+        .source_task_uuid
+        .and_then(|source| {
+            get_task_by_uuid_prefix(conn, &source.to_string())
+                .ok()
+                .flatten()
+        })
+        .map(|task| task.status);
+    let linked: Vec<Status> = if source.is_some() {
+        Vec::new()
+    } else {
+        get_item_task_links(conn, &item.uuid)
             .unwrap_or_default()
             .into_iter()
             .map(|(t, _)| t.status)
-            .collect();
-        base_strength_from_links(&linked)
+            .collect()
     };
-    cap_provisional(&item.status, base)
-}
-
-const PROVISIONAL_BASE_CAP: f64 = 1.0;
-
-fn cap_provisional(status: &str, base: f64) -> f64 {
-    if status == "provisional" {
-        base.min(PROVISIONAL_BASE_CAP)
-    } else {
-        base
-    }
-}
-
-fn base_strength_from_links(linked: &[Status]) -> f64 {
-    let mut best = 1.0_f64;
-    for st in linked {
-        match st {
-            Status::Completed => return 2.0,
-            Status::Pending => best = 1.5,
-            _ => {}
-        }
-    }
-    best
+    base_strength(item.status, source.as_ref(), &linked)
 }
 
 pub fn item_base_strengths(
@@ -109,15 +92,11 @@ pub fn item_base_strengths(
 
     let mut out = std::collections::HashMap::with_capacity(items.len());
     for item in items {
-        let strength = match item
+        let source = item
             .source_task_uuid
-            .and_then(|s| task_status.get(&s.to_string()))
-        {
-            Some(Status::Completed) => 2.0,
-            Some(_) => 1.5,
-            None => base_strength_from_links(link_status.get(&item.uuid).map_or(&[], |v| v)),
-        };
-        out.insert(item.uuid, cap_provisional(&item.status, strength));
+            .and_then(|s| task_status.get(&s.to_string()));
+        let linked = link_status.get(&item.uuid).map_or(&[][..], |v| v);
+        out.insert(item.uuid, base_strength(item.status, source, linked));
     }
     out
 }
@@ -136,7 +115,7 @@ pub fn canonical_derived_bonuses(conn: &Connection) -> std::collections::HashMap
     }
     counts
         .into_iter()
-        .map(|(u, c)| (u, (c as f64 * 0.1).min(0.5)))
+        .map(|(u, c)| (u, derived_bonus(c as usize)))
         .collect()
 }
 
@@ -179,10 +158,6 @@ pub fn all_item_task_uuids(conn: &Connection) -> std::collections::HashMap<Uuid,
     map
 }
 
-pub const RECALL_BOOST_WINDOW_DAYS: i64 = 30;
-pub const RECALL_BOOST_PER_HIT: f64 = 0.1;
-pub const RECALL_BOOST_CAP: f64 = 0.5;
-
 pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
     super::uses::attribute_use(conn, item_uuid, crate::domain::MemoryUseKind::Recalled);
     record_event(
@@ -217,7 +192,7 @@ fn recall_usage_boost(conn: &Connection, item_uuid: &Uuid) -> f64 {
             |r| r.get(0),
         )
         .unwrap_or(0);
-    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP)
+    recall_boost(count)
 }
 
 pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid, f64> {
@@ -236,10 +211,7 @@ pub fn recall_usage_boosts(conn: &Connection) -> std::collections::HashMap<Uuid,
     if let Ok(rows) = rows {
         for (uuid_str, count) in rows.flatten() {
             if let Ok(u) = Uuid::parse_str(&uuid_str) {
-                map.insert(
-                    u,
-                    (count as f64 * RECALL_BOOST_PER_HIT).min(RECALL_BOOST_CAP),
-                );
+                map.insert(u, recall_boost(count));
             }
         }
     }

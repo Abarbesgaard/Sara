@@ -6,33 +6,21 @@
 
 use std::collections::HashSet;
 
+use crate::domain::value_objects::AnchorState;
+
 /// How many line hashes a sketch keeps (the k smallest distinct hashes).
 pub const SKETCH_SIZE: usize = 256;
 /// Drift at or above this share of vanished lines flags an anchor as stale.
 pub const STALE_DRIFT: f64 = 0.4;
 const MIN_LINE_CHARS: usize = 3;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum AnchorState {
-    Fresh,
-    Drifted(f64),
-    Missing,
-    Unknown,
-}
-
-impl AnchorState {
-    pub fn is_stale(&self) -> bool {
-        matches!(self, AnchorState::Missing | AnchorState::Drifted(_))
-    }
-
-    /// Judge the current `text` of an anchored file against its stored fingerprint.
-    pub fn of(fingerprint: &[u8], text: &str) -> AnchorState {
-        let d = drift(&decode(fingerprint), text);
-        if d >= STALE_DRIFT {
-            AnchorState::Drifted(d)
-        } else {
-            AnchorState::Fresh
-        }
+/// Judge the current `text` of an anchored file against its stored fingerprint.
+pub fn judge(fingerprint: &[u8], text: &str) -> AnchorState {
+    let d = drift(&decode(fingerprint), text);
+    if d >= STALE_DRIFT {
+        AnchorState::Drifted(d)
+    } else {
+        AnchorState::Fresh
     }
 }
 
@@ -84,5 +72,5 @@ pub fn drift(sketch: &[u64], current: &str) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/domain/anchor_state.rs"]
+#[path = "../../../tests/unit/domain/services/fingerprint.rs"]
 mod tests;

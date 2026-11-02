@@ -3,7 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::domain::UrgencyWeights;
+use crate::domain::services::UrgencyWeights;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

@@ -26,8 +26,13 @@ pub(super) fn save(
         task.due = parse_due(&form.due, cfg);
     }
 
-    task.urgency =
-        crate::domain::compute_urgency(&task, &cfg.urgency, false, 0, chrono::Utc::now());
+    task.urgency = crate::domain::services::urgency::compute_urgency(
+        &task,
+        &cfg.urgency,
+        false,
+        0,
+        chrono::Utc::now(),
+    );
 
     db::insert_task(conn, &mut task)?;
 

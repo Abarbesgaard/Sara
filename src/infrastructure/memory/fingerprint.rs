@@ -3,7 +3,8 @@
 
 use std::path::Path;
 
-use crate::domain::{AnchorState, encode, sketch};
+use crate::domain::AnchorState;
+use crate::domain::services::fingerprint::{encode, judge, sketch};
 
 /// Files larger than this are not fingerprinted.
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
@@ -41,7 +42,7 @@ pub fn anchor_state(path: &str, fingerprint: Option<&[u8]>) -> AnchorState {
     let Some(text) = read_text(p) else {
         return AnchorState::Unknown;
     };
-    AnchorState::of(fp, &text)
+    judge(fp, &text)
 }
 
 #[cfg(test)]

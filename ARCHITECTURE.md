@@ -11,9 +11,11 @@ src/
   main.rs                   # CLI dispatch — match on Command enum, call slice entry-points
   cli.rs                    # Clap struct definitions for all commands
   domain/
-    mod.rs                  # re-exports every entity
-    task.rs                 # Task (+ Priority, Status) — one entity per file, named after it
-    …
+    mod.rs                  # re-exports entities, value objects and DomainError
+    error.rs                # DomainError — what a domain rule rejects
+    entities/               # identity + lifecycle: Task (complete, delete, next_occurrence), Item, …
+    value_objects/          # immutable, validated values: MemoryBody, MemoryStatus, Relation, Priority, …
+    services/               # rules over several types: urgency, memory_strength, fingerprint
   infrastructure/
     mod.rs                  # re-exports all infrastructure modules
     db.rs                   # Database (open, migrations, all query helpers)
@@ -88,7 +90,7 @@ src/
 
 | Tier | Location | Rule |
 |------|----------|------|
-| **Domain** | `src/domain/` | Entities and value objects. Imports nothing from the crate. Pure: no persistence, presentation or I/O. |
+| **Domain** | `src/domain/` | Entities, value objects, domain services and `DomainError`. Imports nothing from the crate. Pure: no persistence, presentation or I/O. |
 | **Infrastructure** | `src/infrastructure/` | May be imported by anything. Never imports from `src/commands/`. |
 | **Command slice** | `src/commands/<name>/mod.rs` | Imports only from `crate::domain` and `crate::infrastructure`. Never imports another command slice or `crate::cli`. |
 
@@ -133,11 +135,17 @@ stay as a single `mod.rs`.
 
 - External crates are limited to `std`, `anyhow`, `chrono`, `serde` and `uuid`.
 - No I/O: no `std::fs`, `std::io`, `std::net`, `std::process`, `std::env` or printing.
-- One entity per file: each file defines at most one `pub struct` and is named after it
-  (`BranchRecord` → `branch_record.rs`), or after its `pub enum` when it has no struct
-  (`AnchorState` → `anchor_state.rs`). Enums and helpers only that entity uses live alongside it.
-- Business rules are domain too: urgency scoring (`urgency_breakdown.rs`) and anchor drift
-  (`anchor_state.rs`) are pure functions; reading files and the clock stays with the caller.
+- Parts depend inwards: `error` ← `value_objects` ← `entities` ← `services`. Inside the domain,
+  name the part (`crate::domain::entities::Task`), not the `mod.rs` re-export.
+- One type per file in `entities/` and `value_objects/`: at most one `pub struct`, named after
+  the file (`BranchRecord` → `branch_record.rs`), or its `pub enum` when it has no struct
+  (`AnchorState` → `anchor_state.rs`). Helpers only that type uses live alongside it.
+- Value objects validate on construction and return `DomainError` (`MemoryBody::new` rejects
+  oversized bodies and secrets). Closed sets of strings are enums (`MemoryStatus`, `Relation`);
+  persistence parses them at the boundary.
+- Entities own their lifecycle (`Task::complete`, `Task::delete`, `Task::next_occurrence`).
+- Services are pure functions over several types (urgency, memory strength, fingerprint drift).
+  They take weights and `now` as arguments; reading config, files and the clock stays with the caller.
 - Read models and query results (`ProjectStats`, `SearchHit`, …) are not domain; they stay in `db`.
 
 ### Infrastructure

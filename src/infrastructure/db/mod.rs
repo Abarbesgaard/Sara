@@ -67,6 +67,16 @@ fn dt_to_str(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339()
 }
 
+fn parse_col<T>(idx: usize, s: String) -> rusqlite::Result<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    s.parse().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
+    })
+}
+
 fn str_to_dt(s: &str) -> Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))

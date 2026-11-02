@@ -96,7 +96,7 @@ pub(super) fn load_detail(conn: &Connection, cfg: &Config, task: Task) -> Result
 
     let blockers = db::get_blockers(conn, &task.uuid).unwrap_or_default();
     let blocking_tasks = db::get_blocking(conn, &task.uuid).unwrap_or_default();
-    let urgency_breakdown = Some(crate::domain::compute_urgency_breakdown(
+    let urgency_breakdown = Some(crate::domain::services::urgency::compute_urgency_breakdown(
         &task,
         &cfg.urgency,
         !blockers.is_empty(),
@@ -374,7 +374,7 @@ pub(super) fn reload_dep_detail(conn: &Connection, cfg: &Config, detail: &mut De
     {
         detail.task.urgency = t.urgency;
     }
-    detail.urgency_breakdown = Some(crate::domain::compute_urgency_breakdown(
+    detail.urgency_breakdown = Some(crate::domain::services::urgency::compute_urgency_breakdown(
         &detail.task,
         &cfg.urgency,
         !blockers.is_empty(),

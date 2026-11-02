@@ -1,31 +1,11 @@
+//! Urgency scoring: how pressing a task is, from its own state and its place in
+//! the dependency graph. Weights come from config; the clock is passed in.
+
 use chrono::{DateTime, Utc};
 
-use super::{Task, UrgencyWeights};
-
-/// A task's urgency score, split into the contribution of each signal.
-pub struct UrgencyBreakdown {
-    pub priority: f64,
-    pub due: f64,
-    pub blocking: f64,
-    pub blocked: f64,
-    pub active: f64,
-    pub tags: f64,
-    pub project: f64,
-    pub age: f64,
-}
-
-impl UrgencyBreakdown {
-    pub fn total(&self) -> f64 {
-        self.priority
-            + self.due
-            + self.blocking
-            + self.blocked
-            + self.active
-            + self.tags
-            + self.project
-            + self.age
-    }
-}
+use crate::domain::entities::Task;
+use crate::domain::services::UrgencyWeights;
+use crate::domain::value_objects::UrgencyBreakdown;
 
 pub fn compute_urgency(
     task: &Task,
@@ -87,5 +67,5 @@ pub fn compute_urgency_breakdown(
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/domain/urgency_breakdown.rs"]
+#[path = "../../../tests/unit/domain/services/urgency.rs"]
 mod tests;

@@ -4,20 +4,20 @@ use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::domain::Relation;
 use crate::infrastructure::db;
 
 const W_SHARED_TASK: f64 = 0.8;
 const W_SHARED_FILE: f64 = 0.6;
 const W_SHARED_TAG: f64 = 0.3;
 
-fn relation_weight(relation: &str, stored: f64) -> f64 {
+fn relation_weight(relation: Relation, stored: f64) -> f64 {
     let base = match relation {
-        "derived_from" => 0.8,
-        "similar_to" => 0.7,
-        "used_in" => 0.6,
-        "supersedes" => 0.5,
-        "co_activated" => return (0.25 * stored).min(MAX_EDGE),
-        _ => 0.4,
+        Relation::DerivedFrom => 0.8,
+        Relation::SimilarTo => 0.7,
+        Relation::UsedIn => 0.6,
+        Relation::Supersedes => 0.5,
+        Relation::CoActivated => 0.25,
     };
     (base * stored).min(MAX_EDGE)
 }
@@ -91,7 +91,7 @@ impl MemoryGraph {
                 add(
                     a,
                     b,
-                    relation_weight(&link.relation, link.weight),
+                    relation_weight(link.relation, link.weight),
                     &mut edges,
                 );
             }

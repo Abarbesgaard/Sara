@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::domain::value_objects::MemoryStatus;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub uuid: Uuid,
@@ -16,7 +18,7 @@ pub struct Item {
     pub body: String,
     pub created: DateTime<Utc>,
     pub modified: DateTime<Utc>,
-    pub status: String,
+    pub status: MemoryStatus,
     pub source_task_uuid: Option<Uuid>,
     pub files: Vec<String>,
     pub linked_tasks: Vec<(String, String, String)>,
@@ -38,7 +40,7 @@ impl Item {
             body,
             created: now,
             modified: now,
-            status: "active".to_string(),
+            status: MemoryStatus::Active,
             source_task_uuid: None,
             files: vec![],
             linked_tasks: vec![],
@@ -60,7 +62,7 @@ impl Item {
             body,
             created: now,
             modified: now,
-            status: "active".to_string(),
+            status: MemoryStatus::Active,
             source_task_uuid,
             files: vec![],
             linked_tasks: vec![],
@@ -82,7 +84,7 @@ impl Item {
             body,
             created: now,
             modified: now,
-            status: "active".to_string(),
+            status: MemoryStatus::Active,
             source_task_uuid: None,
             files: vec![],
             linked_tasks: vec![],

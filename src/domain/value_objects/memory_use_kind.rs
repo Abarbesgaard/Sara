@@ -1,6 +1,3 @@
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
 /// How a memory took part in a task. Outcome credit is derived from these at
 /// read time, joined against the task's status and validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,12 +21,4 @@ impl MemoryUseKind {
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.as_str() == s)
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MemoryUse {
-    pub item_uuid: Uuid,
-    pub task_uuid: Uuid,
-    pub kind: MemoryUseKind,
-    pub at: DateTime<Utc>,
 }

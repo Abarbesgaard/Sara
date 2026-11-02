@@ -3,7 +3,6 @@ use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::commands::shared::print_cancelled;
-use crate::domain::Status;
 use crate::infrastructure::db;
 
 mod render;
@@ -21,9 +20,7 @@ pub fn run(conn: &Connection, id_or_uuid: &str, yes: bool) -> Result<()> {
         render::warn_unblocked(was_blocking.len());
     }
 
-    task.status = Status::Deleted;
-    task.end = Some(Utc::now());
-    task.modified = Utc::now();
+    task.delete(Utc::now());
     db::update_task(conn, &task)?;
     db::repack_ids(conn)?;
 

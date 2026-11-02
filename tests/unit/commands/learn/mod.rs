@@ -15,27 +15,30 @@ fn size_check_fails_over_threshold() {
 
 #[test]
 fn secret_check_flags_api_key_assignment() {
-    assert!(safety::detect_secret("api_key=abc123secret").is_some());
-    assert!(safety::detect_secret("apikey: supersecret").is_some());
-    assert!(safety::detect_secret("client_secret: my-secret-value").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("api_key=abc123secret").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("apikey: supersecret").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("client_secret: my-secret-value").is_some());
 }
 
 #[test]
 fn secret_check_does_not_flag_normal_prose() {
-    assert!(safety::detect_secret("sara recall uses item_tags for exact tag lookup").is_none());
-    assert!(safety::detect_secret("the token field is optional").is_none());
-    assert!(safety::detect_secret("AuthAppUri (required string)").is_none());
+    assert!(
+        crate::domain::MemoryBody::detect_secret("sara recall uses item_tags for exact tag lookup")
+            .is_none()
+    );
+    assert!(crate::domain::MemoryBody::detect_secret("the token field is optional").is_none());
+    assert!(crate::domain::MemoryBody::detect_secret("AuthAppUri (required string)").is_none());
 }
 
 #[test]
 fn secret_check_flags_aws_style_key() {
-    assert!(safety::detect_secret("key: AKIAIOSFODNN7EXAMPLE").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("key: AKIAIOSFODNN7EXAMPLE").is_some());
 }
 
 #[test]
 fn secret_check_flags_high_entropy_hex_token() {
     assert!(
-        safety::detect_secret(
+        crate::domain::MemoryBody::detect_secret(
             "token: a3f1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
         )
         .is_some()
@@ -45,7 +48,7 @@ fn secret_check_flags_high_entropy_hex_token() {
 #[test]
 fn secret_check_does_not_flag_uuid_in_prose() {
     assert!(
-        safety::detect_secret(
+        crate::domain::MemoryBody::detect_secret(
             "AuthAppUri is a UUID like a2923ccd-a496-4cbd-9673-f40156552a92 in the config"
         )
         .is_none()
@@ -331,11 +334,13 @@ fn learn_creates_typed_links() {
         .to_string();
     let out = db::get_memory_links_from(&conn, &new_uuid).unwrap();
     assert!(
-        out.iter().any(|l| l.relation == "derived_from"),
+        out.iter()
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom),
         "derived_from edge exists"
     );
     assert!(
-        out.iter().any(|l| l.relation == "similar_to"),
+        out.iter()
+            .any(|l| l.relation == crate::domain::Relation::SimilarTo),
         "similar_to edge exists"
     );
 }

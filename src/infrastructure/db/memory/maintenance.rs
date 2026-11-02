@@ -60,7 +60,7 @@ pub fn prune_memories(
             continue;
         }
 
-        if item.status == "provisional" && age_days >= provisional_days {
+        if item.status == crate::domain::MemoryStatus::Provisional && age_days >= provisional_days {
             candidates.push(PruneCandidate {
                 label,
                 uuid: item.uuid.to_string(),
@@ -155,7 +155,8 @@ pub fn count_review_candidates(
     let mut oldest_age_days = 0i64;
     for item in &all {
         let age_days = (now - item.created).num_days();
-        let provisional_stale = item.status == "provisional" && age_days >= provisional_days;
+        let provisional_stale =
+            item.status == crate::domain::MemoryStatus::Provisional && age_days >= provisional_days;
         let strength = strengths.get(&item.uuid).copied().unwrap_or(1.0);
         let weak_old = strength < 1.5 && age_days >= weak_days;
         if provisional_stale || weak_old {
@@ -297,7 +298,7 @@ pub fn synthesize_done_memory(
 
     let mut item = crate::domain::Item::new_memory(title, body, Some(*task_uuid));
     item.tags = task.tags.clone();
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     item.path = Some(String::new());
 
     insert_item(conn, &mut item)?;

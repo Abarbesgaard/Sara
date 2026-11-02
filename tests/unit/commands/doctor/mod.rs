@@ -147,7 +147,7 @@ fn stale_provisional_memory_is_backlog() {
     let conn = fresh();
     let mut item = Item::new_memory("auto".into(), "auto memory".into(), None);
     item.path = Some(String::new());
-    item.status = "provisional".into();
+    item.status = crate::domain::MemoryStatus::Provisional;
     item.created = Utc::now() - Duration::days(45);
     db::insert_item(&conn, &mut item).unwrap();
     embedding::index_memory(&conn, &item);

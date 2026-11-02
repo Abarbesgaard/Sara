@@ -33,7 +33,7 @@ pub(super) fn print_memories(
                     "body": m.body,
                     "strength": strength,
                     "strength_label": strength_label(strength),
-                    "provisional": m.status == "provisional",
+                    "provisional": m.status == crate::domain::MemoryStatus::Provisional,
                     "tags": m.tags,
                     "files": files,
                     "created": m.created.to_rfc3339(),
@@ -81,7 +81,7 @@ pub(super) fn print_memories(
             "  {} ({}){}{}{}{} {}{}: {}",
             label,
             strength_label(strength),
-            if m.status == "provisional" {
+            if m.status == crate::domain::MemoryStatus::Provisional {
                 " [provisional]"
             } else {
                 ""

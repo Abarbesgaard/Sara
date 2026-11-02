@@ -143,7 +143,7 @@ fn provisional_items_are_indexed_into_search_fts() {
     let conn = mem();
     let mut item = make_memory("auto memory", &[]);
     item.body = "frobnicator wiring pattern from done-synthesis".to_string();
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
 
     let hits = search_fts(&conn, "done-synthesis", 10).unwrap();
@@ -155,7 +155,7 @@ fn provisional_items_are_indexed_into_search_fts() {
 fn provisional_items_surface_in_tag_and_file_lookups() {
     let conn = mem();
     let mut item = make_memory("auto memory", &["autotag"]);
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
     set_item_files(&conn, &item.uuid, &["/repo/src/x.rs".to_string()]).unwrap();
 
@@ -172,7 +172,7 @@ fn provisional_items_surface_in_tag_and_file_lookups() {
 fn promote_item_activates_only_provisional() {
     let conn = mem();
     let mut item = make_memory("auto memory", &[]);
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
 
     assert!(promote_item(&conn, &item.uuid).unwrap());

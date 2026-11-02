@@ -338,7 +338,7 @@ fn recall_surfaces_provisional_memories_with_flag() {
         "synthesised frobnicator pattern".to_string(),
         None,
     );
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     item.path = Some(String::new());
     db::insert_item(&conn, &mut item).unwrap();
 

@@ -58,7 +58,7 @@ pub fn reflect_value(conn: &Connection, min_weight: f64, max_cluster: usize) -> 
             let parents: HashSet<String> = db::get_memory_links_from(conn, &n.uuid.to_string())
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|l| l.relation == "derived_from")
+                .filter(|l| l.relation == crate::domain::Relation::DerivedFrom)
                 .map(|l| l.to_uuid)
                 .collect();
             (n.uuid.to_string(), parents)

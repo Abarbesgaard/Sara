@@ -1,5 +1,7 @@
 use super::*;
-use crate::domain::{Project, Task, UrgencyWeights, compute_urgency};
+use crate::domain::services::UrgencyWeights;
+use crate::domain::services::urgency::compute_urgency;
+use crate::domain::{Project, Task};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;

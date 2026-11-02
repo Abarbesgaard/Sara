@@ -41,7 +41,7 @@ fn memory_hit(item: &Item, confidence: &str, cosine: Option<f32>, current_projec
         "uuid": item.uuid.to_string(),
         "title": item.title,
         "tags": item.tags,
-        "provisional": item.status == "provisional",
+        "provisional": item.status == crate::domain::MemoryStatus::Provisional,
         "cosine": cosine,
         "project": item.project,
         "same_project": same_project,

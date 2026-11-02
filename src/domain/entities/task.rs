@@ -2,68 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Priority {
-    H,
-    M,
-    L,
-}
-
-impl Priority {
-    pub fn urgency_coefficient(&self) -> f64 {
-        match self {
-            Priority::H => 6.0,
-            Priority::M => 3.9,
-            Priority::L => 1.8,
-        }
-    }
-
-    pub fn label(&self) -> &str {
-        match self {
-            Priority::H => "H",
-            Priority::M => "M",
-            Priority::L => "L",
-        }
-    }
-}
-
-impl std::fmt::Display for Priority {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.label())
-    }
-}
-
-impl std::str::FromStr for Priority {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "H" | "HIGH" => Ok(Priority::H),
-            "M" | "MED" | "MEDIUM" => Ok(Priority::M),
-            "L" | "LOW" => Ok(Priority::L),
-            _ => Err(anyhow::anyhow!("Unknown priority: {s}")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Status {
-    Pending,
-    Completed,
-    Deleted,
-}
-
-impl std::fmt::Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Status::Pending => "pending",
-            Status::Completed => "completed",
-            Status::Deleted => "deleted",
-        };
-        write!(f, "{s}")
-    }
-}
+use crate::domain::value_objects::{Priority, Status};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -101,6 +40,39 @@ impl Task {
     pub fn next_due(&self, base: DateTime<Utc>) -> Option<DateTime<Utc>> {
         let interval = self.recur.as_deref()?;
         Some(advance_by_interval(base, interval))
+    }
+
+    pub fn stop_timer(&mut self, now: DateTime<Utc>) {
+        if let Some(started) = self.started_at.take() {
+            self.time_spent += (now - started).num_seconds().max(0);
+        }
+    }
+
+    pub fn complete(&mut self, now: DateTime<Utc>) {
+        self.stop_timer(now);
+        self.close(Status::Completed, now);
+    }
+
+    pub fn delete(&mut self, now: DateTime<Utc>) {
+        self.close(Status::Deleted, now);
+    }
+
+    fn close(&mut self, status: Status, now: DateTime<Utc>) {
+        self.status = status;
+        self.end = Some(now);
+        self.modified = now;
+    }
+
+    /// The task that replaces this one when a recurring task is completed.
+    pub fn next_occurrence(&self, now: DateTime<Utc>) -> Option<Task> {
+        let due = self.next_due(self.due.unwrap_or(now))?;
+        let mut next = Task::new(self.description.clone(), self.project.clone());
+        next.priority = self.priority.clone();
+        next.tags = self.tags.clone();
+        next.due = Some(due);
+        next.recur = self.recur.clone();
+        next.estimate_mins = self.estimate_mins;
+        Some(next)
     }
 }
 
@@ -204,5 +176,5 @@ impl Task {
 }
 
 #[cfg(test)]
-#[path = "../../tests/unit/domain/task.rs"]
+#[path = "../../../tests/unit/domain/entities/task.rs"]
 mod tests;

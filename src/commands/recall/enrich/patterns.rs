@@ -40,7 +40,7 @@ pub(in crate::commands::recall) fn detect_patterns(
             candidates.push(uuid.to_string());
         }
         for l in db::get_memory_links_from(conn, &uuid.to_string()).unwrap_or_default() {
-            if l.relation == "derived_from" {
+            if l.relation == crate::domain::Relation::DerivedFrom {
                 candidates.push(l.to_uuid);
             }
         }
