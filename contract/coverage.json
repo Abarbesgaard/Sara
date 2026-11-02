@@ -1,18 +1,19 @@
 {
-  "obligations": 5,
+  "obligations": 6,
   "primitives": {
     "ids": {
-      "obligations": 5,
+      "obligations": 6,
       "surface": [
         "cli done",
+        "cli forget",
         "cli info",
         "cli validate"
       ]
     }
   },
   "surface": {
-    "covered": 3,
-    "percent": 3.0,
+    "covered": 4,
+    "percent": 4.0,
     "total": 101
   },
   "uncovered": [
@@ -38,7 +39,6 @@
     "cli feedback",
     "cli find",
     "cli follow",
-    "cli forget",
     "cli import",
     "cli init",
     "cli learn",

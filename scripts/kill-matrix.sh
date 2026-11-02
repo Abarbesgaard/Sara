@@ -41,9 +41,10 @@ outcomes() {
 
 # "<target>/<path>" for every test with result $2 (ok or FAILED) in a test log.
 # cargo-mutants runs cargo verbosely, so each binary shows as
-# `Running `.../deps/<target>-<hash>``.
+# `Running `.../deps/<target>-<hash>``, coloured when CARGO_TERM_COLOR=always.
 tests_in_log() {
   awk -v want="$2" '
+    { gsub(/\033\[[0-9;]*m/, "") }
     /^ *Running / && match($0, /\/deps\/[A-Za-z0-9_]+-[0-9a-f]+/) {
       t = substr($0, RSTART + 6, RLENGTH - 6); sub(/-[0-9a-f]+$/, "", t); target = t; next
     }

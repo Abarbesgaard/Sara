@@ -135,3 +135,21 @@ fn force_acts_on_any_branch() {
     let out = sara(&s, &["done", &id, "--force"]);
     assert!(out.status.success(), "{}", stderr(&out));
 }
+
+// Contract: ids/A6
+#[test]
+fn a_blank_id_matches_nothing() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "Only task"]);
+    s.run(&["learn", "the only memory"]);
+    for blank in ["", " "] {
+        let out = sara(&s, &["done", blank]);
+        assert!(!out.status.success(), "done {blank:?} succeeded");
+        assert!(stderr(&out).contains("cannot be empty"), "{}", stderr(&out));
+        let out = sara(&s, &["forget", blank]);
+        assert!(!out.status.success(), "forget {blank:?} succeeded");
+        assert!(stderr(&out).contains("cannot be empty"), "{}", stderr(&out));
+    }
+    assert!(s.run(&["info", "1"]).contains("Only task"));
+    assert!(s.run(&["memories"]).contains("the only memory"));
+}

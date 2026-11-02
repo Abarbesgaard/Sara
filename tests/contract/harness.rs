@@ -188,6 +188,14 @@ impl Mcp {
     }
 
     pub fn tools(&mut self) -> Vec<String> {
+        self.tool_schemas()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// Each tool's name and input schema, from `tools/list`.
+    pub fn tool_schemas(&mut self) -> Vec<(String, Value)> {
         let id = self.next_id;
         self.next_id += 1;
         self.send(&json!({"jsonrpc": "2.0", "id": id, "method": "tools/list"}));
@@ -195,7 +203,10 @@ impl Mcp {
             .as_array()
             .expect("tools/list returns tools")
             .iter()
-            .map(|t| t["name"].as_str().expect("tool name").to_string())
+            .map(|t| {
+                let name = t["name"].as_str().expect("tool name").to_string();
+                (name, t["inputSchema"].clone())
+            })
             .collect()
     }
 
