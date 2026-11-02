@@ -1,5 +1,5 @@
-use super::super::Hit;
 use super::{compare, rank};
+use crate::commands::recall::types::Hit;
 use chrono::{DateTime, TimeZone, Utc};
 use std::cmp::Ordering;
 

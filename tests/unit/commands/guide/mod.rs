@@ -13,7 +13,7 @@ fn sh_arg(p: &std::path::Path) -> String {
 #[test]
 fn next_surfaces_a_strong_relevant_memory() {
     use crate::domain::Item;
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let mut src = Task::new("source work".into(), "proj".into());
     src.status = crate::domain::Status::Completed;
@@ -54,7 +54,7 @@ fn next_surfaces_a_strong_relevant_memory() {
 
 #[test]
 fn next_omits_the_block_when_no_memory_matches() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mut task = Task::new("unrelated task".into(), "proj".into());
     task.tags = vec!["nothing-matches-this".into()];
     db::insert_task(&conn, &mut task).unwrap();
@@ -78,7 +78,7 @@ fn next_omits_the_block_when_no_memory_matches() {
 
 #[test]
 fn tick_on_pass_ticks_passing_criteria_and_activates_task() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = crate::test_support::seed_task(&conn, "demo", "proj");
     db::add_step(
         &conn,
@@ -133,7 +133,7 @@ fn task_with_acceptance(conn: &Connection, verify: Option<&str>) -> Task {
 
 #[test]
 fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, Some("true"));
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -143,7 +143,7 @@ fn gate_is_green_only_when_every_criterion_has_a_passing_verify() {
 
 #[test]
 fn gate_red_when_verify_command_fails() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, Some("false"));
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -153,7 +153,7 @@ fn gate_red_when_verify_command_fails() {
 
 #[test]
 fn gate_red_when_a_criterion_has_no_verify_command() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, None);
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -163,7 +163,7 @@ fn gate_red_when_a_criterion_has_no_verify_command() {
 
 #[test]
 fn gate_red_when_no_acceptance_criteria_exist() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = crate::test_support::seed_task(&conn, "no criteria", "proj");
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -173,7 +173,7 @@ fn gate_red_when_no_acceptance_criteria_exist() {
 
 #[test]
 fn capture_mode_collects_command_output_instead_of_printing_it() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, Some("echo MARKER_ON_STDOUT; exit 1"));
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -194,7 +194,7 @@ fn capture_mode_collects_command_output_instead_of_printing_it() {
 
 #[test]
 fn capture_mode_records_stderr_too() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_acceptance(&conn, Some("echo OOPS 1>&2; exit 3"));
     let gate =
         run_acceptance_gate(&conn, &task.uuid.to_string(), GateOutput::Capture, false).unwrap();
@@ -212,7 +212,7 @@ fn init_git_repo() -> (tempfile::TempDir, String) {
 
 #[test]
 fn gate_deduplicates_identical_verify_commands() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let tmp = crate::test_support::temp_dir();
     let marker = tmp.path().join("marker");
     let cmd = format!("echo x >> {}", sh_arg(&marker));
@@ -242,7 +242,7 @@ fn gate_deduplicates_identical_verify_commands() {
 
 #[test]
 fn gate_caches_criteria_already_proven_at_head() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
     let tmp = crate::test_support::temp_dir();
     let marker = tmp.path().join("marker");
@@ -278,7 +278,7 @@ fn gate_caches_criteria_already_proven_at_head() {
 
 #[test]
 fn gate_bypasses_cache_when_tree_is_dirty() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (repo, head) = init_git_repo();
     let tmp = crate::test_support::temp_dir();
     let marker = tmp.path().join("marker");
@@ -321,7 +321,7 @@ fn captured_output_is_truncated_on_a_char_boundary() {
 
 #[test]
 fn step_done_value_reports_activation_on_first_work() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = crate::test_support::seed_task(&conn, "demo", "proj");
     db::add_step(
         &conn,
@@ -391,7 +391,7 @@ fn task_with_step(conn: &Connection, desc: &str, tag: &str) -> Task {
 
 #[test]
 fn next_records_a_surfaced_use_for_each_memory_shown() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mem = strong_dependabot_memory(&conn);
     let task = task_with_step(&conn, "do the dependabot bump", "dependabot");
 
@@ -410,7 +410,7 @@ fn next_records_a_surfaced_use_for_each_memory_shown() {
 
 #[test]
 fn next_records_no_surfaced_use_when_nothing_matches() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     strong_dependabot_memory(&conn);
     let task = task_with_step(&conn, "unrelated task", "nothing-matches-this");
 

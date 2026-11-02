@@ -53,7 +53,7 @@ fn fingerprint_stored_by_set_item_files_and_refreshed() {
     use crate::domain::Item;
     use crate::infrastructure::db;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("anchored.rs");
     let p = path.to_str().unwrap().to_string();

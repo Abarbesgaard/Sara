@@ -107,7 +107,7 @@ fn flow_auto_minimal_below_40_by_12() {
 
 #[test]
 fn flow_card_from_db_counts_steps_and_reads_doing() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let t = crate::test_support::seed_task(&conn, "build it", "p");
     db::add_checklist_item(&conn, &t.uuid, "one").unwrap();
     db::add_checklist_item(&conn, &t.uuid, "two").unwrap();
@@ -412,7 +412,7 @@ fn follow_render_minimal_task_mode_shows_its_feed_without_label() {
 
 #[test]
 fn follow_feed_merges_tasks_ascending_and_skips_changes() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = crate::test_support::seed_task(&conn, "alpha", "p").uuid;
     let b = crate::test_support::seed_task(&conn, "beta", "p").uuid;
     db::record_doing(&conn, &a, "a1", None).unwrap();
@@ -636,7 +636,7 @@ fn follow_spark_buckets_feed_events_over_the_last_hour() {
 
 #[test]
 fn follow_card_from_db_carries_step_timing_results_and_spark() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let t = crate::test_support::seed_task(&conn, "build it", "p");
     db::add_checklist_item(&conn, &t.uuid, "one").unwrap();
     db::add_checklist_item(&conn, &t.uuid, "two").unwrap();
@@ -860,7 +860,7 @@ fn follow_render_wide_mission_splits_off_a_live_feed() {
 
 #[test]
 fn follow_refresh_keeps_a_scrolled_task_view_anchored() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let t = crate::test_support::seed_task(&conn, "anchor", "p");
     for i in 0..5 {
         db::record_doing(&conn, &t.uuid, &format!("e{i}"), None).unwrap();

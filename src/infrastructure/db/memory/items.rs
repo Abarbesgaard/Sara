@@ -290,14 +290,6 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
-    conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| {
-        r.get(0)
-    })
-    .unwrap()
-}
-
 pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
     let n = conn.execute(
         "UPDATE items SET status='active', modified=?2 WHERE uuid=?1 AND status='provisional'",

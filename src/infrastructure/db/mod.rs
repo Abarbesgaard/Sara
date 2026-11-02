@@ -56,12 +56,8 @@ fn set_pragmas(conn: &Connection) -> Result<()> {
 }
 
 #[cfg(test)]
-pub fn open_in_memory_for_test() -> Connection {
-    let mut conn = Connection::open_in_memory().expect("open in-memory db");
-    set_pragmas(&conn).expect("set pragmas");
-    migrations::apply_migrations(&mut conn).expect("apply migrations");
-    conn
-}
+#[path = "../../../tests/unit/support/open_db.rs"]
+pub mod testing;
 
 fn dt_to_str(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339()

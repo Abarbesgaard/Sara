@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn done_auto_memory_is_embedded_so_semantic_recall_can_find_it() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = crate::test_support::seed_task(&conn, "rotate the signing keys", "proj");
     let step = db::add_step(
         &conn,

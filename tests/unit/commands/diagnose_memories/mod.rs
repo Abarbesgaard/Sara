@@ -22,7 +22,7 @@ const FAR: &str = "sourdough bread proofs best overnight in a cold refrigerator"
 
 #[test]
 fn near_duplicate_pair_on_same_file_is_reported() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_near.rs".to_string();
     insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, NEAR_B, "tag-b", &file);
@@ -42,7 +42,7 @@ fn near_duplicate_pair_on_same_file_is_reported() {
 
 #[test]
 fn unrelated_pair_on_same_file_is_not_reported() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_far.rs".to_string();
     insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, FAR, "tag-b", &file);
@@ -57,7 +57,7 @@ fn unrelated_pair_on_same_file_is_not_reported() {
 
 #[test]
 fn pair_without_embeddings_is_kept_fail_open() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_noemb.rs".to_string();
     let a = insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     let b = insert_memory_with_file(&conn, FAR, "tag-b", &file);
@@ -76,7 +76,7 @@ fn pair_without_embeddings_is_kept_fail_open() {
 
 #[test]
 fn candidates_are_sorted_by_cosine_descending() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_sort.rs".to_string();
     insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, NEAR_B, "tag-b", &file);
@@ -103,7 +103,7 @@ fn candidates_are_sorted_by_cosine_descending() {
 
 #[test]
 fn limit_truncates_but_total_reports_the_full_count() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_limit.rs".to_string();
     insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, NEAR_B, "tag-b", &file);
@@ -119,7 +119,7 @@ fn limit_truncates_but_total_reports_the_full_count() {
 
 #[test]
 fn project_scope_excludes_other_provinces() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_scope.rs".to_string();
     let a = insert_memory_with_file(&conn, NEAR_A, "tag-a", &file);
     insert_memory_with_file(&conn, NEAR_B, "tag-b", &file);
@@ -141,7 +141,7 @@ fn project_scope_excludes_other_provinces() {
 
 #[test]
 fn linked_memories_do_not_appear_in_diagnose() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let file = "/tmp/sara_diag_linked_test.rs".to_string();
     let uuid_a = insert_memory_with_file(&conn, NEAR_A, "tag-c", &file);
     let uuid_b = insert_memory_with_file(&conn, NEAR_B, "tag-d", &file);

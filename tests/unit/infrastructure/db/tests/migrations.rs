@@ -13,7 +13,7 @@ fn fresh_database_has_github_sync_columns() {
 
 #[test]
 fn in_memory_test_db_enforces_foreign_keys() {
-    let conn = open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let missing = Uuid::new_v4();
     let res = add_link(&conn, &missing, "https://example.com/pr/1", None);
     assert!(

@@ -1,4 +1,11 @@
 use super::*;
+use super::{
+    enrich::clusters::collapse_clusters, enrich::confidence::match_confidence,
+    enrich::hit::item_hit, enrich::spread::spreading_related, enrich::stale::stale_text,
+    render::keyword::keyword_json, search::collect::collect_hits, search::semantic::SemanticOpts,
+    types::Hit,
+};
+use crate::domain::Item;
 use crate::domain::{Status, Task};
 use crate::infrastructure::config::Config;
 
@@ -29,7 +36,7 @@ fn cfg_semantic() -> Config {
 
 #[test]
 fn recall_semantic_surfaces_paraphrase() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m = seed_memory(
         &conn,
         "CI restore step failed",
@@ -73,7 +80,7 @@ fn recall_semantic_surfaces_paraphrase() {
 
 #[test]
 fn recall_semantic_respects_exact_tag_filter() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let untagged = seed_memory(
         &conn,
@@ -113,7 +120,7 @@ fn recall_semantic_respects_exact_tag_filter() {
 
 #[test]
 fn recall_semantic_filter_applied_before_top_k_truncation() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let query = "lockfile pin fixes the broken dependabot build";
 
@@ -148,7 +155,7 @@ fn recall_semantic_filter_applied_before_top_k_truncation() {
 
 #[test]
 fn recall_full_body_reaches_agent_json_untruncated() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let long_body = format!(
         "uniquewidget {}",
         "the full memory body must reach the agent intact. ".repeat(6)
@@ -178,7 +185,7 @@ fn recall_full_body_reaches_agent_json_untruncated() {
 
 #[test]
 fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "widget alpha",
@@ -231,7 +238,7 @@ fn recall_returns_only_the_top_hit_in_full_rest_as_guide() {
 
 #[test]
 fn recall_by_label_drills_into_a_single_memory_in_full() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let seed = seed_memory(
         &conn,
         "canonical fix",
@@ -273,7 +280,7 @@ fn recall_by_label_drills_into_a_single_memory_in_full() {
 
 #[test]
 fn recall_default_surfaces_semantic_paraphrase() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m = seed_memory(
         &conn,
         "CI restore step failed",
@@ -301,12 +308,12 @@ fn recall_default_surfaces_semantic_paraphrase() {
 fn semantic_opts_from_cfg_is_always_enabled() {
     let mut c = Config::default();
     c.recall.semantic = false;
-    assert!(super::SemanticOpts::from_cfg(&c).enabled);
+    assert!(SemanticOpts::from_cfg(&c).enabled);
 }
 
 #[test]
 fn recall_falls_back_to_token_and_when_phrase_misses() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "MudTable pagination gotcha",
@@ -332,7 +339,7 @@ fn recall_falls_back_to_token_and_when_phrase_misses() {
 
 #[test]
 fn recall_surfaces_provisional_memories_with_flag() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mut item = Item::new_memory(
         "auto memory".to_string(),
         "synthesised frobnicator pattern".to_string(),
@@ -358,7 +365,7 @@ fn recall_surfaces_provisional_memories_with_flag() {
 
 #[test]
 fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let seed = seed_memory(
         &conn,
         "redis eviction policy",
@@ -414,7 +421,7 @@ fn recall_auto_spreads_on_thin_hits_and_reports_mode() {
 
 #[test]
 fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed_memory(
         &conn,
         "cache one",
@@ -457,7 +464,7 @@ fn recall_plentiful_hits_stay_lexical_no_auto_spread() {
 
 #[test]
 fn recall_zero_hits_does_not_spread() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "unrelated",
@@ -477,7 +484,7 @@ fn recall_zero_hits_does_not_spread() {
 
 #[test]
 fn recall_bare_tag_lookup_does_not_auto_spread() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed_memory(
         &conn,
         "billing note",
@@ -516,7 +523,7 @@ fn recall_bare_tag_lookup_does_not_auto_spread() {
 
 #[test]
 fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let seed = seed_memory(
         &conn,
         "postgres connection pooling",
@@ -557,7 +564,7 @@ fn spreading_related_surfaces_linked_neighbour_not_in_direct_hits() {
 
 #[test]
 fn spread_surfacing_does_not_reinforce_strength() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let seed = seed_memory(
         &conn,
         "postgres connection pooling",
@@ -595,14 +602,14 @@ fn spread_surfacing_does_not_reinforce_strength() {
 
 #[test]
 fn spreading_related_is_empty_without_memory_seeds() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let related = spreading_related(&conn, &[]).unwrap();
     assert!(related.is_empty());
 }
 
 #[test]
 fn associative_output_is_capped_and_normalized() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let hub = seed_memory(&conn, "hub topic", "central memory", &["hub"], &["p"]);
     for i in 0..12 {
         let n = seed_memory(&conn, &format!("n{i}"), &format!("body {i}"), &[], &["p"]);
@@ -628,7 +635,7 @@ fn associative_output_is_capped_and_normalized() {
 
 #[test]
 fn recall_by_tag_returns_only_matching_items() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "about service-a",
@@ -661,7 +668,7 @@ fn recall_by_tag_returns_only_matching_items() {
 
 #[test]
 fn recall_with_no_memories_and_no_tasks_reports_none_recorded() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = recall_value(
         &conn,
         &cfg(),
@@ -679,7 +686,7 @@ fn recall_with_no_memories_and_no_tasks_reports_none_recorded() {
 
 #[test]
 fn strong_linked_memory_outranks_plain_fts_hit_for_same_query() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let mut task = Task::new("fix service-a auth bug".to_string(), "Sara".to_string());
     task.status = Status::Completed;
@@ -708,7 +715,7 @@ fn strong_linked_memory_outranks_plain_fts_hit_for_same_query() {
 
 #[test]
 fn hyphenated_tag_is_not_misparsed_as_fts_operator() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "hyphen tag test",
@@ -735,7 +742,7 @@ fn hyphenated_tag_is_not_misparsed_as_fts_operator() {
 
 #[test]
 fn ties_on_strength_and_match_kind_break_by_recency() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let older = seed_memory(
         &conn,
         "older note",
@@ -769,7 +776,7 @@ fn ties_on_strength_and_match_kind_break_by_recency() {
 
 #[test]
 fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "prune stale entries",
@@ -817,7 +824,7 @@ fn token_or_fallback_surfaces_partial_overlap_and_flags_it_loose() {
 
 #[test]
 fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "kafka consumer lag",
@@ -843,7 +850,7 @@ fn token_or_fallback_does_not_fire_when_stricter_tiers_match() {
 
 #[test]
 fn bare_recall_returns_recent_memories_instead_of_erroring() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(&conn, "alpha note", "first insight", &[], &["proj"]);
     seed_memory(&conn, "beta note", "second insight", &[], &["proj"]);
 
@@ -856,7 +863,7 @@ fn bare_recall_returns_recent_memories_instead_of_erroring() {
 
 #[test]
 fn recall_value_keyword_and_confidence_are_stable() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "kafka consumer lag",
@@ -880,7 +887,7 @@ fn recall_value_keyword_and_confidence_are_stable() {
 
 #[test]
 fn bm25_relevance_orders_equal_strength_fts_hits_over_recency() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let relevant = seed_memory(&conn, "widget widget widget", "widget", &[], &[]);
     std::thread::sleep(std::time::Duration::from_millis(20));
     let recent_but_weak = seed_memory(
@@ -903,7 +910,7 @@ fn bm25_relevance_orders_equal_strength_fts_hits_over_recency() {
 
 #[test]
 fn recall_by_file_returns_associated_memories() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let item = seed_memory(&conn, "auth notes", "JWT details", &[], &[]);
     db::set_item_files(&conn, &item.uuid, &["src/auth.rs".to_string()]).unwrap();
@@ -927,7 +934,7 @@ fn recall_by_file_returns_associated_memories() {
 
 #[test]
 fn recall_by_file_prefix_returns_all_files_under_dir() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let a = seed_memory(&conn, "auth notes", "JWT details", &[], &[]);
     db::set_item_files(&conn, &a.uuid, &["src/auth.rs".to_string()]).unwrap();
@@ -952,7 +959,7 @@ fn recall_by_file_prefix_returns_all_files_under_dir() {
 
 #[test]
 fn recall_file_and_tag_are_anded() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let a = seed_memory(&conn, "auth notes", "JWT details", &["auth"], &[]);
     db::set_item_files(&conn, &a.uuid, &["src/auth.rs".to_string()]).unwrap();
@@ -976,7 +983,7 @@ fn recall_file_and_tag_are_anded() {
 
 #[test]
 fn recall_linked_tasks_are_surfaced_on_item_hit() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let mut task = Task::new("fix auth".to_string(), "Sara".to_string());
     task.status = Status::Completed;
@@ -1003,7 +1010,7 @@ fn recall_linked_tasks_are_surfaced_on_item_hit() {
 
 #[test]
 fn recall_surfaces_recurring_pattern_with_guide() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let canonical = seed_memory(
         &conn,
@@ -1068,7 +1075,7 @@ fn recall_surfaces_recurring_pattern_with_guide() {
 
 #[test]
 fn recall_reports_no_pattern_for_a_lone_memory() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed_memory(
         &conn,
         "one-off finding",
@@ -1095,7 +1102,7 @@ fn recall_reports_no_pattern_for_a_lone_memory() {
 
 #[test]
 fn recall_surfaces_canonical_and_derived_memory_distinction() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let canonical = seed_memory(
         &conn,
@@ -1187,7 +1194,7 @@ fn recall_surfaces_canonical_and_derived_memory_distinction() {
 
 #[test]
 fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let canonical = seed_memory(&conn, "canonical fix", "the pattern", &["dep"], &[]);
     let mut children = vec![];
@@ -1232,7 +1239,7 @@ fn recall_collapses_family_to_canonical_even_when_canonical_ranks_lower() {
 
 #[test]
 fn recall_leaves_standalone_memories_uncollapsed() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     seed_memory(&conn, "note one", "body one", &["misc"], &[]);
     seed_memory(&conn, "note two", "body two", &["misc"], &[]);
@@ -1256,7 +1263,7 @@ fn recall_leaves_standalone_memories_uncollapsed() {
 
 #[test]
 fn recall_by_project_keeps_local_child_separate_from_foreign_canonical() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
 
     let canonical = seed_memory(
         &conn,
@@ -1336,7 +1343,7 @@ fn hits_in_order(conn: &Connection, items: &[&Item]) -> Vec<Hit> {
 
 #[test]
 fn cluster_nearest_names_child_displaced_by_canonical() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (canonical, kids) = seed_family(&conn, 2);
 
     let hits = hits_in_order(&conn, &[&kids[0], &kids[1], &canonical]);
@@ -1359,7 +1366,7 @@ fn cluster_nearest_names_child_displaced_by_canonical() {
 
 #[test]
 fn cluster_nearest_names_top_collapsed_sibling_when_rep_not_displaced() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (canonical, kids) = seed_family(&conn, 3);
 
     let hits = hits_in_order(&conn, &[&canonical, &kids[2], &kids[0], &kids[1]]);
@@ -1375,7 +1382,7 @@ fn cluster_nearest_names_top_collapsed_sibling_when_rep_not_displaced() {
 
 #[test]
 fn cluster_nearest_is_none_when_nothing_collapsed() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (canonical, _kids) = seed_family(&conn, 2);
 
     let out = collapse_clusters(&conn, hits_in_order(&conn, &[&canonical]));
@@ -1387,7 +1394,7 @@ fn cluster_nearest_is_none_when_nothing_collapsed() {
 
 #[test]
 fn cluster_nearest_emitted_in_json() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let (canonical, kids) = seed_family(&conn, 1);
 
     let hits = hits_in_order(&conn, &[&kids[0], &canonical]);
@@ -1400,7 +1407,7 @@ fn cluster_nearest_emitted_in_json() {
 
 #[test]
 fn cluster_nearest_in_guide_json_only_when_present() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let lead = seed_memory(&conn, "standalone lead", "unrelated", &["fam"], &[]);
     let (canonical, kids) = seed_family(&conn, 1);
 
@@ -1456,7 +1463,7 @@ fn hits_for(conn: &Connection, tag: &str) -> Vec<Hit> {
 
 #[test]
 fn stale_not_flagged_when_anchor_unchanged() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     anchored_memory(&conn, dir.path(), "calm");
 
@@ -1467,7 +1474,7 @@ fn stale_not_flagged_when_anchor_unchanged() {
 
 #[test]
 fn stale_flags_drifted_anchor_in_json() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     let (_m, p) = anchored_memory(&conn, dir.path(), "drift");
     rewrite(&p);
@@ -1483,7 +1490,7 @@ fn stale_flags_drifted_anchor_in_json() {
 
 #[test]
 fn stale_flags_missing_anchor_on_label_and_recent_paths() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     let (m, p) = anchored_memory(&conn, dir.path(), "gone");
     std::fs::remove_file(&p).unwrap();
@@ -1498,7 +1505,7 @@ fn stale_flags_missing_anchor_on_label_and_recent_paths() {
 
 #[test]
 fn stale_cleared_by_relearn() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     let (m, p) = anchored_memory(&conn, dir.path(), "fixed");
     rewrite(&p);
@@ -1520,7 +1527,7 @@ fn stale_cleared_by_relearn() {
 
 #[test]
 fn stale_ignores_legacy_anchor_without_fingerprint() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();
     let (m, p) = anchored_memory(&conn, dir.path(), "legacy");
     conn.execute(
@@ -1541,7 +1548,7 @@ fn ledger_task(conn: &Connection) -> Task {
 
 #[test]
 fn recall_task_records_direct_hits_as_recalled_and_spread_as_surfaced() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let seed = seed_memory(
         &conn,
         "redis eviction policy",
@@ -1582,7 +1589,7 @@ fn recall_task_records_direct_hits_as_recalled_and_spread_as_surfaced() {
 
 #[test]
 fn recall_task_absent_records_no_use_and_the_scope_does_not_leak() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let memory = seed_memory(
         &conn,
         "redis eviction policy",
@@ -1604,7 +1611,7 @@ fn recall_task_absent_records_no_use_and_the_scope_does_not_leak() {
 
 #[test]
 fn recall_task_unknown_id_is_an_error() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     assert!(use_task(&conn, Some("zzzzzzzz")).is_err());
     assert_eq!(use_task(&conn, None).unwrap(), None);
 }

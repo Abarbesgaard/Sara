@@ -3,7 +3,7 @@ use crate::test_support::seed_task;
 
 #[test]
 fn move_value_rejects_empty_target_project() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     seed_task(&conn, "wanderer", "home");
 
@@ -17,7 +17,7 @@ fn move_value_rejects_empty_target_project() {
 
 #[test]
 fn move_value_is_a_noop_for_the_same_project() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let task = seed_task(&conn, "stayer", "home");
 
@@ -34,7 +34,7 @@ fn move_value_is_a_noop_for_the_same_project() {
 
 #[test]
 fn move_value_reassigns_the_project() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let task = seed_task(&conn, "mover", "home");
 
@@ -54,7 +54,7 @@ fn move_value_reassigns_the_project() {
 
 #[test]
 fn move_value_trims_surrounding_whitespace() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let task = seed_task(&conn, "mover", "home");
 

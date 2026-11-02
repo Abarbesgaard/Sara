@@ -6,7 +6,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 fn fresh() -> rusqlite::Connection {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     embedding::ensure_index_current(&conn).unwrap();
     conn
 }
@@ -72,7 +72,7 @@ fn memory_without_a_vector_warns_with_reindex_fix() {
 
 #[test]
 fn stale_embedding_scheme_warns() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     db::meta_set(&conn, "embedding_scheme_version", "old-model|text0").unwrap();
     let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "embedding_coverage");

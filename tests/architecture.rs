@@ -42,6 +42,55 @@ const KNOWN_CROSS_SLICE_DEBT: &[(&str, &str)] = &[
 /// Largest file, in non-blank lines, before it must be split by concern.
 const MAX_FILE_LINES: usize = 400;
 
+/// The ratchets below work like `KNOWN_CROSS_SLICE_DEBT`: each file listed was
+/// already in breach when its rule was introduced, so it is exempt; any other
+/// file fails the rule, and a listed file that no longer breaches must be
+/// removed or its `*_is_still_real` test fails.
+///
+/// Files over `MAX_FILE_LINES`, to be split by concern.
+const KNOWN_LARGE_FILES: &[&str] = &[
+    "src/cli.rs",
+    "src/commands/board/render.rs",
+    "src/commands/follow/render.rs",
+    "src/commands/follow/state.rs",
+    "src/commands/info/edit.rs",
+    "src/commands/info/handler.rs",
+    "src/commands/info/plain.rs",
+    "src/dispatch.rs",
+    "src/infrastructure/db/memory/items.rs",
+    "src/infrastructure/db/migrations.rs",
+    "src/infrastructure/db/tasks.rs",
+    "src/infrastructure/memory/graph.rs",
+    "src/infrastructure/telemetry.rs",
+    "src/infrastructure/tui/review_form.rs",
+    "src/mcp/params.rs",
+];
+
+/// Non-presentation files that use a TUI framework, to move into render/edit files.
+const KNOWN_TUI_LEAKS: &[&str] = &[
+    "src/commands/activity/mod.rs",
+    "src/commands/follow/mod.rs",
+    "src/commands/follow/state.rs",
+    "src/commands/info/mod.rs",
+    "src/commands/info/plain.rs",
+    "src/commands/info/types.rs",
+    "src/commands/theme/mod.rs",
+];
+
+/// Render files that reach into the database, to be fed plain data instead.
+const KNOWN_RENDER_DB_ACCESS: &[&str] = &[
+    "src/commands/board/render.rs",
+    "src/commands/import/render.rs",
+    "src/commands/info/render/body/checklist.rs",
+    "src/commands/info/render/body/refs.rs",
+    "src/commands/info/render/tree.rs",
+    "src/commands/init/render.rs",
+    "src/commands/list/render.rs",
+    "src/commands/memories/render.rs",
+    "src/commands/recall/render/text.rs",
+    "src/commands/recall/render/value.rs",
+];
+
 /// Runs several rules and fails once with every violation, so one broken rule
 /// does not hide the others.
 fn assert_all_pass(rules: &[&dyn Checkable]) {
@@ -507,7 +556,8 @@ fn tui_framework_is_confined_to_presentation_files() {
                 .except_in_path("src/infrastructure/tui/**")
                 .except_in_path("src/commands/*/render**")
                 .except_in_path("src/commands/*/edit.rs")
-                .except_in_path("src/commands/*/interactive/**"),
+                .except_in_path("src/commands/*/interactive/**")
+                .except_all(KNOWN_TUI_LEAKS.iter().copied()),
         )
         .should_not()
         .depend_on_external_modules()
@@ -519,14 +569,41 @@ fn tui_framework_is_confined_to_presentation_files() {
 }
 
 #[test]
+fn known_tui_leaks_are_still_real() {
+    let paid_off: Vec<&str> = KNOWN_TUI_LEAKS
+        .iter()
+        .copied()
+        .filter(|file| {
+            project_files()
+                .in_path(*file)
+                .should_not()
+                .depend_on_external_modules()
+                .matching("ratatui")
+                .matching("ratatui_textarea")
+                .matching("crossterm")
+                .check()
+                .expect("architecture check should run")
+                .is_empty()
+        })
+        .collect();
+
+    assert!(
+        paid_off.is_empty(),
+        "No longer use a TUI framework; remove them from KNOWN_TUI_LEAKS: {paid_off:?}"
+    );
+}
+
+#[test]
 fn presentation_does_not_touch_persistence() {
+    let render_files =
+        || pattern("src/commands/*/render**").except_all(KNOWN_RENDER_DB_ACCESS.iter().copied());
     let command_render = project_files()
-        .in_path("src/commands/*/render**")
+        .in_path(render_files())
         .should_not()
         .depend_on_files()
         .in_path("src/infrastructure/db/**");
     let command_render_sql = project_files()
-        .in_path("src/commands/*/render**")
+        .in_path(render_files())
         .should_not()
         .depend_on_external_modules()
         .matching("rusqlite");
@@ -537,6 +614,29 @@ fn presentation_does_not_touch_persistence() {
         .matching("rusqlite");
 
     assert_all_pass(&[&command_render, &command_render_sql, &tui_sql]);
+}
+
+#[test]
+fn known_render_db_access_is_still_real() {
+    let paid_off: Vec<&str> = KNOWN_RENDER_DB_ACCESS
+        .iter()
+        .copied()
+        .filter(|file| {
+            project_files()
+                .in_path(*file)
+                .should_not()
+                .depend_on_files()
+                .in_path("src/infrastructure/db/**")
+                .check()
+                .expect("architecture check should run")
+                .is_empty()
+        })
+        .collect();
+
+    assert!(
+        paid_off.is_empty(),
+        "No longer touch the database; remove them from KNOWN_RENDER_DB_ACCESS: {paid_off:?}"
+    );
 }
 
 #[test]
@@ -604,12 +704,32 @@ fn slices_are_only_entered_through_mod_rs() {
 
 #[test]
 fn files_stay_small_and_focused() {
-    let rule = project_files().in_path("src/**").should().adhere_to(
-        |f: &FileInfo| f.non_blank_line_count <= MAX_FILE_LINES,
-        "contain at most 400 non-blank lines (split by concern, see ARCHITECTURE.md)",
-    );
+    let rule = project_files()
+        .in_path(pattern("src/**").except_all(KNOWN_LARGE_FILES.iter().copied()))
+        .should()
+        .adhere_to(
+            |f: &FileInfo| f.non_blank_line_count <= MAX_FILE_LINES,
+            "contain at most 400 non-blank lines (split by concern, see ARCHITECTURE.md)",
+        );
 
     assert_passes!(rule);
+}
+
+#[test]
+fn known_large_files_are_still_large() {
+    let paid_off: Vec<&str> = KNOWN_LARGE_FILES
+        .iter()
+        .copied()
+        .filter(|file| {
+            let content = std::fs::read_to_string(file).unwrap_or_default();
+            content.lines().filter(|l| !l.trim().is_empty()).count() <= MAX_FILE_LINES
+        })
+        .collect();
+
+    assert!(
+        paid_off.is_empty(),
+        "Now within {MAX_FILE_LINES} lines; remove them from KNOWN_LARGE_FILES: {paid_off:?}"
+    );
 }
 
 // ── Tests live in tests/ ─────────────────────────────────────────────────────

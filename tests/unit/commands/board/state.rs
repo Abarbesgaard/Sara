@@ -15,7 +15,7 @@ fn complete(conn: &Connection, t: &Task) {
 
 #[test]
 fn groups_tasks_by_linked_issue_and_buckets_the_rest_as_standalone() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = task(&conn, "a");
     let b = task(&conn, "b");
     let unlinked = task(&conn, "unlinked");
@@ -33,7 +33,7 @@ fn groups_tasks_by_linked_issue_and_buckets_the_rest_as_standalone() {
 
 #[test]
 fn completed_tasks_are_hidden_unless_show_finished() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = task(&conn, "a");
     let b = task(&conn, "b");
     db::add_link(&conn, &a.uuid, "https://github.com/o/r/issues/5", None).unwrap();
@@ -51,7 +51,7 @@ fn completed_tasks_are_hidden_unless_show_finished() {
 
 #[test]
 fn issue_whose_tasks_are_all_completed_disappears_unless_show_finished() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = task(&conn, "a");
     db::add_link(&conn, &a.uuid, "https://github.com/o/r/issues/5", None).unwrap();
     complete(&conn, &a);
@@ -65,7 +65,7 @@ fn issue_whose_tasks_are_all_completed_disappears_unless_show_finished() {
 
 #[test]
 fn expand_state_carries_over_across_a_reload() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = task(&conn, "a");
     db::add_link(&conn, &a.uuid, "https://github.com/o/r/issues/5", None).unwrap();
 
@@ -79,7 +79,7 @@ fn expand_state_carries_over_across_a_reload() {
 
 #[test]
 fn imported_tracks_github_synced_tasks() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let synced = task(&conn, "synced");
     db::set_github_provenance(
         &conn,
@@ -111,7 +111,7 @@ fn imported_tracks_github_synced_tasks() {
 #[test]
 fn card_info_collects_guide_feedback_and_blockers() {
     use super::super::types::Freshness;
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = task(&conn, "a");
     let blocker = task(&conn, "blocker");
     db::add_step(
@@ -154,7 +154,7 @@ fn card_info_collects_guide_feedback_and_blockers() {
 
 #[test]
 fn filter_and_preview_carry_over_across_a_reload() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     task(&conn, "a");
     let mut st = build_state(&conn, "tk".to_string(), false, None).unwrap();
     st.filter = "a".into();

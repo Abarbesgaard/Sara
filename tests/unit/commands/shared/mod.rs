@@ -89,7 +89,7 @@ fn seed_memory(conn: &rusqlite::Connection) -> crate::domain::Item {
 
 #[test]
 fn memory_labels_use_kind_and_display_id() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let m = seed_memory(&conn);
     let id = m.display_id.unwrap();
     assert_eq!(item_label(&m), format!("m{id}"));
@@ -98,7 +98,7 @@ fn memory_labels_use_kind_and_display_id() {
 
 #[test]
 fn derived_graph_walks_both_directions() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let canon = seed_memory(&conn);
     let child = seed_memory(&conn);
     crate::test_support::link(&conn, child.uuid, "derived_from", canon.uuid);
@@ -114,7 +114,7 @@ fn derived_graph_walks_both_directions() {
 
 #[test]
 fn guard_allows_uuid_and_forced_mutations() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut task = crate::domain::Task::new("t".into(), "p".into());
     crate::infrastructure::db::insert_task(&conn, &mut task).unwrap();
     assert!(guard_branch_mutation(&conn, &task.uuid.to_string(), &task, false).is_ok());
@@ -140,7 +140,7 @@ fn derived_from_suffix_empty_or_joined() {
 
 #[test]
 fn item_snippet_prefers_summary_and_caps_chars() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut m = seed_memory(&conn);
     assert_eq!(item_snippet(&m, 2), "bo");
     m.summary = Some("summary".into());
@@ -204,7 +204,7 @@ mod cite {
 
     #[test]
     fn cite_records_each_memory_once_and_reports_handles() {
-        let conn = db::open_in_memory_for_test();
+        let conn = db::testing::open_in_memory_for_test();
         let t = task(&conn);
         let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
         let h = label(&m, 'm');
@@ -224,7 +224,7 @@ mod cite {
 
     #[test]
     fn cite_rejects_a_non_memory_label_before_running_the_command() {
-        let conn = db::open_in_memory_for_test();
+        let conn = db::testing::open_in_memory_for_test();
         let t = task(&conn);
         let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
         let mut note = Item::new_note("a note".to_string(), "not a memory".to_string());
@@ -257,7 +257,7 @@ mod cite {
 
     #[test]
     fn cite_records_nothing_when_the_command_fails() {
-        let conn = db::open_in_memory_for_test();
+        let conn = db::testing::open_in_memory_for_test();
         let t = task(&conn);
         let m = crate::test_support::seed_memory(&conn, "retry", "jittered backoff", &[]);
 
@@ -271,7 +271,7 @@ mod cite {
 
     #[test]
     fn cite_without_labels_is_a_no_op() {
-        let conn = db::open_in_memory_for_test();
+        let conn = db::testing::open_in_memory_for_test();
         let v = with_citation(&conn, "does-not-matter", &[], || Ok(serde_json::json!({}))).unwrap();
         assert!(v.get("cited").is_none());
     }

@@ -38,7 +38,7 @@ fn cluster_sizes(v: &serde_json::Value) -> Vec<usize> {
 
 #[test]
 fn chained_mega_component_is_split_at_its_weakest_links() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m: Vec<Uuid> = (0..12)
         .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
         .collect();
@@ -60,7 +60,7 @@ fn chained_mega_component_is_split_at_its_weakest_links() {
 
 #[test]
 fn component_within_max_size_is_not_split() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m: Vec<Uuid> = (0..4)
         .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
         .collect();
@@ -73,7 +73,7 @@ fn component_within_max_size_is_not_split() {
 
 #[test]
 fn fresh_related_cluster_is_proposed_with_a_canonical() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -110,7 +110,7 @@ fn fresh_related_cluster_is_proposed_with_a_canonical() {
 
 #[test]
 fn already_consolidated_cluster_is_excluded() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let canonical = insert_memory(&conn, "canonical pattern", "dependabot");
     let child_a = insert_memory(&conn, "applied in repo a", "dependabot");
     let child_b = insert_memory(&conn, "applied in repo b", "dependabot");
@@ -129,7 +129,7 @@ fn already_consolidated_cluster_is_excluded() {
 
 #[test]
 fn unrelated_memories_are_not_clustered() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     insert_memory(&conn, "memory about auth", "auth");
     insert_memory(&conn, "memory about billing", "billing");
 
@@ -144,7 +144,7 @@ fn unrelated_memories_are_not_clustered() {
 
 #[test]
 fn cross_project_memories_do_not_cluster() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -179,7 +179,7 @@ fn cross_project_memories_do_not_cluster() {
 
 #[test]
 fn deliberate_link_clusters_across_projects() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "NU1608 NSubstitute fix pattern", "nsubstitute");
     let b = insert_memory(&conn, "applied NU1608 fix in other repo", "nsubstitute");
     db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
@@ -210,7 +210,7 @@ fn derived_from_count(conn: &rusqlite::Connection, uuids: &[&Uuid]) -> usize {
 
 #[test]
 fn reflect_apply_creates_derived_links() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
@@ -234,7 +234,7 @@ fn reflect_apply_creates_derived_links() {
 
 #[test]
 fn reflect_apply_is_idempotent_and_excludes_after() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
@@ -266,7 +266,7 @@ fn reflect_apply_is_idempotent_and_excludes_after() {
 
 #[test]
 fn reflect_apply_skips_cycle_violations() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");

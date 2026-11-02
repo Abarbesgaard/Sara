@@ -11,7 +11,7 @@ fn label(item: &Item) -> String {
 
 #[test]
 fn done_auto_archives_superseded() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let old = mem(&conn, "old finding");
     let new = mem(&conn, "new finding replaces old");
     crate::test_support::link(&conn, new.uuid, "supersedes", old.uuid);

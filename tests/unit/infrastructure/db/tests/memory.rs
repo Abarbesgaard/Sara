@@ -474,7 +474,7 @@ fn set_item_task_links_replaces_previous_set() {
 
 #[test]
 fn set_item_files_rolls_back_when_an_insert_fails() {
-    let conn = open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();
@@ -512,7 +512,7 @@ fn set_item_files_rolls_back_when_an_insert_fails() {
 
 #[test]
 fn set_item_tags_rolls_back_when_an_insert_fails() {
-    let conn = open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();
@@ -538,7 +538,7 @@ fn set_item_tags_rolls_back_when_an_insert_fails() {
 
 #[test]
 fn set_helpers_work_inside_an_existing_transaction() {
-    let mut conn = open_in_memory_for_test();
+    let mut conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();

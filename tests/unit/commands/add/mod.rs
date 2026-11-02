@@ -1,9 +1,10 @@
 use super::*;
+use super::{duplicate::find_duplicate_open_task, render::text::render_similar_body};
 use crate::infrastructure::db;
 
 #[test]
 fn duplicate_open_task_detected_case_insensitively_same_project() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     crate::test_support::seed_task(&conn, "Implement JWT login for API", "proj");
 
     let dup = find_duplicate_open_task(&conn, "proj", "  implement jwt login for api ");
@@ -17,7 +18,7 @@ fn duplicate_open_task_detected_case_insensitively_same_project() {
 #[test]
 fn completed_task_is_not_a_duplicate() {
     use crate::domain::Status;
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mut t = crate::test_support::seed_task(&conn, "Implement JWT login for API", "proj");
     t.status = Status::Completed;
     db::update_task(&conn, &t).unwrap();
@@ -61,7 +62,7 @@ fn form(description: &str) -> crate::infrastructure::tui::review_form::FormInput
 
 #[test]
 fn form_with_guide_fields_founds_a_begin_equivalent_task() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = crate::test_support::cfg();
     let mut f = form("Ship the form");
     f.assignment = "do 4 with the right via".into();
@@ -88,7 +89,7 @@ fn form_with_guide_fields_founds_a_begin_equivalent_task() {
 
 #[test]
 fn guide_assignment_defaults_to_the_title_like_begin() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = crate::test_support::cfg();
     let mut f = form("Write the docs");
     f.acceptance = "README updated".into();
@@ -101,7 +102,7 @@ fn guide_assignment_defaults_to_the_title_like_begin() {
 
 #[test]
 fn form_without_guide_fields_stays_a_plain_task() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = crate::test_support::cfg();
 
     let task = persist::save(&conn, &cfg, form("Plain"), None, &AddRequest::default()).unwrap();
@@ -117,7 +118,7 @@ fn form_without_guide_fields_stays_a_plain_task() {
 
 #[test]
 fn form_links_and_estimate_persist() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = crate::test_support::cfg();
     let mut f = form("Linked");
     f.estimate = "1h30m".into();

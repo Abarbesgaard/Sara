@@ -13,17 +13,6 @@ use crate::infrastructure::db;
 
 const SNIPPET_CHARS: usize = 80;
 
-#[cfg(test)]
-pub(in crate::commands::learn) fn check_overlap(
-    conn: &Connection,
-    tags: &[String],
-    files: &[String],
-    current_project: Option<&str>,
-) -> Result<()> {
-    let overlap = TagOverlap::compute(conn, tags)?;
-    warn_overlap(conn, &overlap, files, current_project)
-}
-
 pub(in crate::commands::learn) fn warn_overlap(
     conn: &Connection,
     overlap: &TagOverlap,
