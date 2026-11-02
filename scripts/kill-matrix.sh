@@ -194,7 +194,9 @@ one_test() {
   echo "1/2  Which mutants does $id kill on its own?"
   rm -rf "$out/one"
   # shellcheck disable=SC2046 # target_args is two words on purpose
-  mutants "${args[@]}" --output "$out/one" -- $(target_args "$id") -- "$path" --exact || true
+  # One test makes a tiny baseline, so the auto timeout would be too short.
+  mutants "${args[@]}" --minimum-test-timeout 120 --output "$out/one" \
+    -- $(target_args "$id") -- "$path" --exact || true
   outcomes "$out/one" | awk -F'\t' '$2 == "CaughtMutant" { print $1 }' > "$out/one.kills"
   n=$(wc -l < "$out/one.kills" | tr -d ' ')
   if [ "$n" -eq 0 ]; then
