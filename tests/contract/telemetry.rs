@@ -198,3 +198,27 @@ fn telemetry_command_does_not_record_itself() {
         "inspecting telemetry must not add to it"
     );
 }
+
+#[cfg(feature = "telemetry")]
+#[test]
+fn clap_exits_are_captured() {
+    let s = Sara::new();
+    let queue = s.project().join("telemetry-queue.jsonl");
+    for args in [&["list", "--bogus"][..], &["add", "--help"]] {
+        s.cmd()
+            .args(args)
+            .env_remove("SARA_NO_TELEMETRY")
+            .env("SARA_TELEMETRY_QUEUE", &queue)
+            .env("SARA_TELEMETRY_ENDPOINT", "http://127.0.0.1:9/insert")
+            .env("SARA_TELEMETRY_FLUSH_INTERVAL", "86400")
+            .output()
+            .unwrap();
+    }
+
+    let usage_error = queued(&queue, "list");
+    assert_eq!(usage_error.len(), 1, "{usage_error:#?}");
+    assert_eq!(usage_error[0]["ok"], false, "{usage_error:#?}");
+    let help = queued(&queue, "add");
+    assert_eq!(help.len(), 1, "{help:#?}");
+    assert_eq!(help[0]["ok"], true, "{help:#?}");
+}
