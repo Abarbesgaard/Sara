@@ -31,6 +31,9 @@ pub(super) fn resolve(
     if let Some(p) = req.priority {
         parsed.priority = Some(p.to_uppercase());
     }
+    if let Some(p) = parsed.priority.as_deref() {
+        p.parse::<Priority>()?;
+    }
     parsed.tags.extend_from_slice(req.tags);
     if let Some(r) = req.recur {
         parsed.recur = Some(r.to_string());
