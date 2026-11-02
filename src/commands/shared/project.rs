@@ -21,6 +21,24 @@ pub fn project_head(conn: &Connection, project: &str) -> Option<String> {
     git::head_commit(&project_path(conn, project)?)
 }
 
+pub fn require_project_head(conn: &Connection, project: &str) -> Result<String> {
+    let path = project_path(conn, project);
+    if let Some(head) = path.as_deref().and_then(git::head_commit) {
+        return Ok(head);
+    }
+    match path {
+        Some(p) if !p.exists() => anyhow::bail!(
+            "project path {} no longer exists — re-run `sara init` in the new location",
+            p.display()
+        ),
+        Some(p) if git::is_repo(&p) => anyhow::bail!(
+            "project has no commits yet — validation stamps a commit; \
+             make the first commit, then re-run validate"
+        ),
+        _ => anyhow::bail!("task's project is not in a git repo"),
+    }
+}
+
 pub fn parse_due(s: &str, cfg: &Config) -> Option<DateTime<Utc>> {
     crate::infrastructure::util::dates::parse_due(s, &cfg.date_dialect)
 }
