@@ -5,9 +5,12 @@
 //! rules see edges that a line-based `use crate::...` scan misses.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use archunit::{FileInfo, assert_passes, pattern, project_files, project_layers, project_slices};
+use archunit::{
+    Checkable, FileInfo, ResultFactory, Violation, assert_passes, pattern, project_files,
+    project_layers, project_slices,
+};
 
 /// A command slice is one directory under `src/commands/`; `src/commands/mod.rs`
 /// is the registry and belongs to no slice.
@@ -35,6 +38,20 @@ const KNOWN_CROSS_SLICE_DEBT: &[(&str, &str)] = &[
     ("info", "dream"),
     ("projects", "board"),
 ];
+
+/// Largest file, in non-blank lines, before it must be split by concern.
+const MAX_FILE_LINES: usize = 400;
+
+/// Runs several rules and fails once with every violation, so one broken rule
+/// does not hide the others.
+fn assert_all_pass(rules: &[&dyn Checkable]) {
+    let violations: Vec<Violation> = rules
+        .iter()
+        .flat_map(|rule| rule.check().expect("architecture check should run"))
+        .collect();
+    let result = ResultFactory::from_violations(&violations);
+    assert!(result.passed, "{}", result.message);
+}
 
 fn command_slice_names() -> BTreeSet<String> {
     std::fs::read_dir("src/commands")
@@ -255,5 +272,283 @@ fn slice_dirs_match_mod_declarations() {
         "Slice/mod.rs mismatch.\n\
          Directories with no pub mod declaration: {missing_decl:?}\n\
          pub mod declarations with no directory:  {missing_dir:?}",
+    );
+}
+
+// ── Infrastructure: inner dependency direction ─────────────────────────────────
+//
+//   model            domain types, depends on nothing
+//   util, config, git
+//   db               persistence; never on memory algorithms or presentation
+//   memory           memory algorithms (embedding, graph) on top of db
+//   project, telemetry
+//   tui              presentation; never touches persistence
+#[test]
+fn infrastructure_modules_depend_inwards() {
+    let rule = project_layers()
+        .layer("model")
+        .defined_by("src/infrastructure/model.rs")
+        .layer("util")
+        .defined_by("src/infrastructure/util/**")
+        .layer("config")
+        .defined_by("src/infrastructure/config.rs")
+        .layer("git")
+        .defined_by("src/infrastructure/git.rs")
+        .layer("db")
+        .defined_by("src/infrastructure/db/**")
+        .layer("memory")
+        .defined_by("src/infrastructure/memory/**")
+        .layer("project")
+        .defined_by("src/infrastructure/project.rs")
+        .layer("telemetry")
+        .defined_by("src/infrastructure/telemetry*.rs")
+        .layer("tui")
+        .defined_by("src/infrastructure/tui/**")
+        .where_layer("model")
+        .may_only_depend_on_layers(&[])
+        .where_layer("util")
+        .may_only_depend_on_layers(&["model"])
+        .where_layer("config")
+        .may_only_depend_on_layers(&[])
+        .where_layer("git")
+        .may_only_depend_on_layers(&[])
+        .where_layer("db")
+        .may_only_depend_on_layers(&["model", "util", "config"])
+        .where_layer("memory")
+        .may_only_depend_on_layers(&["model", "util", "db"])
+        .where_layer("project")
+        .may_only_depend_on_layers(&["config", "db"])
+        .where_layer("telemetry")
+        .may_only_depend_on_layers(&["config"])
+        .where_layer("tui")
+        .may_only_depend_on_layers(&["model", "util"]);
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn domain_model_is_framework_free() {
+    let rule = project_files()
+        .in_file("src/infrastructure/model.rs")
+        .should()
+        .depend_on_external_modules()
+        .matching("std")
+        .matching("anyhow")
+        .matching("chrono")
+        .matching("serde")
+        .matching("uuid");
+
+    assert_passes!(rule);
+}
+
+// ── Frameworks stay at the edges ───────────────────────────────────────────────
+
+#[test]
+fn only_the_composition_root_knows_clap() {
+    let rule = project_files()
+        .in_path(
+            pattern("src/**")
+                .except("src/main.rs")
+                .except("src/cli.rs")
+                .except("src/dispatch.rs")
+                .except("src/completion.rs"),
+        )
+        .should_not()
+        .depend_on_external_modules()
+        .matching("clap")
+        .matching("clap_complete");
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn migrations_framework_is_owned_by_db() {
+    let rule = project_files()
+        .in_path(pattern("src/**").except_in_path("src/infrastructure/db/**"))
+        .should_not()
+        .depend_on_external_modules()
+        .matching("rusqlite_migration");
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn tui_framework_is_confined_to_presentation_files() {
+    let rule = project_files()
+        .in_path(
+            pattern("src/**")
+                .except_in_path("src/infrastructure/tui/**")
+                .except_in_path("src/commands/*/render**")
+                .except_in_path("src/commands/*/edit.rs")
+                .except_in_path("src/commands/*/interactive/**"),
+        )
+        .should_not()
+        .depend_on_external_modules()
+        .matching("ratatui")
+        .matching("ratatui_textarea")
+        .matching("crossterm");
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn presentation_does_not_touch_persistence() {
+    let command_render = project_files()
+        .in_path("src/commands/*/render**")
+        .should_not()
+        .depend_on_files()
+        .in_path("src/infrastructure/db/**");
+    let command_render_sql = project_files()
+        .in_path("src/commands/*/render**")
+        .should_not()
+        .depend_on_external_modules()
+        .matching("rusqlite");
+    let tui_sql = project_files()
+        .in_path("src/infrastructure/tui/**")
+        .should_not()
+        .depend_on_external_modules()
+        .matching("rusqlite");
+
+    assert_all_pass(&[&command_render, &command_render_sql, &tui_sql]);
+}
+
+#[test]
+fn infrastructure_and_mcp_never_write_to_stdout() {
+    // stdout belongs to the presentation layer, and in `sara mcp` it is the
+    // JSON-RPC transport: a stray print corrupts the protocol.
+    let rule = project_files()
+        .in_path(pattern("src/infrastructure/**").except_in_path("src/infrastructure/tui/**"))
+        .should()
+        .adhere_to(
+            |f: &FileInfo| {
+                !f.content.lines().map(str::trim).any(|t| {
+                    !t.starts_with("//")
+                        && !t.contains("eprint")
+                        && (t.contains("println!") || t.contains("print!("))
+                })
+            },
+            "not print to stdout",
+        );
+    let mcp = project_files().in_path("src/mcp/**").should().adhere_to(
+        |f: &FileInfo| {
+            !f.content.lines().map(str::trim).any(|t| {
+                !t.starts_with("//")
+                    && !t.contains("eprint")
+                    && (t.contains("println!") || t.contains("print!("))
+            })
+        },
+        "not print to stdout",
+    );
+
+    assert_all_pass(&[&rule, &mcp]);
+}
+
+// ── Slice encapsulation ───────────────────────────────────────────────────────
+
+#[test]
+fn slices_are_only_entered_through_mod_rs() {
+    // `mod.rs` is a slice's public surface; its other files are private to it.
+    // `shared` is the deliberate exception: it is a toolbox, not a command.
+    let rules: Vec<Box<dyn Checkable>> = command_slice_names()
+        .into_iter()
+        .filter(|s| s != "shared")
+        .filter(|s| {
+            std::fs::read_dir(format!("src/commands/{s}"))
+                .map(|entries| entries.count() > 1)
+                .unwrap_or(false)
+        })
+        .map(|s| {
+            Box::new(
+                project_files()
+                    .in_path(pattern("src/**").except_in_path(format!("src/commands/{s}/**")))
+                    .should_not()
+                    .depend_on_files()
+                    .in_path(
+                        pattern(format!("src/commands/{s}/**"))
+                            .except(format!("src/commands/{s}/mod.rs")),
+                    ),
+            ) as Box<dyn Checkable>
+        })
+        .collect();
+
+    let refs: Vec<&dyn Checkable> = rules.iter().map(|r| r.as_ref()).collect();
+    assert_all_pass(&refs);
+}
+
+#[test]
+fn files_stay_small_and_focused() {
+    let rule = project_files().in_path("src/**").should().adhere_to(
+        |f: &FileInfo| f.non_blank_line_count <= MAX_FILE_LINES,
+        "contain at most 400 non-blank lines (split by concern, see ARCHITECTURE.md)",
+    );
+
+    assert_passes!(rule);
+}
+
+// ── Tests live in tests/ ─────────────────────────────────────────────────────
+//
+// Unit tests that need private access are still compiled as child modules, but
+// their source lives under tests/unit/ and is wired in with:
+//
+//     #[cfg(test)]
+//     #[path = "../../tests/unit/<area>/<file>.rs"]
+//     mod tests;
+
+#[test]
+fn src_contains_no_test_code() {
+    let rule = project_files().in_path("src/**").should().adhere_to(
+        |f: &FileInfo| {
+            let lines: Vec<&str> = f
+                .content
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect();
+            let no_test_fns = !lines.iter().any(|l| {
+                l.starts_with("#[test]")
+                    || l.starts_with("#[tokio::test")
+                    || l.starts_with("proptest!")
+                    || l.starts_with("#[should_panic")
+            });
+            let cfg_test_only_wires_tests_dir = lines.iter().enumerate().all(|(i, l)| {
+                !l.starts_with("#[cfg(test)]")
+                    || lines
+                        .get(i + 1)
+                        .is_some_and(|next| next.starts_with("#[path") && next.contains("tests/"))
+            });
+            no_test_fns && cfg_test_only_wires_tests_dir
+        },
+        "contain no test code (#[cfg(test)] may only wire a module from tests/)",
+    );
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn src_contains_only_rust_sources() {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n == "tests") {
+                    out.push(path.clone());
+                }
+                walk(&path, out);
+            } else if path.extension().is_none_or(|e| e != "rs") {
+                out.push(path);
+            }
+        }
+    }
+    let mut stray = Vec::new();
+    walk(Path::new("src"), &mut stray);
+
+    assert!(
+        stray.is_empty(),
+        "Test fixtures and other non-source files belong under tests/, not src/:\n{}",
+        stray
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }

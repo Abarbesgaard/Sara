@@ -107,59 +107,76 @@ Large command slices are split into focused sub-files within the same directory.
 with at least two distinct concerns. Small commands (< ~200 lines or a single concern)
 stay as a single `mod.rs`.
 
-## The five invariants
+## Enforced rules
 
-These rules are enforced by the test suite in `tests/architecture.rs`.
+`tests/architecture.rs` enforces these with [ArchUnitRust](https://github.com/LukasNiessen/ArchUnitRust)
+(`archunit`), which analyzes every file under `src/` — including qualified paths such as
+`crate::commands::add::f()`, not just `use` lines. Run them with `cargo test --test architecture`.
 
-### 1 — No cross-slice dependencies
+### Layers
 
-A command slice must not import another command slice.
+| Layer | May depend on |
+|-------|---------------|
+| `infrastructure/` | nothing outside itself |
+| `commands/` | `infrastructure` |
+| `mcp/` | `commands`, `infrastructure` |
+| `completion.rs` | `infrastructure` |
+| `cli.rs` | `completion` |
+| `main.rs`, `dispatch.rs` | anything (composition root) |
+
+Inside `infrastructure/`, dependencies point inwards towards the domain model:
+
+| Module | May depend on |
+|--------|---------------|
+| `model` | nothing — domain types; external crates limited to `std`, `anyhow`, `chrono`, `serde`, `uuid` |
+| `util`, `config`, `git` | `model` (util only) |
+| `db` | `model`, `util`, `config` |
+| `memory` | `model`, `util`, `db` |
+| `project` | `config`, `db` |
+| `telemetry` | `config` |
+| `tui` | `model`, `util` — presentation never touches persistence |
+
+### Slices
+
+- A slice never depends on another slice; shared code goes in `commands::shared`. Existing
+  violations are frozen in `KNOWN_CROSS_SLICE_DEBT` — a ratchet that fails on new edges and on
+  entries that have been paid off.
+- `mod.rs` is a slice's only public surface: code outside a slice may not reach its other files
+  (`shared` excepted).
+- Every slice directory has a `mod.rs` and a matching `pub mod` in `commands/mod.rs`.
+
+### Frameworks stay at the edges
+
+- `clap` / `clap_complete`: only `main.rs`, `cli.rs`, `dispatch.rs`, `completion.rs`.
+- `rmcp`, `tokio`, `schemars`: only `mcp/`.
+- `ureq`, `libc`: only `infrastructure/telemetry.rs`.
+- `rusqlite_migration`, `Migrations::new`, `M::up`: only `infrastructure/db/`.
+- Raw SQL: never in `commands/`.
+- `ratatui`, `ratatui_textarea`, `crossterm`: only `infrastructure/tui/` and a slice's presentation
+  files (`render.rs`, `render/`, `edit.rs`, `interactive/`). `init_terminal()` lives in
+  `infrastructure/tui/` only.
+- Presentation files (`render*`, `infrastructure/tui/`) never use `rusqlite` or `infrastructure::db`;
+  the slice loads data and hands it to the renderer.
+- `infrastructure/` (except `tui/`) and `mcp/` never print to stdout — in `sara mcp`, stdout is the
+  JSON-RPC transport. The acceptance gate routes output through `mode.say(...)`.
+
+### Size
+
+No source file exceeds 400 non-blank lines; split by concern (see the intra-slice convention above).
+
+### Tests live in `tests/`
+
+`src/` contains production code only: no `#[test]`, `proptest!`, test-only helpers, fixtures or
+`tests/` directories. Unit tests that need private access live under `tests/unit/` and are
+compiled as a child module:
 
 ```rust
-// FORBIDDEN inside src/commands/done/mod.rs
-use crate::commands::list;
+#[cfg(test)]
+#[path = "../../tests/unit/commands/guide/mod.rs"]
+mod tests;
 ```
 
-### 2 — Commands depend only on infrastructure
-
-A command slice may import from:
-
-```
-crate::infrastructure::db
-crate::infrastructure::model
-crate::infrastructure::config
-crate::infrastructure::project
-crate::infrastructure::tui
-crate::infrastructure::dates
-crate::infrastructure::files
-crate::infrastructure::git
-crate::infrastructure::portable
-```
-
-```rust
-// ALLOWED inside src/commands/done/mod.rs
-use crate::infrastructure::db;
-use crate::infrastructure::model::Status;
-
-// FORBIDDEN — cli struct definitions are wired in main.rs, not in slices
-use crate::cli::Command;
-```
-
-### 3 — DB migrations are centralised
-
-All `Migrations::new(…)` / `M::up(…)` calls must live in `src/infrastructure/db.rs` only.
-Adding a migration inside a command slice (e.g. `src/commands/sync/`) is forbidden.
-
-### 4 — Command slices have a consistent structure
-
-Every directory under `src/commands/` must contain a `mod.rs`. A new command that
-adds only a bare directory without `mod.rs` will fail the structure test.
-
-### 5 — TUI infrastructure is centralised
-
-`init_terminal()` is defined in `src/infrastructure/tui/mod.rs` and must not be
-duplicated inside any command slice. Commands that need a terminal call
-`crate::infrastructure::tui::init_terminal()`.
+`#[cfg(test)]` may appear in `src/` only directly above such a `#[path = ".../tests/..."]`.
 
 ## Adding a new command
 
