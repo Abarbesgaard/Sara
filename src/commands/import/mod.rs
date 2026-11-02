@@ -6,9 +6,9 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use uuid::Uuid;
 
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use crate::infrastructure::util::portable::Bundle;
 
 mod render;

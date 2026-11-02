@@ -2,9 +2,9 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::commands::shared::print_json;
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use crate::infrastructure::project::detect_current_project;
 
 mod render;

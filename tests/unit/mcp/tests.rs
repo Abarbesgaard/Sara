@@ -4,9 +4,9 @@ use rmcp::ServerHandler;
 use rusqlite::Connection;
 
 use crate::commands;
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 use super::server::{CwdGuard, SaraServer};
 
@@ -992,7 +992,7 @@ fn finish_waits_for_the_merge_and_links_the_pr_once() {
         })
         .unwrap();
     assert_eq!(links, 1, "the PR is linked exactly once");
-    assert_eq!(status, crate::infrastructure::model::Status::Pending);
+    assert_eq!(status, crate::domain::Status::Pending);
 
     let err = server
         .with_project(None, "t", |conn, cfg| {

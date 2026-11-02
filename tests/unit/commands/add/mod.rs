@@ -16,7 +16,7 @@ fn duplicate_open_task_detected_case_insensitively_same_project() {
 
 #[test]
 fn completed_task_is_not_a_duplicate() {
-    use crate::infrastructure::model::Status;
+    use crate::domain::Status;
     let conn = db::open_in_memory_for_test();
     let mut t = crate::test_support::seed_task(&conn, "Implement JWT login for API", "proj");
     t.status = Status::Completed;

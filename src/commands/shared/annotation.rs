@@ -1,4 +1,4 @@
-use crate::infrastructure::db::Annotation;
+use crate::domain::Annotation;
 
 pub fn annotation_target(a: &Annotation) -> String {
     match (&a.target_kind, &a.target_id) {

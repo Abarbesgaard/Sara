@@ -79,14 +79,18 @@ fn layers_depend_inwards() {
         .defined_by("src/commands/**")
         .layer("infrastructure")
         .defined_by("src/infrastructure/**")
-        .where_layer("infrastructure")
+        .layer("domain")
+        .defined_by("src/domain/**")
+        .where_layer("domain")
         .may_only_depend_on_layers(&[])
+        .where_layer("infrastructure")
+        .may_only_depend_on_layers(&["domain"])
         .where_layer("commands")
-        .may_only_depend_on_layers(&["infrastructure"])
+        .may_only_depend_on_layers(&["infrastructure", "domain"])
         .where_layer("mcp")
-        .may_only_depend_on_layers(&["commands", "infrastructure"])
+        .may_only_depend_on_layers(&["commands", "infrastructure", "domain"])
         .where_layer("completion")
-        .may_only_depend_on_layers(&["infrastructure"])
+        .may_only_depend_on_layers(&["infrastructure", "domain"])
         .where_layer("cli")
         .may_only_depend_on_layers(&["completion"]);
 
@@ -277,7 +281,6 @@ fn slice_dirs_match_mod_declarations() {
 
 // ── Infrastructure: inner dependency direction ─────────────────────────────────
 //
-//   model            domain types, depends on nothing
 //   util, config, git
 //   db               persistence; never on memory algorithms or presentation
 //   memory           memory algorithms (embedding, graph) on top of db
@@ -286,8 +289,6 @@ fn slice_dirs_match_mod_declarations() {
 #[test]
 fn infrastructure_modules_depend_inwards() {
     let rule = project_layers()
-        .layer("model")
-        .defined_by("src/infrastructure/model.rs")
         .layer("util")
         .defined_by("src/infrastructure/util/**")
         .layer("config")
@@ -304,32 +305,34 @@ fn infrastructure_modules_depend_inwards() {
         .defined_by("src/infrastructure/telemetry*.rs")
         .layer("tui")
         .defined_by("src/infrastructure/tui/**")
-        .where_layer("model")
-        .may_only_depend_on_layers(&[])
         .where_layer("util")
-        .may_only_depend_on_layers(&["model"])
+        .may_only_depend_on_layers(&[])
         .where_layer("config")
         .may_only_depend_on_layers(&[])
         .where_layer("git")
         .may_only_depend_on_layers(&[])
         .where_layer("db")
-        .may_only_depend_on_layers(&["model", "util", "config"])
+        .may_only_depend_on_layers(&["util", "config"])
         .where_layer("memory")
-        .may_only_depend_on_layers(&["model", "util", "db"])
+        .may_only_depend_on_layers(&["util", "db"])
         .where_layer("project")
         .may_only_depend_on_layers(&["config", "db"])
         .where_layer("telemetry")
         .may_only_depend_on_layers(&["config"])
         .where_layer("tui")
-        .may_only_depend_on_layers(&["model", "util"]);
+        .may_only_depend_on_layers(&["util"]);
 
     assert_passes!(rule);
 }
 
+// ── Domain ─────────────────────────────────────────────────────────────────────
+//
+// `src/domain` holds the entities and value objects. It is pure: no framework,
+// no persistence, no I/O, and one entity per file.
 #[test]
-fn domain_model_is_framework_free() {
+fn domain_is_framework_free() {
     let rule = project_files()
-        .in_file("src/infrastructure/model.rs")
+        .in_path("src/domain/**")
         .should()
         .depend_on_external_modules()
         .matching("std")
@@ -337,6 +340,64 @@ fn domain_model_is_framework_free() {
         .matching("chrono")
         .matching("serde")
         .matching("uuid");
+
+    assert_passes!(rule);
+}
+
+#[test]
+fn domain_does_no_io() {
+    let rule = project_files().in_path("src/domain/**").should().adhere_to(
+        |f: &FileInfo| {
+            [
+                "std::fs",
+                "std::io",
+                "std::net",
+                "std::process",
+                "std::env",
+                "print!",
+                "println!",
+            ]
+            .iter()
+            .all(|needle| !f.content.contains(needle))
+        },
+        "not perform I/O (fs, io, net, process, env, printing)",
+    );
+
+    assert_passes!(rule);
+}
+
+/// Each domain file defines exactly one entity — one `pub struct` — and is named
+/// after it (`BranchRecord` → `branch_record.rs`). Enums and helpers that only
+/// that entity uses may live alongside it.
+#[test]
+fn domain_has_one_entity_per_file() {
+    fn snake_case(name: &str) -> String {
+        let mut out = String::new();
+        for (i, c) in name.chars().enumerate() {
+            if c.is_uppercase() && i > 0 {
+                out.push('_');
+            }
+            out.extend(c.to_lowercase());
+        }
+        out
+    }
+
+    let rule = project_files()
+        .in_path(pattern("src/domain/**").except_with_name("mod.rs"))
+        .should()
+        .adhere_to(
+            |f: &FileInfo| {
+                let structs: Vec<&str> = f
+                    .content
+                    .lines()
+                    .filter_map(|l| l.strip_prefix("pub struct "))
+                    .filter_map(|rest| rest.split(|c: char| !c.is_alphanumeric()).next())
+                    .collect();
+                let stem = f.name.trim_end_matches(".rs");
+                structs.len() == 1 && snake_case(structs[0]) == stem
+            },
+            "define exactly one pub struct, named after the file",
+        );
 
     assert_passes!(rule);
 }

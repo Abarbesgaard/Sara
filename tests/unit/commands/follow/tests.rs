@@ -1,6 +1,7 @@
 use super::render::{age, rail, render, span, sparkline};
 use super::state::*;
-use crate::infrastructure::db::{self, FlowEvent, FlowKind};
+use crate::domain::{FlowEvent, FlowKind};
+use crate::infrastructure::db::{self};
 use crate::infrastructure::tui::theme::Theme;
 use crate::test_support::{key, render_to_string};
 use chrono::{DateTime, Duration, TimeZone, Utc};

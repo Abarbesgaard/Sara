@@ -1,6 +1,6 @@
+use crate::domain::Item;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
-use crate::infrastructure::model::Item;
 use chrono::{Duration, Utc};
 use serde_json::Value;
 use uuid::Uuid;
@@ -233,7 +233,7 @@ fn stale_anchors_lists_drifted_and_missing_files_as_info() {
 }
 
 fn verified_tasks(conn: &rusqlite::Connection, project: &str, n: usize, cite: Option<Uuid>) {
-    use crate::infrastructure::model::{Status, Task};
+    use crate::domain::{Status, Task};
     for _ in 0..n {
         let mut t = Task::new("demo".into(), project.into());
         t.entry = Utc::now() - Duration::days(2);
@@ -243,7 +243,7 @@ fn verified_tasks(conn: &rusqlite::Connection, project: &str, n: usize, cite: Op
         db::update_task(conn, &t).unwrap();
         db::set_validated(conn, &t.uuid, "abc1234").unwrap();
         if let Some(m) = cite {
-            db::record_memory_use(conn, &m, &t.uuid, db::MemoryUseKind::Cited).unwrap();
+            db::record_memory_use(conn, &m, &t.uuid, crate::domain::MemoryUseKind::Cited).unwrap();
         }
     }
 }

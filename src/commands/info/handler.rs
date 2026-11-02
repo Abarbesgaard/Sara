@@ -1,9 +1,9 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 use super::types::{
     Detail, EDIT_FIELDS, EditState, Focusable, GraphNode, LedgerEntry, NOTE_KINDS, SectionId,
@@ -267,14 +267,11 @@ pub(super) fn guide_is_stale(d: &Detail) -> bool {
     }
 }
 
-pub(super) fn notes_of_kind<'a>(
-    d: &'a Detail,
-    kind: &str,
-) -> Vec<&'a crate::infrastructure::db::Annotation> {
+pub(super) fn notes_of_kind<'a>(d: &'a Detail, kind: &str) -> Vec<&'a crate::domain::Annotation> {
     d.annotations.iter().filter(|a| a.kind == kind).collect()
 }
 
-pub(super) fn typed_notes(d: &Detail) -> Vec<&crate::infrastructure::db::Annotation> {
+pub(super) fn typed_notes(d: &Detail) -> Vec<&crate::domain::Annotation> {
     let mut out = Vec::new();
     for kind in NOTE_KINDS {
         for n in notes_of_kind(d, kind) {
@@ -407,9 +404,9 @@ pub(super) fn memory_ledger(conn: &Connection, task: &uuid::Uuid) -> Vec<LedgerE
             }
         });
         match u.kind {
-            db::MemoryUseKind::Cited => entry.cited += 1,
-            db::MemoryUseKind::Recalled => entry.recalled += 1,
-            db::MemoryUseKind::Surfaced => entry.surfaced += 1,
+            crate::domain::MemoryUseKind::Cited => entry.cited += 1,
+            crate::domain::MemoryUseKind::Recalled => entry.recalled += 1,
+            crate::domain::MemoryUseKind::Surfaced => entry.surfaced += 1,
         }
     }
     let mut ledger: Vec<LedgerEntry> = order.iter().filter_map(|u| counts.remove(u)).collect();
@@ -511,15 +508,18 @@ pub(super) fn find_pr_url(d: &Detail) -> Option<String> {
     pr_url_from(&d.links, &d.annotations)
 }
 
-fn pr_url_from(links: &[db::Link], annotations: &[db::Annotation]) -> Option<String> {
-    if let Some(link) = links.iter().find(|l| db::is_pr_link(&l.url)) {
+fn pr_url_from(
+    links: &[crate::domain::Link],
+    annotations: &[crate::domain::Annotation],
+) -> Option<String> {
+    if let Some(link) = links.iter().find(|l| crate::domain::is_pr_link(&l.url)) {
         return Some(link.url.clone());
     }
     annotations.iter().find_map(|a| {
         a.text
             .split_whitespace()
             .map(|tok| tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '/'))
-            .find(|tok| db::is_pr_link(tok))
+            .find(|tok| crate::domain::is_pr_link(tok))
             .map(str::to_string)
     })
 }
@@ -632,7 +632,7 @@ pub(super) fn comment_target(
             (None, None)
         }
         Some(Focusable::Comment(i)) => {
-            let comments: Vec<&crate::infrastructure::db::Annotation> = d
+            let comments: Vec<&crate::domain::Annotation> = d
                 .annotations
                 .iter()
                 .filter(|a| a.kind == "comment")
@@ -649,9 +649,9 @@ pub(super) fn comment_target(
 pub(super) fn feedback_for_focus<'a>(
     d: &'a Detail,
     focus: &Option<Focusable>,
-) -> Vec<&'a crate::infrastructure::db::Annotation> {
+) -> Vec<&'a crate::domain::Annotation> {
     if let Some(Focusable::Comment(i)) = focus {
-        let comments: Vec<&crate::infrastructure::db::Annotation> = d
+        let comments: Vec<&crate::domain::Annotation> = d
             .annotations
             .iter()
             .filter(|a| a.kind == "comment")
@@ -663,7 +663,7 @@ pub(super) fn feedback_for_focus<'a>(
             .unwrap_or_default();
     }
     let (tk, tid) = comment_target(d, focus);
-    let mut v: Vec<&crate::infrastructure::db::Annotation> = d
+    let mut v: Vec<&crate::domain::Annotation> = d
         .annotations
         .iter()
         .filter(|a| {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Project, Task};
+use crate::domain::{Project, Task};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;

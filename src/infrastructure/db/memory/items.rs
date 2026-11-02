@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::infrastructure::model::{Item, Task};
+use crate::domain::{Item, Task};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension};

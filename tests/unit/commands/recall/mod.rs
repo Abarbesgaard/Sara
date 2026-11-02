@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::{Status, Task};
 use crate::infrastructure::config::Config;
-use crate::infrastructure::model::{Status, Task};
 
 use crate::test_support::cfg;
 
@@ -1567,15 +1567,15 @@ fn recall_task_records_direct_hits_as_recalled_and_spread_as_surfaced() {
     let uses = db::memory_uses_for_task(&conn, &task.uuid).unwrap();
     let kinds: Vec<_> = uses.iter().map(|u| (u.item_uuid, u.kind)).collect();
     assert!(
-        kinds.contains(&(seed.uuid, db::MemoryUseKind::Recalled)),
+        kinds.contains(&(seed.uuid, crate::domain::MemoryUseKind::Recalled)),
         "{kinds:?}"
     );
     assert!(
-        kinds.contains(&(neighbour.uuid, db::MemoryUseKind::Surfaced)),
+        kinds.contains(&(neighbour.uuid, crate::domain::MemoryUseKind::Surfaced)),
         "{kinds:?}"
     );
     assert!(
-        !kinds.contains(&(neighbour.uuid, db::MemoryUseKind::Recalled)),
+        !kinds.contains(&(neighbour.uuid, crate::domain::MemoryUseKind::Recalled)),
         "an associative hit is never a recall"
     );
 }

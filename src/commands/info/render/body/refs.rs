@@ -174,7 +174,7 @@ impl Body<'_> {
                     ""
                 };
 
-                let anchor_fb: Vec<&crate::infrastructure::db::Annotation> = d
+                let anchor_fb: Vec<&crate::domain::Annotation> = d
                     .annotations
                     .iter()
                     .filter(|a| {

@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::Connection;
@@ -295,7 +295,7 @@ pub fn synthesize_done_memory(
         }
     };
 
-    let mut item = crate::infrastructure::model::Item::new_memory(title, body, Some(*task_uuid));
+    let mut item = crate::domain::Item::new_memory(title, body, Some(*task_uuid));
     item.tags = task.tags.clone();
     item.status = "provisional".to_string();
     item.path = Some(String::new());

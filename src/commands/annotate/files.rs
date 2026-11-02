@@ -14,7 +14,7 @@ pub fn attach_value(
     source: Option<&str>,
 ) -> Result<Value> {
     let task = db::resolve_task(conn, id_or_uuid)?;
-    if db::is_url(path) {
+    if crate::domain::is_url(path) {
         let mut v = super::link_value(conn, id_or_uuid, path, None)?;
         if let Some(obj) = v.as_object_mut() {
             obj.insert("kind".to_string(), json!("link"));

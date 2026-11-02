@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 
 fn task(conn: &Connection, desc: &str) -> Task {
     crate::test_support::seed_task(conn, desc, "tk")
@@ -84,7 +84,7 @@ fn imported_tracks_github_synced_tasks() {
     db::set_github_provenance(
         &conn,
         &synced.uuid,
-        &crate::infrastructure::model::GithubProvenance {
+        &crate::domain::GithubProvenance {
             repo: "o/r".to_string(),
             issue_id: None,
             node_id: None,

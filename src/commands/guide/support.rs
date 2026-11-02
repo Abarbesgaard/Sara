@@ -3,7 +3,8 @@ use std::process::Command;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::infrastructure::db::{self, ChecklistItem};
+use crate::domain::ChecklistItem;
+use crate::infrastructure::db::{self};
 
 pub(super) fn kind_arg(kind: Option<&str>) -> &str {
     match kind {

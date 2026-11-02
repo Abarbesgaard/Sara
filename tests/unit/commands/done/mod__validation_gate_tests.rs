@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 
 fn task_with_criterion(conn: &Connection) -> Task {
     let task = crate::test_support::seed_task(conn, "prove me", "proj");

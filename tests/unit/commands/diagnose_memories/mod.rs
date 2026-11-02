@@ -1,6 +1,6 @@
+use crate::domain::Item;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
-use crate::infrastructure::model::Item;
 use uuid::Uuid;
 
 fn insert_memory_with_file(conn: &rusqlite::Connection, body: &str, tag: &str, file: &str) -> Uuid {

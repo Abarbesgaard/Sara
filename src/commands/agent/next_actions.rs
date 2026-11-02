@@ -3,8 +3,8 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 
 use crate::commands::shared::project_head;
+use crate::domain::{Status, Task};
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Status, Task};
 
 /// Whether a URL points at a pull or merge request.
 pub fn is_pr_url(url: &str) -> bool {

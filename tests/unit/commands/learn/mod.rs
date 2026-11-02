@@ -54,7 +54,8 @@ fn secret_check_does_not_flag_uuid_in_prose() {
 
 #[test]
 fn learn_task_prefers_display_id_over_uuid_collision() {
-    use crate::infrastructure::{config::Config, db, model::Task};
+    use crate::domain::Task;
+    use crate::infrastructure::{config::Config, db};
     use uuid::Uuid;
 
     let conn = db::open_in_memory_for_test();

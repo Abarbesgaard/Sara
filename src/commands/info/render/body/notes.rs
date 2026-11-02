@@ -54,7 +54,7 @@ impl Body<'_> {
                 };
 
                 let note_id_str = n.id.to_string();
-                let note_fb: Vec<&crate::infrastructure::db::Annotation> = d
+                let note_fb: Vec<&crate::domain::Annotation> = d
                     .annotations
                     .iter()
                     .filter(|a| {

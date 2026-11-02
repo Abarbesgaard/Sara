@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
+use crate::domain::*;
 use crate::infrastructure::config;
-use crate::infrastructure::model::{Priority, Status, Task};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 

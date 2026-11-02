@@ -1,8 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::domain::Project;
 use crate::infrastructure::config::Config;
-use crate::infrastructure::model::Project;
 use crate::infrastructure::project::find_git_root;
 
 mod render;

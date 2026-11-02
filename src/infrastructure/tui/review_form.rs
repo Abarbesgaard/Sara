@@ -12,7 +12,7 @@ use ratatui::{
 use ratatui_textarea::TextArea;
 use std::time::{Duration, Instant};
 
-use crate::infrastructure::model::Priority;
+use crate::domain::Priority;
 use crate::infrastructure::tui::fzf;
 use crate::infrastructure::tui::keymap::{self, Action};
 

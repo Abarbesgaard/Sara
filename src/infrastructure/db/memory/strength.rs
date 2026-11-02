@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::infrastructure::model::{Item, Status};
+use crate::domain::{Item, Status};
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
@@ -184,7 +184,7 @@ pub const RECALL_BOOST_PER_HIT: f64 = 0.1;
 pub const RECALL_BOOST_CAP: f64 = 0.5;
 
 pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
-    super::uses::attribute_use(conn, item_uuid, super::uses::MemoryUseKind::Recalled);
+    super::uses::attribute_use(conn, item_uuid, crate::domain::MemoryUseKind::Recalled);
     record_event(
         conn,
         "memory_recalled",
@@ -196,7 +196,7 @@ pub fn record_memory_recall(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
 }
 
 pub fn record_memory_surfaced(conn: &Connection, item_uuid: &Uuid) -> Result<()> {
-    super::uses::attribute_use(conn, item_uuid, super::uses::MemoryUseKind::Surfaced);
+    super::uses::attribute_use(conn, item_uuid, crate::domain::MemoryUseKind::Surfaced);
     record_event(
         conn,
         "memory_surfaced",

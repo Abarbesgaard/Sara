@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::Task;
 use crate::infrastructure::db::STEP_KIND_STEP;
-use crate::infrastructure::model::Task;
 use crate::test_support::seed_task;
 
 fn find_by_desc<'a>(tasks: &'a [Task], desc: &str) -> &'a Task {

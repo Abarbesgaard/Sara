@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::Item;
 use crate::infrastructure::config::Config;
-use crate::infrastructure::model::Item;
 
 #[test]
 fn tag_exact_memory_surfaces_with_full_body_as_canonical() {

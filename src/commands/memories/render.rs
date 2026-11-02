@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::commands::shared::{
     canonical_labels, derived_from_suffix, item_label, item_snippet, print_json, strength_label,
 };
+use crate::domain::Item;
 use crate::infrastructure::db::{self, MemoryProvenance};
-use crate::infrastructure::model::Item;
 
 pub(super) fn print_memories(
     conn: &Connection,

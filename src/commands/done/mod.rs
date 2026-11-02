@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 use crate::commands::shared::{
     guard_branch_mutation, json_strs, print_cited, project_head, with_citation,
 };
+use crate::domain::{Status, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Status, Task};
 use crate::infrastructure::telemetry::{self, Source};
 
 mod types;
@@ -102,9 +102,8 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     let mut recurrence = Value::Null;
     if let Some(ref interval) = task.recur.clone() {
         let base = task.due.unwrap_or_else(Utc::now);
-        let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
-        let mut next =
-            crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
+        let next_due = crate::domain::advance_by_interval(base, interval);
+        let mut next = crate::domain::Task::new(task.description.clone(), task.project.clone());
         next.priority = task.priority.clone();
         next.tags = task.tags.clone();
         next.due = Some(next_due);

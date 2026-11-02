@@ -1,9 +1,9 @@
 use super::super::edit::{apply_field, current_value, cycle_priority};
 use super::super::types::{Detail, EditField, TaskTree};
 use super::{RenderOpts, render_markdown, render_plain};
+use crate::domain::{Priority, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Priority, Task};
 use chrono::Utc;
 
 fn task() -> Task {
@@ -77,8 +77,8 @@ fn current_value_round_trips_with_apply() {
     assert_eq!(current_value(&t, EditField::Tags), "a, b");
 }
 
-fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::infrastructure::db::ChecklistItem {
-    crate::infrastructure::db::ChecklistItem {
+fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::domain::ChecklistItem {
+    crate::domain::ChecklistItem {
         id,
         text: text.into(),
         done,
@@ -93,12 +93,8 @@ fn step(id: i64, text: &str, kind: &str, done: bool) -> crate::infrastructure::d
     }
 }
 
-fn history(
-    field: &str,
-    old: Option<&str>,
-    new: Option<&str>,
-) -> crate::infrastructure::db::HistoryEntry {
-    crate::infrastructure::db::HistoryEntry {
+fn history(field: &str, old: Option<&str>, new: Option<&str>) -> crate::domain::HistoryEntry {
+    crate::domain::HistoryEntry {
         field: field.into(),
         old_value: old.map(Into::into),
         new_value: new.map(Into::into),
@@ -107,8 +103,8 @@ fn history(
 }
 
 fn detail(
-    checklist: Vec<crate::infrastructure::db::ChecklistItem>,
-    hist: Vec<crate::infrastructure::db::HistoryEntry>,
+    checklist: Vec<crate::domain::ChecklistItem>,
+    hist: Vec<crate::domain::HistoryEntry>,
 ) -> Detail {
     Detail {
         task: task(),
@@ -138,8 +134,8 @@ fn detail(
     }
 }
 
-fn comment(id: i64, text: &str, request_revision: bool) -> crate::infrastructure::db::Annotation {
-    crate::infrastructure::db::Annotation {
+fn comment(id: i64, text: &str, request_revision: bool) -> crate::domain::Annotation {
+    crate::domain::Annotation {
         id,
         text: text.into(),
         entry: chrono::Utc::now(),

@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Priority, Status, Task};
+use crate::domain::{Priority, Status, Task};
 use uuid::Uuid;
 
 fn sample() -> Task {

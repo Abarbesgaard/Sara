@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::commands::shared::prompt_line;
+use crate::domain::Project;
 use crate::infrastructure::db::ProjectCommands;
-use crate::infrastructure::model::Project;
 
 pub(super) fn prompt(msg: &str, default: Option<&str>) -> Result<String> {
     let prompt_str = if let Some(d) = default {

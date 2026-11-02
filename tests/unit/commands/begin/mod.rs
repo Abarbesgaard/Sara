@@ -243,7 +243,7 @@ fn begin_output_has_no_trace_without_the_telemetry_feature() {
 
 #[test]
 fn begin_records_surfaced_use_against_the_new_task() {
-    use crate::infrastructure::model::{Item, Status, Task};
+    use crate::domain::{Item, Status, Task};
     let conn = db::open_in_memory_for_test();
     let mut src = Task::new("source work".into(), "proj".into());
     src.status = Status::Completed;
@@ -282,5 +282,5 @@ fn begin_records_surfaced_use_against_the_new_task() {
     let uses = db::memory_uses_for_task(&conn, &task_uuid).unwrap();
     assert_eq!(uses.len(), 1, "{uses:?}");
     assert_eq!(uses[0].item_uuid, mem.uuid);
-    assert_eq!(uses[0].kind, db::MemoryUseKind::Surfaced);
+    assert_eq!(uses[0].kind, crate::domain::MemoryUseKind::Surfaced);
 }

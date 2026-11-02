@@ -85,7 +85,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     w!(
         "{:<14}{}",
         "Time spent",
-        crate::infrastructure::model::format_duration(t.total_time_spent())
+        crate::domain::format_duration(t.total_time_spent())
     );
     w!("{:<14}{:.1}", "Urgency", t.urgency);
     w!("{:<14}{}", "UUID", t.uuid);
@@ -107,7 +107,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         w!("{:<14}validated @ {}", "Freshness", v);
     }
 
-    let steps: Vec<&crate::infrastructure::db::ChecklistItem> = d
+    let steps: Vec<&crate::domain::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
@@ -139,7 +139,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let acceptance: Vec<&crate::infrastructure::db::ChecklistItem> = d
+    let acceptance: Vec<&crate::domain::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
@@ -180,7 +180,7 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let suggested: Vec<&crate::infrastructure::db::Anchor> = d
+    let suggested: Vec<&crate::domain::Anchor> = d
         .anchors
         .iter()
         .filter(|a| a.source == db::SOURCE_SUGGESTED)
@@ -274,14 +274,14 @@ pub(super) fn render_plain(d: &Detail, opts: RenderOpts) -> String {
     out
 }
 
-pub(super) fn history_changed_at(h: &crate::infrastructure::db::HistoryEntry) -> String {
+pub(super) fn history_changed_at(h: &crate::domain::HistoryEntry) -> String {
     h.changed_at
         .with_timezone(&Local)
         .format("%Y-%m-%d %H:%M")
         .to_string()
 }
 
-pub(super) fn history_change(h: &crate::infrastructure::db::HistoryEntry) -> String {
+pub(super) fn history_change(h: &crate::domain::HistoryEntry) -> String {
     if h.field == "created" {
         h.new_value.clone().unwrap_or_default()
     } else if h.field == "annotation" {
@@ -355,7 +355,7 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         w!("{r}");
     }
 
-    let steps: Vec<&crate::infrastructure::db::ChecklistItem> = d
+    let steps: Vec<&crate::domain::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind != db::STEP_KIND_ACCEPTANCE)
@@ -370,7 +370,7 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let acceptance: Vec<&crate::infrastructure::db::ChecklistItem> = d
+    let acceptance: Vec<&crate::domain::ChecklistItem> = d
         .checklist
         .iter()
         .filter(|c| c.kind == db::STEP_KIND_ACCEPTANCE)
@@ -406,7 +406,7 @@ pub(super) fn render_markdown(d: &Detail, opts: RenderOpts) -> String {
         }
     }
 
-    let anchors: Vec<&crate::infrastructure::db::Anchor> = d
+    let anchors: Vec<&crate::domain::Anchor> = d
         .anchors
         .iter()
         .filter(|a| a.source == db::SOURCE_SUGGESTED)

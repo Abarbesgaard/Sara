@@ -4,8 +4,8 @@ use ratatui::{
 };
 
 use crate::commands::shared::truncate;
+use crate::domain::Task;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
 use crate::commands::info::handler::{TREE_COMPACT_CHILDREN, TREE_COMPACT_DEPTH};
@@ -150,7 +150,7 @@ fn push_tree_node_lines(
 }
 
 fn tree_node_line(node: &GraphNode, prefix: &str, connector: &str) -> Line<'static> {
-    let completed = node.status == crate::infrastructure::model::Status::Completed;
+    let completed = node.status == crate::domain::Status::Completed;
     let glyph = if completed { "✓" } else { "○" };
     let id_str = node.id.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
     let style = if completed {

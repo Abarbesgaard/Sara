@@ -3,8 +3,8 @@ use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::commands::shared::print_cancelled;
+use crate::domain::Status;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Status;
 
 mod render;
 

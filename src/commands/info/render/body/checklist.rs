@@ -82,7 +82,7 @@ impl Body<'_> {
                 };
                 let target_k = if is_acc { "acceptance" } else { "step" };
                 let item_id_str = item.id.to_string();
-                let fb: Vec<&crate::infrastructure::db::Annotation> = d
+                let fb: Vec<&crate::domain::Annotation> = d
                     .annotations
                     .iter()
                     .filter(|a| {
@@ -207,7 +207,7 @@ impl Body<'_> {
     }
 }
 
-fn verify_row(item: &db::ChecklistItem) -> Option<Line<'static>> {
+fn verify_row(item: &crate::domain::ChecklistItem) -> Option<Line<'static>> {
     let muted = Style::default().fg(ink(Ink::Muted));
     let mut spans = vec![Span::styled("     ".to_string(), muted)];
     if let Some(v) = &item.verify_cmd {

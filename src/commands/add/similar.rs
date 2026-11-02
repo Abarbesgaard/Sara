@@ -3,10 +3,10 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+use crate::domain::Item;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding::{self, Embedder};
-use crate::infrastructure::model::Item;
 use crate::infrastructure::tui::review_form::{Hint, HintKind};
 
 const STOP_WORDS: &[&str] = &[

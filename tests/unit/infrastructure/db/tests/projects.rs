@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 use chrono::Utc;
 
 #[test]
@@ -75,7 +75,7 @@ fn reset_project_nukes_tasks_children_and_profile() {
     add_annotation(&conn, &task.uuid, "a note").unwrap();
     save_project_profile(
         &conn,
-        &crate::infrastructure::model::Project {
+        &crate::domain::Project {
             name: "tk".into(),
             path: None,
             goal: Some("g".into()),

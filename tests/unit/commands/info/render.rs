@@ -1,7 +1,7 @@
 use super::super::handler::focusables;
 use super::super::types::{Detail, Focusable, GraphNode, TaskTree};
 use super::*;
-use crate::infrastructure::model::{Priority, Status, Task};
+use crate::domain::{Priority, Status, Task};
 use chrono::Utc;
 
 fn task() -> Task {
@@ -27,8 +27,8 @@ fn node_with_children(id: i64, children: Vec<GraphNode>) -> GraphNode {
     }
 }
 
-fn typed_note(id: i64, kind: &str, text: &str) -> crate::infrastructure::db::Annotation {
-    crate::infrastructure::db::Annotation {
+fn typed_note(id: i64, kind: &str, text: &str) -> crate::domain::Annotation {
+    crate::domain::Annotation {
         id,
         text: text.into(),
         entry: Utc::now(),
@@ -281,7 +281,7 @@ fn long_assignment_is_collapsed_until_verbose() {
 fn checklist_detail_shows_for_current_and_selected_rows_unless_verbose() {
     let mut d = base_detail(task());
     d.checklist = vec![
-        crate::infrastructure::db::ChecklistItem {
+        crate::domain::ChecklistItem {
             id: 1,
             text: "first step".into(),
             done: false,
@@ -294,7 +294,7 @@ fn checklist_detail_shows_for_current_and_selected_rows_unless_verbose() {
             done_commit: None,
             done_at: None,
         },
-        crate::infrastructure::db::ChecklistItem {
+        crate::domain::ChecklistItem {
             id: 2,
             text: "second step".into(),
             done: false,
@@ -335,9 +335,9 @@ fn checklist_detail_shows_for_current_and_selected_rows_unless_verbose() {
     assert!(out3.contains("do the second thing"));
 }
 
-fn many_steps(n: i64) -> Vec<crate::infrastructure::db::ChecklistItem> {
+fn many_steps(n: i64) -> Vec<crate::domain::ChecklistItem> {
     (0..n)
-        .map(|i| crate::infrastructure::db::ChecklistItem {
+        .map(|i| crate::domain::ChecklistItem {
             id: i + 1,
             text: format!("step number {i}"),
             done: false,
@@ -380,8 +380,8 @@ fn manual_scroll_is_clamped_but_not_snapped_back() {
     assert!(st.scroll > 0, "scroll must not snap back to the selection");
 }
 
-fn step(id: i64, text: &str, done: bool, kind: &str) -> crate::infrastructure::db::ChecklistItem {
-    crate::infrastructure::db::ChecklistItem {
+fn step(id: i64, text: &str, done: bool, kind: &str) -> crate::domain::ChecklistItem {
+    crate::domain::ChecklistItem {
         id,
         text: text.into(),
         done,
@@ -488,8 +488,8 @@ fn comment(
     target: Option<(&str, &str)>,
     status: &str,
     request_revision: bool,
-) -> crate::infrastructure::db::Annotation {
-    crate::infrastructure::db::Annotation {
+) -> crate::domain::Annotation {
+    crate::domain::Annotation {
         id,
         text: text.into(),
         entry: Utc::now(),
@@ -503,8 +503,8 @@ fn comment(
     }
 }
 
-fn link(id: i64, url: &str, label: Option<&str>) -> crate::infrastructure::db::Link {
-    crate::infrastructure::db::Link {
+fn link(id: i64, url: &str, label: Option<&str>) -> crate::domain::Link {
+    crate::domain::Link {
         id,
         url: url.into(),
         label: label.map(String::from),
@@ -512,8 +512,8 @@ fn link(id: i64, url: &str, label: Option<&str>) -> crate::infrastructure::db::L
     }
 }
 
-fn anchor(path: &str, source: &str, reason: Option<&str>) -> crate::infrastructure::db::Anchor {
-    crate::infrastructure::db::Anchor {
+fn anchor(path: &str, source: &str, reason: Option<&str>) -> crate::domain::Anchor {
+    crate::domain::Anchor {
         path: path.into(),
         source: source.into(),
         reason: reason.map(String::from),
@@ -523,12 +523,8 @@ fn anchor(path: &str, source: &str, reason: Option<&str>) -> crate::infrastructu
     }
 }
 
-fn history_entry(
-    field: &str,
-    old: Option<&str>,
-    new: Option<&str>,
-) -> crate::infrastructure::db::HistoryEntry {
-    crate::infrastructure::db::HistoryEntry {
+fn history_entry(field: &str, old: Option<&str>, new: Option<&str>) -> crate::domain::HistoryEntry {
+    crate::domain::HistoryEntry {
         field: field.into(),
         old_value: old.map(String::from),
         new_value: new.map(String::from),
@@ -700,7 +696,7 @@ fn styled_snapshot_info_scrolled_to_selection() {
 fn styled_snapshot_info_ai_runs_and_similar() {
     let mut d = styled_detail();
     d.ai_runs = vec![
-        crate::infrastructure::db::AiRun {
+        crate::domain::AiRun {
             id: 1,
             kind: "plan".into(),
             model: Some("gpt".into()),
@@ -710,7 +706,7 @@ fn styled_snapshot_info_ai_runs_and_similar() {
             completion_tokens: None,
             total_tokens: None,
         },
-        crate::infrastructure::db::AiRun {
+        crate::domain::AiRun {
             id: 2,
             kind: "reflect".into(),
             model: None,
@@ -727,7 +723,7 @@ fn styled_snapshot_info_ai_runs_and_similar() {
         (13, "split board render".into(), 4.25),
         (14, "snapshot every screen".into(), 1.0),
     ];
-    d.branch = Some(crate::infrastructure::db::BranchRecord {
+    d.branch = Some(crate::domain::BranchRecord {
         branch: "tui/info-split".into(),
     });
     let mut st = base_state(d);
@@ -860,7 +856,7 @@ fn header_shows_status_freshness_branch_feedback_and_ids() {
     let mut d = base_detail(task());
     d.guide.validated_commit = Some("abc12345".into());
     d.head_commit = Some("abc12345".into());
-    d.branch = Some(crate::infrastructure::db::BranchRecord {
+    d.branch = Some(crate::domain::BranchRecord {
         branch: "feat/info".into(),
     });
     d.annotations = vec![
@@ -930,7 +926,7 @@ fn styled_snapshot_info_header_and_steps() {
     let mut d = styled_detail();
     d.guide.validated_commit = Some("abc12345".into());
     d.head_commit = Some("def67890".into());
-    d.branch = Some(crate::infrastructure::db::BranchRecord {
+    d.branch = Some(crate::domain::BranchRecord {
         branch: "feat/info".into(),
     });
     d.checklist
@@ -965,13 +961,8 @@ fn ledger_entry(
     }
 }
 
-fn ai_run(
-    id: i64,
-    p: Option<i64>,
-    c: Option<i64>,
-    t: Option<i64>,
-) -> crate::infrastructure::db::AiRun {
-    crate::infrastructure::db::AiRun {
+fn ai_run(id: i64, p: Option<i64>, c: Option<i64>, t: Option<i64>) -> crate::domain::AiRun {
+    crate::domain::AiRun {
         id,
         kind: "plan".into(),
         model: Some("gpt".into()),

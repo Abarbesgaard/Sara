@@ -1,4 +1,4 @@
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 
 #[derive(Default)]
 pub struct AddRequest<'a> {

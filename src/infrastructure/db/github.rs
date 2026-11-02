@@ -92,15 +92,15 @@ pub fn get_github_sync(conn: &Connection, project: &str) -> Result<GithubSyncSet
 pub fn get_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
-) -> Result<Option<crate::infrastructure::model::GithubProvenance>> {
+) -> Result<Option<crate::domain::GithubProvenance>> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let Some(raw) = fields.meta_json else {
         return Ok(None);
     };
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
-    let prov = obj.get("github").and_then(|v| {
-        serde_json::from_value::<crate::infrastructure::model::GithubProvenance>(v.clone()).ok()
-    });
+    let prov = obj
+        .get("github")
+        .and_then(|v| serde_json::from_value::<crate::domain::GithubProvenance>(v.clone()).ok());
     Ok(prov)
 }
 
@@ -140,7 +140,7 @@ pub fn find_github_task_uuid(
 pub fn set_github_provenance(
     conn: &Connection,
     task_uuid: &Uuid,
-    prov: &crate::infrastructure::model::GithubProvenance,
+    prov: &crate::domain::GithubProvenance,
 ) -> Result<()> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let mut obj: serde_json::Map<String, serde_json::Value> = fields
@@ -161,7 +161,7 @@ pub const NOTE_KIND_GITHUB_COMMENT: &str = "github_comment";
 pub fn upsert_github_comment_annotation(
     conn: &Connection,
     task_uuid: &Uuid,
-    comment: &crate::infrastructure::model::GithubComment,
+    comment: &crate::domain::GithubComment,
 ) -> Result<bool> {
     let id_str = comment.comment_id.to_string();
     let exists: bool = conn
@@ -194,7 +194,7 @@ pub fn upsert_github_comment_annotation(
 pub fn set_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,
-    comments: &[crate::infrastructure::model::GithubComment],
+    comments: &[crate::domain::GithubComment],
 ) -> Result<()> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let mut obj: serde_json::Map<String, serde_json::Value> = fields
@@ -213,7 +213,7 @@ pub fn set_github_comments(
 pub fn get_github_comments(
     conn: &Connection,
     task_uuid: &Uuid,
-) -> Result<Vec<crate::infrastructure::model::GithubComment>> {
+) -> Result<Vec<crate::domain::GithubComment>> {
     let fields = get_guide_fields(conn, task_uuid)?;
     let Some(raw) = fields.meta_json else {
         return Ok(Vec::new());
@@ -221,10 +221,7 @@ pub fn get_github_comments(
     let obj: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
     let comments = obj
         .get("github_comments")
-        .and_then(|v| {
-            serde_json::from_value::<Vec<crate::infrastructure::model::GithubComment>>(v.clone())
-                .ok()
-        })
+        .and_then(|v| serde_json::from_value::<Vec<crate::domain::GithubComment>>(v.clone()).ok())
         .unwrap_or_default();
     Ok(comments)
 }

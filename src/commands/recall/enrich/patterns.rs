@@ -3,8 +3,8 @@ use serde_json::json;
 
 use crate::commands::recall::types::Hit;
 use crate::commands::shared::{derived_children, item_label};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) const PATTERN_MIN_INSTANCES: usize = 2;
 

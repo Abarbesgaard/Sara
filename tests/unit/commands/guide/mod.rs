@@ -1,7 +1,7 @@
 use super::gate::{run_acceptance_gate, tail_limited};
 use super::*;
+use crate::domain::Task;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use rusqlite::Connection;
 
 use crate::test_support::cfg;
@@ -12,11 +12,11 @@ fn sh_arg(p: &std::path::Path) -> String {
 
 #[test]
 fn next_surfaces_a_strong_relevant_memory() {
-    use crate::infrastructure::model::Item;
+    use crate::domain::Item;
     let conn = db::open_in_memory_for_test();
 
     let mut src = Task::new("source work".into(), "proj".into());
-    src.status = crate::infrastructure::model::Status::Completed;
+    src.status = crate::domain::Status::Completed;
     db::insert_task(&conn, &mut src).unwrap();
 
     let mut mem = Item::new_memory(
@@ -355,10 +355,10 @@ fn step_done_value_reports_activation_on_first_work() {
     assert_eq!(v2["activated"], false);
 }
 
-fn strong_dependabot_memory(conn: &Connection) -> crate::infrastructure::model::Item {
-    use crate::infrastructure::model::Item;
+fn strong_dependabot_memory(conn: &Connection) -> crate::domain::Item {
+    use crate::domain::Item;
     let mut src = Task::new("source work".into(), "proj".into());
-    src.status = crate::infrastructure::model::Status::Completed;
+    src.status = crate::domain::Status::Completed;
     db::insert_task(conn, &mut src).unwrap();
     let mut mem = Item::new_memory(
         "dependabot bump restore pattern".into(),
@@ -405,7 +405,7 @@ fn next_records_a_surfaced_use_for_each_memory_shown() {
         "one row per memory, idempotent across calls: {uses:?}"
     );
     assert_eq!(uses[0].item_uuid, mem.uuid);
-    assert_eq!(uses[0].kind, db::MemoryUseKind::Surfaced);
+    assert_eq!(uses[0].kind, crate::domain::MemoryUseKind::Surfaced);
 }
 
 #[test]

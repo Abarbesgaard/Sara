@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Item, Status};
+use crate::domain::{Item, Status};
 use chrono::Utc;
 use uuid::Uuid;
 

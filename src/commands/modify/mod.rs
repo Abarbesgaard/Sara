@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 use crate::commands::shared::{
     normalize_list, parse_due, parse_duration_mins, print_cancelled, split_csv,
 };
+use crate::domain::{Task, format_duration};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Task, format_duration};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, run_form};
 

@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
@@ -71,20 +71,6 @@ pub fn get_task_files_sourced(
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
-}
-
-#[derive(Debug, Clone)]
-pub struct Annotation {
-    pub id: i64,
-    pub text: String,
-    pub entry: DateTime<Utc>,
-    pub kind: String,
-    pub author: String,
-    pub target_kind: Option<String>,
-    pub target_id: Option<String>,
-    pub status: String,
-    pub request_revision: bool,
-    pub resolved_by_run: Option<i64>,
 }
 
 pub const NOTE_KIND_COMMENT: &str = "comment";

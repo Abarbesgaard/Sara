@@ -1,10 +1,10 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::domain::Status;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Status;
 
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 
 use super::types::{BoardState, CardInfo, Freshness, IssueNode};
 

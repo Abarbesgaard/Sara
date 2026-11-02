@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::Task;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 fn seed_task(conn: &Connection) -> Task {
     crate::test_support::seed_task(conn, "host task", "proj")

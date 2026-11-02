@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 
 fn seed(conn: &Connection) -> Item {
     crate::test_support::seed_memory(

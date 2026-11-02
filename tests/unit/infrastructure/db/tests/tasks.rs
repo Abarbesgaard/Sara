@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::{Status, Task};
 use crate::infrastructure::db::*;
-use crate::infrastructure::model::{Status, Task};
 use chrono::Utc;
 
 #[test]

@@ -4,15 +4,6 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-pub struct MemoryLink {
-    pub id: i64,
-    pub from_uuid: String,
-    pub to_uuid: String,
-    pub relation: String,
-    pub weight: f64,
-}
-
 pub const MEMORY_LINK_RELATIONS: &[&str] = &[
     "supersedes",
     "similar_to",

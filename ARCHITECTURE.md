@@ -1,8 +1,8 @@
 # Architecture
 
 Sara uses a **vertical slice** layout: every command lives in its own self-contained
-directory under `commands/`; cross-cutting concerns live under `infrastructure/` and
-are the only layer a command may depend on.
+directory under `commands/`; the domain model lives in `domain/`, and cross-cutting
+concerns live under `infrastructure/`. Those two are the only layers a command may depend on.
 
 ## Layout
 
@@ -10,10 +10,13 @@ are the only layer a command may depend on.
 src/
   main.rs                   # CLI dispatch — match on Command enum, call slice entry-points
   cli.rs                    # Clap struct definitions for all commands
+  domain/
+    mod.rs                  # re-exports every entity
+    task.rs                 # Task (+ Priority, Status) — one entity per file, named after it
+    …
   infrastructure/
     mod.rs                  # re-exports all infrastructure modules
     db.rs                   # Database (open, migrations, all query helpers)
-    model.rs                # Domain types: Task, Project, Priority, Status, …
     config.rs               # Config loading and paths
     project.rs              # Git-root detection, project-name resolution, token parsing
     tui/
@@ -81,12 +84,13 @@ src/
       mod.rs                # `sara undo` — revert the last write command
 ```
 
-## Two tiers
+## Tiers
 
 | Tier | Location | Rule |
 |------|----------|------|
+| **Domain** | `src/domain/` | Entities and value objects. Imports nothing from the crate. Pure: no persistence, presentation or I/O. |
 | **Infrastructure** | `src/infrastructure/` | May be imported by anything. Never imports from `src/commands/`. |
-| **Command slice** | `src/commands/<name>/mod.rs` | Imports only from `crate::infrastructure`. Never imports another command slice or `crate::cli`. |
+| **Command slice** | `src/commands/<name>/mod.rs` | Imports only from `crate::domain` and `crate::infrastructure`. Never imports another command slice or `crate::cli`. |
 
 ## Intra-slice file convention
 
@@ -117,24 +121,34 @@ stay as a single `mod.rs`.
 
 | Layer | May depend on |
 |-------|---------------|
-| `infrastructure/` | nothing outside itself |
-| `commands/` | `infrastructure` |
-| `mcp/` | `commands`, `infrastructure` |
-| `completion.rs` | `infrastructure` |
+| `domain/` | nothing |
+| `infrastructure/` | `domain` |
+| `commands/` | `infrastructure`, `domain` |
+| `mcp/` | `commands`, `infrastructure`, `domain` |
+| `completion.rs` | `infrastructure`, `domain` |
 | `cli.rs` | `completion` |
 | `main.rs`, `dispatch.rs` | anything (composition root) |
 
-Inside `infrastructure/`, dependencies point inwards towards the domain model:
+### Domain
+
+- External crates are limited to `std`, `anyhow`, `chrono`, `serde` and `uuid`.
+- No I/O: no `std::fs`, `std::io`, `std::net`, `std::process`, `std::env` or printing.
+- One entity per file: each file defines exactly one `pub struct` and is named after it
+  (`BranchRecord` → `branch_record.rs`). Enums and helpers only that entity uses live alongside it.
+- Read models and query results (`ProjectStats`, `SearchHit`, …) are not domain; they stay in `db`.
+
+### Infrastructure
+
+Inside `infrastructure/`, dependencies point inwards (every module may also use `domain`):
 
 | Module | May depend on |
 |--------|---------------|
-| `model` | nothing — domain types; external crates limited to `std`, `anyhow`, `chrono`, `serde`, `uuid` |
-| `util`, `config`, `git` | `model` (util only) |
-| `db` | `model`, `util`, `config` |
-| `memory` | `model`, `util`, `db` |
+| `util`, `config`, `git` | nothing |
+| `db` | `util`, `config` |
+| `memory` | `util`, `db` |
 | `project` | `config`, `db` |
 | `telemetry` | `config` |
-| `tui` | `model`, `util` — presentation never touches persistence |
+| `tui` | `util` — presentation never touches persistence |
 
 ### Slices
 

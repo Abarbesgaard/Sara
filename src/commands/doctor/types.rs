@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde_json::{Value, json};
 
 use crate::commands::shared::{short_handle, short_id};
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 
 pub(super) const DETAIL_LIMIT: usize = 5;
 

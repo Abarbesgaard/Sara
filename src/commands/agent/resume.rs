@@ -8,9 +8,9 @@ use super::next_actions::next_actions;
 use crate::commands::shared::{
     cited_memories, item_snippet, memory_handle, project_head, project_path,
 };
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use crate::infrastructure::project::{detect_current_project, resolve_file_link};
 
 const RECENT_NOTES: usize = 5;

@@ -83,7 +83,7 @@ fn parse_duration_mins_handles_hours_minutes_and_bare() {
     assert_eq!(parse_duration_mins("abc"), None);
 }
 
-fn seed_memory(conn: &rusqlite::Connection) -> crate::infrastructure::model::Item {
+fn seed_memory(conn: &rusqlite::Connection) -> crate::domain::Item {
     crate::test_support::seed_memory(conn, "t", "body", &[])
 }
 
@@ -115,7 +115,7 @@ fn derived_graph_walks_both_directions() {
 #[test]
 fn guard_allows_uuid_and_forced_mutations() {
     let conn = crate::infrastructure::db::open_in_memory_for_test();
-    let mut task = crate::infrastructure::model::Task::new("t".into(), "p".into());
+    let mut task = crate::domain::Task::new("t".into(), "p".into());
     crate::infrastructure::db::insert_task(&conn, &mut task).unwrap();
     assert!(guard_branch_mutation(&conn, &task.uuid.to_string(), &task, false).is_ok());
     assert!(guard_branch_mutation(&conn, "1", &task, true).is_ok());
@@ -189,8 +189,8 @@ fn resolve_files_keeps_order_and_length() {
 
 mod cite {
     use crate::commands::shared::{cited_memories, with_citation};
+    use crate::domain::{Item, Task};
     use crate::infrastructure::db;
-    use crate::infrastructure::model::{Item, Task};
 
     fn task(conn: &rusqlite::Connection) -> Task {
         let mut t = Task::new("ship it".to_string(), "Sara".to_string());

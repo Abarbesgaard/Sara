@@ -3,9 +3,9 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::doctor::types::{Check, DETAIL_LIMIT, Labels, Status};
+use crate::domain::Item;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::doctor) fn embedding_check(
     conn: &Connection,

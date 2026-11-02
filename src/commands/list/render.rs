@@ -5,8 +5,8 @@ use chrono::{Local, Utc};
 use rusqlite::Connection;
 
 use crate::commands::shared::{plural, truncate};
+use crate::domain::{Priority, Task};
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Priority, Task};
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";

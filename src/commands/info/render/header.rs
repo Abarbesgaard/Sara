@@ -9,7 +9,7 @@ use ratatui::{
 use crate::commands::info::handler::guide_is_stale;
 use crate::commands::info::types::Detail;
 use crate::commands::shared::short_id;
-use crate::infrastructure::model::Status;
+use crate::domain::Status;
 use crate::infrastructure::tui::theme::{Ink, ink};
 
 pub(super) fn header_bar(d: &Detail, area: Rect, buf: &mut Buffer) {

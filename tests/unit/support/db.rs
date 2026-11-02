@@ -1,9 +1,9 @@
 use rusqlite::Connection;
 use uuid::Uuid;
 
+use crate::domain::{Item, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Item, Task};
 
 pub fn cfg() -> Config {
     Config::default()

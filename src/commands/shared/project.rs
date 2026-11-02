@@ -4,10 +4,10 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::git;
-use crate::infrastructure::model::Task;
 
 pub fn project_path(conn: &Connection, project: &str) -> Option<PathBuf> {
     db::get_project(conn, project)

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::infrastructure::model::{Priority, Status};
+use crate::domain::{Priority, Status};
 
 pub const BLOB_PREFIX: &str = "sara-task-v1:";
 pub const BUNDLE_FORMAT: &str = "sara-task";

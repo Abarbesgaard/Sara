@@ -3,8 +3,9 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::commands::shared::memory_handle;
-use crate::infrastructure::db::{self, MemoryUseKind};
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
+use crate::domain::MemoryUseKind;
+use crate::infrastructure::db::{self};
 
 /// Memories an agent says it used on a task, resolved but not yet recorded.
 struct Citation {

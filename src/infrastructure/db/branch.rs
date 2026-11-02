@@ -3,11 +3,6 @@ use anyhow::Result;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-pub struct BranchRecord {
-    pub branch: String,
-}
-
 pub fn set_task_branch(conn: &Connection, task_uuid: &Uuid, branch: &str) -> Result<()> {
     let prev = get_task_branch(conn, task_uuid).map(|r| r.branch);
     conn.execute(

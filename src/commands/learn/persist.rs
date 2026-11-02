@@ -3,10 +3,10 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::commands::shared::summarize;
+use crate::domain::Item;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
-use crate::infrastructure::model::Item;
 use crate::infrastructure::project::detect_current_project;
 
 pub(super) fn save(

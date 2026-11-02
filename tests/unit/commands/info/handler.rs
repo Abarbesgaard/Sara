@@ -70,8 +70,8 @@ fn external_editor_cleans_up_its_tempfile() {
     assert!(!std::path::Path::new(&tempfile_path).exists());
 }
 
-fn link(url: &str) -> db::Link {
-    db::Link {
+fn link(url: &str) -> crate::domain::Link {
+    crate::domain::Link {
         id: 1,
         url: url.to_string(),
         label: None,
@@ -79,8 +79,8 @@ fn link(url: &str) -> db::Link {
     }
 }
 
-fn note(text: &str) -> db::Annotation {
-    db::Annotation {
+fn note(text: &str) -> crate::domain::Annotation {
+    crate::domain::Annotation {
         id: 1,
         text: text.to_string(),
         entry: chrono::Utc::now(),
@@ -127,7 +127,8 @@ fn pr_url_is_none_without_any_pr_reference() {
 
 #[test]
 fn memory_ledger_groups_uses_per_memory_and_puts_cited_first() {
-    use crate::infrastructure::db::{self, MemoryUseKind};
+    use crate::domain::MemoryUseKind;
+    use crate::infrastructure::db::{self};
     use crate::test_support::{seed_memory, seed_task};
     let conn = db::open_in_memory_for_test();
     let t = seed_task(&conn, "ledger task", "p");

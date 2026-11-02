@@ -1,4 +1,5 @@
-use crate::infrastructure::{db, model::Item};
+use crate::domain::Item;
+use crate::infrastructure::db;
 use uuid::Uuid;
 
 fn insert_memory(conn: &rusqlite::Connection, body: &str, tag: &str) -> Uuid {
@@ -272,9 +273,8 @@ fn reflect_apply_skips_cycle_violations() {
     link(&conn, &a, &b, "similar_to");
     link(&conn, &b, &c, "similar_to");
     link(&conn, &a, &b, "derived_from");
-    let mut task =
-        crate::infrastructure::model::Task::new("completed task".to_string(), "Sara".to_string());
-    task.status = crate::infrastructure::model::Status::Completed;
+    let mut task = crate::domain::Task::new("completed task".to_string(), "Sara".to_string());
+    task.status = crate::domain::Status::Completed;
     db::insert_task(&conn, &mut task).unwrap();
     db::set_item_task_links(&conn, &a, &[(task.uuid, "explicit")]).unwrap();
 

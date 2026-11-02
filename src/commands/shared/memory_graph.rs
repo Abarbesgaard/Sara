@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 const DERIVED_FROM: &str = "derived_from";
 

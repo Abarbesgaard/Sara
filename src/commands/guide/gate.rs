@@ -7,7 +7,8 @@ use rusqlite::Connection;
 use super::support::{shell, working_dir};
 use super::types::{AcceptanceGate, GateOutput, GateRun};
 use crate::commands::shared::project_head;
-use crate::infrastructure::db::{self, ChecklistItem};
+use crate::domain::ChecklistItem;
+use crate::infrastructure::db::{self};
 use crate::infrastructure::git;
 
 const CAPTURE_TAIL_CHARS: usize = 4000;

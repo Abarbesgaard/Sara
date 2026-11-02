@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 use ratatui::{Terminal, backend::TestBackend};
 use std::collections::{HashMap, HashSet};
 

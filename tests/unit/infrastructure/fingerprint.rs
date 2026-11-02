@@ -81,8 +81,8 @@ fn fingerprint_file_skips_unreadable_and_binary() {
 
 #[test]
 fn fingerprint_stored_by_set_item_files_and_refreshed() {
+    use crate::domain::Item;
     use crate::infrastructure::db;
-    use crate::infrastructure::model::Item;
 
     let conn = db::open_in_memory_for_test();
     let dir = tempfile::tempdir().unwrap();

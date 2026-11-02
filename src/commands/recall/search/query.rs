@@ -1,8 +1,8 @@
 use rusqlite::Connection;
 
 use crate::commands::shared::{normalize_list, resolve_files};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) struct RecallInput<'a> {
     pub query: &'a str,

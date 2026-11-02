@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Status, Task};
+use crate::domain::{Status, Task};
 
 fn seed(conn: &Connection, desc: &str) -> Task {
     crate::test_support::seed_task(conn, desc, "proj")

@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
+use crate::domain::{Item, Task};
 use crate::infrastructure::db::MemoryProvenance;
 use crate::infrastructure::memory::fingerprint::AnchorState;
-use crate::infrastructure::model::{Item, Task};
 
 pub(super) struct Hit {
     pub(super) ref_kind: String,

@@ -8,34 +8,6 @@ use uuid::Uuid;
 pub const DOING_MAX_CHARS: usize = 200;
 pub const DOING_KEEP_PER_TASK: i64 = 200;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ActivityEntry {
-    pub id: i64,
-    pub task_uuid: Uuid,
-    pub text: String,
-    pub client: Option<String>,
-    pub at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlowKind {
-    Doing,
-    StepDone,
-    StepAdded,
-    Note(String),
-    Memory(String),
-    Change(String),
-    AiRun,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FlowEvent {
-    pub at: DateTime<Utc>,
-    pub kind: FlowKind,
-    pub text: String,
-    pub detail: Option<String>,
-}
-
 pub fn parse_at(s: &str) -> DateTime<Utc> {
     str_to_dt(s)
         .or_else(|_| {

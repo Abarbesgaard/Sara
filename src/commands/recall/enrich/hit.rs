@@ -5,8 +5,8 @@ use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::types::Hit;
 use crate::commands::shared::{item_label, item_snippet, short_id};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {
     let mut memories = db::list_memories(conn)?;

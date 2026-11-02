@@ -2,7 +2,6 @@ pub mod config;
 pub mod db;
 pub mod git;
 pub mod memory;
-pub mod model;
 pub mod project;
 #[cfg(feature = "telemetry")]
 pub mod telemetry;

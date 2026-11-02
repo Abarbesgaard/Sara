@@ -5,9 +5,9 @@ use ratatui::{Terminal, backend::Backend};
 use ratatui_textarea::TextArea;
 use rusqlite::Connection;
 
+use crate::domain::{Priority, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Priority, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
@@ -214,7 +214,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                         }
                     }
                     Some(Focusable::File(path)) => {
-                        if db::is_url(&path) {
+                        if crate::domain::is_url(&path) {
                             open_url(&path);
                         } else {
                             let target = st
