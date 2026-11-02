@@ -5,6 +5,7 @@ mod harness;
 mod cite;
 mod cli_errors;
 mod cli_json;
+mod completion;
 mod doctor;
 mod links;
 mod mcp;
