@@ -187,6 +187,18 @@ impl Mcp {
         self.read_response(id)
     }
 
+    pub fn tools(&mut self) -> Vec<String> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": "tools/list"}));
+        self.read_response(id)["result"]["tools"]
+            .as_array()
+            .expect("tools/list returns tools")
+            .iter()
+            .map(|t| t["name"].as_str().expect("tool name").to_string())
+            .collect()
+    }
+
     pub fn call_result(&mut self, name: &str, arguments: Value) -> Value {
         let env = self.call(name, arguments);
         let text = env["result"]["content"][0]["text"]

@@ -3,6 +3,7 @@ name: Deploy GitHub Pages
 # Publishes docs/ to GitHub Pages:
 #   /       — the sara landing page
 #   /spqr/  — the Adeptus Machinae showcase
+#   /contract.html — the Contract's coverage, from contract/coverage.json
 # Repo setup: Settings → Pages → Source = "GitHub Actions".
 
 on:
@@ -10,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "contract/coverage.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -33,6 +35,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Add contract coverage
+        run: cp contract/coverage.json docs/coverage.json
       - name: Upload docs artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

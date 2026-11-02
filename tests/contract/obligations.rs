@@ -4,6 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde_json::{Value, json};
+
+use crate::harness::Sara;
+
 const TAG: &str = "// Contract:";
 
 fn root() -> PathBuf {
@@ -32,11 +36,7 @@ fn obligations(readme: &str) -> Result<BTreeSet<u32>, String> {
 }
 
 fn covers(readme: &str) -> Result<Vec<(String, String)>, String> {
-    let block = readme
-        .split_once("```covers\n")
-        .and_then(|(_, rest)| rest.split_once("```"))
-        .map(|(block, _)| block)
-        .ok_or("has no ```covers block")?;
+    let block = block(readme, "covers").ok_or("has no ```covers block")?;
     block
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -45,6 +45,31 @@ fn covers(readme: &str) -> Result<Vec<(String, String)>, String> {
                 .split_once("::")
                 .map(|(f, func)| (f.to_string(), func.to_string()))
                 .ok_or_else(|| format!("covers line `{l}` is not <file>::<function>"))
+        })
+        .collect()
+}
+
+fn block<'a>(readme: &'a str, kind: &str) -> Option<&'a str> {
+    readme
+        .split_once(&format!("```{kind}\n"))
+        .and_then(|(_, rest)| rest.split_once("```"))
+        .map(|(block, _)| block)
+}
+
+/// The CLI commands and MCP tools a primitive's obligations are about.
+fn surface(readme: &str) -> Result<Vec<String>, String> {
+    let Some(block) = block(readme, "surface") else {
+        return Ok(Vec::new());
+    };
+    block
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| match l.split_once(' ') {
+            Some(("cli" | "mcp", name)) if !name.contains(' ') => Ok(l.to_string()),
+            _ => Err(format!(
+                "surface line `{l}` is not `cli <command>` or `mcp <tool>`"
+            )),
         })
         .collect()
 }
@@ -80,8 +105,19 @@ fn check_primitive(
     readme: &str,
     tests: &str,
     src_has: impl Fn(&str, &str) -> bool,
+    known: &BTreeSet<String>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
+    match surface(readme) {
+        Ok(lines) => {
+            for line in lines.iter().filter(|l| !known.contains(*l)) {
+                errors.push(format!(
+                    "contract/{name}: surface `{line}` is no sara command or tool"
+                ));
+            }
+        }
+        Err(e) => errors.push(format!("contract/{name}: {e}")),
+    }
     let ids = match obligations(readme) {
         Ok(ids) => ids,
         Err(e) => return vec![format!("contract/{name}: {e}")],
@@ -138,10 +174,43 @@ fn defines(file: &str, func: &str) -> bool {
     })
 }
 
+/// Every CLI command and MCP tool, as `cli <command>` and `mcp <tool>`.
+fn real_surface() -> BTreeSet<String> {
+    let s = Sara::new();
+    let help = s.run(&["--help"]);
+    let commands = help
+        .lines()
+        .skip_while(|l| !l.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  "))
+        .filter_map(|l| l.split_whitespace().next())
+        .filter(|c| *c != "help")
+        .map(|c| format!("cli {c}"));
+    let tools = s.mcp().tools().into_iter().map(|t| format!("mcp {t}"));
+    commands.chain(tools).collect()
+}
+
+fn coverage(primitives: &BTreeMap<String, (usize, Vec<String>)>, real: &BTreeSet<String>) -> Value {
+    let covered: BTreeSet<&String> = primitives.values().flat_map(|(_, s)| s).collect();
+    let uncovered: Vec<&String> = real.iter().filter(|s| !covered.contains(s)).collect();
+    let percent = (covered.len() as f64 * 1000.0 / real.len() as f64).round() / 10.0;
+    json!({
+        "obligations": primitives.values().map(|(n, _)| n).sum::<usize>(),
+        "primitives": primitives
+            .iter()
+            .map(|(name, (n, surface))| (name.clone(), json!({"obligations": n, "surface": surface})))
+            .collect::<serde_json::Map<_, _>>(),
+        "surface": {"covered": covered.len(), "total": real.len(), "percent": percent},
+        "uncovered": uncovered,
+    })
+}
+
 #[test]
 fn the_contract_holds() {
     let root = root();
+    let real = real_surface();
     let mut errors = Vec::new();
+    let mut primitives = BTreeMap::new();
     let mut primitive_files = BTreeSet::new();
     let mut dirs: Vec<_> = fs::read_dir(root.join("contract"))
         .expect("contract/ exists")
@@ -162,7 +231,24 @@ fn the_contract_holds() {
             errors.push(format!("contract/{name} has no tests/contract/{name}.rs"));
             continue;
         };
-        errors.extend(check_primitive(&name, &readme, &tests, defines));
+        errors.extend(check_primitive(&name, &readme, &tests, defines, &real));
+        let count = obligations(&readme).map_or(0, |ids| ids.len());
+        let mut lines = surface(&readme).unwrap_or_default();
+        lines.retain(|l| real.contains(l));
+        lines.sort();
+        primitives.insert(name, (count, lines));
+    }
+
+    let path = root.join("contract/coverage.json");
+    let fresh = serde_json::to_string_pretty(&coverage(&primitives, &real)).unwrap() + "\n";
+    if std::env::var_os("SARA_UPDATE_CONTRACT").is_some() {
+        fs::write(&path, &fresh).expect("write contract/coverage.json");
+    } else if fs::read_to_string(&path).ok().as_deref() != Some(fresh.as_str()) {
+        errors.push(
+            "contract/coverage.json is stale; refresh it with \
+             `SARA_UPDATE_CONTRACT=1 cargo test --test contract obligations`"
+                .into(),
+        );
     }
 
     let mut files = Vec::new();
@@ -191,7 +277,8 @@ fn the_contract_holds() {
 const README: &str = "- **A1** One.\n- **A2** Two.\n\n```covers\nsrc/x.rs::f\n```\n";
 
 fn check(readme: &str, tests: &str) -> Vec<String> {
-    check_primitive("p", readme, tests, |_, f| f == "f")
+    let known = BTreeSet::from(["cli done".to_string(), "mcp done".to_string()]);
+    check_primitive("p", readme, tests, |_, f| f == "f", &known)
 }
 
 #[test]
@@ -239,4 +326,37 @@ fn a_covers_line_for_missing_code_fails() {
         check(&readme, tests),
         ["contract/p: covers `src/x.rs::gone`, which doesn't exist"]
     );
+}
+
+#[test]
+fn a_surface_line_for_a_missing_command_fails() {
+    let tests = "// Contract: p/A1, p/A2\n#[test]\nfn t() {}\n";
+    let ok = format!("{README}\n```surface\ncli done\nmcp done\n```\n");
+    assert_eq!(check(&ok, tests), Vec::<String>::new());
+    let gone = format!("{README}\n```surface\ncli gone\n```\n");
+    assert_eq!(
+        check(&gone, tests),
+        ["contract/p: surface `cli gone` is no sara command or tool"]
+    );
+    let bad = format!("{README}\n```surface\ndone\n```\n");
+    assert!(check(&bad, tests)[0].contains("is not `cli <command>`"));
+}
+
+#[test]
+fn coverage_counts_each_command_once() {
+    let real = BTreeSet::from(["cli a", "cli b", "mcp a", "mcp b"].map(String::from));
+    let primitives = BTreeMap::from([
+        (
+            "p".to_string(),
+            (2, vec!["cli a".to_string(), "mcp a".to_string()]),
+        ),
+        ("q".to_string(), (1, vec!["cli a".to_string()])),
+    ]);
+    let v = coverage(&primitives, &real);
+    assert_eq!(v["obligations"], 3);
+    assert_eq!(
+        v["surface"],
+        json!({"covered": 2, "total": 4, "percent": 50.0})
+    );
+    assert_eq!(v["uncovered"], json!(["cli b", "mcp b"]));
 }
