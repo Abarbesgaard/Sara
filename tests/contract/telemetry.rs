@@ -169,3 +169,32 @@ fn outcome_mcp_done_records_prior_memory_count() {
         "the tool call is still captured"
     );
 }
+
+#[cfg(feature = "telemetry")]
+#[test]
+fn telemetry_command_does_not_record_itself() {
+    let s = Sara::new();
+    let queue = s.project().join("telemetry-queue.jsonl");
+    for args in [&["list"][..], &["telemetry", "status"]] {
+        let out = s
+            .cmd()
+            .args(args)
+            .env_remove("SARA_NO_TELEMETRY")
+            .env("SARA_TELEMETRY_QUEUE", &queue)
+            .env("SARA_TELEMETRY_ENDPOINT", "http://127.0.0.1:9/insert")
+            .env("SARA_TELEMETRY_FLUSH_INTERVAL", "86400")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+    }
+
+    assert_eq!(
+        queued(&queue, "list").len(),
+        1,
+        "ordinary commands are captured"
+    );
+    assert!(
+        queued(&queue, "telemetry").is_empty(),
+        "inspecting telemetry must not add to it"
+    );
+}
