@@ -16,3 +16,9 @@ src/infrastructure/db/tasks.rs::resolve_task_matched
 src/commands/shared/project.rs::guard_branch_mutation
 src/commands/shared/project.rs::stable_id
 ```
+
+```surface
+cli done
+cli info
+cli validate
+```

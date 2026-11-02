@@ -428,6 +428,14 @@ scripts/similar-code.sh               # every similar pair in src/
 scripts/similar-code.sh origin/main   # only functions changed on your branch
 ```
 
+### Contract
+
+`contract/` writes down what sara promises as numbered obligations, each proved
+by a tagged test in `tests/contract/`. The contract suite fails when an
+obligation has no test, and keeps `contract/coverage.json`, the share of
+commands and tools the Contract covers, up to date. See
+[contract/README.md](contract/README.md).
+
 ### Kill matrix
 
 A test earns its place by catching a bug no other test catches.

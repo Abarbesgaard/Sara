@@ -23,6 +23,18 @@ An obligation is one line, numbered `A1`, `A2`, … and never renumbered:
 A fenced `covers` block lists the code the primitive is about, one
 `<file>::<function>` per line.
 
+## Surface
+
+An optional fenced `surface` block lists the commands and MCP tools the
+primitive's tests drive, one `cli <command>` or `mcp <tool>` per line:
+
+```surface
+cli done
+mcp validate
+```
+
+List only what the tests actually call, so coverage counts what is proved.
+
 ## Contract tests
 
 Every `#[test]` in `tests/contract/<primitive>.rs` names the obligations it
@@ -43,6 +55,21 @@ fn ...
   doesn't exist
 - a tag appears outside its primitive's test file
 - a `covers` line names a file or function that doesn't exist
+- a `surface` line names a command or tool sara doesn't have
+- `contract/coverage.json` is out of date
 
 The tagged tests run in the same suite, so an obligation only holds while its
 tests pass.
+
+## Coverage
+
+`contract/coverage.json` counts the obligations and how many of sara's CLI
+commands and MCP tools some primitive's surface covers, and lists the rest.
+After changing a primitive, refresh it:
+
+```sh
+SARA_UPDATE_CONTRACT=1 cargo test --test contract obligations
+```
+
+CI writes it to the job summary, and the Pages site shows it at
+[`/contract.html`](https://abarbesgaard.github.io/Sara/contract.html).

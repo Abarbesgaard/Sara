@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sara — the Contract</title>
+<meta name="description" content="What sara promises, as numbered obligations proved by tests, and how much of sara they cover.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='%23CCFF4D'/></svg>">
+<style>
+:root{
+  --bg:#060607;--ink:#F6F6F8;--mute:rgba(246,246,248,.56);--dim:rgba(246,246,248,.34);
+  --line:rgba(255,255,255,.08);--glass:rgba(255,255,255,.026);
+  --lime:#CCFF4D;--violet:#8B6CFF;--cyan:#4DE3FF;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,"Cascadia Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;}
+main{max-width:880px;margin:0 auto;padding:72px 24px 96px;}
+a{color:var(--cyan);text-decoration:none;}
+a:hover{text-decoration:underline;}
+.back{font-family:var(--mono);font-size:13px;color:var(--mute);}
+h1{font-size:clamp(40px,7vw,64px);letter-spacing:-.03em;line-height:1.05;margin:28px 0 12px;}
+h1 em{font-style:normal;color:var(--lime);}
+.lede{color:var(--mute);max-width:620px;}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:40px 0;}
+.stat{border:1px solid var(--line);background:var(--glass);border-radius:16px;padding:20px;}
+.stat b{display:block;font-size:36px;letter-spacing:-.02em;}
+.stat span{color:var(--dim);font-size:13px;font-family:var(--mono);}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:-20px 0 40px;}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--lime),var(--cyan));transition:width .8s ease;}
+h2{font-size:20px;margin:40px 0 14px;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+th{color:var(--dim);font-weight:500;font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;}
+td a{font-family:var(--mono);}
+code,.chip{font-family:var(--mono);font-size:12px;}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0;color:var(--mute);}
+.chip.on{border-color:rgba(204,255,77,.35);color:var(--lime);}
+.err{color:#FF6B8A;}
+footer{margin-top:64px;color:var(--dim);font-size:13px;}
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← sara</a>
+  <h1>The <em>Contract</em></h1>
+  <p class="lede">What sara promises, written down as numbered obligations. Each one is proved by a tagged contract test, and the build fails when an obligation has no test.</p>
+
+  <div class="stats">
+    <div class="stat"><b id="obligations">–</b><span>obligations</span></div>
+    <div class="stat"><b id="primitives">–</b><span>primitives</span></div>
+    <div class="stat"><b id="percent">–</b><span id="covered">commands and tools covered</span></div>
+  </div>
+  <div class="bar"><i id="fill"></i></div>
+
+  <h2>Primitives</h2>
+  <table>
+    <thead><tr><th>Primitive</th><th>Obligations</th><th>Surface</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <h2 id="uncovered-title">Not covered yet</h2>
+  <div id="uncovered"></div>
+
+  <footer>Generated from <a href="https://github.com/Abarbesgaard/Sara/blob/main/contract/coverage.json">contract/coverage.json</a>. The convention is in <a href="https://github.com/Abarbesgaard/Sara/blob/main/contract/README.md">contract/README.md</a>.</footer>
+</main>
+<script>
+const repo = "https://github.com/Abarbesgaard/Sara/tree/main/contract/";
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; return e; };
+fetch("coverage.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(c => {
+    const names = Object.keys(c.primitives);
+    document.getElementById("obligations").textContent = c.obligations;
+    document.getElementById("primitives").textContent = names.length;
+    document.getElementById("percent").textContent = c.surface.percent + "%";
+    document.getElementById("covered").textContent = `${c.surface.covered} of ${c.surface.total} commands and tools covered`;
+    requestAnimationFrame(() => document.getElementById("fill").style.width = c.surface.percent + "%");
+    const rows = document.getElementById("rows");
+    for (const name of names) {
+      const p = c.primitives[name];
+      const tr = document.createElement("tr");
+      const a = el("a", "", name); a.href = repo + name;
+      const td = document.createElement("td"); td.append(a); tr.append(td);
+      tr.append(el("td", "", p.obligations));
+      const s = document.createElement("td");
+      for (const x of p.surface) s.append(el("span", "chip on", x));
+      tr.append(s);
+      rows.append(tr);
+    }
+    document.getElementById("uncovered-title").textContent = `Not covered yet (${c.uncovered.length})`;
+    const u = document.getElementById("uncovered");
+    for (const x of c.uncovered) u.append(el("span", "chip", x));
+  })
+  .catch(e => document.getElementById("rows").append(el("tr", "err", "Couldn't load coverage.json: " + e.message)));
+</script>
+</body>
+</html>
