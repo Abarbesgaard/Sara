@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d5b2a9c93203452de1becb9460ff33a67e417da8f9be56fb28420d5ae43d786f # shrinks to tasks = [Object {"depends_on": Array [], "description": String(""), "key": Null, "priority": Null, "tags": Array []}]
