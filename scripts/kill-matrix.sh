@@ -44,8 +44,8 @@ outcomes() {
 # `Running `.../deps/<target>-<hash>``.
 tests_in_log() {
   awk -v want="$2" '
-    /^ *Running `/ && match($0, /\/deps\/[A-Za-z0-9_]+-[0-9a-f]+`$/) {
-      t = substr($0, RSTART + 6, RLENGTH - 7); sub(/-[0-9a-f]+$/, "", t); target = t; next
+    /^ *Running / && match($0, /\/deps\/[A-Za-z0-9_]+-[0-9a-f]+/) {
+      t = substr($0, RSTART + 6, RLENGTH - 6); sub(/-[0-9a-f]+$/, "", t); target = t; next
     }
     $1 == "test" && $3 == "..." && $4 == want { print target "/" $2 }
   ' "$1"
