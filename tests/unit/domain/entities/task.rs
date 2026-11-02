@@ -72,3 +72,14 @@ fn next_occurrence_carries_shape_and_advances_due() {
     t.due = Some(ymd(2025, 3, 1));
     assert_eq!(t.next_occurrence(now).unwrap().due, Some(ymd(2025, 3, 8)));
 }
+
+#[test]
+fn total_time_spent_adds_the_running_session_to_logged_time() {
+    let mut task = Task::new("t".into(), "p".into());
+    task.time_spent = 100;
+    assert_eq!(task.total_time_spent(), 100);
+
+    task.started_at = Some(Utc::now() - chrono::Duration::seconds(60));
+    let total = task.total_time_spent();
+    assert!((160..=165).contains(&total), "got {total}");
+}

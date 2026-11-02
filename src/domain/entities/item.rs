@@ -99,3 +99,7 @@ impl Item {
         format!("{}{}", prefix, self.display_id.unwrap_or(0))
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/domain/entities/item.rs"]
+mod tests;
