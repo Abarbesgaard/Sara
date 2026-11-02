@@ -328,10 +328,20 @@ pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option
 
 const MIN_NUMERIC_UUID_PREFIX: usize = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdMatch {
+    DisplayId,
+    UuidPrefix,
+}
+
 pub fn resolve_task(conn: &Connection, id_or_uuid: &str) -> Result<Task> {
+    resolve_task_matched(conn, id_or_uuid).map(|(task, _)| task)
+}
+
+pub fn resolve_task_matched(conn: &Connection, id_or_uuid: &str) -> Result<(Task, IdMatch)> {
     if let Ok(n) = id_or_uuid.parse::<i64>() {
         if let Some(t) = get_task_by_id(conn, n)? {
-            return Ok(t);
+            return Ok((t, IdMatch::DisplayId));
         }
         if id_or_uuid.len() < MIN_NUMERIC_UUID_PREFIX {
             return Err(anyhow::anyhow!(
@@ -340,7 +350,7 @@ pub fn resolve_task(conn: &Connection, id_or_uuid: &str) -> Result<Task> {
         }
     }
     if let Some(t) = get_task_by_uuid_prefix(conn, id_or_uuid)? {
-        return Ok(t);
+        return Ok((t, IdMatch::UuidPrefix));
     }
     Err(anyhow::anyhow!(
         "No pending task with id or uuid matching '{id_or_uuid}'"

@@ -224,6 +224,25 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Contract coverage summary
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: |
+          jq -r '
+            "## Contract coverage",
+            "",
+            "\(.obligations) obligations; \(.surface.covered) of \(.surface.total) commands and tools covered (\(.surface.percent)%).",
+            "",
+            "| Primitive | Obligations | Surface |",
+            "| --- | --- | --- |",
+            (.primitives | to_entries[] | "| \(.key) | \(.value.obligations) | \(.value.surface | join(", ")) |"),
+            "",
+            "<details><summary>Not covered (\(.uncovered | length))</summary>",
+            "",
+            (.uncovered | join(", ")),
+            "",
+            "</details>"
+          ' contract/coverage.json >> "$GITHUB_STEP_SUMMARY"
+
   test-no-telemetry:
     name: Test (no telemetry)
     needs: [fmt, clippy, unused-deps]

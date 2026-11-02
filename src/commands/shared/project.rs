@@ -45,11 +45,11 @@ pub fn parse_due(s: &str, cfg: &Config) -> Option<DateTime<Utc>> {
 
 pub fn guard_branch_mutation(
     conn: &Connection,
-    id_input: &str,
+    matched: db::IdMatch,
     task: &Task,
     force: bool,
 ) -> Result<()> {
-    if force || id_input.parse::<i64>().is_err() {
+    if force || matched == db::IdMatch::UuidPrefix {
         return Ok(());
     }
     let Some(rec) = db::get_task_branch(conn, &task.uuid) else {
@@ -69,10 +69,21 @@ pub fn guard_branch_mutation(
             task.id.unwrap_or(0),
             rec.branch,
             current,
-            &task.uuid.to_string()[..8]
+            stable_id(task)
         );
     }
     Ok(())
+}
+
+/// A uuid prefix that can never be read as a display id.
+fn stable_id(task: &Task) -> String {
+    let uuid = task.uuid.to_string();
+    let short = &uuid[..8];
+    if short.parse::<i64>().is_ok() {
+        uuid[..13].to_string()
+    } else {
+        short.to_string()
+    }
 }
 
 pub fn resolve_files(paths: &[String]) -> Vec<String> {

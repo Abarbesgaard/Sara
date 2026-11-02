@@ -49,10 +49,14 @@ impl Sara {
         String::from_utf8(out.stdout).expect("utf8 stdout")
     }
 
+    pub fn db(&self) -> rusqlite::Connection {
+        let db = find_file(self.home.path(), "tasks.db").expect("sara database exists");
+        rusqlite::Connection::open(db).expect("open sara database")
+    }
+
     /// `(task display id, kind)` rows of the memory-use ledger, sorted.
     pub fn memory_uses(&self) -> Vec<(i64, String)> {
-        let db = find_file(self.home.path(), "tasks.db").expect("sara database exists");
-        let conn = rusqlite::Connection::open(db).expect("open sara database");
+        let conn = self.db();
         let mut stmt = conn
             .prepare(
                 "SELECT t.id, u.kind FROM memory_uses u
@@ -181,6 +185,18 @@ impl Mcp {
             "params": {"name": name, "arguments": arguments}
         }));
         self.read_response(id)
+    }
+
+    pub fn tools(&mut self) -> Vec<String> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": "tools/list"}));
+        self.read_response(id)["result"]["tools"]
+            .as_array()
+            .expect("tools/list returns tools")
+            .iter()
+            .map(|t| t["name"].as_str().expect("tool name").to_string())
+            .collect()
     }
 
     pub fn call_result(&mut self, name: &str, arguments: Value) -> Value {
