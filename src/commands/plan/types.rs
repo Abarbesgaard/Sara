@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::infrastructure::model::RelevantFile;
+use crate::domain::RelevantFile;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct PlanInput {

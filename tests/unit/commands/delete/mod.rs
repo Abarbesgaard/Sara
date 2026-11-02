@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Status, Task};
+use crate::domain::{Status, Task};
 
 fn seed(conn: &Connection, desc: &str) -> Task {
     crate::test_support::seed_task(conn, desc, "proj")
@@ -7,7 +7,7 @@ fn seed(conn: &Connection, desc: &str) -> Task {
 
 #[test]
 fn delete_soft_deletes_the_task() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = seed(&conn, "throwaway");
 
     run(&conn, "1", true).unwrap();
@@ -29,7 +29,7 @@ fn delete_soft_deletes_the_task() {
 
 #[test]
 fn delete_unblocks_dependents() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let blocker = seed(&conn, "blocker");
     let dependent = seed(&conn, "dependent");
     db::add_dependency(&conn, &dependent.uuid, &blocker.uuid).unwrap();
@@ -49,7 +49,7 @@ fn delete_unblocks_dependents() {
 
 #[test]
 fn delete_repacks_remaining_display_ids() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     seed(&conn, "first");
     seed(&conn, "second");
     let third = seed(&conn, "third");

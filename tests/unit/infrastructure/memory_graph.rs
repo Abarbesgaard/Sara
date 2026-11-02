@@ -6,7 +6,7 @@ fn seed(conn: &Connection, tags: &[&str]) -> Uuid {
 
 #[test]
 fn shared_tag_creates_a_weighted_edge() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["auth"]);
     let b = seed(&conn, &["auth"]);
     let c = seed(&conn, &["billing"]);
@@ -21,7 +21,7 @@ fn shared_tag_creates_a_weighted_edge() {
 }
 
 fn assert_matches_naive_reference(tags_by_node: &[Vec<String>], expect_inverted: bool) {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let n = tags_by_node.len();
     let uuids: Vec<Uuid> = tags_by_node
         .iter()
@@ -147,7 +147,7 @@ fn a_near_ubiquitous_anchor_takes_the_dense_path_and_match_the_naive_reference()
 
 #[test]
 fn duplicate_anchor_within_a_memory_does_not_inflate_edge() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["auth", "auth"]);
     let b = seed(&conn, &["auth"]);
     let _c = seed(&conn, &["billing"]);
@@ -160,7 +160,7 @@ fn duplicate_anchor_within_a_memory_does_not_inflate_edge() {
 
 #[test]
 fn explicit_link_and_shared_anchor_sum() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["auth"]);
     let b = seed(&conn, &["auth"]);
     crate::test_support::link(&conn, a, "similar_to", b);
@@ -171,7 +171,7 @@ fn explicit_link_and_shared_anchor_sum() {
 
 #[test]
 fn activation_spreads_to_two_hop_neighbour_and_decays() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["x", "y"]);
     let c = seed(&conn, &["y"]);
@@ -187,7 +187,7 @@ fn activation_spreads_to_two_hop_neighbour_and_decays() {
 
 #[test]
 fn explained_spread_reconstructs_the_synaptic_path() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["x", "y"]);
     let c = seed(&conn, &["y"]);
@@ -208,7 +208,7 @@ fn explained_spread_reconstructs_the_synaptic_path() {
 
 #[test]
 fn unconnected_memory_is_not_activated() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let lone = seed(&conn, &["unrelated"]);
     let g = MemoryGraph::build(&conn).unwrap();
@@ -223,7 +223,7 @@ fn unconnected_memory_is_not_activated() {
 
 #[test]
 fn rare_shared_anchor_binds_tighter_than_a_ubiquitous_one() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["common", "rare"]);
     let b = seed(&conn, &["rare"]);
     let mut hubs = vec![];
@@ -345,7 +345,7 @@ fn coactivation_splits_events_beyond_the_window() {
 
 #[test]
 fn consolidate_reinforces_a_co_activated_edge_from_recall_events() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
 
@@ -370,13 +370,17 @@ fn co_activated_weight(conn: &Connection, a: &Uuid, b: &Uuid) -> Option<f64> {
     db::all_memory_links(conn)
         .unwrap()
         .into_iter()
-        .find(|l| l.relation == "co_activated" && l.from_uuid == from && l.to_uuid == to)
+        .find(|l| {
+            l.relation == crate::domain::Relation::CoActivated
+                && l.from_uuid == from
+                && l.to_uuid == to
+        })
         .map(|l| l.weight)
 }
 
 #[test]
 fn consolidate_is_idempotent_over_the_same_events() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
     db::record_memory_recall(&conn, &a).unwrap();
@@ -396,7 +400,7 @@ fn consolidate_is_idempotent_over_the_same_events() {
 
 #[test]
 fn consolidate_drops_synapses_whose_cofirings_left_the_window() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
     db::record_memory_recall(&conn, &a).unwrap();
@@ -413,19 +417,19 @@ fn consolidate_drops_synapses_whose_cofirings_left_the_window() {
 
 #[test]
 fn consolidate_leaves_deliberate_links_untouched() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
     crate::test_support::link(&conn, a, "similar_to", b);
     consolidate(&conn, 30, Duration::seconds(2), 0.1, 5).unwrap();
     let links = db::all_memory_links(&conn).unwrap();
     assert_eq!(links.len(), 1);
-    assert_eq!(links[0].relation, "similar_to");
+    assert_eq!(links[0].relation, crate::domain::Relation::SimilarTo);
 }
 
 #[test]
 fn consolidate_still_sees_a_spread_surfaced_memory() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = seed(&conn, &["x"]);
     let b = seed(&conn, &["y"]);
 

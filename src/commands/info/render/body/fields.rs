@@ -4,7 +4,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use crate::infrastructure::model::{Priority, Status, Task, format_duration};
+use crate::domain::{Priority, Status, Task, format_duration};
 use crate::infrastructure::tui::theme::{Ink, ink};
 
 use super::super::lines::collapsed_text;

@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
+use crate::domain::Task;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 pub(super) fn find_duplicate_open_task(
     conn: &Connection,

@@ -2,9 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::Connection;
 
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 use super::github::{GhComment, GhIssue};
 
@@ -12,8 +12,8 @@ pub(super) fn issue_provenance(
     repo: &str,
     sync_login: &str,
     issue: &GhIssue,
-) -> crate::infrastructure::model::GithubProvenance {
-    crate::infrastructure::model::GithubProvenance {
+) -> crate::domain::GithubProvenance {
+    crate::domain::GithubProvenance {
         repo: repo.to_string(),
         issue_id: Some(issue.id),
         node_id: issue.node_id.clone(),
@@ -62,7 +62,13 @@ pub(super) fn update_existing_task(
     if !task.tags.iter().any(|t| t == "github") {
         task.tags.push("github".to_string());
     }
-    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    task.urgency = crate::domain::services::urgency::compute_urgency(
+        &task,
+        &cfg.urgency,
+        false,
+        0,
+        chrono::Utc::now(),
+    );
     db::update_task(conn, &task)?;
 
     if let Some(body) = issue.body.as_deref() {
@@ -87,7 +93,13 @@ pub(super) fn create_new_task(
 ) -> Result<uuid::Uuid> {
     let mut task = Task::new(issue.title.clone(), project_name.to_string());
     task.tags.push("github".to_string());
-    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    task.urgency = crate::domain::services::urgency::compute_urgency(
+        &task,
+        &cfg.urgency,
+        false,
+        0,
+        chrono::Utc::now(),
+    );
     db::insert_task(conn, &mut task)?;
     db::set_github_provenance(conn, &task.uuid, &issue_provenance(repo, login, issue))?;
     ensure_issue_link(conn, &task.uuid, issue)?;
@@ -108,11 +120,10 @@ pub(super) fn import_issue_comments(
     comments: &[GhComment],
 ) -> Result<(usize, usize)> {
     let mut added = 0usize;
-    let mut meta_comments: Vec<crate::infrastructure::model::GithubComment> =
-        Vec::with_capacity(comments.len());
+    let mut meta_comments: Vec<crate::domain::GithubComment> = Vec::with_capacity(comments.len());
 
     for c in comments {
-        let gh_comment = crate::infrastructure::model::GithubComment {
+        let gh_comment = crate::domain::GithubComment {
             comment_id: c.id,
             author: c.user.login.clone(),
             body: c.body.clone().unwrap_or_default(),

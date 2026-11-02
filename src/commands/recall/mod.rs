@@ -12,14 +12,6 @@ mod types;
 
 pub use render::value::recall_value;
 
-#[cfg(test)]
-use {
-    crate::infrastructure::model::Item, enrich::clusters::collapse_clusters,
-    enrich::confidence::match_confidence, enrich::hit::item_hit, enrich::spread::spreading_related,
-    enrich::stale::stale_text, render::keyword::keyword_json, search::collect::collect_hits,
-    search::semantic::SemanticOpts, types::Hit,
-};
-
 pub fn run(
     conn: &Connection,
     cfg: &Config,

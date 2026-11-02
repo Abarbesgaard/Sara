@@ -1,9 +1,7 @@
 use rusqlite::Connection;
 
+use crate::domain::{Item, Relation};
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
-
-const DERIVED_FROM: &str = "derived_from";
 
 pub fn item_label(item: &Item) -> String {
     format!(
@@ -44,7 +42,7 @@ pub fn derived_count(conn: &Connection, uuid: &str) -> usize {
     db::get_memory_links_to(conn, uuid)
         .unwrap_or_default()
         .into_iter()
-        .filter(|l| l.relation == DERIVED_FROM)
+        .filter(|l| l.relation == Relation::DerivedFrom)
         .count()
 }
 
@@ -52,7 +50,7 @@ pub fn derived_children(conn: &Connection, uuid: &str) -> Vec<Item> {
     db::get_memory_links_to(conn, uuid)
         .unwrap_or_default()
         .into_iter()
-        .filter(|l| l.relation == DERIVED_FROM)
+        .filter(|l| l.relation == Relation::DerivedFrom)
         .filter_map(|l| db::get_item_by_uuid(conn, &l.from_uuid).ok())
         .collect()
 }
@@ -61,7 +59,7 @@ pub fn derived_parents(conn: &Connection, uuid: &str) -> Vec<Item> {
     db::get_memory_links_from(conn, uuid)
         .unwrap_or_default()
         .into_iter()
-        .filter(|l| l.relation == DERIVED_FROM)
+        .filter(|l| l.relation == Relation::DerivedFrom)
         .filter_map(|l| db::get_item_by_uuid(conn, &l.to_uuid).ok())
         .collect()
 }

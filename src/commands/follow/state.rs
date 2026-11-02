@@ -6,8 +6,9 @@ use rusqlite::Connection;
 use std::cell::Cell;
 use uuid::Uuid;
 
-use crate::infrastructure::db::{self, FlowEvent, STEP_KIND_STEP};
-use crate::infrastructure::model::Task;
+use crate::domain::FlowEvent;
+use crate::domain::Task;
+use crate::infrastructure::db::{self, STEP_KIND_STEP};
 
 pub const LIVE_WINDOW_SECS: i64 = 120;
 pub const DEFAULT_STALL_MINS: i64 = 10;
@@ -211,7 +212,7 @@ pub struct FeedItem {
 }
 
 pub fn in_feed(e: &FlowEvent) -> bool {
-    !matches!(e.kind, db::FlowKind::Change(_))
+    !matches!(e.kind, crate::domain::FlowKind::Change(_))
 }
 
 fn push_feed(items: &mut Vec<FeedItem>, c: &Card, events: Vec<FlowEvent>) {

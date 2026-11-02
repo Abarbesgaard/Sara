@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Priority, Status, Task};
+use crate::domain::{Priority, Status, Task};
 use uuid::Uuid;
 
 fn sample() -> Task {
@@ -208,7 +208,7 @@ fn invalid_estimate_is_rejected() {
 
 #[test]
 fn form_edit_persists_estimate_and_adds_only_new_links() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let task = crate::test_support::seed_task(&conn, "Edit me", "p");
     crate::infrastructure::db::add_link(&conn, &task.uuid, "https://x.dev/1", None).unwrap();

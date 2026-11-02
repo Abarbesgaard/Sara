@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::{Item, Status, Task};
+use crate::domain::{Item, Status, Task};
 use chrono::Utc;
 
 #[test]
@@ -40,7 +40,9 @@ fn synthesize_done_memory_creates_provisional_item_with_done_steps() {
 
     let listed = list_memories(&conn).unwrap();
     assert!(
-        listed.iter().any(|i| i.status == "provisional"),
+        listed
+            .iter()
+            .any(|i| i.status == crate::domain::MemoryStatus::Provisional),
         "provisional memory should be listed"
     );
     let m: (String, String, String) = conn
@@ -116,7 +118,7 @@ fn done_surfaces_review_nudge_without_archiving() {
     let conn = mem();
     let mut item = Item::new_memory("stale provisional".into(), "body".into(), None);
     item.path = Some(String::new());
-    item.status = "provisional".into();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
     let old_ts = dt_to_str(&(Utc::now() - chrono::Duration::days(40)));
     conn.execute(

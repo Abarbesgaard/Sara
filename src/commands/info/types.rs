@@ -1,7 +1,7 @@
 use ratatui_textarea::TextArea;
 
+use crate::domain::{Status, Task};
 use crate::infrastructure::db::LinkFlags;
-use crate::infrastructure::model::{Status, Task};
 
 #[derive(Clone)]
 pub(super) struct GraphNode {
@@ -46,19 +46,19 @@ pub(super) struct Detail {
     pub(super) depends_on_ids: Vec<i64>,
     pub(super) manual_files: Vec<String>,
     pub(super) suggested_files: Vec<String>,
-    pub(super) links: Vec<crate::infrastructure::db::Link>,
-    pub(super) annotations: Vec<crate::infrastructure::db::Annotation>,
-    pub(super) history: Vec<crate::infrastructure::db::HistoryEntry>,
+    pub(super) links: Vec<crate::domain::Link>,
+    pub(super) annotations: Vec<crate::domain::Annotation>,
+    pub(super) history: Vec<crate::domain::HistoryEntry>,
     pub(super) project_root: Option<std::path::PathBuf>,
-    pub(super) branch: Option<crate::infrastructure::db::BranchRecord>,
+    pub(super) branch: Option<crate::domain::BranchRecord>,
     pub(super) similar: Vec<(i64, String, f64)>,
-    pub(super) checklist: Vec<crate::infrastructure::db::ChecklistItem>,
-    pub(super) urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
+    pub(super) checklist: Vec<crate::domain::ChecklistItem>,
+    pub(super) urgency_breakdown: Option<crate::domain::UrgencyBreakdown>,
     pub(super) activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     pub(super) stats: Option<crate::infrastructure::db::ProjectStats>,
     pub(super) guide: crate::infrastructure::db::TaskGuideFields,
-    pub(super) anchors: Vec<crate::infrastructure::db::Anchor>,
-    pub(super) ai_runs: Vec<crate::infrastructure::db::AiRun>,
+    pub(super) anchors: Vec<crate::domain::Anchor>,
+    pub(super) ai_runs: Vec<crate::domain::AiRun>,
     pub(super) head_commit: Option<String>,
     pub(super) project_commands: crate::infrastructure::db::ProjectCommands,
     pub(super) tree: TaskTree,

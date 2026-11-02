@@ -5,39 +5,6 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// How a memory took part in a task. Outcome credit is derived from these at
-/// read time, joined against the task's status and validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MemoryUseKind {
-    Surfaced,
-    Recalled,
-    Cited,
-}
-
-impl MemoryUseKind {
-    pub const ALL: [MemoryUseKind; 3] = [Self::Surfaced, Self::Recalled, Self::Cited];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Surfaced => "surfaced",
-            Self::Recalled => "recalled",
-            Self::Cited => "cited",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|k| k.as_str() == s)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MemoryUse {
-    pub item_uuid: Uuid,
-    pub task_uuid: Uuid,
-    pub kind: MemoryUseKind,
-    pub at: DateTime<Utc>,
-}
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MemoryUseCounts {
     pub surfaced: u64,

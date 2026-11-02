@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::{Item, Status, Task};
 use crate::infrastructure::db::*;
-use crate::infrastructure::model::{Item, Status, Task};
 use uuid::Uuid;
 
 #[test]
@@ -143,7 +143,7 @@ fn provisional_items_are_indexed_into_search_fts() {
     let conn = mem();
     let mut item = make_memory("auto memory", &[]);
     item.body = "frobnicator wiring pattern from done-synthesis".to_string();
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
 
     let hits = search_fts(&conn, "done-synthesis", 10).unwrap();
@@ -155,7 +155,7 @@ fn provisional_items_are_indexed_into_search_fts() {
 fn provisional_items_surface_in_tag_and_file_lookups() {
     let conn = mem();
     let mut item = make_memory("auto memory", &["autotag"]);
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
     set_item_files(&conn, &item.uuid, &["/repo/src/x.rs".to_string()]).unwrap();
 
@@ -172,7 +172,7 @@ fn provisional_items_surface_in_tag_and_file_lookups() {
 fn promote_item_activates_only_provisional() {
     let conn = mem();
     let mut item = make_memory("auto memory", &[]);
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut item).unwrap();
 
     assert!(promote_item(&conn, &item.uuid).unwrap());
@@ -474,8 +474,8 @@ fn set_item_task_links_replaces_previous_set() {
 
 #[test]
 fn set_item_files_rolls_back_when_an_insert_fails() {
-    let conn = open_in_memory_for_test();
-    let mut item = crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
+    let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();
     set_item_files(
@@ -512,8 +512,8 @@ fn set_item_files_rolls_back_when_an_insert_fails() {
 
 #[test]
 fn set_item_tags_rolls_back_when_an_insert_fails() {
-    let conn = open_in_memory_for_test();
-    let mut item = crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
+    let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();
     set_item_tags(&conn, &item.uuid, &["keep".into()]).unwrap();
@@ -538,8 +538,8 @@ fn set_item_tags_rolls_back_when_an_insert_fails() {
 
 #[test]
 fn set_helpers_work_inside_an_existing_transaction() {
-    let mut conn = open_in_memory_for_test();
-    let mut item = crate::infrastructure::model::Item::new_memory("t".into(), "body".into(), None);
+    let mut conn = crate::infrastructure::db::testing::open_in_memory_for_test();
+    let mut item = crate::domain::Item::new_memory("t".into(), "body".into(), None);
     item.path = Some(String::new());
     insert_item(&conn, &mut item).unwrap();
 
@@ -574,11 +574,7 @@ fn concurrent_memory_inserts_get_distinct_labels() {
         handles.push(std::thread::spawn(move || {
             let c = Connection::open(&path).unwrap();
             set_pragmas(&c).unwrap();
-            let mut item = crate::infrastructure::model::Item::new_memory(
-                format!("m{n}"),
-                "body".into(),
-                None,
-            );
+            let mut item = crate::domain::Item::new_memory(format!("m{n}"), "body".into(), None);
             item.path = Some(String::new());
             barrier.wait();
             insert_item(&c, &mut item).map(|_| item.display_id.unwrap())

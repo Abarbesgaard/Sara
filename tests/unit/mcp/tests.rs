@@ -4,9 +4,9 @@ use rmcp::ServerHandler;
 use rusqlite::Connection;
 
 use crate::commands;
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 use super::server::{CwdGuard, SaraServer};
 
@@ -104,7 +104,7 @@ fn every_tool_accepts_project_path() {
 
 #[test]
 fn get_info_advertises_sara_tools_and_instructions() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let info = server.get_info();
     assert_eq!(info.server_info.name, "sara");
     assert!(
@@ -175,7 +175,7 @@ fn cwd_guard_errors_on_missing_project_path() {
 
 #[test]
 fn with_project_runs_closure_against_the_connection() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     seed_task_via(&server, "alpha", "first");
     seed_task_via(&server, "alpha", "second");
 
@@ -209,7 +209,7 @@ fn seed_returning(server: &SaraServer, project: &str, desc: &str) -> String {
 
 #[test]
 fn done_value_marks_task_completed() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "finish me");
     let v = server
         .with_project(None, "done", |conn, cfg| {
@@ -222,7 +222,7 @@ fn done_value_marks_task_completed() {
 
 #[test]
 fn link_value_attaches_a_url() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "link", |conn, _cfg| {
@@ -234,7 +234,7 @@ fn link_value_attaches_a_url() {
 
 #[test]
 fn dep_on_then_list_reports_the_blocker() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let a = seed_returning(&server, "p", "dependent");
     let b = seed_returning(&server, "p", "blocker");
     server
@@ -252,7 +252,7 @@ fn dep_on_then_list_reports_the_blocker() {
 
 #[test]
 fn check_value_adds_a_step() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "check", |conn, _cfg| {
@@ -270,7 +270,7 @@ fn check_value_adds_a_step() {
 
 #[test]
 fn verify_value_rejects_step_zero() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     server
         .with_project(None, "check", |conn, _cfg| {
@@ -289,7 +289,7 @@ fn verify_value_rejects_step_zero() {
 
 #[test]
 fn modify_value_sets_priority_and_requires_a_field() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "modify", |conn, cfg| {
@@ -334,7 +334,7 @@ fn modify_value_sets_priority_and_requires_a_field() {
 
 #[test]
 fn step_done_current_ticks_the_first_not_done_step() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     for text in ["step one", "step two"] {
         server
@@ -364,7 +364,7 @@ fn step_done_current_ticks_the_first_not_done_step() {
 
 #[test]
 fn step_undone_then_remove_edit_the_checklist() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     server
         .with_project(None, "check", |conn, _cfg| {
@@ -398,7 +398,7 @@ fn step_undone_then_remove_edit_the_checklist() {
 
 #[test]
 fn assignment_and_rationale_set_guide_text() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let a = server
         .with_project(None, "assignment", |conn, _cfg| {
@@ -416,7 +416,7 @@ fn assignment_and_rationale_set_guide_text() {
 
 #[test]
 fn attach_value_records_a_file_and_an_anchor() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let file = server
         .with_project(None, "attach", |conn, _cfg| {
@@ -444,7 +444,7 @@ fn attach_value_records_a_file_and_an_anchor() {
 
 #[test]
 fn attach_value_tags_a_url_as_link() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "attach url", |conn, _cfg| {
@@ -465,7 +465,7 @@ fn attach_value_tags_a_url_as_link() {
 
 #[test]
 fn feedback_and_resolve_round_trip() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     server
         .with_project(None, "annotate", |conn, _cfg| {
@@ -498,7 +498,7 @@ fn feedback_and_resolve_round_trip() {
 
 #[test]
 fn record_run_then_resolve_links_the_run_id() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let run = server
         .with_project(None, "record_run", |conn, _cfg| {
@@ -559,7 +559,7 @@ fn record_run_then_resolve_links_the_run_id() {
 
 #[test]
 fn plan_show_value_returns_a_briefing() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "solo task");
     let v = server
         .with_project(None, "plan_show", |conn, _cfg| {
@@ -653,7 +653,7 @@ fn begin_params_accept_comma_separated_tags_string() {
 
 #[test]
 fn check_value_returns_the_new_items_position() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let first = server
         .with_project(None, "check", |conn, _cfg| {
@@ -675,7 +675,7 @@ fn check_value_returns_the_new_items_position() {
 
 #[test]
 fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let acc = server
         .with_project(None, "check", |conn, _cfg| {
@@ -713,7 +713,7 @@ fn acceptance_without_verify_warns_but_a_plain_step_does_not() {
 
 #[test]
 fn step_done_by_step_id_ticks_the_right_item() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     server
         .with_project(None, "check", |conn, _cfg| {
@@ -824,7 +824,7 @@ fn mcp_doing_param_is_offered_on_step_done_and_annotate_only() {
 
 #[test]
 fn mcp_doing_records_the_line_for_the_task() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "doing", |conn, _cfg| {
@@ -843,7 +843,7 @@ fn mcp_doing_records_the_line_for_the_task() {
 
 #[test]
 fn mcp_doing_rejects_empty_text() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let r = server.with_project(None, "doing", |conn, _cfg| {
         commands::doing::doing_value(conn, &uuid, "   ", None)
@@ -853,7 +853,7 @@ fn mcp_doing_rejects_empty_text() {
 
 #[test]
 fn mcp_doing_report_piggybacks_on_another_result() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let uuid = seed_returning(&server, "p", "task");
     let v = server
         .with_project(None, "step", |conn, _cfg| {
@@ -890,7 +890,7 @@ fn actions_for(server: &SaraServer, id: &str) -> Vec<String> {
         .with_project(None, "t", |conn, _cfg| {
             let task = db::resolve_task(conn, id)?;
             Ok(serde_json::json!({
-                "next_actions": commands::agent::next_actions(conn, &task)?
+                "next_actions": commands::agent::next_actions::next_actions(conn, &task)?
             }))
         })
         .unwrap();
@@ -899,7 +899,7 @@ fn actions_for(server: &SaraServer, id: &str) -> Vec<String> {
 
 #[test]
 fn next_actions_walk_the_task_lifecycle() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let id = seed_returning(&server, "proj", "ship the thing");
     assert_eq!(actions_for(&server, &id), ["check"], "no plan yet");
 
@@ -964,7 +964,7 @@ fn next_actions_walk_the_task_lifecycle() {
 
 #[test]
 fn finish_waits_for_the_merge_and_links_the_pr_once() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let id = seed_returning(&server, "proj", "finish me");
     let url = "https://github.com/o/r/pull/9";
     for _ in 0..2 {
@@ -992,7 +992,7 @@ fn finish_waits_for_the_merge_and_links_the_pr_once() {
         })
         .unwrap();
     assert_eq!(links, 1, "the PR is linked exactly once");
-    assert_eq!(status, crate::infrastructure::model::Status::Pending);
+    assert_eq!(status, crate::domain::Status::Pending);
 
     let err = server
         .with_project(None, "t", |conn, cfg| {
@@ -1015,7 +1015,7 @@ fn finish_waits_for_the_merge_and_links_the_pr_once() {
 
 #[test]
 fn finish_closes_a_merged_task_validated_at_head() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let repo = crate::test_support::git_repo();
     std::fs::write(repo.path().join("f.txt"), "hi").unwrap();
     crate::test_support::commit_all(repo.path(), "init");
@@ -1052,7 +1052,7 @@ fn finish_closes_a_merged_task_validated_at_head() {
 
 #[test]
 fn resume_briefs_the_most_recent_task() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let empty = server
         .with_project(None, "t", |conn, cfg| {
             commands::agent::resume_value(conn, cfg, None)
@@ -1108,7 +1108,7 @@ fn learn(server: &SaraServer, text: &str, tags: &[&str], projects: &[&str]) -> S
 
 #[test]
 fn tags_and_memories_are_scoped_to_the_project() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let project = server
         .with_project(None, "t", |conn, cfg| {
             Ok(crate::infrastructure::project::detect_current_project(conn, cfg)?.0)
@@ -1172,7 +1172,7 @@ fn scope_rejects_unknown_values() {
 
 #[test]
 fn learn_reports_possible_duplicates_and_links_typed() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let first = learn(&server, "retry the flaky upload", &["upload", "retry"], &[]);
     let v = server
         .with_project(None, "t", |conn, cfg| {
@@ -1233,7 +1233,7 @@ fn learn_reports_possible_duplicates_and_links_typed() {
 
 #[test]
 fn recall_matches_relative_file_filters() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let label = server
         .with_project(None, "t", |conn, cfg| {
             let files = vec!["src/mcp/read.rs".to_string()];
@@ -1276,7 +1276,7 @@ fn recall_matches_relative_file_filters() {
 
 #[test]
 fn maintain_dispatches_actions() {
-    let server = server_with(db::open_in_memory_for_test());
+    let server = server_with(db::testing::open_in_memory_for_test());
     let v = server
         .with_project(None, "t", |conn, _cfg| {
             commands::agent::maintain_value(

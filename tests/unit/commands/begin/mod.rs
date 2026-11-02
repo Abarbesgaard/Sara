@@ -5,7 +5,7 @@ use crate::test_support::cfg;
 
 #[test]
 fn begin_founds_a_task_with_assignment_and_next_cursor() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = begin_value(
         &conn,
         &cfg(),
@@ -51,7 +51,7 @@ fn begin_founds_a_task_with_assignment_and_next_cursor() {
 
 #[test]
 fn missing_acceptance_warns_but_still_founds_the_task() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = begin_value(
         &conn,
         &cfg(),
@@ -96,7 +96,7 @@ fn begin_records_every_folded_operation_as_an_ordered_event() {
     // inspired) so the whole internal fan-out of a single `begin` is
     // observable, both in the returned `folded` log and — for real runs —
     // in telemetry.
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = begin_value(
         &conn,
         &cfg(),
@@ -183,7 +183,7 @@ fn begin_folded_log_skips_operations_that_did_not_run() {
     // When rationale and check are absent, their folded events are not
     // fabricated — the log reflects only what actually ran. The recall
     // `step` is always seeded, so it is always present.
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = begin_value(
         &conn,
         &cfg(),
@@ -219,7 +219,7 @@ fn begin_folded_log_skips_operations_that_did_not_run() {
 #[cfg(not(feature = "telemetry"))]
 #[test]
 fn begin_output_has_no_trace_without_the_telemetry_feature() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let v = begin_value(
         &conn,
         &cfg(),
@@ -243,8 +243,8 @@ fn begin_output_has_no_trace_without_the_telemetry_feature() {
 
 #[test]
 fn begin_records_surfaced_use_against_the_new_task() {
-    use crate::infrastructure::model::{Item, Status, Task};
-    let conn = db::open_in_memory_for_test();
+    use crate::domain::{Item, Status, Task};
+    let conn = db::testing::open_in_memory_for_test();
     let mut src = Task::new("source work".into(), "proj".into());
     src.status = Status::Completed;
     db::insert_task(&conn, &mut src).unwrap();
@@ -282,5 +282,5 @@ fn begin_records_surfaced_use_against_the_new_task() {
     let uses = db::memory_uses_for_task(&conn, &task_uuid).unwrap();
     assert_eq!(uses.len(), 1, "{uses:?}");
     assert_eq!(uses[0].item_uuid, mem.uuid);
-    assert_eq!(uses[0].kind, db::MemoryUseKind::Surfaced);
+    assert_eq!(uses[0].kind, crate::domain::MemoryUseKind::Surfaced);
 }

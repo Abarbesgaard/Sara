@@ -1,11 +1,11 @@
 use super::super::*;
-use crate::infrastructure::model::{Item, Task};
+use crate::domain::{Item, Task};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
-use crate::infrastructure::memory::fingerprint;
+use crate::infrastructure::util::fingerprint;
 
 pub(crate) fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
     let tags_json: String = row.get(6)?;
@@ -23,7 +23,7 @@ pub(crate) fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
         body: row.get(9)?,
         created: str_to_dt(&row.get::<_, String>(10)?).unwrap_or_else(|_| Utc::now()),
         modified: str_to_dt(&row.get::<_, String>(11)?).unwrap_or_else(|_| Utc::now()),
-        status: row.get(12)?,
+        status: parse_col(12, row.get(12)?)?,
         source_task_uuid: row
             .get::<_, Option<String>>(13)?
             .and_then(|s| Uuid::parse_str(&s).ok()),
@@ -69,7 +69,7 @@ pub fn insert_item(conn: &Connection, item: &mut Item) -> Result<()> {
                 item.body,
                 dt_to_str(&item.created),
                 dt_to_str(&item.modified),
-                item.status,
+                item.status.as_str(),
                 item.source_task_uuid.map(|u| u.to_string()),
             ],
         )?;
@@ -288,14 +288,6 @@ pub fn archive_item(conn: &Connection, uuid: &Uuid) -> Result<()> {
         rusqlite::params![uuid.to_string(), dt_to_str(&Utc::now())],
     )?;
     Ok(())
-}
-
-#[cfg(test)]
-pub fn item_status_for_test(conn: &Connection, uuid: &str) -> String {
-    conn.query_row("SELECT status FROM items WHERE uuid = ?1", [uuid], |r| {
-        r.get(0)
-    })
-    .unwrap()
 }
 
 pub fn promote_item(conn: &Connection, uuid: &Uuid) -> Result<bool> {
@@ -610,7 +602,7 @@ pub fn find_cross_project_canonicals_for_project(
     let mut out = std::collections::HashSet::new();
     for child in find_items_by_project(conn, project)? {
         for link in get_memory_links_from(conn, &child.uuid.to_string())? {
-            if link.relation == "derived_from"
+            if link.relation == crate::domain::Relation::DerivedFrom
                 && let Ok(canonical_uuid) = Uuid::parse_str(&link.to_uuid)
             {
                 out.insert(canonical_uuid);

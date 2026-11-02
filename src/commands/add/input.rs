@@ -3,9 +3,9 @@ use rusqlite::Connection;
 
 use super::types::AddRequest;
 
+use crate::domain::{Priority, Project};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Priority, Project};
 use crate::infrastructure::project::{detect_current_project, parse_add_tokens};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::review_form::{FormContext, FormInput, HintLookup, run_form};

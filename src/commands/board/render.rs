@@ -11,8 +11,8 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 
+use crate::domain::{Priority, Status, Task};
 use crate::infrastructure::db::LinkFlags;
-use crate::infrastructure::model::{Priority, Status, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 

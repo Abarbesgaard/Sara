@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 
 fn task_with_criterion(conn: &Connection) -> Task {
     let task = crate::test_support::seed_task(conn, "prove me", "proj");
@@ -18,7 +18,7 @@ fn task_with_criterion(conn: &Connection) -> Task {
 
 #[test]
 fn done_refuses_unvalidated_task_with_acceptance_criteria() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_criterion(&conn);
     let err = done_value(&conn, &Config::default(), &task.uuid.to_string(), false)
         .expect_err("unvalidated task with criteria must be refused");
@@ -27,12 +27,16 @@ fn done_refuses_unvalidated_task_with_acceptance_criteria() {
         "error should name the missing validation: {err}"
     );
     let still = db::resolve_task(&conn, &task.uuid.to_string()).unwrap();
-    assert_ne!(still.status, Status::Completed, "refused task stays open");
+    assert_ne!(
+        still.status,
+        crate::domain::Status::Completed,
+        "refused task stays open"
+    );
 }
 
 #[test]
 fn force_closes_unvalidated_task_with_a_note() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_criterion(&conn);
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), true).unwrap();
     assert_eq!(v["status"], "completed");
@@ -48,7 +52,7 @@ fn force_closes_unvalidated_task_with_a_note() {
 
 #[test]
 fn validated_task_closes_cleanly() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = task_with_criterion(&conn);
     db::set_validated(&conn, &task.uuid, "deadbeef").unwrap();
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
@@ -58,7 +62,7 @@ fn validated_task_closes_cleanly() {
 
 #[test]
 fn task_without_criteria_closes_with_advisory() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = crate::test_support::seed_task(&conn, "no dod", "proj");
     let v = done_value(&conn, &Config::default(), &task.uuid.to_string(), false).unwrap();
     assert_eq!(v["status"], "completed");

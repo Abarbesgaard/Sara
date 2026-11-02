@@ -1,5 +1,7 @@
 use super::*;
-use crate::infrastructure::model::{Project, Task};
+use crate::domain::services::UrgencyWeights;
+use crate::domain::services::urgency::compute_urgency;
+use crate::domain::{Project, Task};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
@@ -156,58 +158,7 @@ pub fn reset_project(conn: &mut Connection, name: &str) -> Result<usize> {
     Ok(deleted)
 }
 
-pub fn compute_urgency(
-    task: &Task,
-    cfg: &crate::infrastructure::config::UrgencyConfig,
-    is_blocked: bool,
-    blocking_count: usize,
-) -> f64 {
-    let mut score = 0.0;
-
-    if let Some(ref p) = task.priority {
-        score += p.urgency_coefficient();
-    }
-
-    if let Some(due) = task.due {
-        let days_until: f64 = (due - Utc::now()).num_seconds() as f64 / 86400.0;
-        let factor = if days_until <= 0.0 {
-            1.0
-        } else if days_until >= 7.0 {
-            0.0
-        } else {
-            1.0 - (days_until / 7.0)
-        };
-        score += cfg.due * factor;
-    }
-
-    if blocking_count > 0 {
-        score += cfg.blocking;
-    }
-    if is_blocked {
-        score += cfg.blocked;
-    }
-    if task.is_active() {
-        score += cfg.active;
-    }
-    if !task.tags.is_empty() {
-        score += cfg.has_tags;
-    }
-    if task.project != "inbox" {
-        score += cfg.project;
-    }
-
-    let age_days = (Utc::now() - task.entry).num_days() as f64;
-    let age_factor = (age_days / cfg.age_max).min(1.0);
-    score += cfg.age * age_factor;
-
-    score
-}
-
-pub fn refresh_urgency(
-    conn: &Connection,
-    cfg: &crate::infrastructure::config::UrgencyConfig,
-    task_uuid: &Uuid,
-) -> Result<()> {
+pub fn refresh_urgency(conn: &Connection, cfg: &UrgencyWeights, task_uuid: &Uuid) -> Result<()> {
     let task = {
         let mut stmt = conn.prepare(
             "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur
@@ -219,81 +170,12 @@ pub fn refresh_urgency(
     };
     let blockers = get_blockers(conn, task_uuid)?;
     let blocking = get_blocking(conn, task_uuid)?;
-    let urgency = compute_urgency(&task, cfg, !blockers.is_empty(), blocking.len());
+    let urgency = compute_urgency(&task, cfg, !blockers.is_empty(), blocking.len(), Utc::now());
     conn.execute(
         "UPDATE tasks SET urgency=?1 WHERE uuid=?2",
         params![urgency, task_uuid.to_string()],
     )?;
     Ok(())
-}
-
-pub struct UrgencyBreakdown {
-    pub priority: f64,
-    pub due: f64,
-    pub blocking: f64,
-    pub blocked: f64,
-    pub active: f64,
-    pub tags: f64,
-    pub project: f64,
-    pub age: f64,
-}
-
-pub fn compute_urgency_breakdown(
-    task: &Task,
-    cfg: &crate::infrastructure::config::UrgencyConfig,
-    is_blocked: bool,
-    blocking_count: usize,
-) -> UrgencyBreakdown {
-    let priority = task
-        .priority
-        .as_ref()
-        .map(|p| p.urgency_coefficient())
-        .unwrap_or(0.0);
-
-    let due = if let Some(due) = task.due {
-        let days_until: f64 = (due - Utc::now()).num_seconds() as f64 / 86400.0;
-        let factor = if days_until <= 0.0 {
-            1.0
-        } else if days_until >= 7.0 {
-            0.0
-        } else {
-            1.0 - (days_until / 7.0)
-        };
-        cfg.due * factor
-    } else {
-        0.0
-    };
-
-    let blocking = if blocking_count > 0 {
-        cfg.blocking
-    } else {
-        0.0
-    };
-    let blocked = if is_blocked { cfg.blocked } else { 0.0 };
-    let active = if task.is_active() { cfg.active } else { 0.0 };
-    let tags = if !task.tags.is_empty() {
-        cfg.has_tags
-    } else {
-        0.0
-    };
-    let project = if task.project != "inbox" {
-        cfg.project
-    } else {
-        0.0
-    };
-    let age_days = (Utc::now() - task.entry).num_days() as f64;
-    let age = cfg.age * (age_days / cfg.age_max).min(1.0);
-
-    UrgencyBreakdown {
-        priority,
-        due,
-        blocking,
-        blocked,
-        active,
-        tags,
-        project,
-        age,
-    }
 }
 
 pub fn similar_tasks(

@@ -1,12 +1,12 @@
+use crate::domain::Item;
 use crate::infrastructure::db;
 use crate::infrastructure::memory::embedding;
-use crate::infrastructure::model::Item;
 use chrono::{Duration, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
 fn fresh() -> rusqlite::Connection {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     embedding::ensure_index_current(&conn).unwrap();
     conn
 }
@@ -72,7 +72,7 @@ fn memory_without_a_vector_warns_with_reindex_fix() {
 
 #[test]
 fn stale_embedding_scheme_warns() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     db::meta_set(&conn, "embedding_scheme_version", "old-model|text0").unwrap();
     let v = super::doctor_value(&conn, None).unwrap();
     let c = check(&v, "embedding_coverage");
@@ -147,7 +147,7 @@ fn stale_provisional_memory_is_backlog() {
     let conn = fresh();
     let mut item = Item::new_memory("auto".into(), "auto memory".into(), None);
     item.path = Some(String::new());
-    item.status = "provisional".into();
+    item.status = crate::domain::MemoryStatus::Provisional;
     item.created = Utc::now() - Duration::days(45);
     db::insert_item(&conn, &mut item).unwrap();
     embedding::index_memory(&conn, &item);
@@ -233,7 +233,7 @@ fn stale_anchors_lists_drifted_and_missing_files_as_info() {
 }
 
 fn verified_tasks(conn: &rusqlite::Connection, project: &str, n: usize, cite: Option<Uuid>) {
-    use crate::infrastructure::model::{Status, Task};
+    use crate::domain::{Status, Task};
     for _ in 0..n {
         let mut t = Task::new("demo".into(), project.into());
         t.entry = Utc::now() - Duration::days(2);
@@ -243,7 +243,7 @@ fn verified_tasks(conn: &rusqlite::Connection, project: &str, n: usize, cite: Op
         db::update_task(conn, &t).unwrap();
         db::set_validated(conn, &t.uuid, "abc1234").unwrap();
         if let Some(m) = cite {
-            db::record_memory_use(conn, &m, &t.uuid, db::MemoryUseKind::Cited).unwrap();
+            db::record_memory_use(conn, &m, &t.uuid, crate::domain::MemoryUseKind::Cited).unwrap();
         }
     }
 }

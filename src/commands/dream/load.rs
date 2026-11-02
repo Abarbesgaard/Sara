@@ -29,7 +29,7 @@ pub(super) fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
             neighbors.push(Neighbor {
                 kind: NodeKind::Memory {
                     label: item_label(&other),
-                    relation: link.relation,
+                    relation: link.relation.to_string(),
                 },
             });
         }
@@ -63,7 +63,7 @@ pub(super) fn load(conn: &Connection, handle: &str) -> Result<DreamData> {
     let sparkline = db::memory_recall_daily_counts(conn, &item.uuid, 30);
     let recall_total_30d = sparkline.iter().sum();
     Ok(DreamData {
-        provisional: item.status == "provisional",
+        provisional: item.status == crate::domain::MemoryStatus::Provisional,
         label,
         strength,
         files,
@@ -112,7 +112,7 @@ pub(super) fn load_web(conn: &Connection) -> Result<WebData> {
                 label,
                 title: m.title.clone(),
                 strength: strengths.get(&m.uuid).copied().unwrap_or(1.0),
-                provisional: m.status == "provisional",
+                provisional: m.status == crate::domain::MemoryStatus::Provisional,
                 tags: m.tags.clone(),
                 haystack,
                 x: 0.0,
@@ -128,7 +128,7 @@ pub(super) fn load_web(conn: &Connection) -> Result<WebData> {
             Some(Bond {
                 a: *index.get(&l.from_uuid)?,
                 b: *index.get(&l.to_uuid)?,
-                relation: l.relation,
+                relation: l.relation.to_string(),
             })
         })
         .collect();

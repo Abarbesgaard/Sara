@@ -1,6 +1,16 @@
 use super::LearnRequest;
 use crate::infrastructure::util::safety;
 
+fn check_overlap(
+    conn: &rusqlite::Connection,
+    tags: &[String],
+    files: &[String],
+    current_project: Option<&str>,
+) -> anyhow::Result<()> {
+    let overlap = super::overlap::TagOverlap::compute(conn, tags)?;
+    super::overlap::warn_overlap(conn, &overlap, files, current_project)
+}
+
 #[test]
 fn size_check_passes_under_threshold() {
     assert!(safety::check_size("short text").is_ok());
@@ -15,27 +25,30 @@ fn size_check_fails_over_threshold() {
 
 #[test]
 fn secret_check_flags_api_key_assignment() {
-    assert!(safety::detect_secret("api_key=abc123secret").is_some());
-    assert!(safety::detect_secret("apikey: supersecret").is_some());
-    assert!(safety::detect_secret("client_secret: my-secret-value").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("api_key=abc123secret").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("apikey: supersecret").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("client_secret: my-secret-value").is_some());
 }
 
 #[test]
 fn secret_check_does_not_flag_normal_prose() {
-    assert!(safety::detect_secret("sara recall uses item_tags for exact tag lookup").is_none());
-    assert!(safety::detect_secret("the token field is optional").is_none());
-    assert!(safety::detect_secret("AuthAppUri (required string)").is_none());
+    assert!(
+        crate::domain::MemoryBody::detect_secret("sara recall uses item_tags for exact tag lookup")
+            .is_none()
+    );
+    assert!(crate::domain::MemoryBody::detect_secret("the token field is optional").is_none());
+    assert!(crate::domain::MemoryBody::detect_secret("AuthAppUri (required string)").is_none());
 }
 
 #[test]
 fn secret_check_flags_aws_style_key() {
-    assert!(safety::detect_secret("key: AKIAIOSFODNN7EXAMPLE").is_some());
+    assert!(crate::domain::MemoryBody::detect_secret("key: AKIAIOSFODNN7EXAMPLE").is_some());
 }
 
 #[test]
 fn secret_check_flags_high_entropy_hex_token() {
     assert!(
-        safety::detect_secret(
+        crate::domain::MemoryBody::detect_secret(
             "token: a3f1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2"
         )
         .is_some()
@@ -45,7 +58,7 @@ fn secret_check_flags_high_entropy_hex_token() {
 #[test]
 fn secret_check_does_not_flag_uuid_in_prose() {
     assert!(
-        safety::detect_secret(
+        crate::domain::MemoryBody::detect_secret(
             "AuthAppUri is a UUID like a2923ccd-a496-4cbd-9673-f40156552a92 in the config"
         )
         .is_none()
@@ -54,10 +67,11 @@ fn secret_check_does_not_flag_uuid_in_prose() {
 
 #[test]
 fn learn_task_prefers_display_id_over_uuid_collision() {
-    use crate::infrastructure::{config::Config, db, model::Task};
+    use crate::domain::Task;
+    use crate::infrastructure::{config::Config, db};
     use uuid::Uuid;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let mut task_a = Task::new("intended target".into(), "proj".into());
@@ -95,7 +109,7 @@ fn learn_task_prefers_display_id_over_uuid_collision() {
 fn file_overlaps_detects_tagless_memory_sharing_a_file() {
     use crate::infrastructure::{config::Config, db};
     use std::collections::HashSet;
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let path = "/repo/src/auth.rs".to_string();
 
@@ -112,7 +126,8 @@ fn file_overlaps_detects_tagless_memory_sharing_a_file() {
     .unwrap();
 
     let overlaps =
-        super::overlap::file_overlaps(&conn, std::slice::from_ref(&path), &HashSet::new()).unwrap();
+        super::overlap::files::file_overlaps(&conn, std::slice::from_ref(&path), &HashSet::new())
+            .unwrap();
     assert_eq!(
         overlaps.len(),
         1,
@@ -124,7 +139,7 @@ fn file_overlaps_detects_tagless_memory_sharing_a_file() {
 #[test]
 fn learn_value_supersedes_inserts_link() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let old = super::learn_value(
@@ -161,7 +176,7 @@ fn learn_value_supersedes_inserts_link() {
 #[test]
 fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let canonical = super::learn_value(
@@ -189,7 +204,7 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
     )
     .unwrap();
     assert_eq!(
-        super::overlap::canonical_derived_count(
+        super::overlap::hints::canonical_derived_count(
             &conn,
             &db::get_item_by_handle(&conn, &canonical_label)
                 .unwrap()
@@ -220,7 +235,7 @@ fn learn_value_supersedes_a_canonical_does_not_orphan_or_auto_archive_children()
 #[test]
 fn canonical_derived_count_zero_for_a_plain_memory() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let v = super::learn_value(
         &conn,
@@ -234,13 +249,16 @@ fn canonical_derived_count_zero_for_a_plain_memory() {
     .unwrap();
     let label = v["label"].as_str().unwrap();
     let uuid = db::get_item_by_handle(&conn, label).unwrap().uuid;
-    assert_eq!(super::overlap::canonical_derived_count(&conn, &uuid), 0);
+    assert_eq!(
+        super::overlap::hints::canonical_derived_count(&conn, &uuid),
+        0
+    );
 }
 
 #[test]
 fn check_overlap_warns_on_file_overlap() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let file_path = "/tmp/test_sara_overlap_check.rs".to_string();
@@ -258,7 +276,7 @@ fn check_overlap_warns_on_file_overlap() {
     )
     .unwrap();
 
-    let result = super::overlap::check_overlap(
+    let result = check_overlap(
         &conn,
         &["tag-y".to_string()],
         std::slice::from_ref(&file_path),
@@ -273,7 +291,7 @@ fn check_overlap_warns_on_file_overlap() {
 #[test]
 fn learn_creates_typed_links() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let canon = super::learn_value(
@@ -330,11 +348,13 @@ fn learn_creates_typed_links() {
         .to_string();
     let out = db::get_memory_links_from(&conn, &new_uuid).unwrap();
     assert!(
-        out.iter().any(|l| l.relation == "derived_from"),
+        out.iter()
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom),
         "derived_from edge exists"
     );
     assert!(
-        out.iter().any(|l| l.relation == "similar_to"),
+        out.iter()
+            .any(|l| l.relation == crate::domain::Relation::SimilarTo),
         "similar_to edge exists"
     );
 }
@@ -342,7 +362,7 @@ fn learn_creates_typed_links() {
 #[test]
 fn learn_unresolvable_link_warns_not_aborts() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let v = super::learn_value(
@@ -366,7 +386,7 @@ fn learn_unresolvable_link_warns_not_aborts() {
 
 #[test]
 fn overlap_suggests_typed_link() {
-    let near = super::overlap::near_dupe_suggestion("m26");
+    let near = super::overlap::hints::near_dupe_suggestion("m26");
     assert!(
         near.contains("--derived-from m26"),
         "near-dupe offers --derived-from: {near}"
@@ -376,7 +396,7 @@ fn overlap_suggests_typed_link() {
         "near-dupe offers --supersedes: {near}"
     );
 
-    let partial = super::overlap::partial_overlap_suggestion("m30");
+    let partial = super::overlap::hints::partial_overlap_suggestion("m30");
     assert!(
         partial.contains("--similar-to m30"),
         "partial offers --similar-to: {partial}"
@@ -386,7 +406,7 @@ fn overlap_suggests_typed_link() {
 
 #[test]
 fn canonical_hint_names_derived_from_and_relearn() {
-    let hint = super::overlap::canonical_hint("m7", 3);
+    let hint = super::overlap::hints::canonical_hint("m7", 3);
     assert!(hint.contains("m7"));
     assert!(hint.contains("3 derived applications"));
     assert!(hint.contains("--derived-from m7"));
@@ -396,7 +416,7 @@ fn canonical_hint_names_derived_from_and_relearn() {
 #[test]
 fn check_overlap_detects_canonical_via_derived_from_link() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let canonical = super::learn_value(
@@ -416,7 +436,7 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
         .uuid;
 
     assert_eq!(
-        super::overlap::canonical_derived_count(&conn, &canonical_uuid),
+        super::overlap::hints::canonical_derived_count(&conn, &canonical_uuid),
         0
     );
 
@@ -434,17 +454,17 @@ fn check_overlap_detects_canonical_via_derived_from_link() {
     .unwrap();
 
     assert_eq!(
-        super::overlap::canonical_derived_count(&conn, &canonical_uuid),
+        super::overlap::hints::canonical_derived_count(&conn, &canonical_uuid),
         1
     );
 
-    super::overlap::check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
+    check_overlap(&conn, &["codeql".into()], &[], None).unwrap();
 }
 
 #[test]
 fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let canonical = super::learn_value(
@@ -474,7 +494,7 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
     )
     .unwrap();
     assert_eq!(
-        super::overlap::canonical_derived_count(&conn, &canon_uuid),
+        super::overlap::hints::canonical_derived_count(&conn, &canon_uuid),
         1
     );
 
@@ -500,7 +520,7 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
         "new instance must auto-attach to canonical, got {auto:?}"
     );
     assert_eq!(
-        super::overlap::canonical_derived_count(&conn, &canon_uuid),
+        super::overlap::hints::canonical_derived_count(&conn, &canon_uuid),
         2,
         "canonical should now count the auto-attached instance"
     );
@@ -509,7 +529,7 @@ fn learn_auto_attaches_new_instance_to_canonical_pattern() {
 #[test]
 fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let canonical = super::learn_value(
@@ -561,7 +581,7 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
         "explicit derived_from must suppress the auto-link for the same canonical"
     );
     assert_eq!(
-        super::overlap::canonical_derived_count(&conn, &canon_uuid),
+        super::overlap::hints::canonical_derived_count(&conn, &canon_uuid),
         2
     );
 }
@@ -569,7 +589,7 @@ fn learn_auto_attach_does_not_duplicate_explicit_derived_from() {
 #[test]
 fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     super::learn_value(
@@ -603,7 +623,7 @@ fn learn_does_not_auto_attach_to_a_plain_non_canonical_overlap() {
 #[test]
 fn learn_always_embeds_even_with_default_config() {
     use crate::infrastructure::{config::Config, db};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     assert!(
         !cfg.recall.semantic,

@@ -3,8 +3,8 @@ use serde_json::json;
 
 use crate::commands::recall::types::Hit;
 use crate::commands::shared::{derived_children, item_label};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) const PATTERN_MIN_INSTANCES: usize = 2;
 
@@ -40,7 +40,7 @@ pub(in crate::commands::recall) fn detect_patterns(
             candidates.push(uuid.to_string());
         }
         for l in db::get_memory_links_from(conn, &uuid.to_string()).unwrap_or_default() {
-            if l.relation == "derived_from" {
+            if l.relation == crate::domain::Relation::DerivedFrom {
                 candidates.push(l.to_uuid);
             }
         }

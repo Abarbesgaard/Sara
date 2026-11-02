@@ -3,10 +3,10 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::shared::{item_snippet, memory_handle, print_json};
+use crate::domain::MemoryUseKind;
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::db::MemoryUseKind;
-use crate::infrastructure::model::Task;
 
 const NEXT_MEMORY_LIMIT: usize = 3;
 

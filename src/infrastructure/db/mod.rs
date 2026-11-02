@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
+use crate::domain::*;
 use crate::infrastructure::config;
-use crate::infrastructure::model::{Priority, Status, Task};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -56,15 +56,21 @@ fn set_pragmas(conn: &Connection) -> Result<()> {
 }
 
 #[cfg(test)]
-pub fn open_in_memory_for_test() -> Connection {
-    let mut conn = Connection::open_in_memory().expect("open in-memory db");
-    set_pragmas(&conn).expect("set pragmas");
-    migrations::apply_migrations(&mut conn).expect("apply migrations");
-    conn
-}
+#[path = "../../../tests/unit/support/open_db.rs"]
+pub mod testing;
 
 fn dt_to_str(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339()
+}
+
+fn parse_col<T>(idx: usize, s: String) -> rusqlite::Result<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    s.parse().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
+    })
 }
 
 fn str_to_dt(s: &str) -> Result<DateTime<Utc>> {

@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::Task;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 fn seed_task(conn: &Connection) -> Task {
     crate::test_support::seed_task(conn, "host task", "proj")
@@ -12,7 +12,7 @@ fn add_finding(conn: &Connection, task: &Task, text: &str) -> i64 {
 
 #[test]
 fn surfaces_a_semantically_close_prior_finding() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = seed_task(&conn);
     add_finding(
         &conn,
@@ -33,7 +33,7 @@ fn surfaces_a_semantically_close_prior_finding() {
 
 #[test]
 fn ignores_an_unrelated_prior_finding() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = seed_task(&conn);
     add_finding(&conn, &task, "how to bake sourdough bread at home");
     let related = related_findings(
@@ -50,7 +50,7 @@ fn ignores_an_unrelated_prior_finding() {
 
 #[test]
 fn excludes_the_just_inserted_finding() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = seed_task(&conn);
     let id = add_finding(
         &conn,
@@ -68,7 +68,7 @@ fn excludes_the_just_inserted_finding() {
 
 #[test]
 fn only_findings_resurface_not_other_note_kinds() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let task = seed_task(&conn);
     db::add_annotation_full(
         &conn,

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
+use crate::domain::Task;
 use crate::infrastructure::db::LinkFlags;
-use crate::infrastructure::model::Task;
 
 pub enum BoardAction {
     Quit,

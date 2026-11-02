@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Task;
+use crate::domain::Task;
 use ratatui::{Terminal, backend::TestBackend};
 use std::collections::{HashMap, HashSet};
 
@@ -469,7 +469,7 @@ fn preview_width_only_when_wide() {
 
 #[test]
 fn info_preview_lines_reuse_the_info_body() {
-    let conn = crate::infrastructure::db::open_in_memory_for_test();
+    let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let t = crate::test_support::seed_task(&conn, "previewed task", "tk");
     let cfg = crate::infrastructure::config::Config::default();
     let lines = crate::commands::info::preview_lines(&conn, &cfg, &t.uuid.to_string(), 50).unwrap();

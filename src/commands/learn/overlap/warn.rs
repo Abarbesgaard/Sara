@@ -8,21 +8,10 @@ use super::hints::{
 };
 use super::tags::TagOverlap;
 use crate::commands::shared::memory_handle;
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 const SNIPPET_CHARS: usize = 80;
-
-#[cfg(test)]
-pub(in crate::commands::learn) fn check_overlap(
-    conn: &Connection,
-    tags: &[String],
-    files: &[String],
-    current_project: Option<&str>,
-) -> Result<()> {
-    let overlap = TagOverlap::compute(conn, tags)?;
-    warn_overlap(conn, &overlap, files, current_project)
-}
 
 pub(in crate::commands::learn) fn warn_overlap(
     conn: &Connection,

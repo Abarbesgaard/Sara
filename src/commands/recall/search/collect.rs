@@ -11,8 +11,8 @@ use crate::commands::recall::search::fts;
 use crate::commands::recall::search::scoring;
 use crate::commands::recall::search::semantic::{SemanticOpts, merge_semantic_hits};
 use crate::commands::recall::types::Hit;
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) fn collect_hits(
     conn: &Connection,

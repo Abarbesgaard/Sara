@@ -4,8 +4,9 @@ use rusqlite::Connection;
 use super::commands::nth_step;
 use crate::commands::guide::support::shell;
 use crate::commands::shared::project_head;
-use crate::infrastructure::db::{self, ChecklistItem};
-use crate::infrastructure::model::Task;
+use crate::domain::ChecklistItem;
+use crate::domain::Task;
+use crate::infrastructure::db::{self};
 
 pub(super) fn run(
     conn: &Connection,

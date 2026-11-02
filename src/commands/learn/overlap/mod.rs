@@ -1,5 +1,5 @@
-mod files;
-mod hints;
+pub(super) mod files;
+pub(super) mod hints;
 mod report;
 mod tags;
 mod warn;
@@ -7,12 +7,3 @@ mod warn;
 pub(super) use report::possible_duplicates;
 pub(super) use tags::TagOverlap;
 pub(super) use warn::warn_overlap;
-
-#[cfg(test)]
-pub(super) use {
-    files::file_overlaps,
-    hints::{
-        canonical_derived_count, canonical_hint, near_dupe_suggestion, partial_overlap_suggestion,
-    },
-    warn::check_overlap,
-};

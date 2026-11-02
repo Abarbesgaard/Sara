@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 
 fn seed(conn: &Connection) -> Item {
     crate::test_support::seed_memory(
@@ -12,7 +12,7 @@ fn seed(conn: &Connection) -> Item {
 
 #[test]
 fn relearn_replaces_body_and_reindexes_fts() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -39,7 +39,7 @@ fn relearn_replaces_body_and_reindexes_fts() {
 
 #[test]
 fn relearn_replaces_tags_and_preserves_body_and_created() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -55,7 +55,7 @@ fn relearn_replaces_tags_and_preserves_body_and_created() {
 
 #[test]
 fn relearn_requires_at_least_one_change() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -66,7 +66,7 @@ fn relearn_requires_at_least_one_change() {
 fn relearn_refreshes_a_stale_semantic_embedding() {
     use crate::infrastructure::memory::embedding;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -107,7 +107,7 @@ fn relearn_refreshes_a_stale_semantic_embedding() {
 
 #[test]
 fn relearn_does_not_index_an_unembedded_memory() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -122,7 +122,7 @@ fn relearn_does_not_index_an_unembedded_memory() {
 
 #[test]
 fn relearn_enforces_safety_guardrails_on_new_body() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 
@@ -132,7 +132,7 @@ fn relearn_enforces_safety_guardrails_on_new_body() {
 
 #[test]
 fn relearn_stores_file_paths_as_absolute() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let item = seed(&conn);
     let label = format!("m{}", item.display_id.unwrap());
 

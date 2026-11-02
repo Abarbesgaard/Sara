@@ -5,8 +5,8 @@ use serde_json::json;
 use std::collections::HashMap;
 
 use crate::commands::doctor::types::{Check, DETAIL_LIMIT, Labels, Status};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 /// Recall events older than this are pruned, so decay is judged within it.
 const RECALL_WINDOW_DAYS: i64 = 90;

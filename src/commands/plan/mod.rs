@@ -3,9 +3,9 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::shared::print_json;
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 
 mod types;
 use types::PlanInput;

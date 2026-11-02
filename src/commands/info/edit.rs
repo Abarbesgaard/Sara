@@ -5,9 +5,9 @@ use ratatui::{Terminal, backend::Backend};
 use ratatui_textarea::TextArea;
 use rusqlite::Connection;
 
+use crate::domain::{Priority, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Priority, Task};
 use crate::infrastructure::tui;
 use crate::infrastructure::tui::keymap::{self, Action, KeyDispatcher, Mode};
 
@@ -214,7 +214,7 @@ pub(super) fn edit_loop<B: Backend<Error: Send + Sync + 'static>>(
                         }
                     }
                     Some(Focusable::File(path)) => {
-                        if db::is_url(&path) {
+                        if crate::domain::is_url(&path) {
                             open_url(&path);
                         } else {
                             let target = st
@@ -558,7 +558,13 @@ pub(super) fn cycle_priority(task: &mut Task, forward: bool) {
 pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Result<()> {
     let task = &mut detail.task;
     task.modified = Utc::now();
-    task.urgency = db::compute_urgency(task, &cfg.urgency, false, 0);
+    task.urgency = crate::domain::services::urgency::compute_urgency(
+        task,
+        &cfg.urgency,
+        false,
+        0,
+        chrono::Utc::now(),
+    );
     db::update_task(conn, task)?;
     db::refresh_urgency(conn, &cfg.urgency, &task.uuid)?;
     if let Some(t) = db::get_task_by_uuid_prefix(conn, &task.uuid.to_string()[..8])? {
@@ -579,11 +585,12 @@ pub(super) fn save(conn: &Connection, cfg: &Config, detail: &mut Detail) -> Resu
     detail.checklist = db::get_checklist(conn, &detail.task.uuid).unwrap_or_default();
     let blockers = db::get_blockers(conn, &detail.task.uuid).unwrap_or_default();
     let blocking_tasks = db::get_blocking(conn, &detail.task.uuid).unwrap_or_default();
-    detail.urgency_breakdown = Some(db::compute_urgency_breakdown(
+    detail.urgency_breakdown = Some(crate::domain::services::urgency::compute_urgency_breakdown(
         &detail.task,
         &cfg.urgency,
         !blockers.is_empty(),
         blocking_tasks.len(),
+        chrono::Utc::now(),
     ));
     detail.tree = build_task_tree(conn, detail.task.uuid);
     Ok(())

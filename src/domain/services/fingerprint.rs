@@ -5,27 +5,22 @@
 //! the very work a memory describes does not count as drift.
 
 use std::collections::HashSet;
-use std::path::Path;
+
+use crate::domain::value_objects::AnchorState;
 
 /// How many line hashes a sketch keeps (the k smallest distinct hashes).
 pub const SKETCH_SIZE: usize = 256;
 /// Drift at or above this share of vanished lines flags an anchor as stale.
 pub const STALE_DRIFT: f64 = 0.4;
-/// Files larger than this are not fingerprinted.
-pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const MIN_LINE_CHARS: usize = 3;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum AnchorState {
-    Fresh,
-    Drifted(f64),
-    Missing,
-    Unknown,
-}
-
-impl AnchorState {
-    pub fn is_stale(&self) -> bool {
-        matches!(self, AnchorState::Missing | AnchorState::Drifted(_))
+/// Judge the current `text` of an anchored file against its stored fingerprint.
+pub fn judge(fingerprint: &[u8], text: &str) -> AnchorState {
+    let d = drift(&decode(fingerprint), text);
+    if d >= STALE_DRIFT {
+        AnchorState::Drifted(d)
+    } else {
+        AnchorState::Fresh
     }
 }
 
@@ -76,47 +71,6 @@ pub fn drift(sketch: &[u64], current: &str) -> f64 {
     gone as f64 / sketch.len() as f64
 }
 
-fn read_text(path: &Path) -> Option<String> {
-    let meta = std::fs::metadata(path).ok()?;
-    if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
-        return None;
-    }
-    let bytes = std::fs::read(path).ok()?;
-    String::from_utf8(bytes).ok()
-}
-
-/// Fingerprint the file at `path` for storage; `None` when it cannot be read as
-/// text (missing, too large, binary) or has no meaningful lines.
-pub fn fingerprint_file(path: &str) -> Option<Vec<u8>> {
-    let s = sketch(&read_text(Path::new(path))?);
-    (!s.is_empty()).then(|| encode(&s))
-}
-
-/// Judge an anchor against its stored fingerprint. A vanished file is only
-/// `Missing` when its directory still exists — an anchor into a repo that is
-/// not on this machine stays `Unknown` rather than raising a false alarm.
-pub fn anchor_state(path: &str, fingerprint: Option<&[u8]>) -> AnchorState {
-    let p = Path::new(path);
-    if !p.exists() {
-        return match p.parent() {
-            Some(dir) if dir.is_dir() => AnchorState::Missing,
-            _ => AnchorState::Unknown,
-        };
-    }
-    let Some(fp) = fingerprint else {
-        return AnchorState::Unknown;
-    };
-    let Some(text) = read_text(p) else {
-        return AnchorState::Unknown;
-    };
-    let d = drift(&decode(fp), &text);
-    if d >= STALE_DRIFT {
-        AnchorState::Drifted(d)
-    } else {
-        AnchorState::Fresh
-    }
-}
-
 #[cfg(test)]
-#[path = "../../../tests/unit/infrastructure/fingerprint.rs"]
+#[path = "../../../tests/unit/domain/services/fingerprint.rs"]
 mod tests;

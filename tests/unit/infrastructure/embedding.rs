@@ -76,10 +76,10 @@ fn fingerprint_is_stable_for_the_bundled_model() {
 
 #[test]
 fn ensure_index_current_reindexes_once_then_noops() {
+    use crate::domain::Item;
     use crate::infrastructure::db;
-    use crate::infrastructure::model::Item;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mut mem = Item::new_memory(
         "lockfile pin".into(),
         "pin the dependency lockfile to stop dependabot breaking restore".into(),
@@ -109,10 +109,10 @@ fn ensure_index_current_reindexes_once_then_noops() {
 
 #[test]
 fn ensure_index_current_backfills_a_memory_saved_without_a_vector() {
+    use crate::domain::Item;
     use crate::infrastructure::db;
-    use crate::infrastructure::model::Item;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     ensure_index_current(&conn).unwrap();
 
     let mut mem = Item::new_memory(
@@ -140,7 +140,7 @@ fn ensure_index_current_backfills_a_memory_saved_without_a_vector() {
 fn ensure_index_current_reindexes_after_a_scheme_bump() {
     use crate::infrastructure::db;
 
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     db::meta_set(&conn, SCHEME_VERSION_KEY, "stale-old-scheme").unwrap();
 
     assert!(

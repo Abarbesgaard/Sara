@@ -199,7 +199,7 @@ fn focus_keys(focus: Option<&Focusable>) -> Vec<(&'static str, &'static str)> {
 }
 
 pub(in crate::commands::info) fn history_lines(
-    history: &[crate::infrastructure::db::HistoryEntry],
+    history: &[crate::domain::HistoryEntry],
     compact: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = vec![];

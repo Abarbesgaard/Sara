@@ -1,5 +1,5 @@
+use crate::domain::{Item, Status, Task};
 use crate::infrastructure::db::*;
-use crate::infrastructure::model::{Item, Status, Task};
 use chrono::{TimeZone as _, Utc};
 use rusqlite::Connection;
 
@@ -54,12 +54,8 @@ pub(super) fn make_completed_task(conn: &Connection, description: &str, file: &s
     task
 }
 
-pub(super) fn make_gh_comment(
-    id: i64,
-    author: &str,
-    body: &str,
-) -> crate::infrastructure::model::GithubComment {
-    crate::infrastructure::model::GithubComment {
+pub(super) fn make_gh_comment(id: i64, author: &str, body: &str) -> crate::domain::GithubComment {
+    crate::domain::GithubComment {
         comment_id: id,
         author: author.to_string(),
         body: body.to_string(),

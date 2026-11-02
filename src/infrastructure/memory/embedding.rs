@@ -214,7 +214,7 @@ pub fn bundled() -> &'static StaticEmbedder {
     E.get_or_init(|| StaticEmbedder::load_bundled().expect("bundled embedding model is valid"))
 }
 
-fn memory_embed_text(item: &crate::infrastructure::model::Item) -> String {
+fn memory_embed_text(item: &crate::domain::Item) -> String {
     let detail = item.summary.clone().unwrap_or_else(|| item.body.clone());
     if item.title.trim().is_empty() {
         detail
@@ -223,7 +223,7 @@ fn memory_embed_text(item: &crate::infrastructure::model::Item) -> String {
     }
 }
 
-pub fn index_memory(conn: &rusqlite::Connection, item: &crate::infrastructure::model::Item) {
+pub fn index_memory(conn: &rusqlite::Connection, item: &crate::domain::Item) {
     let text = memory_embed_text(item);
     if text.trim().is_empty() {
         return;

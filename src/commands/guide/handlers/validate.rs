@@ -2,8 +2,8 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use super::gate::run_acceptance_gate;
-use super::types::GateOutput;
+use super::super::gate::run_acceptance_gate;
+use super::super::types::GateOutput;
 use crate::commands::shared::{guard_branch_mutation, project_head};
 use crate::infrastructure::db;
 

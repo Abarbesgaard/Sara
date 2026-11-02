@@ -4,23 +4,6 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-pub struct MemoryLink {
-    pub id: i64,
-    pub from_uuid: String,
-    pub to_uuid: String,
-    pub relation: String,
-    pub weight: f64,
-}
-
-pub const MEMORY_LINK_RELATIONS: &[&str] = &[
-    "supersedes",
-    "similar_to",
-    "derived_from",
-    "used_in",
-    "co_activated",
-];
-
 pub fn insert_memory_link(
     conn: &Connection,
     from_uuid: &str,
@@ -28,19 +11,17 @@ pub fn insert_memory_link(
     relation: &str,
     weight: f64,
 ) -> Result<()> {
-    if !MEMORY_LINK_RELATIONS.contains(&relation) {
+    let Ok(parsed) = relation.parse::<Relation>() else {
         anyhow::bail!(
             "Unknown relation '{}'. Valid types: {}",
             relation,
-            MEMORY_LINK_RELATIONS.join(", ")
+            Relation::ALL.map(Relation::as_str).join(", ")
         );
-    }
+    };
     if from_uuid == to_uuid {
         anyhow::bail!("A memory cannot link to itself.");
     }
-    if matches!(relation, "supersedes" | "derived_from")
-        && memory_link_path_exists(conn, to_uuid, from_uuid)?
-    {
+    if parsed.forbids_cycles() && memory_link_path_exists(conn, to_uuid, from_uuid)? {
         anyhow::bail!(
             "Inserting this link would create a cycle \
                  (a path from '{}' to '{}' already exists).",
@@ -94,7 +75,7 @@ pub fn all_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
                 id: r.get(0)?,
                 from_uuid: r.get(1)?,
                 to_uuid: r.get(2)?,
-                relation: r.get(3)?,
+                relation: parse_col(3, r.get(3)?)?,
                 weight: r.get(4)?,
             })
         })?
@@ -122,7 +103,7 @@ pub fn orphaned_memory_links(conn: &Connection) -> Result<Vec<MemoryLink>> {
             id: r.get(0)?,
             from_uuid: r.get(1)?,
             to_uuid: r.get(2)?,
-            relation: r.get(3)?,
+            relation: parse_col(3, r.get(3)?)?,
             weight: r.get(4)?,
         })
     })?;
@@ -140,7 +121,7 @@ pub fn get_memory_links_from(conn: &Connection, from_uuid: &str) -> Result<Vec<M
                 id: r.get(0)?,
                 from_uuid: r.get(1)?,
                 to_uuid: r.get(2)?,
-                relation: r.get(3)?,
+                relation: parse_col(3, r.get(3)?)?,
                 weight: r.get(4)?,
             })
         })?
@@ -160,7 +141,7 @@ pub fn get_memory_links_to(conn: &Connection, to_uuid: &str) -> Result<Vec<Memor
                 id: r.get(0)?,
                 from_uuid: r.get(1)?,
                 to_uuid: r.get(2)?,
-                relation: r.get(3)?,
+                relation: parse_col(3, r.get(3)?)?,
                 weight: r.get(4)?,
             })
         })?

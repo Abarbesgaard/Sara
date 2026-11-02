@@ -5,7 +5,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::infrastructure::db::{FlowEvent, FlowKind};
+use crate::domain::{FlowEvent, FlowKind};
 use crate::infrastructure::tui::keymap::help;
 use crate::infrastructure::tui::render_help_overlay;
 use crate::infrastructure::tui::screen::{chrome, render_footer, render_header};

@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use super::support::print_checklist;
+use super::super::support::print_checklist;
 use crate::commands::shared::print_json;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;

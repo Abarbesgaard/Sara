@@ -9,6 +9,7 @@ mod cli;
 mod commands;
 mod completion;
 mod dispatch;
+mod domain;
 mod infrastructure;
 mod mcp;
 

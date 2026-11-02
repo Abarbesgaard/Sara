@@ -5,8 +5,8 @@ use crate::commands::recall::enrich::provenance::mark_provenance;
 use crate::commands::recall::enrich::stale::mark_stale;
 use crate::commands::recall::types::Hit;
 use crate::commands::shared::{item_label, item_snippet, short_id};
+use crate::domain::Item;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Item;
 
 pub(in crate::commands::recall) fn recent_hits(conn: &Connection, limit: i64) -> Result<Vec<Hit>> {
     let mut memories = db::list_memories(conn)?;
@@ -36,21 +36,21 @@ pub(in crate::commands::recall) fn item_hit(
         conn,
         links_to
             .iter()
-            .filter(|l| l.relation == "supersedes")
+            .filter(|l| l.relation == crate::domain::Relation::Supersedes)
             .map(|l| l.from_uuid.as_str()),
     );
     let derived_from_labels = linked_labels(
         conn,
         links_from
             .iter()
-            .filter(|l| l.relation == "derived_from")
+            .filter(|l| l.relation == crate::domain::Relation::DerivedFrom)
             .map(|l| l.to_uuid.as_str()),
     );
     let derived_children = linked_labels(
         conn,
         links_to
             .iter()
-            .filter(|l| l.relation == "derived_from")
+            .filter(|l| l.relation == crate::domain::Relation::DerivedFrom)
             .map(|l| l.from_uuid.as_str()),
     );
     Hit {
@@ -65,7 +65,7 @@ pub(in crate::commands::recall) fn item_hit(
         files,
         linked_tasks,
         superseded_by,
-        provisional: item.status == "provisional",
+        provisional: item.status == crate::domain::MemoryStatus::Provisional,
         item_uuid: Some(item.uuid),
         derived_from_labels,
         derived_children,

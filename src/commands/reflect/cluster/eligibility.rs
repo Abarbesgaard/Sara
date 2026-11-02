@@ -27,7 +27,7 @@ pub(in crate::commands::reflect) fn deliberate_links(
 ) -> Result<HashSet<(String, String)>> {
     let mut set = HashSet::new();
     for link in db::all_memory_links(conn).unwrap_or_default() {
-        if link.relation == "co_activated" {
+        if link.relation == crate::domain::Relation::CoActivated {
             continue;
         }
         set.insert(pair_key(&link.from_uuid, &link.to_uuid));

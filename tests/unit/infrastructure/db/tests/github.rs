@@ -67,7 +67,7 @@ fn save_project_profile_persists_github_fields() {
     let conn = mem();
     save_project_profile(
         &conn,
-        &crate::infrastructure::model::Project {
+        &crate::domain::Project {
             name: "myrepo".into(),
             path: Some("/home/u/myrepo".into()),
             goal: Some("g".into()),
@@ -163,7 +163,7 @@ fn github_provenance_round_trips_through_meta_json() {
     let conn = mem();
     let task = seed_task(&conn);
 
-    let prov = crate::infrastructure::model::GithubProvenance {
+    let prov = crate::domain::GithubProvenance {
         repo: "acme/widgets".into(),
         issue_id: Some(42),
         node_id: Some("NODE42".into()),
@@ -197,7 +197,7 @@ fn github_provenance_merges_with_existing_meta_json_keys() {
 
     set_meta_json(&conn, &task.uuid, r#"{"my_key":"keep_me"}"#).unwrap();
 
-    let prov = crate::infrastructure::model::GithubProvenance {
+    let prov = crate::domain::GithubProvenance {
         repo: "org/repo".into(),
         issue_id: None,
         node_id: None,
@@ -226,7 +226,7 @@ fn github_provenance_merges_with_existing_meta_json_keys() {
 
 #[test]
 fn github_provenance_contains_no_secret_fields() {
-    let prov = crate::infrastructure::model::GithubProvenance {
+    let prov = crate::domain::GithubProvenance {
         repo: "org/repo".into(),
         issue_id: Some(7),
         node_id: Some("NODE7".into()),
@@ -250,7 +250,7 @@ fn github_provenance_contains_no_secret_fields() {
 fn find_github_task_uuid_matches_repo_and_number_or_node_id() {
     let conn = mem();
     let task = seed_task(&conn);
-    let prov = crate::infrastructure::model::GithubProvenance {
+    let prov = crate::domain::GithubProvenance {
         repo: "acme/widgets".into(),
         issue_id: Some(100),
         node_id: Some("NODE100".into()),

@@ -1,6 +1,6 @@
 use super::*;
+use crate::domain::Task;
 use crate::infrastructure::db::STEP_KIND_STEP;
-use crate::infrastructure::model::Task;
 use crate::test_support::seed_task;
 
 fn find_by_desc<'a>(tasks: &'a [Task], desc: &str) -> &'a Task {
@@ -12,7 +12,7 @@ fn find_by_desc<'a>(tasks: &'a [Task], desc: &str) -> &'a Task {
 
 #[test]
 fn export_then_import_round_trips_a_dependency_graph() {
-    let src = db::open_in_memory_for_test();
+    let src = db::testing::open_in_memory_for_test();
     let root = seed_task(&src, "root task", "origin");
     let dep = seed_task(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
@@ -44,7 +44,7 @@ fn export_then_import_round_trips_a_dependency_graph() {
     let path = tmp.path().join("bundle.txt");
     crate::commands::export::run(&src, &root.uuid.to_string(), Some(path.as_path())).unwrap();
 
-    let mut dst = db::open_in_memory_for_test();
+    let mut dst = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     run(&mut dst, &cfg, Some(path.to_str().unwrap()), None).unwrap();
 
@@ -98,7 +98,7 @@ fn export_then_import_round_trips_a_dependency_graph() {
 
 #[test]
 fn import_reassigns_every_task_when_project_is_overridden() {
-    let src = db::open_in_memory_for_test();
+    let src = db::testing::open_in_memory_for_test();
     let root = seed_task(&src, "root task", "origin");
     let dep = seed_task(&src, "blocker task", "origin");
     db::add_dependency(&src, &root.uuid, &dep.uuid).unwrap();
@@ -107,7 +107,7 @@ fn import_reassigns_every_task_when_project_is_overridden() {
     let path = tmp.path().join("bundle.txt");
     crate::commands::export::run(&src, &root.uuid.to_string(), Some(path.as_path())).unwrap();
 
-    let mut dst = db::open_in_memory_for_test();
+    let mut dst = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     run(
         &mut dst,
@@ -131,7 +131,7 @@ fn import_reassigns_every_task_when_project_is_overridden() {
 
 #[test]
 fn import_rejects_a_blob_that_is_not_a_bundle() {
-    let mut dst = db::open_in_memory_for_test();
+    let mut dst = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let err = run(&mut dst, &cfg, Some("this is not a sara task blob"), None)
         .expect_err("a non-bundle blob must be refused");

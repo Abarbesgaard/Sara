@@ -1,10 +1,10 @@
 use super::*;
+use crate::domain::Item;
 use crate::infrastructure::config::Config;
-use crate::infrastructure::model::Item;
 
 #[test]
 fn tag_exact_memory_surfaces_with_full_body_as_canonical() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let long_body = "dependabot bumped NSubstitute 5.3.0->6.2.0; AutoFixture.AutoNSubstitute \
@@ -39,7 +39,7 @@ fn tag_exact_memory_surfaces_with_full_body_as_canonical() {
 
 #[test]
 fn task_hits_still_surface_as_snippet_pointers() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     crate::test_support::seed_task(&conn, "fix the flaky payment retry logic", "proj");
@@ -61,7 +61,7 @@ fn task_hits_still_surface_as_snippet_pointers() {
 
 #[test]
 fn reordered_words_still_find_the_task_by_tokens() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     crate::test_support::seed_task(&conn, "fix the flaky payment retry logic", "proj");
@@ -76,7 +76,7 @@ fn reordered_words_still_find_the_task_by_tokens() {
 
 #[test]
 fn same_project_memory_hits_rank_first_and_are_labeled() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let mut other = Item::new_memory("other province auth".into(), "cross body".into(), None);

@@ -4,7 +4,7 @@ use super::layout::{
     MIN_EDGE, bond_exists, force_layout, graph_edges, nearest_in_direction, spring_stiffness,
 };
 use super::load::{load_web, navigate_back};
-use super::render::{materialized_body, noise, resolve_progress};
+use super::render::effects::{materialized_body, noise, resolve_progress};
 use super::types::{Bond, Dir, Star};
 use crate::commands::shared::{item_label, strength_label};
 use crate::infrastructure::db;
@@ -12,8 +12,8 @@ use crate::infrastructure::memory::graph::MemoryGraph;
 
 #[test]
 fn navigate_back_skips_dead_crumbs_and_lands_on_a_live_one() {
-    use crate::infrastructure::model::Item;
-    let conn = db::open_in_memory_for_test();
+    use crate::domain::Item;
+    let conn = db::testing::open_in_memory_for_test();
     let seed = |body: &str| -> Item {
         let mut item = Item::new_memory("t".into(), body.into(), None);
         item.path = Some(String::new());
@@ -102,8 +102,8 @@ fn force_layout_pulls_bonded_stars_closer_than_strangers() {
 
 #[test]
 fn affinity_springs_derive_from_calibrated_graph_weights() {
-    use crate::infrastructure::model::Item;
-    let conn = db::open_in_memory_for_test();
+    use crate::domain::Item;
+    let conn = db::testing::open_in_memory_for_test();
     let seed = |tags: &[&str]| -> String {
         let mut item = Item::new_memory("t".into(), "b".into(), None);
         item.tags = tags.iter().map(|s| s.to_string()).collect();
@@ -148,8 +148,8 @@ fn affinity_springs_derive_from_calibrated_graph_weights() {
 
 #[test]
 fn shared_anchor_pairs_become_association_threads() {
-    use crate::infrastructure::model::Item;
-    let conn = db::open_in_memory_for_test();
+    use crate::domain::Item;
+    let conn = db::testing::open_in_memory_for_test();
     let seed = |tags: &[&str]| {
         let mut item = Item::new_memory("t".into(), "b".into(), None);
         item.tags = tags.iter().map(|s| s.to_string()).collect();

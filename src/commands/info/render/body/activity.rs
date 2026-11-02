@@ -95,12 +95,12 @@ impl Body<'_> {
 
     pub(super) fn comments(&mut self) {
         let d = self.d;
-        let all_comments: Vec<&crate::infrastructure::db::Annotation> = d
+        let all_comments: Vec<&crate::domain::Annotation> = d
             .annotations
             .iter()
             .filter(|a| a.kind == "comment")
             .collect();
-        let unthreaded: Vec<&crate::infrastructure::db::Annotation> = all_comments
+        let unthreaded: Vec<&crate::domain::Annotation> = all_comments
             .iter()
             .copied()
             .filter(|a| a.target_kind.as_deref() != Some("anchor"))
@@ -109,7 +109,7 @@ impl Body<'_> {
             if !self.fold(SectionId::Feedback, "Feedback") {
                 return;
             }
-            let id_map: std::collections::HashMap<i64, &crate::infrastructure::db::Annotation> =
+            let id_map: std::collections::HashMap<i64, &crate::domain::Annotation> =
                 all_comments.iter().map(|a| (a.id, *a)).collect();
             let checklist_map: std::collections::HashMap<i64, &str> = d
                 .checklist
@@ -200,7 +200,7 @@ impl Body<'_> {
     }
 }
 
-fn run_tokens(r: &crate::infrastructure::db::AiRun) -> Option<i64> {
+fn run_tokens(r: &crate::domain::AiRun) -> Option<i64> {
     r.total_tokens
         .or(match (r.prompt_tokens, r.completion_tokens) {
             (None, None) => None,

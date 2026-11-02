@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 
 #[test]
 fn similar_to_does_not_block_a_hierarchical_link_but_real_cycles_do() {

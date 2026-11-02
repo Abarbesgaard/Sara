@@ -70,8 +70,8 @@ fn external_editor_cleans_up_its_tempfile() {
     assert!(!std::path::Path::new(&tempfile_path).exists());
 }
 
-fn link(url: &str) -> db::Link {
-    db::Link {
+fn link(url: &str) -> crate::domain::Link {
+    crate::domain::Link {
         id: 1,
         url: url.to_string(),
         label: None,
@@ -79,8 +79,8 @@ fn link(url: &str) -> db::Link {
     }
 }
 
-fn note(text: &str) -> db::Annotation {
-    db::Annotation {
+fn note(text: &str) -> crate::domain::Annotation {
+    crate::domain::Annotation {
         id: 1,
         text: text.to_string(),
         entry: chrono::Utc::now(),
@@ -127,9 +127,10 @@ fn pr_url_is_none_without_any_pr_reference() {
 
 #[test]
 fn memory_ledger_groups_uses_per_memory_and_puts_cited_first() {
-    use crate::infrastructure::db::{self, MemoryUseKind};
+    use crate::domain::MemoryUseKind;
+    use crate::infrastructure::db::{self};
     use crate::test_support::{seed_memory, seed_task};
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let t = seed_task(&conn, "ledger task", "p");
     let surfaced = seed_memory(&conn, "only surfaced", "a", &[]);
     let cited = seed_memory(&conn, "was cited", "b", &[]);
@@ -161,7 +162,7 @@ fn memory_ledger_groups_uses_per_memory_and_puts_cited_first() {
 fn open_sections_default_then_persist_across_loads() {
     use super::super::types::SectionId;
     use crate::infrastructure::db;
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let mut open = load_open_sections(&conn);
     assert_eq!(open, SectionId::default_open());
     toggle_section(&conn, &mut open, SectionId::Memory);

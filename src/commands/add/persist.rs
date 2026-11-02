@@ -4,9 +4,9 @@ use rusqlite::Connection;
 use super::types::AddRequest;
 use crate::commands::shared::{parse_due, parse_duration_mins, project_path, split_csv};
 use crate::commands::{begin, guide};
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::Task;
 use crate::infrastructure::tui::review_form::FormInput;
 
 pub(super) fn save(
@@ -26,7 +26,13 @@ pub(super) fn save(
         task.due = parse_due(&form.due, cfg);
     }
 
-    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    task.urgency = crate::domain::services::urgency::compute_urgency(
+        &task,
+        &cfg.urgency,
+        false,
+        0,
+        chrono::Utc::now(),
+    );
 
     db::insert_task(conn, &mut task)?;
 

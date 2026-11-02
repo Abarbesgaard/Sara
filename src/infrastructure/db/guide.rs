@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
@@ -63,32 +63,6 @@ pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
         .to_string();
     let n = conn.execute("DELETE FROM events WHERE at < ?1", [&cutoff])?;
     Ok(n)
-}
-
-#[derive(Debug, Clone)]
-pub struct Anchor {
-    pub path: String,
-    pub source: String,
-    pub reason: Option<String>,
-    pub symbol: Option<String>,
-    pub line_start: Option<i64>,
-    pub line_end: Option<i64>,
-}
-
-impl Anchor {
-    pub fn location(&self) -> String {
-        let mut s = String::new();
-        if let Some(sym) = &self.symbol {
-            s.push_str(" :: ");
-            s.push_str(sym);
-        }
-        match (self.line_start, self.line_end) {
-            (Some(a), Some(b)) => s.push_str(&format!(" ({a}-{b})")),
-            (Some(a), None) => s.push_str(&format!(" (L{a})")),
-            _ => {}
-        }
-        s
-    }
 }
 
 pub fn get_task_anchors(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Anchor>> {
@@ -221,18 +195,6 @@ pub fn ensure_started(conn: &Connection, task_uuid: &Uuid) -> Result<bool> {
         params![task_uuid.to_string(), now],
     )?;
     Ok(changed > 0)
-}
-
-#[derive(Debug, Clone)]
-pub struct AiRun {
-    pub id: i64,
-    pub kind: String,
-    pub model: Option<String>,
-    pub provider: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub prompt_tokens: Option<i64>,
-    pub completion_tokens: Option<i64>,
-    pub total_tokens: Option<i64>,
 }
 
 pub fn record_ai_run(

@@ -1,4 +1,4 @@
-use crate::infrastructure::model::Item;
+use crate::domain::Item;
 
 #[derive(Clone)]
 pub(super) enum NodeKind {

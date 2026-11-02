@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 use crate::commands::shared::{
     guard_branch_mutation, json_strs, print_cited, project_head, with_citation,
 };
+use crate::domain::Task;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
-use crate::infrastructure::model::{Status, Task};
 use crate::infrastructure::telemetry::{self, Source};
 
 mod types;
@@ -82,14 +82,7 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         DoneGate::Ok => {}
     }
 
-    if let Some(started) = task.started_at {
-        task.time_spent += (Utc::now() - started).num_seconds().max(0);
-        task.started_at = None;
-    }
-
-    task.status = Status::Completed;
-    task.end = Some(Utc::now());
-    task.modified = Utc::now();
+    task.complete(Utc::now());
     db::update_task(conn, &task)?;
 
     db::repack_ids(conn)?;
@@ -100,21 +93,18 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
     }
 
     let mut recurrence = Value::Null;
-    if let Some(ref interval) = task.recur.clone() {
-        let base = task.due.unwrap_or_else(Utc::now);
-        let next_due = crate::infrastructure::model::advance_by_interval(base, interval);
-        let mut next =
-            crate::infrastructure::model::Task::new(task.description.clone(), task.project.clone());
-        next.priority = task.priority.clone();
-        next.tags = task.tags.clone();
-        next.due = Some(next_due);
-        next.recur = Some(interval.clone());
-        next.estimate_mins = task.estimate_mins;
-        next.urgency = db::compute_urgency(&next, &cfg.urgency, false, 0);
+    if let Some(mut next) = task.next_occurrence(Utc::now()) {
+        next.urgency = crate::domain::services::urgency::compute_urgency(
+            &next,
+            &cfg.urgency,
+            false,
+            0,
+            Utc::now(),
+        );
         db::insert_task(conn, &mut next)?;
         recurrence = json!({
             "id": next.id,
-            "due": next_due.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string(),
+            "due": next.due.map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string()),
         });
     }
 

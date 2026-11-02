@@ -1,5 +1,6 @@
 use super::*;
-use crate::infrastructure::model::{Item, Status};
+use crate::domain::services::memory_strength::RECALL_BOOST_WINDOW_DAYS;
+use crate::domain::{Item, Status};
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -97,7 +98,7 @@ fn item_strengths_batch_matches_item_strength() {
     update_task(&conn, &task).unwrap();
     let mut prov = Item::new_memory("provisional".to_string(), "b".to_string(), Some(task.uuid));
     prov.path = Some(String::new());
-    prov.status = "provisional".to_string();
+    prov.status = crate::domain::MemoryStatus::Provisional;
     insert_item(&conn, &mut prov).unwrap();
 
     let mut promoted = Item::new_memory("promoted".to_string(), "b".to_string(), Some(task.uuid));
@@ -218,7 +219,7 @@ fn provisional_memory_is_not_labeled_strong_despite_completed_source() {
     update_task(&conn, &task).unwrap();
     let mut item = Item::new_memory("m".to_string(), "b".to_string(), Some(task.uuid));
     item.path = Some(String::new());
-    item.status = "provisional".to_string();
+    item.status = crate::domain::MemoryStatus::Provisional;
 
     let s = item_strength(&conn, &item);
     assert!(
@@ -227,7 +228,7 @@ fn provisional_memory_is_not_labeled_strong_despite_completed_source() {
     );
     assert_eq!(s, 1.0, "capped to the Weak base band");
 
-    item.status = "active".to_string();
+    item.status = crate::domain::MemoryStatus::Active;
     assert_eq!(item_strength(&conn, &item), 2.0);
 }
 

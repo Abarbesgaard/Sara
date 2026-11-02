@@ -1,4 +1,5 @@
-use crate::infrastructure::{db, model::Item};
+use crate::domain::Item;
+use crate::infrastructure::db;
 use uuid::Uuid;
 
 fn insert_memory(conn: &rusqlite::Connection, body: &str, tag: &str) -> Uuid {
@@ -37,7 +38,7 @@ fn cluster_sizes(v: &serde_json::Value) -> Vec<usize> {
 
 #[test]
 fn chained_mega_component_is_split_at_its_weakest_links() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m: Vec<Uuid> = (0..12)
         .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
         .collect();
@@ -59,7 +60,7 @@ fn chained_mega_component_is_split_at_its_weakest_links() {
 
 #[test]
 fn component_within_max_size_is_not_split() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let m: Vec<Uuid> = (0..4)
         .map(|i| insert_memory(&conn, &format!("memory {i}"), &format!("t{i}")))
         .collect();
@@ -72,7 +73,7 @@ fn component_within_max_size_is_not_split() {
 
 #[test]
 fn fresh_related_cluster_is_proposed_with_a_canonical() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -109,7 +110,7 @@ fn fresh_related_cluster_is_proposed_with_a_canonical() {
 
 #[test]
 fn already_consolidated_cluster_is_excluded() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let canonical = insert_memory(&conn, "canonical pattern", "dependabot");
     let child_a = insert_memory(&conn, "applied in repo a", "dependabot");
     let child_b = insert_memory(&conn, "applied in repo b", "dependabot");
@@ -128,7 +129,7 @@ fn already_consolidated_cluster_is_excluded() {
 
 #[test]
 fn unrelated_memories_are_not_clustered() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     insert_memory(&conn, "memory about auth", "auth");
     insert_memory(&conn, "memory about billing", "billing");
 
@@ -143,7 +144,7 @@ fn unrelated_memories_are_not_clustered() {
 
 #[test]
 fn cross_project_memories_do_not_cluster() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(
         &conn,
         "dependabot bump broke restore in repo a",
@@ -178,7 +179,7 @@ fn cross_project_memories_do_not_cluster() {
 
 #[test]
 fn deliberate_link_clusters_across_projects() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "NU1608 NSubstitute fix pattern", "nsubstitute");
     let b = insert_memory(&conn, "applied NU1608 fix in other repo", "nsubstitute");
     db::set_item_projects(&conn, &a, &["repo-a".to_string()]).unwrap();
@@ -201,7 +202,7 @@ fn derived_from_count(conn: &rusqlite::Connection, uuids: &[&Uuid]) -> usize {
             db::get_memory_links_from(conn, &u.to_string())
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|l| l.relation == "derived_from")
+                .filter(|l| l.relation == crate::domain::Relation::DerivedFrom)
                 .count()
         })
         .sum()
@@ -209,7 +210,7 @@ fn derived_from_count(conn: &rusqlite::Connection, uuids: &[&Uuid]) -> usize {
 
 #[test]
 fn reflect_apply_creates_derived_links() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
@@ -233,7 +234,7 @@ fn reflect_apply_creates_derived_links() {
 
 #[test]
 fn reflect_apply_is_idempotent_and_excludes_after() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
@@ -265,16 +266,15 @@ fn reflect_apply_is_idempotent_and_excludes_after() {
 
 #[test]
 fn reflect_apply_skips_cycle_violations() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let a = insert_memory(&conn, "dependabot bump repo a", "dependabot");
     let b = insert_memory(&conn, "dependabot bump repo b", "dependabot");
     let c = insert_memory(&conn, "dependabot bump repo c", "dependabot");
     link(&conn, &a, &b, "similar_to");
     link(&conn, &b, &c, "similar_to");
     link(&conn, &a, &b, "derived_from");
-    let mut task =
-        crate::infrastructure::model::Task::new("completed task".to_string(), "Sara".to_string());
-    task.status = crate::infrastructure::model::Status::Completed;
+    let mut task = crate::domain::Task::new("completed task".to_string(), "Sara".to_string());
+    task.status = crate::domain::Status::Completed;
     db::insert_task(&conn, &mut task).unwrap();
     db::set_item_task_links(&conn, &a, &[(task.uuid, "explicit")]).unwrap();
 
@@ -305,12 +305,14 @@ fn reflect_apply_skips_cycle_violations() {
     assert!(
         c_links
             .iter()
-            .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom
+                && l.to_uuid == a.to_string())
     );
     let b_links = db::get_memory_links_from(&conn, &b.to_string()).unwrap();
     assert!(
         !b_links
             .iter()
-            .any(|l| l.relation == "derived_from" && l.to_uuid == a.to_string())
+            .any(|l| l.relation == crate::domain::Relation::DerivedFrom
+                && l.to_uuid == a.to_string())
     );
 }

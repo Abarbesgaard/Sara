@@ -28,7 +28,7 @@ fn plan_json() -> &'static str {
 
 #[test]
 fn import_raw_creates_tasks_in_the_named_project() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
 
     let v = import_raw(&conn, &cfg, plan_json()).unwrap();
@@ -41,7 +41,7 @@ fn import_raw_creates_tasks_in_the_named_project() {
 
 #[test]
 fn import_raw_wires_up_dependencies_by_key() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     import_raw(&conn, &cfg, plan_json()).unwrap();
 
@@ -60,7 +60,7 @@ fn import_raw_wires_up_dependencies_by_key() {
 
 #[test]
 fn import_raw_carries_steps_acceptance_and_annotations() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     import_raw(&conn, &cfg, plan_json()).unwrap();
 
@@ -84,7 +84,7 @@ fn import_raw_carries_steps_acceptance_and_annotations() {
 
 #[test]
 fn import_raw_rejects_an_empty_plan() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let err = import_raw(&conn, &cfg, r#"{"project":"x","tasks":[]}"#)
         .expect_err("a plan with no tasks must be refused");
@@ -96,7 +96,7 @@ fn import_raw_rejects_an_empty_plan() {
 
 #[test]
 fn import_raw_rejects_invalid_json() {
-    let conn = db::open_in_memory_for_test();
+    let conn = db::testing::open_in_memory_for_test();
     let cfg = Config::default();
     let err = import_raw(&conn, &cfg, "not json at all")
         .expect_err("malformed plan JSON must be refused");

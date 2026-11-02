@@ -2,8 +2,9 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::commands::guide::support::one_based;
-use crate::infrastructure::db::{self, ChecklistItem};
-use crate::infrastructure::model::Task;
+use crate::domain::ChecklistItem;
+use crate::domain::Task;
+use crate::infrastructure::db::{self};
 
 const META_COMMAND_KEYS: [&str; 2] = ["test_cmd", "lint_cmd"];
 
