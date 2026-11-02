@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::json;
 
+use crate::commands::shared::normalize_list;
 use crate::commands::shared::print_json;
-use crate::domain::Task;
+use crate::domain::{Priority, Task};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
@@ -30,11 +31,47 @@ pub fn import(conn: &Connection, cfg: &Config, source: &str) -> Result<()> {
     Ok(())
 }
 
+/// Rejects the plan before anything is written: every task needs a
+/// description, a known priority, a unique key and dependencies that exist.
+fn check(conn: &Connection, plan: &PlanInput) -> Result<Vec<Option<Priority>>> {
+    let mut keys = std::collections::HashSet::new();
+    for (n, pt) in plan.tasks.iter().enumerate() {
+        if let Some(key) = &pt.key
+            && !keys.insert(key.as_str())
+        {
+            anyhow::bail!("plan task {}: key `{key}` is used twice", n + 1);
+        }
+    }
+    plan.tasks
+        .iter()
+        .enumerate()
+        .map(|(n, pt)| {
+            let n = n + 1;
+            if pt.description.trim().is_empty() {
+                anyhow::bail!("plan task {n} has no description");
+            }
+            for dep in &pt.depends_on {
+                if !keys.contains(dep.as_str()) && db::resolve_task(conn, dep).is_err() {
+                    anyhow::bail!("plan task {n} depends on `{dep}`, which is no key or task");
+                }
+            }
+            match pt.priority.as_deref().map(str::trim) {
+                None | Some("") => Ok(None),
+                Some(p) => p
+                    .parse()
+                    .map(Some)
+                    .with_context(|| format!("plan task {n}")),
+            }
+        })
+        .collect()
+}
+
 pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_json::Value> {
     let plan: PlanInput = serde_json::from_str(raw).context("plan JSON was invalid")?;
     if plan.tasks.is_empty() {
         anyhow::bail!("plan contains no tasks");
     }
+    let priorities = check(conn, &plan)?;
 
     let (default_project, _path) =
         crate::infrastructure::project::detect_current_project(conn, cfg)?;
@@ -43,14 +80,13 @@ pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_js
     let tx = conn.unchecked_transaction()?;
     let mut key_to_uuid: std::collections::HashMap<String, uuid::Uuid> =
         std::collections::HashMap::new();
+    let mut uuids = Vec::with_capacity(plan.tasks.len());
     let mut created = 0u32;
 
-    for pt in &plan.tasks {
-        let mut task = Task::new(pt.description.clone(), project.clone());
-        if let Some(p) = &pt.priority {
-            task.priority = p.parse().ok();
-        }
-        task.tags = pt.tags.clone();
+    for (pt, priority) in plan.tasks.iter().zip(priorities) {
+        let mut task = Task::new(pt.description.trim().to_string(), project.clone());
+        task.priority = priority;
+        task.tags = normalize_list(&pt.tags);
         db::insert_task(&tx, &mut task)?;
         created += 1;
 
@@ -120,19 +156,17 @@ pub fn import_raw(conn: &Connection, cfg: &Config, raw: &str) -> Result<serde_js
         if let Some(key) = &pt.key {
             key_to_uuid.insert(key.clone(), task.uuid);
         }
+        uuids.push(task.uuid);
     }
 
-    for pt in &plan.tasks {
-        let Some(key) = &pt.key else { continue };
-        let Some(from) = key_to_uuid.get(key) else {
-            continue;
-        };
+    for (n, (pt, from)) in plan.tasks.iter().zip(&uuids).enumerate() {
         for dep in &pt.depends_on {
-            if let Some(target) = key_to_uuid.get(dep) {
-                db::add_dependency(&tx, from, target)?;
-            } else if let Ok(existing) = db::resolve_task(&tx, dep) {
-                db::add_dependency(&tx, from, &existing.uuid)?;
-            }
+            let target = match key_to_uuid.get(dep) {
+                Some(target) => *target,
+                None => db::resolve_task(&tx, dep)?.uuid,
+            };
+            db::add_dependency(&tx, from, &target)
+                .with_context(|| format!("plan task {}: depends_on `{dep}`", n + 1))?;
         }
     }
 
