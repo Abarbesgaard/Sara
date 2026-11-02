@@ -117,8 +117,9 @@ fn guard_allows_uuid_and_forced_mutations() {
     let conn = crate::infrastructure::db::testing::open_in_memory_for_test();
     let mut task = crate::domain::Task::new("t".into(), "p".into());
     crate::infrastructure::db::insert_task(&conn, &mut task).unwrap();
-    assert!(guard_branch_mutation(&conn, &task.uuid.to_string(), &task, false).is_ok());
-    assert!(guard_branch_mutation(&conn, "1", &task, true).is_ok());
+    use crate::infrastructure::db::IdMatch;
+    assert!(guard_branch_mutation(&conn, IdMatch::UuidPrefix, &task, false).is_ok());
+    assert!(guard_branch_mutation(&conn, IdMatch::DisplayId, &task, true).is_ok());
     assert!(project_head(&conn, "no-such-project").is_none());
 }
 
