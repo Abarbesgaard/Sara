@@ -14,3 +14,4 @@ mod reflect;
 mod shorthand;
 mod tag_parsing;
 mod telemetry;
+mod undo;
