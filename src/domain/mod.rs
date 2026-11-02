@@ -8,6 +8,7 @@
 mod activity_entry;
 mod ai_run;
 mod anchor;
+mod anchor_state;
 mod annotation;
 mod branch_record;
 mod checklist_item;
@@ -22,10 +23,13 @@ mod memory_use;
 mod project;
 mod relevant_file;
 mod task;
+mod urgency_breakdown;
+mod urgency_weights;
 
 pub use activity_entry::*;
 pub use ai_run::*;
 pub use anchor::*;
+pub use anchor_state::*;
 pub use annotation::*;
 pub use branch_record::*;
 pub use checklist_item::*;
@@ -40,3 +44,5 @@ pub use memory_use::*;
 pub use project::*;
 pub use relevant_file::*;
 pub use task::*;
+pub use urgency_breakdown::*;
+pub use urgency_weights::*;

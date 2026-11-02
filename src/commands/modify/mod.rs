@@ -133,7 +133,8 @@ fn apply_form(conn: &Connection, cfg: &Config, task: &Task, form: FormInput) -> 
         updated.due = parse_due(&form.due, cfg);
     }
 
-    updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
+    updated.urgency =
+        crate::domain::compute_urgency(&updated, &cfg.urgency, false, 0, chrono::Utc::now());
     db::update_task(conn, &updated)?;
 
     db::set_task_files(conn, &updated.uuid, &form.selected_files)?;
@@ -199,7 +200,8 @@ pub fn modify_value(
         clear_recur,
     )?;
 
-    updated.urgency = db::compute_urgency(&updated, &cfg.urgency, false, 0);
+    updated.urgency =
+        crate::domain::compute_urgency(&updated, &cfg.urgency, false, 0, chrono::Utc::now());
     db::update_task(conn, &updated)?;
     db::refresh_urgency(conn, &cfg.urgency, &updated.uuid)?;
 

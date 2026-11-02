@@ -62,7 +62,8 @@ pub(super) fn update_existing_task(
     if !task.tags.iter().any(|t| t == "github") {
         task.tags.push("github".to_string());
     }
-    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    task.urgency =
+        crate::domain::compute_urgency(&task, &cfg.urgency, false, 0, chrono::Utc::now());
     db::update_task(conn, &task)?;
 
     if let Some(body) = issue.body.as_deref() {
@@ -87,7 +88,8 @@ pub(super) fn create_new_task(
 ) -> Result<uuid::Uuid> {
     let mut task = Task::new(issue.title.clone(), project_name.to_string());
     task.tags.push("github".to_string());
-    task.urgency = db::compute_urgency(&task, &cfg.urgency, false, 0);
+    task.urgency =
+        crate::domain::compute_urgency(&task, &cfg.urgency, false, 0, chrono::Utc::now());
     db::insert_task(conn, &mut task)?;
     db::set_github_provenance(conn, &task.uuid, &issue_provenance(repo, login, issue))?;
     ensure_issue_link(conn, &task.uuid, issue)?;

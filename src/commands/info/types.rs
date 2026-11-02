@@ -53,7 +53,7 @@ pub(super) struct Detail {
     pub(super) branch: Option<crate::domain::BranchRecord>,
     pub(super) similar: Vec<(i64, String, f64)>,
     pub(super) checklist: Vec<crate::domain::ChecklistItem>,
-    pub(super) urgency_breakdown: Option<crate::infrastructure::db::UrgencyBreakdown>,
+    pub(super) urgency_breakdown: Option<crate::domain::UrgencyBreakdown>,
     pub(super) activity: std::collections::HashMap<chrono::NaiveDate, u32>,
     pub(super) stats: Option<crate::infrastructure::db::ProjectStats>,
     pub(super) guide: crate::infrastructure::db::TaskGuideFields,

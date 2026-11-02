@@ -3,39 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct UrgencyConfig {
-    pub priority_h: f64,
-    pub priority_m: f64,
-    pub priority_l: f64,
-    pub due: f64,
-    pub blocking: f64,
-    pub blocked: f64,
-    pub active: f64,
-    pub has_tags: f64,
-    pub project: f64,
-    pub age_max: f64,
-    pub age: f64,
-}
-
-impl Default for UrgencyConfig {
-    fn default() -> Self {
-        UrgencyConfig {
-            priority_h: 6.0,
-            priority_m: 3.9,
-            priority_l: 1.8,
-            due: 12.0,
-            blocking: 8.0,
-            blocked: -5.0,
-            active: 4.0,
-            has_tags: 1.0,
-            project: 1.0,
-            age_max: 365.0,
-            age: 2.0,
-        }
-    }
-}
+use crate::domain::UrgencyWeights;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -92,7 +60,7 @@ impl Default for TuiConfig {
 pub struct Config {
     pub default_project: String,
     pub date_dialect: String,
-    pub urgency: UrgencyConfig,
+    pub urgency: UrgencyWeights,
     pub vault_path: Option<PathBuf>,
     pub recall: RecallConfig,
     pub telemetry: TelemetryConfig,
@@ -104,7 +72,7 @@ impl Default for Config {
         Config {
             default_project: "inbox".to_string(),
             date_dialect: "uk".to_string(),
-            urgency: UrgencyConfig::default(),
+            urgency: UrgencyWeights::default(),
             vault_path: None,
             recall: RecallConfig::default(),
             telemetry: TelemetryConfig::default(),

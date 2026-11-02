@@ -2,8 +2,9 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::recall::types::Hit;
+use crate::domain::AnchorState;
 use crate::infrastructure::db;
-use crate::infrastructure::memory::fingerprint::{self, AnchorState};
+use crate::infrastructure::memory::fingerprint;
 
 /// Judge each hit's anchored files against the fingerprints taken when the
 /// memory was learned; only the final, truncated hits are checked.

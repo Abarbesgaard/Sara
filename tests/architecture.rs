@@ -366,9 +366,10 @@ fn domain_does_no_io() {
     assert_passes!(rule);
 }
 
-/// Each domain file defines exactly one entity — one `pub struct` — and is named
-/// after it (`BranchRecord` → `branch_record.rs`). Enums and helpers that only
-/// that entity uses may live alongside it.
+/// Each domain file defines one entity — at most one `pub struct` — and is named
+/// after it (`BranchRecord` → `branch_record.rs`). A file without a struct is
+/// named after its `pub enum` (`AnchorState` → `anchor_state.rs`). Enums and
+/// helpers that only that entity uses may live alongside it.
 #[test]
 fn domain_has_one_entity_per_file() {
     fn snake_case(name: &str) -> String {
@@ -382,21 +383,30 @@ fn domain_has_one_entity_per_file() {
         out
     }
 
+    fn pub_types<'a>(content: &'a str, keyword: &str) -> Vec<&'a str> {
+        content
+            .lines()
+            .filter_map(|l| l.strip_prefix(keyword))
+            .filter_map(|rest| rest.split(|c: char| !c.is_alphanumeric()).next())
+            .collect()
+    }
+
     let rule = project_files()
         .in_path(pattern("src/domain/**").except_with_name("mod.rs"))
         .should()
         .adhere_to(
             |f: &FileInfo| {
-                let structs: Vec<&str> = f
-                    .content
-                    .lines()
-                    .filter_map(|l| l.strip_prefix("pub struct "))
-                    .filter_map(|rest| rest.split(|c: char| !c.is_alphanumeric()).next())
-                    .collect();
                 let stem = f.name.trim_end_matches(".rs");
-                structs.len() == 1 && snake_case(structs[0]) == stem
+                let structs = pub_types(&f.content, "pub struct ");
+                match structs.as_slice() {
+                    [entity] => snake_case(entity) == stem,
+                    [] => pub_types(&f.content, "pub enum ")
+                        .iter()
+                        .any(|e| snake_case(e) == stem),
+                    _ => false,
+                }
             },
-            "define exactly one pub struct, named after the file",
+            "define one entity (at most one pub struct), named after the file",
         );
 
     assert_passes!(rule);

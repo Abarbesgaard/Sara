@@ -109,7 +109,8 @@ pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool
         next.due = Some(next_due);
         next.recur = Some(interval.clone());
         next.estimate_mins = task.estimate_mins;
-        next.urgency = db::compute_urgency(&next, &cfg.urgency, false, 0);
+        next.urgency =
+            crate::domain::compute_urgency(&next, &cfg.urgency, false, 0, chrono::Utc::now());
         db::insert_task(conn, &mut next)?;
         recurrence = json!({
             "id": next.id,

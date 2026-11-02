@@ -3,8 +3,9 @@ use rusqlite::Connection;
 use serde_json::json;
 
 use crate::commands::doctor::types::{Check, DETAIL_LIMIT, Labels, Status};
+use crate::domain::AnchorState;
 use crate::infrastructure::db;
-use crate::infrastructure::memory::fingerprint::{self, AnchorState};
+use crate::infrastructure::memory::fingerprint;
 
 pub(in crate::commands::doctor) fn stale_anchor_check(
     conn: &Connection,

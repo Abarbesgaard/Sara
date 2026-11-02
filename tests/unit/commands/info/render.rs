@@ -220,7 +220,7 @@ fn status_row_hidden_when_pending_shown_otherwise() {
 fn urgency_breakdown_hidden_by_default_and_shown_when_toggled() {
     let mut d = base_detail(task());
     d.task.urgency = 5.0;
-    d.urgency_breakdown = Some(crate::infrastructure::db::UrgencyBreakdown {
+    d.urgency_breakdown = Some(crate::domain::UrgencyBreakdown {
         priority: 3.0,
         due: 0.0,
         blocking: 0.0,

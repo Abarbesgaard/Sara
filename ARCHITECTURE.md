@@ -133,8 +133,11 @@ stay as a single `mod.rs`.
 
 - External crates are limited to `std`, `anyhow`, `chrono`, `serde` and `uuid`.
 - No I/O: no `std::fs`, `std::io`, `std::net`, `std::process`, `std::env` or printing.
-- One entity per file: each file defines exactly one `pub struct` and is named after it
-  (`BranchRecord` → `branch_record.rs`). Enums and helpers only that entity uses live alongside it.
+- One entity per file: each file defines at most one `pub struct` and is named after it
+  (`BranchRecord` → `branch_record.rs`), or after its `pub enum` when it has no struct
+  (`AnchorState` → `anchor_state.rs`). Enums and helpers only that entity uses live alongside it.
+- Business rules are domain too: urgency scoring (`urgency_breakdown.rs`) and anchor drift
+  (`anchor_state.rs`) are pure functions; reading files and the clock stays with the caller.
 - Read models and query results (`ProjectStats`, `SearchHit`, …) are not domain; they stay in `db`.
 
 ### Infrastructure
