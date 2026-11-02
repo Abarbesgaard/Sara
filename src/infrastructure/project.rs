@@ -124,6 +124,7 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
         }
     }
 
+    let mut trailing_tags = Vec::new();
     while let Some(&tok) = remaining.last() {
         if let Some(stripped) = tok.strip_prefix("project:") {
             if result.project.is_none() {
@@ -131,7 +132,7 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
             }
             remaining.pop();
         } else if let Some(stripped) = tok.strip_prefix('+') {
-            result.tags.push(stripped.to_string());
+            trailing_tags.push(stripped.to_string());
             remaining.pop();
         } else if let Some(stripped) = tok.to_lowercase().strip_prefix("pri:") {
             if result.priority.is_none() {
@@ -148,6 +149,7 @@ pub fn parse_add_tokens(args: &[String]) -> ParsedTokens {
         }
     }
 
+    result.tags.extend(trailing_tags.into_iter().rev());
     result.description = remaining.join(" ");
     result
 }
