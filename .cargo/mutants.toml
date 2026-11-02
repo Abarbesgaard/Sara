@@ -9,3 +9,7 @@ exclude_globs = [
   "src/commands/dream/render/**",
   "src/commands/info/render/**",
 ]
+
+# Build mutants without debug info: each mutant is a fresh build, and tests
+# only need pass/fail, not backtraces with line numbers.
+profile = "mutants"

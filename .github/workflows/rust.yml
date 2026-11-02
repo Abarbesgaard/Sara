@@ -272,11 +272,17 @@ jobs:
   # Config: .cargo/mutants.toml.
 
   mutants:
-    name: Mutants (PR diff)
+    name: Mutants (PR diff, shard ${{ matrix.shard }}/8)
     needs: [test, test-no-telemetry]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every mutant rebuilds and reruns the suite, so a large diff runs for
+        # hours on one runner. Shards split the mutants evenly across runners.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -300,11 +306,15 @@ jobs:
           tool: cargo-mutants
 
       - name: Mutants
-        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+        # The test jobs this one needs already prove the unmutated tree passes,
+        # so skip the baseline run and give each mutant a fixed test timeout.
+        run: >-
+          cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+          --shard ${{ matrix.shard }}/8 --baseline skip --timeout 300
 
       - name: Archive mutants.out
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants.out
+          name: mutants.out-${{ matrix.shard }}
           path: mutants.out

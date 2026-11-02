@@ -115,6 +115,11 @@ debug = "line-tables-only"
 [profile.test]
 debug = "line-tables-only"
 
+# Used by cargo-mutants (.cargo/mutants.toml): every mutant is a rebuild.
+[profile.mutants]
+inherits = "test"
+debug = false
+
 [dev-dependencies]
 assert_cmd = "2.2.2"
 criterion = "0.8.2"
