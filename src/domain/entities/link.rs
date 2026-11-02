@@ -19,10 +19,7 @@ impl Link {
 
 pub fn is_url(s: &str) -> bool {
     let s = s.trim();
-    s.starts_with("http://")
-        || s.starts_with("https://")
-        || s.contains("://")
-        || s.starts_with("www.")
+    s.contains("://") || s.starts_with("www.")
 }
 
 pub fn derive_link_label(url: &str) -> Option<String> {

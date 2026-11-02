@@ -73,6 +73,14 @@ fn parse_issue_link_extracts_owner_repo_and_number() {
         None
     );
     assert_eq!(parse_issue_link("https://example.com/foo"), None);
+    assert_eq!(
+        parse_issue_link("https://github.com/acme/widgets/issues"),
+        None
+    );
+    assert_eq!(
+        parse_issue_link("https://github.com/acme/widgets/issues/7/timeline"),
+        Some(("acme/widgets".to_string(), 7))
+    );
 }
 
 #[test]
@@ -130,6 +138,7 @@ fn is_url_detects_links_vs_paths() {
     assert!(is_url("https://github.com/a/b/pull/1"));
     assert!(is_url("http://example.com"));
     assert!(is_url("www.test.dk"));
+    assert!(is_url("  ftp://files.example.com  "));
     assert!(!is_url("src/main.rs"));
     assert!(!is_url("Cargo.toml"));
 }

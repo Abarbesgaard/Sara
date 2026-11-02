@@ -25,3 +25,7 @@ impl fmt::Display for DomainError {
 }
 
 impl std::error::Error for DomainError {}
+
+#[cfg(test)]
+#[path = "../../tests/unit/domain/error.rs"]
+mod tests;
