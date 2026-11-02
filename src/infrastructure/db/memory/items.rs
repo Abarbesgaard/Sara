@@ -233,6 +233,9 @@ pub fn get_item_by_handle(conn: &Connection, handle: &str) -> Result<Item> {
 }
 
 pub fn get_item_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Item> {
+    if prefix.trim().is_empty() {
+        anyhow::bail!("memory handle cannot be empty");
+    }
     let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
         "SELECT uuid, kind, display_id, title, url, project, tags_json, path, summary, body, created, modified, status, source_task_uuid

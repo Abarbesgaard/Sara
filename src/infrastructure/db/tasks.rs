@@ -300,6 +300,9 @@ pub fn find_tasks_by_uuid_fragment(
 }
 
 pub fn get_task_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Option<Task>> {
+    if prefix.trim().is_empty() {
+        anyhow::bail!("task id cannot be empty");
+    }
     let pattern = like_prefix_pattern(prefix);
     let mut stmt = conn.prepare(
         "SELECT uuid,id,description,project,status,priority,due,entry,modified,end,tags_json,urgency,started_at,time_spent,estimate_mins,recur

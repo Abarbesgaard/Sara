@@ -10,15 +10,19 @@ when tasks complete; uuid prefixes never change.
 - **A3** Acting by display id on a task tied to a branch other than the checked-out one is refused; acting by uuid prefix is not.
 - **A4** A branch refusal suggests an id that is read as a uuid prefix, so re-running with it succeeds.
 - **A5** `--force` acts on the task whatever branch is checked out.
+- **A6** A blank task id or memory handle matches nothing, even when only one task or memory exists.
 
 ```covers
 src/infrastructure/db/tasks.rs::resolve_task_matched
 src/commands/shared/project.rs::guard_branch_mutation
 src/commands/shared/project.rs::stable_id
+src/infrastructure/db/tasks.rs::get_task_by_uuid_prefix
+src/infrastructure/db/memory/items.rs::get_item_by_uuid_prefix
 ```
 
 ```surface
 cli done
+cli forget
 cli info
 cli validate
 ```

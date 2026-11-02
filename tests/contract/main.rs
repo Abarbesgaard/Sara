@@ -10,6 +10,7 @@ mod doctor;
 mod ids;
 mod links;
 mod mcp;
+mod mcp_args;
 mod obligations;
 mod provenance;
 mod recall;
