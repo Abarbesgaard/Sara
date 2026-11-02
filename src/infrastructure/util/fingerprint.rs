@@ -1,5 +1,5 @@
 //! Reads anchored files from disk and judges them with the pure fingerprint
-//! logic in `crate::domain::anchor_state`.
+//! logic in `crate::domain::services::fingerprint`.
 
 use std::path::Path;
 

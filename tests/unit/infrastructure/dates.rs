@@ -3,6 +3,19 @@ use chrono::{Datelike, Duration, NaiveDate};
 use proptest::prelude::*;
 
 proptest! {
+
+    #![proptest_config(ProptestConfig {
+
+        failure_persistence: Some(Box::new(
+
+            proptest::test_runner::FileFailurePersistence::Direct("tests/proptest-regressions/dates.txt"),
+
+        )),
+
+        ..ProptestConfig::default()
+
+    })]
+
     #[test]
     fn parse_due_never_panics(s in "\\PC{0,40}", us in any::<bool>()) {
         let _ = parse_due(&s, if us { "us" } else { "uk" });

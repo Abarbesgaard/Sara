@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::commands::doctor::types::{Check, DETAIL_LIMIT, Labels, Status};
 use crate::domain::AnchorState;
 use crate::infrastructure::db;
-use crate::infrastructure::memory::fingerprint;
+use crate::infrastructure::util::fingerprint;
 
 pub(in crate::commands::doctor) fn stale_anchor_check(
     conn: &Connection,

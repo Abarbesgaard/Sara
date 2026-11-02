@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use super::support::kind_arg;
+use super::super::support::kind_arg;
 use crate::commands::shared::{insight, print_cited, print_json, project_head, with_citation};
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;

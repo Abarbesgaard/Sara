@@ -5,7 +5,7 @@ use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension};
 use uuid::Uuid;
 
-use crate::infrastructure::memory::fingerprint;
+use crate::infrastructure::util::fingerprint;
 
 pub(crate) fn row_to_item(row: &rusqlite::Row<'_>) -> rusqlite::Result<Item> {
     let tags_json: String = row.get(6)?;

@@ -2,12 +2,12 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde_json::json;
 
-use super::support::kind_arg;
+use super::super::support::{kind_arg, one_based};
 use crate::commands::shared::print_json;
 use crate::infrastructure::config::Config;
 use crate::infrastructure::db;
 
-pub fn step_undone_value(
+pub fn step_remove_value(
     conn: &Connection,
     id: &str,
     n: usize,
@@ -15,23 +15,28 @@ pub fn step_undone_value(
 ) -> Result<serde_json::Value> {
     let task = db::resolve_task(conn, id)?;
     let kind = kind_arg(kind);
-    let step_id = db::step_id_by_index(conn, &task.uuid, kind, n)?;
-    db::set_step_done(conn, step_id, false, None, None)?;
+    let steps = db::get_steps(conn, &task.uuid, kind)?;
+    let idx = one_based(n, kind)?;
+    let item = steps
+        .get(idx)
+        .ok_or_else(|| anyhow::anyhow!("No {kind} #{n} on this task"))?;
+    let text = item.text.clone();
+    db::delete_step(conn, item.id)?;
     Ok(json!({
         "task": task.id,
         "uuid": task.uuid.to_string(),
         "kind": kind,
         "index": n,
-        "done": false,
+        "removed": text,
     }))
 }
 
-pub fn step_undone_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
+pub fn step_remove_by_id_value(conn: &Connection, step_id: i64) -> Result<serde_json::Value> {
     let (uuid, kind, index) = db::locate_step(conn, step_id)?;
-    step_undone_value(conn, &uuid.to_string(), index, Some(&kind))
+    step_remove_value(conn, &uuid.to_string(), index, Some(&kind))
 }
 
-pub fn step_undone(
+pub fn step_remove(
     conn: &Connection,
     _cfg: &Config,
     id: &str,
@@ -39,16 +44,17 @@ pub fn step_undone(
     kind: Option<&str>,
     as_json: bool,
 ) -> Result<()> {
-    let v = step_undone_value(conn, id, n, kind)?;
+    let v = step_remove_value(conn, id, n, kind)?;
     if as_json {
         print_json(&v)?;
         return Ok(());
     }
     println!(
-        "Reopened {} {} of task {}.",
+        "Removed {} {} of task {}: {}",
         v["kind"].as_str().unwrap_or("step"),
         n,
-        v["task"].as_i64().unwrap_or(0)
+        v["task"].as_i64().unwrap_or(0),
+        v["removed"].as_str().unwrap_or_default()
     );
     Ok(())
 }

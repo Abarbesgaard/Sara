@@ -53,6 +53,19 @@ mod properties {
     use proptest::prelude::*;
 
     proptest! {
+
+        #![proptest_config(ProptestConfig {
+
+            failure_persistence: Some(Box::new(
+
+                proptest::test_runner::FileFailurePersistence::Direct("tests/proptest-regressions/memory_body.txt"),
+
+            )),
+
+            ..ProptestConfig::default()
+
+        })]
+
         #[test]
         fn detect_secret_never_panics(s in "\\PC{0,200}") {
             let _ = MemoryBody::detect_secret(&s);

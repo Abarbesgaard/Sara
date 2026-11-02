@@ -23,6 +23,19 @@ mod properties {
     use proptest::prelude::*;
 
     proptest! {
+
+        #![proptest_config(ProptestConfig {
+
+            failure_persistence: Some(Box::new(
+
+                proptest::test_runner::FileFailurePersistence::Direct("tests/proptest-regressions/safety.txt"),
+
+            )),
+
+            ..ProptestConfig::default()
+
+        })]
+
         #[test]
         fn check_size_accepts_up_to_the_limit(n in 0usize..=SIZE_LIMIT_CHARS) {
             prop_assume!(std::env::var(SIZE_LIMIT_ENV).is_err());

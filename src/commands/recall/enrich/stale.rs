@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::commands::recall::types::Hit;
 use crate::domain::AnchorState;
 use crate::infrastructure::db;
-use crate::infrastructure::memory::fingerprint;
+use crate::infrastructure::util::fingerprint;
 
 /// Judge each hit's anchored files against the fingerprints taken when the
 /// memory was learned; only the final, truncated hits are checked.
