@@ -428,6 +428,25 @@ scripts/similar-code.sh               # every similar pair in src/
 scripts/similar-code.sh origin/main   # only functions changed on your branch
 ```
 
+### Kill matrix
+
+A test earns its place by catching a bug no other test catches.
+`scripts/kill-matrix.sh` runs every mutant against the whole suite, records which
+tests fail ("kill" it), and lists tests that kill nothing or only mutants other
+tests also kill. It only suggests: contract tests are spec, so keep them unless
+the spec changed.
+
+A full sweep takes over a day, so a nightly job runs one of 128 small shards and
+adds it to the results on the `kill-matrix-data` branch. Once every shard has
+run, it files an issue labelled `kill-matrix` per suspect test, at most 3 a
+night. Close the issue to keep the test.
+
+```bash
+scripts/kill-matrix.sh 'src/domain/**'                       # sweep files, print the report
+scripts/kill-matrix.sh --test contract/undo::undo_reverts_the_last_command \
+                       'src/main.rs'                         # is this one test needed?
+```
+
 ---
 
 ## Quick start
