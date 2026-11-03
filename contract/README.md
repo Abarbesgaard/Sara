@@ -51,6 +51,7 @@ fn ...
 `tests/contract/obligations.rs` runs with the contract suite and fails when:
 
 - an obligation has no tagged test, or two obligations share a number
+- an obligation's only tagged tests are marked `#[ignore]`: a test that never runs proves nothing
 - a test in a primitive's file has no tag, or a tag names an obligation that
   doesn't exist
 - a tag appears outside its primitive's test file
