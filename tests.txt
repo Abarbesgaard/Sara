@@ -31,6 +31,7 @@ contract/cite::cite_cli_bad_label_fails_atomically
 contract/cite::cite_cli_step_done_and_done_record_cited_uses
 contract/cite::cite_info_lists_cited_memories
 contract/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+contract/cli_errors::add_rejects_an_unknown_priority
 contract/cli_errors::secret_guardrail_rejects_and_exits_1
 contract/cli_errors::unknown_subcommand_exits_2
 contract/cli_errors::unknown_task_id_exits_1
@@ -43,6 +44,7 @@ contract/doctor::doctor_json_reports_a_healthy_fresh_store
 contract/doctor::doctor_knowledge_reuse_scopes_to_the_current_project
 contract/doctor::doctor_mcp_tool_returns_the_cli_report
 contract/doctor::doctor_strict_exits_1_when_a_check_warns
+contract/ids::a_blank_id_matches_nothing
 contract/ids::a_short_number_is_a_display_id
 contract/ids::an_all_digit_uuid_prefix_is_a_uuid
 contract/ids::force_acts_on_any_branch
@@ -60,6 +62,7 @@ contract/mcp::begin_learn_recall_payloads
 contract/mcp::find_tool_searches_tasks_by_partial_uuid
 contract/mcp::tool_failure_is_an_is_error_result_not_a_protocol_error
 contract/mcp::tool_response_envelope_is_wellformed
+contract/mcp_args::every_tool_answers_generated_arguments
 contract/obligations::a_covers_line_for_missing_code_fails
 contract/obligations::a_duplicate_or_malformed_obligation_fails
 contract/obligations::a_fully_proved_primitive_holds
@@ -368,8 +371,11 @@ sara/commands::move_task::tests::move_value_is_a_noop_for_the_same_project
 sara/commands::move_task::tests::move_value_reassigns_the_project
 sara/commands::move_task::tests::move_value_rejects_empty_target_project
 sara/commands::move_task::tests::move_value_trims_surrounding_whitespace
+sara/commands::plan::tests::generated::imports_exactly_or_saves_nothing
+sara/commands::plan::tests::generated::never_panics
 sara/commands::plan::tests::import_raw_carries_steps_acceptance_and_annotations
 sara/commands::plan::tests::import_raw_creates_tasks_in_the_named_project
+sara/commands::plan::tests::import_raw_names_the_bad_task_counting_from_one
 sara/commands::plan::tests::import_raw_rejects_an_empty_plan
 sara/commands::plan::tests::import_raw_rejects_invalid_json
 sara/commands::plan::tests::import_raw_wires_up_dependencies_by_key
@@ -746,6 +752,10 @@ sara/infrastructure::memory::graph::tests::rare_shared_anchor_binds_tighter_than
 sara/infrastructure::memory::graph::tests::shared_tag_creates_a_weighted_edge
 sara/infrastructure::memory::graph::tests::sparse_anchors_take_the_inverted_path_and_match_the_naive_reference
 sara/infrastructure::memory::graph::tests::unconnected_memory_is_not_activated
+sara/infrastructure::project::tests::add_tokens::description_and_tags_round_trip
+sara/infrastructure::project::tests::add_tokens::markers_inside_the_description_stay_in_it
+sara/infrastructure::project::tests::add_tokens::never_panics
+sara/infrastructure::project::tests::add_tokens::priority_is_case_insensitive
 sara/infrastructure::project::tests::file_link_absolute_passes_through
 sara/infrastructure::project::tests::file_link_directory_prefix_slash_preserved
 sara/infrastructure::project::tests::file_link_outside_repo_falls_back_to_cwd

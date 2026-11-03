@@ -1,0 +1,86 @@
+src/commands/activity/render.rs:103:63: replace - with + in grid_start	sara/commands::activity::render::tests::activity_grid_scrolls_back_to_keep_the_cursor_visible
+src/commands/activity/render.rs:103:63: replace - with + in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:103:63: replace - with + in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:103:63: replace - with + in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:103:63: replace - with / in grid_start	sara/commands::activity::render::tests::activity_grid_scrolls_back_to_keep_the_cursor_visible
+src/commands/activity/render.rs:103:63: replace - with / in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:103:63: replace - with / in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:103:63: replace - with / in grid_start	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:108:5: replace render_grid with ()	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:108:5: replace render_grid with ()	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:108:5: replace render_grid with ()	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:108:64: replace / with % in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:108:64: replace / with % in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:108:64: replace / with % in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:108:64: replace / with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:108:64: replace / with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:108:64: replace / with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:117:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:117:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:117:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:118:27: replace + with - in render_grid	sara/commands::activity::render::tests::activity_drill_down_reports_an_empty_day
+src/commands/activity/render.rs:118:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:118:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:118:27: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:118:27: replace + with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:118:27: replace + with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:118:27: replace + with * in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:118:40: replace * with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:118:40: replace * with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:118:40: replace * with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:118:40: replace * with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:118:40: replace * with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:118:40: replace * with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:119:34: replace && with || in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:119:34: replace && with || in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:119:34: replace && with || in render_grid	sara/commands::activity::render::tests::activity_drill_down_reports_an_empty_day
+src/commands/activity/render.rs:119:34: replace && with || in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:119:26: replace != with == in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:119:26: replace != with == in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:119:26: replace != with == in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:119:60: replace <= with > in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:119:60: replace <= with > in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:119:60: replace <= with > in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:120:45: replace - with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:120:45: replace - with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:120:45: replace - with + in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:120:45: replace - with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:120:45: replace - with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:120:45: replace - with / in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:134:50: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:134:50: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:134:50: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:134:29: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:134:29: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:134:29: replace + with - in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:143:26: replace == with != in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:143:26: replace == with != in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:143:26: replace == with != in render_grid	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:156:5: replace cell -> Span<'static> with Default::default()	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:156:5: replace cell -> Span<'static> with Default::default()	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:156:5: replace cell -> Span<'static> with Default::default()	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:156:12: replace > with == in cell	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:156:12: replace > with == in cell	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:156:12: replace > with == in cell	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:156:12: replace > with < in cell	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:156:12: replace > with < in cell	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:156:12: replace > with < in cell	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:156:12: replace > with >= in cell	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:156:12: replace > with >= in cell	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:156:12: replace > with >= in cell	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:160:22: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:160:22: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:160:22: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:162:12: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:162:12: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:162:12: replace == with != in cell	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:173:5: replace day_title -> String with String::new()	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:173:5: replace day_title -> String with String::new()	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:173:5: replace day_title -> String with String::new()	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:173:5: replace day_title -> String with "xyzzy".into()	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:173:5: replace day_title -> String with "xyzzy".into()	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:173:5: replace day_title -> String with "xyzzy".into()	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:183:5: replace render_day with ()	sara/commands::activity::render::tests::activity_drill_down_reports_an_empty_day
+src/commands/activity/render.rs:183:5: replace render_day with ()	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/render.rs:183:5: replace render_day with ()	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/render.rs:183:5: replace render_day with ()	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down

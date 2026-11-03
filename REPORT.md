@@ -1,4 +1,4 @@
-25 caught mutant(s), killed by 58 of 926 test(s).
+52 caught mutant(s), killed by 63 of 936 test(s).
 
 Tests that kill something (kills, unique kills):
      1    0  architecture/known_large_files_are_still_large   <- removable
@@ -59,6 +59,11 @@ Tests that kill something (kills, unique kills):
      3    0  contract/validate::validate_explains_a_folder_outside_git   <- removable
      3    0  contract/validate::validate_explains_a_moved_project   <- removable
      3    0  contract/validate::validate_explains_a_repo_without_commits   <- removable
+     3    0  sara/commands::activity::render::tests::activity_drill_down_reports_an_empty_day   <- removable
+     2    0  sara/commands::activity::render::tests::activity_grid_scrolls_back_to_keep_the_cursor_visible   <- removable
+    27    0  sara/commands::activity::render::tests::styled_snapshot_activity
+    27    0  sara/commands::activity::render::tests::styled_snapshot_activity_drill_down   <- removable
+    27    0  sara/commands::activity::render::tests::styled_snapshot_activity_retro   <- removable
 
-52 test(s) can be removed together without losing a kill (marked above).
-868 test(s) killed nothing in what was swept.
+56 test(s) can be removed together without losing a kill (marked above).
+873 test(s) killed nothing in what was swept.
