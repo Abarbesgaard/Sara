@@ -6,10 +6,25 @@ git repo with at least one commit.
 
 ## Obligations
 
-- **A1** When the project is a git repo with no commits, validate refuses and says the project has no commits yet, with or without `--no-run`.
-- **A2** When the acceptance gate passed but there is no commit to stamp, the refusal says the gate is green; with `--no-run` it doesn't mention the gate.
-- **A3** When the project folder no longer exists, validate refuses and says to re-run `sara init` in the new location.
-- **A4** When the project folder is not in a git repo, validate refuses and says so.
+### A1 — A repo without commits is refused
+- **must:** when the project is a git repo with no commits, validate refuses and says the project has no commits yet, with or without `--no-run`
+- **kind:** functional
+- **status:** active
+
+### A2 — The refusal reports a green gate
+- **must:** when the acceptance gate passed but there is no commit to stamp, the refusal says the gate is green; with `--no-run` it doesn't mention the gate
+- **kind:** functional
+- **status:** active
+
+### A3 — A moved project folder is refused
+- **must:** when the project folder no longer exists, validate refuses and says to re-run `sara init` in the new location
+- **kind:** functional
+- **status:** active
+
+### A4 — A folder outside git is refused
+- **must:** when the project folder is not in a git repo, validate refuses and says so
+- **kind:** functional
+- **status:** active
 
 ```covers
 src/commands/shared/project.rs::require_project_head

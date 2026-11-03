@@ -1,7 +1,6 @@
 use crate::harness::Sara;
 
-// Contract: undo/A1
-#[test]
+#[impish::contract("undo/A1")]
 fn undo_reverts_the_last_command() {
     let s = Sara::new();
     s.run(&["add", "-y", "Keep me"]);
