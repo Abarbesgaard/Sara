@@ -115,10 +115,11 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
 
     <div class="step s-live" data-n="2">
       <h3>Make it executable <span class="rule">Rule 20</span></h3>
-      <p>Each contract test names the obligations it proves with <code>// Contract: ids/A6</code>. The obligations
-        test fails the build when an obligation has no test, a tag points nowhere, a <code>covers</code> or <code>surface</code>
-        line names something sara doesn't have, or the published coverage is stale.</p>
-      <div class="where"><span class="chip">tests/contract/&lt;primitive&gt;.rs</span><span class="chip">tests/contract/obligations.rs</span></div>
+      <p>Each contract test names the obligations it proves with <code>#[impish::contract("ids/A6")]</code>, which
+        fails to compile when the tag points nowhere. <a href="https://github.com/Abarbesgaard/impish">impish</a>'s
+        <code>cargo impish check</code> fails the build when an obligation has no test, a <code>covers</code> or
+        <code>surface</code> line names something sara doesn't have, or the published coverage is stale.</p>
+      <div class="where"><span class="chip">tests/contract/&lt;primitive&gt;.rs</span><span class="chip">cargo impish check</span></div>
     </div>
 
     <div class="phase">Breathe in, breathe out</div>
@@ -183,9 +184,9 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
 
     <div class="step s-live" data-n="10">
       <h3>Coverage is published <span class="rule">Rule 29</span></h3>
-      <p>Every PR prints Contract coverage in its job summary, and every merge to main republishes the
-        <a href="contract.html">Contract page</a> from <code>contract/coverage.json</code>: obligations per primitive, and which commands and tools no obligation covers yet.</p>
-      <div class="where"><span class="chip">contract/coverage.json</span><span class="chip">pages.yml</span></div>
+      <p>Every CI run prints Contract coverage from <code>contract/coverage.json</code> in its job summary:
+        obligations per primitive, and which commands and tools no obligation covers yet.</p>
+      <div class="where"><span class="chip">contract/coverage.json</span><span class="chip">rust.yml</span></div>
     </div>
   </div>
 
@@ -207,7 +208,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
     <thead><tr><th>Rule</th><th>What IMP asks</th><th>Status</th><th>How sara does it</th></tr></thead>
     <tbody>
       <tr><td>13, 20</td><td>An executable Contract</td><td><i class="dot part"></i>partial</td><td>Checker and tagging are in place; one primitive written (<a href="https://github.com/Abarbesgaard/Sara/issues/316">#316</a>)</td></tr>
-      <tr><td>29</td><td>Contract coverage published</td><td><i class="dot live"></i>in place</td><td>PR job summary and the <a href="contract.html">Contract page</a></td></tr>
+      <tr><td>29</td><td>Contract coverage published</td><td><i class="dot live"></i>in place</td><td>CI job summary</td></tr>
       <tr><td>19, 24</td><td>Machines enforce standards</td><td><i class="dot live"></i>in place</td><td>fmt, Clippy, unused dependencies, zizmor, cargo-deny, archunit</td></tr>
       <tr><td>26</td><td>Every test earns its place</td><td><i class="dot part"></i>partial</td><td>Mutants fail PRs; the nightly kill matrix files issues but doesn't fail the build (<a href="https://github.com/Abarbesgaard/Sara/issues/296">#296</a>)</td></tr>
       <tr><td>27</td><td>Green merges itself</td><td><i class="dot live"></i>in place</td><td>The <code>CI</code> gate is required; auto-merge is on</td></tr>

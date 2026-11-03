@@ -1340,6 +1340,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "impish"
+version = "0.4.0"
+source = "git+https://github.com/Abarbesgaard/impish?tag=v0.4.0#9ea91e59f9451f900a3f82a5d49cd2f96ec8a2a2"
+dependencies = [
+ "impish-core",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "impish-core"
+version = "0.4.0"
+source = "git+https://github.com/Abarbesgaard/impish?tag=v0.4.0#9ea91e59f9451f900a3f82a5d49cd2f96ec8a2a2"
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2500,6 +2516,7 @@ dependencies = [
  "crossterm",
  "directories",
  "ignore",
+ "impish",
  "insta",
  "interim",
  "libc",

@@ -224,6 +224,12 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Contract
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: |
+          cargo install --git https://github.com/Abarbesgaard/impish --tag v0.4.0 --locked cargo-impish
+          cargo impish check
+
       - name: Contract coverage summary
         if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
         run: |

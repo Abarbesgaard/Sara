@@ -431,8 +431,9 @@ scripts/similar-code.sh origin/main   # only functions changed on your branch
 ### Contract
 
 `contract/` writes down what sara promises as numbered obligations, each proved
-by a tagged test in `tests/contract/`. The contract suite fails when an
-obligation has no test, and keeps `contract/coverage.json`, the share of
+by a tagged test in `tests/contract/`.
+[impish](https://github.com/Abarbesgaard/impish)'s `cargo impish check` fails
+when an obligation has no test, and keeps `contract/coverage.json`, the share of
 commands and tools the Contract covers, up to date. See
 [contract/README.md](contract/README.md).
 

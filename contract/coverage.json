@@ -1,4 +1,7 @@
 {
+  "kinds": {
+    "functional": 11
+  },
   "obligations": 11,
   "primitives": {
     "ids": {
