@@ -168,8 +168,8 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
     <div class="step s-live" data-n="8">
       <h3>Every green merge is a release <span class="rule">Rule 3</span></h3>
       <p>A PR that changes what ships (<code>src/</code>, <code>assets/</code>, <code>Cargo.toml</code>, <code>Cargo.lock</code>) fails until it
-        bumps the version in <code>Cargo.toml</code>. On merge the new version is tagged automatically, and the tag builds and publishes the release.</p>
-      <div class="where"><span class="chip">ci.yml (Policy)</span><span class="chip">auto-tag.yml</span><span class="chip">release.yml</span></div>
+        bumps the version in <code>Cargo.toml</code>. Once CI is green on <code>main</code>, the same run tags the new version and ships it: binaries, the <code>.deb</code>, crates.io and the apt repository.</p>
+      <div class="where"><span class="chip">ci.yml (Policy, Release)</span><span class="chip">release.yml</span></div>
       <p class="gap">Dependabot can't bump the version, so its updates ship with the next release.</p>
     </div>
 

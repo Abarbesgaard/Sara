@@ -7,12 +7,14 @@ name: CI
 #   Policy (PRs) ─┼─ Mutants (PRs) ─┐
 #   Test ─────────┘                 ├─ CI
 #   Portability ────────────────────┘
+#                                   └─ Release (main, when the version is new)
 #
 # Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
 # Policy:      a change to what ships bumps the version; no new similar code.
 # Test:        the suite with and without default features, then the Contract.
 # Portability: the suite on macOS and Windows.
 # Mutants:     mutation testing on the lines the PR changes.
+# Release:     every green merge that bumps the version ships (release.yml).
 
 on:
   push:
@@ -26,9 +28,11 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# A new push cancels a PR's stale run, but never a run on main: it may be
+# releasing.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -238,3 +242,45 @@ jobs:
         run: |
           echo "$RESULTS"
           case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
+
+  # Every green merge is a release (IMP Rule 3). Policy makes a PR that changes
+  # what ships bump the version, so a version with no tag yet is a release.
+  new-version:
+    name: New version?
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      new: ${{ steps.version.outputs.new }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --silent 2>/dev/null; then
+            new=false
+          else
+            new=true
+          fi
+          echo "${tag}: new=${new}" | tee -a "$GITHUB_STEP_SUMMARY"
+          printf 'tag=%s\nnew=%s\n' "$tag" "$new" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Release
+    needs: new-version
+    if: needs.new-version.outputs.new == 'true'
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    uses: $/.github/workflows/release.yml
+    with:
+      tag: ${{ needs.new-version.outputs.tag }}
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

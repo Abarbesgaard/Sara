@@ -5,6 +5,8 @@ name: Deploy GitHub Pages
 #   /spqr/  — the Adeptus Machinae showcase
 #   /imp.html — how the pipeline maps to Impatient Programming, with live
 #               numbers from contract/coverage.json
+#   /apt/     — an apt repository holding the latest release's .deb
+# release.yml calls this after each release so /apt/ serves the new version.
 # Repo setup: Settings → Pages → Source = "GitHub Actions".
 
 on:
@@ -14,6 +16,7 @@ on:
       - "docs/**"
       - "contract/coverage.json"
       - ".github/workflows/pages.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -21,9 +24,10 @@ permissions:
   pages: write
   id-token: write
 
+# Never cancel: a cancelled deploy inside a release would fail the release.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -38,6 +42,32 @@ jobs:
           persist-credentials: false
       - name: Add contract coverage
         run: cp contract/coverage.json docs/coverage.json
+      - name: Add apt repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          mkdir -p docs/apt/pool/main docs/apt/dists/stable/main/binary-amd64
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern 'sara_*-*_amd64.deb' --dir docs/apt/pool/main
+          cd docs/apt
+          dpkg-scanpackages --arch amd64 pool/ > dists/stable/main/binary-amd64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=Sara \
+            -o APT::FTPArchive::Release::Label=Sara \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures=amd64 \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > dists/stable/Release
+          # Optional: with APT_GPG_PRIVATE_KEY set, clients can drop [trusted=yes].
+          if [ -n "${GPG_KEY:-}" ]; then
+            echo "$GPG_KEY" | gpg --batch --import
+            key="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/{print $5; exit}')"
+            gpg --batch --yes --default-key "$key" -abs -o dists/stable/Release.gpg dists/stable/Release
+            gpg --batch --yes --default-key "$key" --clearsign -o dists/stable/InRelease dists/stable/Release
+            gpg --batch --yes --armor --export "$key" > sara-archive-keyring.asc
+          fi
       - name: Upload docs artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

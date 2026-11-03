@@ -1,17 +1,30 @@
 name: Release
 
-# Tag-driven releases. A PR that changes what ships bumps the version in
-# Cargo.toml (ci.yml's Policy job), and auto-tag.yml tags it on main.
+# Every green merge is a release (IMP Rule 3). A PR that changes what ships
+# bumps the version in Cargo.toml (ci.yml's Policy job); once CI is green on
+# main, ci.yml's Release job calls this with the new tag. Run it by hand to
+# redo a release.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag to release, e.g. v2.8.0
+        required: true
+        type: string
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: false
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release, e.g. v2.8.0
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
-  # Create the GitHub Release that the other jobs upload assets to.
+  # Tag the commit and create the GitHub Release the other jobs upload to.
   create-release:
     runs-on: ubuntu-latest
     permissions:
@@ -20,8 +33,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --silent 2>/dev/null; then
+            echo "${TAG} already exists."
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${TAG}" -f sha="${GITHUB_SHA}" --silent
+            echo "Tagged ${GITHUB_SHA} as ${TAG}."
+          fi
       - uses: taiki-e/create-gh-release-action@eba8ea96c86cca8a37f1b56e94b4d13301fba651 # v1.11.0
         with:
+          ref: refs/tags/${{ inputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
   # Cross-compiled binaries (tar.gz) for Linux + macOS, attached to the release.
@@ -60,6 +85,7 @@ jobs:
           target: ${{ matrix.target }}
           archive: sara-$target
           checksum: sha256
+          ref: refs/tags/${{ inputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
   # Debian package (.deb) for amd64. Uploaded both versioned (cargo-deb's name)
@@ -81,11 +107,12 @@ jobs:
       - name: Upload .deb to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
-          deb="$(ls target/debian/*.deb | head -n1)"
+          deb="$(find target/debian -name '*.deb' | head -n1)"
           cp "$deb" sara_amd64.deb
           sha256sum "$deb" sara_amd64.deb > sara_amd64.deb.sha256
-          gh release upload "${GITHUB_REF_NAME}" "$deb" sara_amd64.deb sara_amd64.deb.sha256 --clobber
+          gh release upload "${TAG}" "$deb" sara_amd64.deb sara_amd64.deb.sha256 --clobber
 
   # Publish to crates.io. No-op unless the CARGO_REGISTRY_TOKEN secret is set.
   crates-io:
@@ -107,3 +134,12 @@ jobs:
             exit 0
           fi
           cargo publish --token "$TOKEN"
+
+  # Redeploy Pages, which builds the apt repository from this release's .deb.
+  apt:
+    needs: deb
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: $/.github/workflows/pages.yml
