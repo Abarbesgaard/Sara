@@ -2,6 +2,7 @@
 
 mod harness;
 
+mod add;
 mod cite;
 mod cli_errors;
 mod cli_json;
