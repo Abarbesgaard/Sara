@@ -338,12 +338,47 @@ jobs:
           name: mutants.out
           path: mutants.out
 
+  # Every green merge is a release (IMP Rule 3): auto-tag.yml tags a new
+  # version on main and release.yml ships it, so a PR that changes what ships
+  # must bump the version. Dependabot can't, so its updates ship with the next
+  # release.
+  version:
+    name: Version
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: A change to what ships bumps the version
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          shipped=$(git diff --name-only "origin/${BASE_REF}..." -- src assets Cargo.toml Cargo.lock)
+          if [ -z "$shipped" ] || [ "$AUTHOR" = "dependabot[bot]" ]; then
+            echo "Nothing that ships changed, or this is Dependabot; no bump needed."
+            exit 0
+          fi
+          version() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1; }
+          base=$(git show "origin/${BASE_REF}:Cargo.toml" | version)
+          head=$(version < Cargo.toml)
+          newest=$(printf '%s\n%s\n' "$base" "$head" | sort -V | tail -n 1)
+          if [ "$head" = "$base" ] || [ "$newest" != "$head" ]; then
+            echo "::error file=Cargo.toml::This PR changes what ships, so bump the version above $base (it is $head)."
+            exit 1
+          fi
+          echo "Version $base -> $head"
+
   # The one check the main ruleset requires. Skipped jobs count as passed and a
   # skipped matrix job loses its name, so requiring jobs directly can block a
   # PR forever or let a failure through; this job fails if anything failed.
   ci:
     name: CI
-    needs: [changes, fmt, clippy, unused-deps, zizmor, deny, similarity, test, test-no-telemetry, build, mutants]
+    needs: [changes, fmt, clippy, unused-deps, zizmor, deny, similarity, version, test, test-no-telemetry, build, mutants]
     if: always()
     runs-on: ubuntu-latest
     steps:
