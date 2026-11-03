@@ -407,7 +407,7 @@ Results land in `mutants.out/` (`missed.txt` lists the gaps).
 
 [cargo-deny](https://embarkstudios.github.io/cargo-deny/) checks dependencies
 for RustSec advisories, licenses outside the allow-list, wildcard versions and
-crates from unknown sources. CI runs it when `Cargo.*` or `deny.toml` change.
+crates from unknown sources. CI runs it on every push and PR.
 
 ```bash
 cargo install --locked cargo-deny

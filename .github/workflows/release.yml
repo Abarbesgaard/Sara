@@ -1,7 +1,7 @@
 name: Release
 
 # Tag-driven releases. A PR that changes what ships bumps the version in
-# Cargo.toml (rust.yml's Version job), and auto-tag.yml tags it on main.
+# Cargo.toml (ci.yml's Policy job), and auto-tag.yml tags it on main.
 on:
   push:
     tags:
