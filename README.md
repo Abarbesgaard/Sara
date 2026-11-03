@@ -414,6 +414,14 @@ cargo install --locked cargo-deny
 cargo deny check
 ```
 
+### PR titles
+
+A PR title is a conventional commit, and squash merges make it the commit on
+`main`. Following Impatient Programming's Rule 9, `fix:` is only for a defect
+in released code and needs the `bug` label; anything else that changes sara is
+`refine:`, which gets the `refine` label. `.github/workflows/pr-title.yml`
+checks both.
+
 ### Similar code
 
 [similarity-rs](https://github.com/mizchi/similarity) finds functions that are
