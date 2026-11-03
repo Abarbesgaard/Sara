@@ -32,6 +32,7 @@ fn validate_err(s: &Sara, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
+// Contract: validate/A1, validate/A2
 #[test]
 fn validate_explains_a_repo_without_commits() {
     let s = Sara::new();
@@ -47,6 +48,7 @@ fn validate_explains_a_repo_without_commits() {
     assert!(err.contains("project has no commits yet"), "{err}");
 }
 
+// Contract: validate/A3
 #[test]
 fn validate_explains_a_moved_project() {
     let s = Sara::new();
@@ -58,6 +60,7 @@ fn validate_explains_a_moved_project() {
     assert!(err.contains("re-run `sara init`"), "{err}");
 }
 
+// Contract: validate/A4
 #[test]
 fn validate_explains_a_folder_outside_git() {
     let s = Sara::new();

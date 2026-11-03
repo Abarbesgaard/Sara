@@ -1,5 +1,5 @@
 {
-  "obligations": 6,
+  "obligations": 10,
   "primitives": {
     "ids": {
       "obligations": 6,
@@ -9,11 +9,18 @@
         "cli info",
         "cli validate"
       ]
+    },
+    "validate": {
+      "obligations": 4,
+      "surface": [
+        "cli begin",
+        "cli validate"
+      ]
     }
   },
   "surface": {
-    "covered": 4,
-    "percent": 4.0,
+    "covered": 5,
+    "percent": 5.0,
     "total": 101
   },
   "uncovered": [
@@ -23,7 +30,6 @@
     "cli annotate",
     "cli assignment",
     "cli attach",
-    "cli begin",
     "cli board",
     "cli check",
     "cli completions",
