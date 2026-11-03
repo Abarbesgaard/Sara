@@ -1,0 +1,3 @@
+# Similar functions that are meant to stay separate. One pair per line,
+# `<file>::<function> <file>::<function>`, in either order; say why after `#`.
+# scripts/similar-code.sh fails a PR on a new similar pair not listed here.

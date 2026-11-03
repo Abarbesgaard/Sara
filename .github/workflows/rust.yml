@@ -5,7 +5,7 @@ name: Rust CI
 #   changes ─┬─ lint: fmt, clippy, unused deps ─── test matrix, build ─── mutants (PRs)
 #            ├─ workflow security (zizmor), when .github/ changes
 #            ├─ dependency policy (cargo-deny), when Cargo.*/deny.toml change
-#            └─ similar code report (PRs; warnings only, never fails)
+#            └─ similar code (PRs; fails on new, undeclared duplication)
 #
 # Stages whose files did not change are skipped.
 
@@ -160,7 +160,7 @@ jobs:
         run: cargo deny --all-features check
 
   similarity:
-    name: Similar code (report only)
+    name: Similar code
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -175,19 +175,23 @@ jobs:
         with:
           tool: similarity-rs
 
-      # Annotates functions this PR adds or edits that look like an existing
-      # function, as a hint to reuse or extract a helper. Never fails the build.
-      - name: Report similar functions the PR changed
+      # Fails when a function this PR adds or edits looks like another one and
+      # the pair is neither on the base already nor declared in
+      # scripts/similar-code.allow.
+      - name: No new similar functions
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          scripts/similar-code.sh "origin/${BASE_REF}" | tee report.txt
+          status=0
+          scripts/similar-code.sh "origin/${BASE_REF}" > report.txt || status=$?
+          cat report.txt
           {
             echo "### Similar code"
             echo '```'
-            sed -E 's/^::warning file=([^,]+),line=([0-9]+),title=Similar code::/\1:\2: /' report.txt
+            sed -E 's/^::(warning|error) file=([^,]+),line=([0-9]+),title=Similar code::/\2:\3: \1: /' report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   # ── Stage 2: tests and build, only once the fast checks pass ──────────
 
@@ -339,7 +343,7 @@ jobs:
   # PR forever or let a failure through; this job fails if anything failed.
   ci:
     name: CI
-    needs: [changes, fmt, clippy, unused-deps, zizmor, deny, test, test-no-telemetry, build, mutants]
+    needs: [changes, fmt, clippy, unused-deps, zizmor, deny, similarity, test, test-no-telemetry, build, mutants]
     if: always()
     runs-on: ubuntu-latest
     steps:

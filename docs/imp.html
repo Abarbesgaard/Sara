@@ -138,7 +138,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
       <h3>Standards, enforced by machines <span class="rule">Rule 19</span><span class="rule">Rule 24</span></h3>
       <p>Formatting, Clippy, unused dependencies, workflow security (zizmor) and dependency policy (cargo-deny) run first.
         Architecture rules (archunit) keep the domain layers pointing inwards and the command slices apart.
-        Similar code is reported so duplication gets folded.</p>
+        New similar code fails the PR unless it is declared in <code>scripts/similar-code.allow</code>, so duplication gets folded.</p>
       <div class="where"><span class="chip">.github/workflows/rust.yml</span><span class="chip">tests/architecture.rs</span></div>
     </div>
 
