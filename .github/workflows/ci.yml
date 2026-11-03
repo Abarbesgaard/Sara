@@ -1,0 +1,240 @@
+name: CI
+
+# One pipeline, one gate. Test and Portability start at once; Mutants waits
+# for every check that is cheaper than it.
+#
+#   Lint ─────────┐
+#   Policy (PRs) ─┼─ Mutants (PRs) ─┐
+#   Test ─────────┘                 ├─ CI
+#   Portability ────────────────────┘
+#
+# Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
+# Policy:      a change to what ships bumps the version; no new similar code.
+# Test:        the suite with and without default features, then the Contract.
+# Portability: the suite on macOS and Windows.
+# Mutants:     mutation testing on the lines the PR changes.
+
+on:
+  push:
+    branches: [ main, nightly ]
+  pull_request:
+    branches: [ main, nightly ]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-machete,cargo-deny
+
+      - name: Formatting
+        run: cargo fmt -- --check
+      - name: Clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy (no default features)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+      - name: Unused dependencies
+        run: cargo machete
+      # Advisories, licenses, banned crates and sources; config: deny.toml.
+      - name: Dependency policy
+        run: cargo deny --all-features check
+      - name: Workflow security
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          advanced-security: false
+          annotations: true
+          min-severity: low
+
+  policy:
+    name: Policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: similarity-rs
+
+      # Every green merge is a release (IMP Rule 3): a PR that changes what
+      # ships must bump the version. Dependabot can't, so its updates ship with
+      # the next release.
+      - name: A change to what ships bumps the version
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          shipped=$(git diff --name-only "origin/${BASE_REF}..." -- src assets Cargo.toml Cargo.lock)
+          if [ -z "$shipped" ] || [ "$AUTHOR" = "dependabot[bot]" ]; then
+            echo "Nothing that ships changed, or this is Dependabot; no bump needed."
+            exit 0
+          fi
+          version() { sed -n 's/^version = "\(.*\)"$/\1/p' | head -n 1; }
+          base=$(git show "origin/${BASE_REF}:Cargo.toml" | version)
+          head=$(version < Cargo.toml)
+          newest=$(printf '%s\n%s\n' "$base" "$head" | sort -V | tail -n 1)
+          if [ "$head" = "$base" ] || [ "$newest" != "$head" ]; then
+            echo "::error file=Cargo.toml::This PR changes what ships, so bump the version above $base (it is $head)."
+            exit 1
+          fi
+          echo "Version $base -> $head" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Fails when a function this PR adds or edits looks like another one and
+      # the pair is neither on the base already nor declared in
+      # scripts/similar-code.allow.
+      - name: No new similar functions
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          status=0
+          scripts/similar-code.sh "origin/${BASE_REF}" > report.txt || status=$?
+          cat report.txt
+          {
+            echo "### Similar code"
+            echo '```'
+            sed -E 's/^::(warning|error) file=([^,]+),line=([0-9]+),title=Similar code::/\2:\3: \1: /' report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # The cache also keeps ~/.cargo/bin, so installing cargo-impish below is
+      # a no-op once main has saved it.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Tests (default features)
+        run: cargo test
+      - name: Tests (no default features)
+        run: cargo test --no-default-features
+
+      - name: Contract
+        run: |
+          cargo install --git https://github.com/Abarbesgaard/impish --tag v0.4.0 --locked cargo-impish
+          cargo impish check
+      - name: Contract coverage summary
+        run: |
+          jq -r '
+            "## Contract coverage",
+            "",
+            "\(.obligations) obligations; \(.surface.covered) of \(.surface.total) commands and tools covered (\(.surface.percent)%).",
+            "",
+            "| Primitive | Obligations | Surface |",
+            "| --- | --- | --- |",
+            (.primitives | to_entries[] | "| \(.key) | \(.value.obligations) | \(.value.surface | join(", ")) |"),
+            "",
+            "<details><summary>Not covered (\(.uncovered | length))</summary>",
+            "",
+            (.uncovered | join(", ")),
+            "",
+            "</details>"
+          ' contract/coverage.json >> "$GITHUB_STEP_SUMMARY"
+
+  portability:
+    name: Portability (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Tests
+        run: cargo test
+
+  # Each mutant is a small injected bug; a "missed" one means no test noticed
+  # it. A full run takes hours, so this only mutates the lines the PR changes;
+  # kill-matrix.yml covers the rest nightly. Config: .cargo/mutants.toml.
+  mutants:
+    name: Mutants
+    needs: [lint, policy, test]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # Reuses Test's cache, which main saves; this job never runs on main.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: false
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-mutants
+
+      - name: Diff against base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git diff "origin/${BASE_REF}.." | tee git.diff
+      - name: Mutants
+        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants.out
+          path: mutants.out
+
+  # The one check the main ruleset requires. Skipped jobs count as passed and a
+  # skipped matrix job loses its name, so requiring jobs directly can block a
+  # PR forever or let a failure through; this job fails if anything failed.
+  ci:
+    name: CI
+    needs: [lint, policy, test, portability, mutants]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
