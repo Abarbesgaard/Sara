@@ -18,3 +18,16 @@ src/commands/add/mod.rs::run
 cli add
 cli list
 ```
+
+### A2 — An empty description is refused
+- **must:** refuse to add a task whose description is empty or only whitespace, exit non-zero, and create no task
+- **kind:** functional
+- **status:** active
+
+```covers
+src/commands/add/input.rs::resolve
+```
+
+```surface
+cli add
+```
