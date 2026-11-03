@@ -74,28 +74,52 @@ fn surface(readme: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
-/// `(test name, obligation tags)` for every `#[test]` in a contract test file.
-fn tagged_tests(src: &str) -> Vec<(String, Vec<String>)> {
+struct TaggedTest {
+    name: String,
+    tags: Vec<String>,
+    ignored: bool,
+}
+
+fn is_ignore(line: &&str) -> bool {
+    line.trim_start().starts_with("#[ignore")
+}
+
+/// Every `#[test]` in a contract test file, with its obligation tags.
+fn tagged_tests(src: &str) -> Vec<TaggedTest> {
     let lines: Vec<&str> = src.lines().collect();
     let mut tests = Vec::new();
     for (i, line) in lines.iter().enumerate() {
         if line.trim() != "#[test]" {
             continue;
         }
-        let name = lines[i + 1..]
+        let after: Vec<&str> = lines[i + 1..]
             .iter()
-            .find_map(|l| l.trim().strip_prefix("fn "))
+            .take_while(|l| !l.trim_start().starts_with("fn "))
+            .copied()
+            .collect();
+        let name = lines[i + 1 + after.len()..]
+            .first()
+            .and_then(|l| l.trim().strip_prefix("fn "))
             .and_then(|l| l.split('(').next())
             .unwrap_or("?")
             .to_string();
-        let tags = lines[..i]
+        let before: Vec<&str> = lines[..i]
             .iter()
             .rev()
             .take_while(|l| l.trim_start().starts_with("//") || l.trim_start().starts_with("#["))
+            .copied()
+            .collect();
+        let tags = before
+            .iter()
             .filter_map(|l| l.trim().strip_prefix(TAG))
             .flat_map(|t| t.split(',').map(|s| s.trim().to_string()))
             .collect();
-        tests.push((name, tags));
+        let ignored = before.iter().chain(&after).any(is_ignore);
+        tests.push(TaggedTest {
+            name,
+            tags,
+            ignored,
+        });
     }
     tests
 }
@@ -135,15 +159,23 @@ fn check_primitive(
         Err(e) => errors.push(format!("contract/{name}: {e}")),
     }
     let mut proved: BTreeMap<u32, usize> = BTreeMap::new();
-    for (test, tags) in tagged_tests(tests) {
-        if tags.is_empty() {
+    let mut ignored: BTreeMap<u32, Vec<String>> = BTreeMap::new();
+    for t in tagged_tests(tests) {
+        let test = &t.name;
+        if t.tags.is_empty() {
             errors.push(format!("{name}::{test} names no obligation"));
         }
-        for tag in tags {
+        for tag in &t.tags {
             let num = tag
                 .strip_prefix(&format!("{name}/A"))
                 .and_then(|n| n.parse::<u32>().ok());
             match num {
+                Some(n) if ids.contains(&n) && t.ignored => {
+                    ignored
+                        .entry(n)
+                        .or_default()
+                        .push(format!("{name}::{test}"));
+                }
                 Some(n) if ids.contains(&n) => *proved.entry(n).or_default() += 1,
                 _ => errors.push(format!(
                     "{name}::{test} names `{tag}`, which contract/{name} doesn't declare"
@@ -152,7 +184,13 @@ fn check_primitive(
         }
     }
     for id in ids.iter().filter(|id| !proved.contains_key(id)) {
-        errors.push(format!("{name}/A{id} has no test"));
+        match ignored.get(id) {
+            Some(tests) => errors.push(format!(
+                "{name}/A{id} has no test ({} is ignored)",
+                tests.join(", ")
+            )),
+            None => errors.push(format!("{name}/A{id} has no test")),
+        }
     }
     errors
 }
@@ -291,6 +329,15 @@ fn a_fully_proved_primitive_holds() {
 fn an_unproved_obligation_fails() {
     let tests = "// Contract: p/A1\n#[test]\nfn t() {}\n";
     assert_eq!(check(README, tests), ["p/A2 has no test"]);
+}
+
+#[test]
+fn an_ignored_test_proves_nothing() {
+    let after = "// Contract: p/A1\n#[test]\nfn t() {}\n\n// Contract: p/A2\n#[test]\n#[ignore]\nfn u() {}\n";
+    let before = after.replace("#[test]\n#[ignore]", "#[ignore = \"slow\"]\n#[test]");
+    for tests in [after, before.as_str()] {
+        assert_eq!(check(README, tests), ["p/A2 has no test (p::u is ignored)"]);
+    }
 }
 
 #[test]
