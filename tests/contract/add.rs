@@ -50,3 +50,35 @@ fn an_empty_description_is_refused() {
         .expect("count tasks");
     assert_eq!(tasks, 0, "no task is created");
 }
+
+#[impish::contract("add/A3")]
+fn modifiers_set_the_tasks_fields() {
+    let s = Sara::new();
+
+    s.run(&[
+        "add",
+        "-y",
+        "project:garden",
+        "+home",
+        "Water",
+        "the",
+        "plants",
+        "pri:h",
+        "+weekly",
+    ]);
+
+    let (description, project, priority, tags): (String, String, String, String) = s
+        .db()
+        .query_row(
+            "SELECT description, project, priority, tags_json FROM tasks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .expect("the task is stored");
+    assert_eq!(description, "Water the plants");
+    assert_eq!(project, "garden");
+    assert_eq!(priority, "H");
+    let mut tags: Vec<String> = serde_json::from_str(&tags).expect("tags are JSON");
+    tags.sort();
+    assert_eq!(tags, ["home", "weekly"]);
+}
