@@ -1,7 +1,7 @@
 name: Release
 
-# Tag-driven releases. Bump the version in Cargo.toml, then:
-#   git tag v0.2.0 && git push <remote> v0.2.0
+# Tag-driven releases. A PR that changes what ships bumps the version in
+# Cargo.toml (rust.yml's Version job), and auto-tag.yml tags it on main.
 on:
   push:
     tags:
