@@ -1341,8 +1341,9 @@ dependencies = [
 
 [[package]]
 name = "impish"
-version = "0.5.0"
-source = "git+https://github.com/Abarbesgaard/impish?tag=v0.5.0#eaf13a160b52931bceafb0a49c5c67b607b66551"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d80ccc9db43be8e8ee04f9dd291197221412e01c45d0af90bde9282034a6e5c4"
 dependencies = [
  "impish-core",
  "proc-macro2",
@@ -1352,8 +1353,9 @@ dependencies = [
 
 [[package]]
 name = "impish-core"
-version = "0.5.0"
-source = "git+https://github.com/Abarbesgaard/impish?tag=v0.5.0#eaf13a160b52931bceafb0a49c5c67b607b66551"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecff26d75cb0a0ffefa06240c8a0b9ae828bca3ac8e638f3540101a5c49eef73"
 
 [[package]]
 name = "indexmap"
