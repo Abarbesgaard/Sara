@@ -248,7 +248,11 @@ jobs:
   new-version:
     name: New version?
     needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Without a status check, the jobs CI skips on a push (policy, mutants)
+    # would skip this one too.
+    if: >-
+      !cancelled() && needs.ci.result == 'success'
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -274,7 +278,9 @@ jobs:
   release:
     name: Release
     needs: new-version
-    if: needs.new-version.outputs.new == 'true'
+    if: >-
+      !cancelled() && needs.new-version.result == 'success'
+      && needs.new-version.outputs.new == 'true'
     permissions:
       contents: write
       pages: write
