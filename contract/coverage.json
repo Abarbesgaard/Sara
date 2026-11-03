@@ -1,5 +1,5 @@
 {
-  "obligations": 10,
+  "obligations": 11,
   "primitives": {
     "ids": {
       "obligations": 6,
@@ -8,6 +8,14 @@
         "cli forget",
         "cli info",
         "cli validate"
+      ]
+    },
+    "undo": {
+      "obligations": 1,
+      "surface": [
+        "cli add",
+        "cli list",
+        "cli undo"
       ]
     },
     "validate": {
@@ -19,13 +27,12 @@
     }
   },
   "surface": {
-    "covered": 5,
-    "percent": 5.0,
+    "covered": 8,
+    "percent": 7.9,
     "total": 101
   },
   "uncovered": [
     "cli activity",
-    "cli add",
     "cli addbranch",
     "cli annotate",
     "cli assignment",
@@ -50,7 +57,6 @@
     "cli learn",
     "cli link",
     "cli link-memory",
-    "cli list",
     "cli mcp",
     "cli memories",
     "cli modify",
@@ -75,7 +81,6 @@
     "cli tags",
     "cli telemetry",
     "cli theme",
-    "cli undo",
     "cli unlink",
     "cli unlink-memory",
     "cli verify",
