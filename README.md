@@ -417,10 +417,11 @@ cargo deny check
 ### Similar code
 
 [similarity-rs](https://github.com/mizchi/similarity) finds functions that are
-near-duplicates of each other. On PRs, CI adds a warning annotation when a
-function the PR adds or edits is at least 90% similar to another one; it never
-fails the build. Reuse the existing function or extract a shared helper, or say
-in review why the two should stay separate.
+near-duplicates of each other. On PRs, CI fails when a function the PR adds or
+edits is at least 90% similar to another one and the pair is new. Reuse the
+existing function or extract a shared helper, or declare the pair in
+`scripts/similar-code.allow` with the reason the two should stay separate.
+Pairs that were already on the base branch only warn.
 
 ```bash
 cargo install --locked similarity-rs
