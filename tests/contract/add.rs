@@ -85,3 +85,30 @@ fn modifiers_set_the_tasks_fields() {
     tags.sort();
     assert_eq!(tags, ["home", "weekly"]);
 }
+
+#[test]
+#[impish::contract("add/A4")]
+fn a_matching_open_task_is_named() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "project:garden", "Water the plants"]);
+    s.run(&["add", "-y", "project:garden", "Prune the roses"]);
+    s.run(&["done", "2"]);
+
+    let same = s.run(&["add", "-y", "project:garden", "water", "THE", "plants"]);
+    assert!(
+        same.contains("already matches") && same.contains("task 1"),
+        "a matching open task is named: {same}"
+    );
+
+    let elsewhere = s.run(&["add", "-y", "project:kitchen", "Water the plants"]);
+    let finished = s.run(&["add", "-y", "project:garden", "Prune the roses"]);
+    for out in [elsewhere, finished] {
+        assert!(!out.contains("already matches"), "no warning: {out}");
+    }
+
+    let tasks: i64 = s
+        .db()
+        .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+        .expect("count tasks");
+    assert_eq!(tasks, 5, "every add still creates a task");
+}
