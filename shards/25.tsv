@@ -1,0 +1,217 @@
+src/commands/activity/render.rs:208:37: replace == with != in render_day	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:220:55: replace + with * in render_day	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/render.rs:231:28: replace > with < in render_day	sara/commands::activity::render::tests::activity_drill_down_reports_an_empty_day
+src/commands/activity/render.rs:231:28: replace > with < in render_day	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/types.rs:40:9: replace ActivityState::move_by with ()	sara/commands::activity::tests::activity_cursor_moves_by_day_and_week_and_stays_in_range
+src/commands/activity/types.rs:40:9: replace ActivityState::move_by with ()	sara/commands::activity::tests::activity_enter_drills_into_the_cursor_day_and_esc_closes_before_quitting
+src/commands/activity/types.rs:40:35: replace - with + in ActivityState::move_by	sara/commands::activity::tests::activity_cursor_moves_by_day_and_week_and_stays_in_range
+src/commands/activity/types.rs:40:35: replace - with + in ActivityState::move_by	sara/commands::activity::tests::activity_enter_drills_into_the_cursor_day_and_esc_closes_before_quitting
+src/commands/activity/types.rs:41:36: replace + with - in ActivityState::move_by	sara/commands::activity::tests::activity_cursor_moves_by_day_and_week_and_stays_in_range
+src/commands/activity/types.rs:41:36: replace + with - in ActivityState::move_by	sara/commands::activity::tests::activity_enter_drills_into_the_cursor_day_and_esc_closes_before_quitting
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 0	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 0	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 0	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 1	sara/commands::activity::render::tests::styled_snapshot_activity_retro
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 1	sara/commands::activity::render::tests::styled_snapshot_activity
+src/commands/activity/types.rs:45:9: replace ActivityState::count -> u32 with 1	sara/commands::activity::render::tests::styled_snapshot_activity_drill_down
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	sara/commands::begin::tests::begin_folded_log_skips_operations_that_did_not_run
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	sara/commands::begin::tests::begin_founds_a_task_with_assignment_and_next_cursor
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	sara/commands::begin::tests::begin_records_every_folded_operation_as_an_ordered_event
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	sara/commands::begin::tests::missing_acceptance_warns_but_still_founds_the_task
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/add::an_empty_description_is_refused
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/add::an_added_task_is_pending
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cite::cite_cli_bad_label_fails_atomically
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cite::cite_info_lists_cited_memories
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cite::cite_cli_step_done_and_done_record_cited_uses
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cli_errors::add_rejects_an_unknown_priority
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cli_json::info_json_shape
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/cli_json::list_json_shape
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::an_all_digit_uuid_prefix_is_a_uuid
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::force_acts_on_any_branch
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::a_blank_id_matches_nothing
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/ids::the_suggested_id_works
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/links::link_then_unlink_round_trips_through_info
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/links::mcp_link_reports_already_linked
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/links::mcp_unlink_by_link_id
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/links::linking_the_same_url_twice_keeps_one_link
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/links::mcp_unlink_by_task_and_url
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/mcp::begin_learn_recall_payloads
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/provenance::provenance_memories_lists_track_record_in_text_and_json
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/provenance::provenance_recall_shows_track_record_in_text_and_json
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/recall::recall_task_cli_records_uses_only_when_a_task_is_given
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/recall::recall_task_cli_rejects_an_unknown_task_before_recording
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/recall::recall_task_mcp_records_uses_and_rejects_an_unknown_task
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/shorthand::bare_id_and_id_first_forms_show_the_task_like_info
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/tag_parsing::modify_trims_tags_and_drops_empty_ones
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/telemetry::outcome_cli_done_records_prior_memory_count
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/validate::validate_explains_a_folder_outside_git
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/telemetry::outcome_mcp_done_records_prior_memory_count
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/validate::validate_explains_a_moved_project
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/undo::undo_reverts_the_last_command
+src/commands/add/create.rs:17:5: replace create -> Result<Option<Created>> with Ok(None)	contract/validate::validate_explains_a_repo_without_commits
+src/commands/add/duplicate.rs:11:5: replace find_duplicate_open_task -> Option<Task> with None	sara/commands::add::tests::duplicate_open_task_detected_case_insensitively_same_project
+src/commands/add/duplicate.rs:15:55: replace == with != in find_duplicate_open_task	sara/commands::add::tests::duplicate_open_task_detected_case_insensitively_same_project
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	sara/commands::begin::tests::begin_founds_a_task_with_assignment_and_next_cursor
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	sara/commands::begin::tests::begin_folded_log_skips_operations_that_did_not_run
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	sara/commands::begin::tests::begin_records_every_folded_operation_as_an_ordered_event
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	sara/commands::begin::tests::missing_acceptance_warns_but_still_founds_the_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cite::cite_cli_bad_label_fails_atomically
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/add::an_empty_description_is_refused
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cite::cite_cli_step_done_and_done_record_cited_uses
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cli_errors::add_rejects_an_unknown_priority
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cite::cite_info_lists_cited_memories
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cli_json::info_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/cli_json::list_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::an_all_digit_uuid_prefix_is_a_uuid
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::force_acts_on_any_branch
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::a_blank_id_matches_nothing
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/ids::the_suggested_id_works
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/links::link_then_unlink_round_trips_through_info
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/links::mcp_link_reports_already_linked
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/links::linking_the_same_url_twice_keeps_one_link
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/links::mcp_unlink_by_link_id
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/links::mcp_unlink_by_task_and_url
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/mcp::begin_learn_recall_payloads
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/provenance::provenance_memories_lists_track_record_in_text_and_json
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/provenance::provenance_recall_shows_track_record_in_text_and_json
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/recall::recall_task_cli_records_uses_only_when_a_task_is_given
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/recall::recall_task_cli_rejects_an_unknown_task_before_recording
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/recall::recall_task_mcp_records_uses_and_rejects_an_unknown_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/shorthand::bare_id_and_id_first_forms_show_the_task_like_info
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/tag_parsing::modify_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/telemetry::outcome_cli_done_records_prior_memory_count
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/telemetry::outcome_mcp_done_records_prior_memory_count
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/validate::validate_explains_a_folder_outside_git
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/validate::validate_explains_a_moved_project
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/validate::validate_explains_a_repo_without_commits
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(None)	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/add::an_empty_description_is_refused
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/cli_errors::add_rejects_an_unknown_priority
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/cli_json::info_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/cli_json::list_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/ids::a_blank_id_matches_nothing
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/ids::the_suggested_id_works
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/mcp::begin_learn_recall_payloads
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/validate::validate_explains_a_moved_project
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), None)))	contract/validate::validate_explains_a_repo_without_commits
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/add::an_empty_description_is_refused
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/cli_errors::add_rejects_an_unknown_priority
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/cli_json::info_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/cli_json::list_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/ids::a_blank_id_matches_nothing
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/ids::the_suggested_id_works
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/mcp::begin_learn_recall_payloads
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/validate::validate_explains_a_moved_project
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some(String::new()))))	contract/validate::validate_explains_a_repo_without_commits
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/add::an_empty_description_is_refused
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/cli_errors::add_rejects_an_unknown_priority
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/cli_json::info_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/cli_json::list_json_shape
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/ids::a_blank_id_matches_nothing
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/ids::the_suggested_id_works
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/mcp::begin_learn_recall_payloads
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/validate::validate_explains_a_moved_project
+src/commands/add/input.rs:21:5: replace resolve -> Result<Option<(FormInput, Option<String>)>> with Ok(Some((Default::default(), Some("xyzzy".into()))))	contract/validate::validate_explains_a_repo_without_commits
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/cite::cite_cli_bad_label_fails_atomically
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/cite::cite_cli_step_done_and_done_record_cited_uses
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/cite::cite_info_lists_cited_memories
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/ids::a_short_number_is_a_display_id
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/ids::an_all_digit_uuid_prefix_is_a_uuid
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/provenance::provenance_recall_shows_track_record_in_text_and_json
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/provenance::provenance_memories_lists_track_record_in_text_and_json
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/recall::recall_task_cli_records_uses_only_when_a_task_is_given
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/recall::recall_task_cli_rejects_an_unknown_task_before_recording
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/recall::recall_task_mcp_records_uses_and_rejects_an_unknown_task
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/telemetry::outcome_cli_done_records_prior_memory_count
+src/commands/add/input.rs:67:49: replace || with && in resolve	contract/telemetry::outcome_mcp_done_records_prior_memory_count
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/cite::cite_cli_bad_label_fails_atomically
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/cite::cite_cli_step_done_and_done_record_cited_uses
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/cite::cite_info_lists_cited_memories
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/ids::a_short_number_is_a_display_id
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/ids::an_all_digit_uuid_prefix_is_a_uuid
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/provenance::provenance_memories_lists_track_record_in_text_and_json
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/provenance::provenance_recall_shows_track_record_in_text_and_json
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/recall::recall_task_cli_records_uses_only_when_a_task_is_given
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/recall::recall_task_cli_rejects_an_unknown_task_before_recording
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/recall::recall_task_mcp_records_uses_and_rejects_an_unknown_task
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/telemetry::outcome_cli_done_records_prior_memory_count
+src/commands/add/input.rs:67:52: delete ! in resolve	contract/telemetry::outcome_mcp_done_records_prior_memory_count
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/cli_json::info_json_shape
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/cli_json::list_json_shape
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/completion::completion_offers_task_ids_projects_and_memory_labels
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/ids::a_blank_id_matches_nothing
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:73:13: delete field description from struct FormInput expression in resolve	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/add::an_added_task_is_pending
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/cli_json::info_json_shape
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/cli_json::list_json_shape
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/ids::the_branch_guard_lets_an_all_digit_uuid_prefix_through
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/ids::the_suggested_id_works
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/mcp::begin_learn_recall_payloads
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/undo::undo_reverts_the_last_command
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/validate::validate_explains_a_moved_project
+src/commands/add/input.rs:74:13: delete field project from struct FormInput expression in resolve	contract/validate::validate_explains_a_repo_without_commits
