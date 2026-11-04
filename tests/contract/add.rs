@@ -148,3 +148,26 @@ fn flags_win_over_inline_modifiers() {
     tags.sort();
     assert_eq!(tags, ["home", "weekly"]);
 }
+
+#[test]
+#[impish::contract("add/A6")]
+fn an_unknown_priority_is_refused() {
+    let s = Sara::new();
+
+    for args in [
+        &["add", "-y", "pri:zzz", "Thing"][..],
+        &["add", "-y", "--priority", "zzz", "Thing"],
+    ] {
+        let out = s.cmd().args(args).output().expect("spawn sara");
+        assert_eq!(out.status.code(), Some(1), "`sara {}`", args.join(" "));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("Unknown priority: ZZZ"), "{stderr}");
+    }
+    assert!(
+        s.run(&["list"]).contains("No pending tasks"),
+        "no task is created"
+    );
+
+    s.run(&["add", "-y", "pri:m", "Thing"]);
+    s.run(&["add", "-y", "--priority", "Low", "Other"]);
+}
