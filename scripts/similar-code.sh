@@ -2,24 +2,32 @@
 # Near-duplicate functions found by similarity-rs
 # (https://github.com/mizchi/similarity).
 #
-#   scripts/similar-code.sh               # report every similar pair in src/
+#   scripts/similar-code.sh               # report every similar pair in src/ and tests/
 #   scripts/similar-code.sh origin/main   # gate: pairs where a function you changed
 #                                         # since origin/main looks like another one
 #
+# src/ is compared without its test functions, tests/ with them, so a copied
+# test is caught as well as copied code.
+#
 # The gate fails on a pair that is new since the base, unless
 # scripts/similar-code.allow declares it intended. Pairs that already existed
-# on the base are reported, not failed. SIMILARITY_THRESHOLD (default 0.9) sets
-# the minimum similarity. Inside GitHub Actions each pair becomes an annotation.
+# on the base are reported, not failed. SIMILARITY_THRESHOLD (default 0.87) sets
+# the minimum similarity: similarity-rs 0.5 scores a renamed exact copy at
+# about 88%, so a higher default lets copy-paste through. Inside GitHub Actions each pair becomes an annotation.
 set -euo pipefail
 
 base="${1:-}"
-threshold="${SIMILARITY_THRESHOLD:-0.9}"
+threshold="${SIMILARITY_THRESHOLD:-0.87}"
 allow="$(dirname "$0")/similar-code.allow"
 hunks=""
 known=""
+scan() {
+  similarity-rs src --skip-test --threshold "$threshold"
+  similarity-rs tests --threshold "$threshold"
+}
 if [ -n "$base" ]; then
-  # "path start end" for each changed line range in src/, from a zero-context diff.
-  hunks=$(git diff -U0 --diff-filter=AM "${base}...HEAD" -- 'src/*.rs' | awk '
+  # "path start end" for each changed line range, from a zero-context diff.
+  hunks=$(git diff -U0 --diff-filter=AM "${base}...HEAD" -- 'src/*.rs' 'tests/*.rs' | awk '
     /^\+\+\+ b\// { path = substr($0, 7); next }
     /^@@/ {
       split($3, r, ","); start = substr(r[1], 2); count = (2 in r) ? r[2] : 1
@@ -33,7 +41,7 @@ if [ -n "$base" ]; then
   tree=$(mktemp -d)
   trap 'git worktree remove --force "$tree" >/dev/null 2>&1 || true; rm -rf "$tree"' EXIT
   git worktree add --quiet --detach "$tree" "$(git merge-base "$base" HEAD)"
-  known=$(cd "$tree" && similarity-rs src --skip-test --threshold "$threshold")
+  known=$(cd "$tree" && scan)
 fi
 
 # A pair's key is "file::function file::function", sorted, so line shifts and
@@ -42,7 +50,7 @@ fi
 {
   printf '%s\n' "$known" | sed 's/^/BASE /'
   if [ -f "$allow" ]; then sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/^/ALLOW /' "$allow"; fi
-  similarity-rs src --skip-test --threshold "$threshold"
+  scan
 } | HUNKS="$hunks" awk -v diffmode="${base:+1}" -v gha="${GITHUB_ACTIONS:-}" '
     function path(loc) { sub(/:.*/, "", loc); return loc }
     function first(loc) { sub(/^[^:]*:/, "", loc); sub(/-.*/, "", loc); return loc + 0 }
