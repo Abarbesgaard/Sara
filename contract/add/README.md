@@ -44,3 +44,17 @@ src/infrastructure/project.rs::parse_add_tokens
 ```surface
 cli add
 ```
+
+### A4 — A matching open task is named, not hidden
+- **must:** when the description matches a pending task's in the same project, ignoring case and surrounding whitespace, warn and name that task, and still add the new one
+- **why:** a duplicate is often a sign the work already exists; the warning lets the caller reuse it without `add` second-guessing them
+- **kind:** functional
+- **status:** active
+
+```covers
+src/commands/add/duplicate.rs::find_duplicate_open_task
+```
+
+```surface
+cli add
+```
