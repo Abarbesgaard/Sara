@@ -1,8 +1,8 @@
 {
   "kinds": {
-    "functional": 18
+    "functional": 20
   },
-  "obligations": 18,
+  "obligations": 20,
   "primitives": {
     "add": {
       "obligations": 6,
@@ -12,11 +12,14 @@
       ]
     },
     "done": {
-      "obligations": 1,
+      "obligations": 3,
       "surface": [
         "cli add",
+        "cli begin",
+        "cli dep",
         "cli done",
-        "cli list"
+        "cli list",
+        "cli validate"
       ]
     },
     "ids": {
@@ -45,8 +48,8 @@
     }
   },
   "surface": {
-    "covered": 8,
-    "percent": 7.9,
+    "covered": 9,
+    "percent": 8.9,
     "total": 101
   },
   "uncovered": [
@@ -61,7 +64,6 @@
     "cli consolidate",
     "cli delete",
     "cli denotate",
-    "cli dep",
     "cli diagnose-memories",
     "cli doctor",
     "cli doing",

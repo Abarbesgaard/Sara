@@ -217,9 +217,5 @@ pub fn run(
 mod hygiene_tests;
 
 #[cfg(test)]
-#[path = "../../../tests/unit/commands/done/mod__validation_gate_tests.rs"]
-mod validation_gate_tests;
-
-#[cfg(test)]
 #[path = "../../../tests/unit/commands/done/mod__auto_memory_tests.rs"]
 mod auto_memory_tests;

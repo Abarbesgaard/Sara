@@ -49,6 +49,44 @@ impl Sara {
         String::from_utf8(out.stdout).expect("utf8 stdout")
     }
 
+    /// Commits everything in the project, making it a git repo first if needed.
+    pub fn commit(&self, message: &str) {
+        let steps: [&[&str]; 3] = [
+            &["init", "-q"],
+            &["add", "-A"],
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                message,
+            ],
+        ];
+        for step in steps {
+            let status = Command::new("git")
+                .current_dir(&self.project)
+                .args(step)
+                .status()
+                .expect("spawn git");
+            assert!(status.success(), "git {step:?} failed");
+        }
+    }
+
+    /// Runs sara expecting it to fail, and returns its stderr.
+    pub fn refused(&self, args: &[&str]) -> String {
+        let out = self.cmd().args(args).output().expect("spawn sara");
+        assert!(
+            !out.status.success(),
+            "`sara {}` should fail",
+            args.join(" ")
+        );
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    }
+
     pub fn db(&self) -> rusqlite::Connection {
         let db = find_file(self.home.path(), "tasks.db").expect("sara database exists");
         rusqlite::Connection::open(db).expect("open sara database")
