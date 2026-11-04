@@ -58,3 +58,17 @@ src/commands/add/duplicate.rs::find_duplicate_open_task
 ```surface
 cli add
 ```
+
+### A5 — Flags win over inline modifiers
+- **must:** take `--project` and `--priority` over `project:` and `pri:` in the words, and add `--tag` values to the `+tag` words
+- **why:** a script or agent passes flags on purpose; words typed into a description must not overrule them
+- **kind:** functional
+- **status:** active
+
+```covers
+src/commands/add/input.rs::resolve
+```
+
+```surface
+cli add
+```

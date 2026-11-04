@@ -1,11 +1,11 @@
 {
   "kinds": {
-    "functional": 15
+    "functional": 16
   },
-  "obligations": 15,
+  "obligations": 16,
   "primitives": {
     "add": {
-      "obligations": 4,
+      "obligations": 5,
       "surface": [
         "cli add",
         "cli list"
