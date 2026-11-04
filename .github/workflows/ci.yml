@@ -263,7 +263,7 @@ jobs:
         run: |
           primitives=$(git diff --name-only "origin/${BASE_REF}..." -- contract tests/contract \
             | sed -nE 's#^contract/([^/]+)/.*#\1#p; s#^tests/contract/([^/]+)\.rs$#\1#p' \
-            | sort -u | while read -r p; do [ -f "contract/$p/README.md" ] && echo "$p"; done)
+            | sort -u | while read -r p; do if [ -f "contract/$p/README.md" ]; then echo "$p"; fi; done)
           echo "Primitives: ${primitives:-none}"
           echo "list=$(echo "$primitives" | tr "\n" " ")" >> "$GITHUB_OUTPUT"
       - name: Contract mutants
