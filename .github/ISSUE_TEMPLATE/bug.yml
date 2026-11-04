@@ -1,0 +1,103 @@
+name: Bug
+description: A defect in a released version of sara. The fix starts with the obligation the Contract was missing.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        sara follows [Impatient Programming](https://impatientprogramming.org) (IMP). In IMP a bug means sara's [Contract](https://github.com/Abarbesgaard/Sara/blob/main/contract/README.md) was missing something.
+
+        - **What counts as a bug?** [Rule 9](https://impatientprogramming.org/rules/#rule-9): a defect in a released version. Something only on `main`, or not released yet, is a refinement; use the **Refinement** form.
+        - **How it's fixed.** [Rule 28](https://impatientprogramming.org/rules/#rule-28): the missing obligation goes into the Contract first, as a test that fails on the released code ([rule 20](https://impatientprogramming.org/rules/#rule-20)) and catches the mutant that matches the bug ([rule 26](https://impatientprogramming.org/rules/#rule-26)). Only then does the code change. Every bug leaves the Contract stronger.
+
+        So below, besides what went wrong, say what sara should have promised.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `sara --version`.
+      placeholder: sara 2.7.2
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed from
+      options:
+        - crates.io (cargo install sara-tasks)
+        - apt repository
+        - GitHub release download
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 26.1, Ubuntu 24.04, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands, from a fresh start if you can. A throwaway home keeps your own tasks out of it, so run `export HOME=$(mktemp -d)` first.
+      placeholder: |
+        sara add -y "Water the plants" pri:h
+        sara list
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste the output and any error, as printed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+    validations:
+      required: true
+  - type: dropdown
+    id: primitive
+    attributes:
+      label: Primitive
+      description: Which part of the Contract should have caught this? Each primitive is a folder under [contract/](https://github.com/Abarbesgaard/Sara/tree/main/contract).
+      options:
+        - add
+        - ids
+        - undo
+        - validate
+        - None yet
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: obligation
+    attributes:
+      label: The missing obligation
+      description: |
+        What sara should have promised, in the [Contract's format](https://github.com/Abarbesgaard/impish/blob/main/contract/README.md), so a test written from it fails on the version above. Describe the behaviour, not the code that went wrong. A rough version is fine; it's sharpened when the test is written.
+      value: |
+        ### A1 — <a short name for the promise>
+        - **must:** <what sara does, observably>
+        - **why:** <optional; e.g. the bug in this issue>
+        - **kind:** functional
+        - **status:** active
+      render: markdown
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: The bug is in a released version ([rule 9](https://impatientprogramming.org/rules/#rule-9)), not only on `main`.
+          required: true
+        - label: I searched the [open issues](https://github.com/Abarbesgaard/Sara/issues) for a duplicate.
+          required: true

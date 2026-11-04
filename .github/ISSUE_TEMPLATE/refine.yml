@@ -1,0 +1,91 @@
+name: Refinement
+description: Anything that isn't a bug in a released version. New behaviour, changes and cleanups all start from a Contract.
+title: "refine: "
+labels: ["refine"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        sara follows [Impatient Programming](https://impatientprogramming.org) (IMP). An issue says what sara must do once the work is done, written as **obligations** that become sara's [Contract](https://github.com/Abarbesgaard/Sara/blob/main/contract/README.md), each proved by a test.
+
+        - **Why write it down first?** [Rule 1](https://impatientprogramming.org/rules/#rule-1): before you commit to the work, write down how you'll know it worked.
+        - **Why obligations?** [Rule 20](https://impatientprogramming.org/rules/#rule-20): the Contract holds the invariants the result must keep, functional and non-functional, and it's executable.
+        - **Why `refine`?** [Rule 9](https://impatientprogramming.org/rules/#rule-9): `fix` is only for a defect in a released version. Found one? Use the **Bug** form instead.
+
+        Rough is fine. The obligations get sharpened while the work is done, and checked against this issue before it merges ([rule 12](https://impatientprogramming.org/rules/#rule-12)).
+  - type: textarea
+    id: intent
+    attributes:
+      label: Intent
+      description: What should sara do that it doesn't today, and why does it matter? Say who it's for and what they're trying to get done.
+      placeholder: |
+        When I add a task from inside a git repo, sara should file it under that repo's project, so I don't have to type project:<name> every time.
+    validations:
+      required: true
+  - type: dropdown
+    id: primitive
+    attributes:
+      label: Primitive
+      description: Which part of the Contract does this belong to? Each primitive is a folder under [contract/](https://github.com/Abarbesgaard/Sara/tree/main/contract). Pick "A new primitive" if none fits, and name it in the obligations below.
+      options:
+        - add
+        - ids
+        - undo
+        - validate
+        - A new primitive
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: obligations
+    attributes:
+      label: Obligations
+      description: |
+        One block per obligation, in the [Contract's format](https://github.com/Abarbesgaard/impish/blob/main/contract/README.md). Number them A1, A2, … here; they're renumbered to follow the primitive's existing ones when they land.
+        - **must:** one observable behaviour a test can check from outside: what sara prints, stores, refuses or exits with. Not how the code does it.
+        - **why:** optional; the reason, when it isn't obvious.
+        - **kind:** `functional`, `non-functional` (speed, size, limits), `persisted-format` (what's stored on disk), `ordering` or `security`.
+        - **status:** `active` for a new obligation.
+
+        Cover the failure cases too: what sara refuses, and what it leaves untouched when it does.
+      value: |
+        ### A1 — <a short name for the promise>
+        - **must:** <what sara does, observably>
+        - **why:** <optional>
+        - **kind:** functional
+        - **status:** active
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: surface
+    attributes:
+      label: Surface
+      description: The commands and MCP tools a test would drive, as `cli <command>` or `mcp <tool>`, comma-separated. `scripts/surface.sh` lists them all.
+      placeholder: cli add, mcp add
+  - type: textarea
+    id: existing
+    attributes:
+      label: Behaviour this changes
+      description: |
+        Changing something sara already does? Say what it does today. [Rule 20](https://impatientprogramming.org/rules/#rule-20): pin the existing behaviour with an obligation before changing it, and find out why each fence is there before you move it.
+  - type: textarea
+    id: unknowns
+    attributes:
+      label: What do we still need to learn?
+      description: |
+        [Rule 5](https://impatientprogramming.org/rules/#rule-5), the One Question: what's still unknown before this can be built? Leave it empty if nothing is.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this deliberately doesn't do, so the Contract doesn't grow past what was agreed.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: Each **must** is something a test can observe from outside sara, not a detail of the code.
+          required: true
+        - label: This isn't a defect in a released version ([rule 9](https://impatientprogramming.org/rules/#rule-9)); for that, I'd use the Bug form.
+          required: true
