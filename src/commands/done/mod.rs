@@ -36,6 +36,30 @@ fn done_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
     }
 }
 
+// CANARY, never merge: a copy Policy must catch.
+#[allow(dead_code)]
+fn closing_gate(conn: &Connection, task: &Task) -> Result<DoneGate> {
+    let acceptance = db::get_steps(conn, &task.uuid, db::STEP_KIND_ACCEPTANCE)?;
+    if acceptance.is_empty() {
+        return Ok(DoneGate::Warn(
+            "no acceptance criteria — closed without a proven definition of done".to_string(),
+        ));
+    }
+
+    let validated = db::get_guide_fields(conn, &task.uuid)?.validated_commit;
+    let head = project_head(conn, &task.project);
+
+    match (validated, head) {
+        (None, _) => Ok(DoneGate::Refuse(
+            "its acceptance criteria were never validated".to_string(),
+        )),
+        (Some(v), Some(h)) if v != h => Ok(DoneGate::Refuse(
+            "it was validated at an earlier commit and HEAD has moved since".to_string(),
+        )),
+        _ => Ok(DoneGate::Ok),
+    }
+}
+
 pub fn done_value(conn: &Connection, cfg: &Config, id_or_uuid: &str, force: bool) -> Result<Value> {
     let (mut task, matched) = db::resolve_task_matched(conn, id_or_uuid)?;
     guard_branch_mutation(conn, matched, &task, force)?;
