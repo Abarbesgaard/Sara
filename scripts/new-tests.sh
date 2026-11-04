@@ -10,8 +10,11 @@
 #   - a unit test (tests/unit/…, compiled into src/ by #[path]): the src file
 #     that includes it;
 #   - any other test: the src files the PR changes.
-# It only warns: a test that catches nothing unique may still be worth keeping
-# as documentation. NEW_TESTS_MAX (default 3; each takes about 20 minutes) caps how many tests are checked;
+# It fails when a test catches nothing, or nothing another test doesn't, and
+# names the tests that share its kills. A Contract test is the spec, so for
+# one those other tests are the duplicates: fold them into the Contract or
+# delete them in the same PR. It also fails when the PR adds more than NEW_TESTS_MAX
+# tests (default 3; each takes about 20 minutes): split the PR.
 # NEW_TESTS_DRY=1 only lists each new test and the files it would break.
 set -euo pipefail
 
@@ -91,12 +94,18 @@ fi
 
 [ -z "${NEW_TESTS_DRY:-}" ] || { printf '%s\n' "$added"; exit 0; }
 
-warn() { if [ -n "$gha" ]; then echo "::warning title=New test::$1"; else echo "warning: $1"; fi; }
+status=0
+fail() {
+  status=1
+  if [ -n "$gha" ]; then echo "::error title=New test::$1"; else echo "error: $1"; fi
+}
+
+sharers() { printf '%s\n' "$1" | sed -n 's/^Shared with: //p'; }
 
 checked=0
 while IFS=$'\t' read -r id globs; do
   if [ "$checked" -ge "$max" ]; then
-    echo "Checked $max tests; skipping $id (NEW_TESTS_MAX)."
+    fail "$id was not checked: the PR adds more than $max tests (NEW_TESTS_MAX). Split it."
     continue
   fi
   if [ -z "${globs// /}" ]; then
@@ -109,9 +118,11 @@ while IFS=$'\t' read -r id globs; do
   verdict=$("$dir/kill-matrix.sh" --test "$id" $globs 2>&1 | tee /dev/stderr | tail -n 30)
   [ -z "$gha" ] || echo "::endgroup::"
   case "$verdict" in
-    *"kills nothing"*) warn "$id catches no mutant in $globs: it would pass whatever that code did." ;;
-    *"Every kill is shared"*) warn "$id catches nothing another test doesn't already catch in $globs." ;;
+    *"kills nothing"*) fail "$id catches no mutant in $globs: it would pass whatever that code did." ;;
+    *"is a Contract test"*) fail "$id is a Contract test and every bug it catches is also caught by: $(sharers "$verdict"). They duplicate the Contract: fold them into it or delete them." ;;
+    *"Every kill is shared"*) fail "$id catches nothing these tests don't already catch: $(sharers "$verdict"). Delete it, or make it catch something new." ;;
     *"Keep "*) echo "$id catches a bug no other test catches." ;;
-    *) warn "$id: the kill matrix gave no verdict; see the log." ;;
+    *) fail "$id: the kill matrix gave no verdict; see the log." ;;
   esac
 done <<< "$added"
+exit "$status"
