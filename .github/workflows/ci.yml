@@ -5,12 +5,10 @@ name: CI
 #
 #   Lint ─────────┐
 #   Policy (PRs) ─┼─ Mutants (PRs) ──────────┐
-#   Test ─────────┴─ Contract mutants (PRs) ─┼─ CI
+#   Test ─────────┼─ Contract mutants (PRs) ─┼─ CI
+#                 └─ New tests (PRs) ────────┤
 #   Portability ─────────────────────────────┘
 #                                            └─ Release (main, when the version is new)
-#
-# New tests (PRs) also waits for Lint, Policy and Test; it only warns, so the
-# CI gate does not wait for it.
 #
 # Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
 # Policy:      a change to what ships bumps the version; no new similar code.
@@ -19,7 +17,7 @@ name: CI
 # Mutants:     mutation testing on the lines the PR changes.
 # Contract mutants: every obligation of a primitive the PR touches catches a
 #              mutant (cargo impish mutate).
-# New tests:   warns when a test the PR adds catches no bug of its own.
+# New tests:   each test the PR adds catches a bug no other test catches.
 # Release:     every green merge that bumps the version ships (release.yml).
 
 on:
@@ -281,8 +279,9 @@ jobs:
           done
           exit "$status"
   # A new test must catch a bug no other test catches (IMP Rule 26). Breaks
-  # the code each added test is about and warns when the test catches nothing
-  # unique. Warnings only, so it stays out of the CI gate.
+  # the code each added test is about and fails when the test catches nothing
+  # unique. A Contract test is the spec: when other tests share its kills,
+  # those tests are the duplicates (scripts/new-tests.sh).
   new-tests:
     name: New tests
     needs: [lint, policy, test]
@@ -312,7 +311,7 @@ jobs:
   # PR forever or let a failure through; this job fails if anything failed.
   ci:
     name: CI
-    needs: [lint, policy, test, portability, mutants, contract-mutants]
+    needs: [lint, policy, test, portability, mutants, contract-mutants, new-tests]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

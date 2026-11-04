@@ -28,7 +28,9 @@ max_new_issues=3
 
 mkdir -p "$out"
 
-mutants() { nice -n 19 cargo mutants -j "${KILLMX_JOBS:-1}" --no-shuffle "$@"; }
+# Without GITHUB_ACTIONS, cargo-mutants adds no annotation per missed mutant:
+# here a miss is one test's result, not the suite's.
+mutants() { env -u GITHUB_ACTIONS nice -n 19 cargo mutants -j "${KILLMX_JOBS:-1}" --no-shuffle "$@"; }
 
 # Sets the array `args` to `-f <glob>` for each glob (bash 3.2 has no mapfile).
 globs() { args=(); for g in "$@"; do args+=(-f "$g"); done; }
@@ -219,7 +221,7 @@ one_test() {
   local path="${id#*/}" args re k n
   globs "$@"
 
-  echo "1/2  Which mutants does $id kill on its own?"
+  echo "1/2  Which mutants does $id kill on its own? (MISSED: this test alone lets it through)"
   rm -rf "$out/one"
   # shellcheck disable=SC2046 # target_args is two words on purpose
   # One test makes a tiny baseline, so the auto timeout would be too short.
@@ -227,8 +229,13 @@ one_test() {
     -- $(target_args "$id") -- "$path" --exact || true
   outcomes "$out/one" | awk -F'\t' '$2 == "CaughtMutant" { print $1 }' > "$out/one.kills"
   n=$(wc -l < "$out/one.kills" | tr -d ' ')
+  spec_tests > "$out/spec.txt"
   if [ "$n" -eq 0 ]; then
-    echo "$id kills nothing in $*: a candidate to delete (or it tests other code)."
+    if grep -qxF "$id" "$out/spec.txt"; then
+      echo "$id kills nothing in $*: its obligation proves nothing about this code."
+    else
+      echo "$id kills nothing in $*: a candidate to delete (or it tests other code)."
+    fi
     return
   fi
   sed 's/^/     /' "$out/one.kills"
@@ -242,7 +249,11 @@ one_test() {
 
   n=$(wc -l < "$out/rest.missed" | tr -d ' ')
   if [ "$n" -eq 0 ]; then
-    echo "Every kill is shared: $id is a candidate to delete."
+    if grep -qxF "$id" "$out/spec.txt"; then
+      echo "Every kill is shared: $id is a Contract test, so the tests that also catch these duplicate it; fold them into the Contract or delete them."
+    else
+      echo "Every kill is shared: $id is a candidate to delete."
+    fi
   else
     echo "Keep $id: it alone catches $n mutant(s):"
     sed 's/^/     /' "$out/rest.missed"
