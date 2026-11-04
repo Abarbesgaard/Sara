@@ -235,7 +235,7 @@ similar_code_passes_a_pair_already_on_the_base() {
   commit pr
   local out rc
   out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "(already on the base)" && ok
+  expect_exit $rc 0 "$out" && expect_has "$out" "(already there)" && ok
 }
 
 similar_code_passes_a_declared_pair() {
@@ -247,14 +247,45 @@ similar_code_passes_a_declared_pair() {
   expect_exit $rc 0 "$out" && expect_has "$out" "(declared)" && ok
 }
 
-similar_code_catches_a_copied_test() {
+similar_code_leaves_tests_damp() {
   similar_repo
   printf '#[test]\nfn one() {}\n#[test]\nfn two() {}\n' > tests/contract/x.rs
   echo 'tests/contract/x.rs:4-4 two tests/contract/x.rs:2-2 one 88.50%' >> .pairs
+  echo '// touch' >> src/lib.rs
   commit pr
   local out rc
   out=$(similar); rc=$?
-  expect_exit $rc 1 "$out" && expect_has "$out" "\`two\` is 88.50% similar to \`one\`" && ok
+  expect_exit $rc 0 "$out" && expect_lacks "$out" "\`two\`" && ok
+}
+
+similar_code_fails_on_a_shifted_pair() {
+  similar_repo
+  printf 'pub fn a() {}\npub fn b() {}\npub fn d() {}\n' > src/lib.rs
+  printf 'src/lib.rs:1-1 a src/lib.rs:2-2 b 95.00%%\nsrc/lib.rs:1-1 a src/other.rs:1-1 z 91.00%%\n' > .pairs
+  commit pr
+  local out rc
+  out=$(similar); rc=$?
+  expect_exit $rc 1 "$out" && expect_has "$out" "(shifted)" && ok
+}
+
+similar_code_follows_a_renamed_file() {
+  similar_repo
+  git mv src/lib.rs src/moved.rs
+  echo 'src/moved.rs:1-1 a src/moved.rs:2-2 b 95.00%' > .pairs
+  commit pr
+  local out rc
+  out=$(similar); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "1 already there" && expect_has "$out" "0 contracted" && ok
+}
+
+similar_code_lists_a_contracted_pair() {
+  similar_repo
+  printf 'pub fn a() {}\n' > src/lib.rs
+  : > .pairs
+  commit pr
+  local out rc
+  out=$(similar); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "contracted: src/lib.rs::a src/lib.rs::b" && ok
 }
 
 similar_code_passes_without_rust_changes() {
