@@ -59,6 +59,7 @@ fn give_digit_uuid(s: &Sara) {
     }
 }
 
+#[test]
 #[impish::contract("ids/A1")]
 fn a_short_number_is_a_display_id() {
     let s = Sara::new();
@@ -72,6 +73,7 @@ fn a_short_number_is_a_display_id() {
     );
 }
 
+#[test]
 #[impish::contract("ids/A2")]
 fn an_all_digit_uuid_prefix_is_a_uuid() {
     let s = Sara::new();
@@ -81,6 +83,7 @@ fn an_all_digit_uuid_prefix_is_a_uuid() {
     assert_eq!(v["uuid"], DIGIT_UUID);
 }
 
+#[test]
 #[impish::contract("ids/A3")]
 fn the_branch_guard_refuses_a_display_id() {
     let s = Sara::new();
@@ -90,6 +93,7 @@ fn the_branch_guard_refuses_a_display_id() {
     assert!(stderr(&out).contains("by display id"), "{}", stderr(&out));
 }
 
+#[test]
 #[impish::contract("ids/A2", "ids/A3")]
 fn the_branch_guard_lets_an_all_digit_uuid_prefix_through() {
     let s = Sara::new();
@@ -99,6 +103,7 @@ fn the_branch_guard_lets_an_all_digit_uuid_prefix_through() {
     assert!(out.status.success(), "{}", stderr(&out));
 }
 
+#[test]
 #[impish::contract("ids/A4")]
 fn the_suggested_id_works() {
     let s = Sara::new();
@@ -122,6 +127,7 @@ fn the_suggested_id_works() {
     assert!(out.status.success(), "{}", stderr(&out));
 }
 
+#[test]
 #[impish::contract("ids/A5")]
 fn force_acts_on_any_branch() {
     let s = Sara::new();
@@ -130,6 +136,7 @@ fn force_acts_on_any_branch() {
     assert!(out.status.success(), "{}", stderr(&out));
 }
 
+#[test]
 #[impish::contract("ids/A6")]
 fn a_blank_id_matches_nothing() {
     let s = Sara::new();
