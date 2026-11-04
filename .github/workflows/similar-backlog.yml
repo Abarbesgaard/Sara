@@ -19,6 +19,11 @@ concurrency:
   group: similar-backlog
   cancel-in-progress: false
 
+# Every step runs with -o pipefail, so `script | tee` fails when the script does.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   backlog:
     name: Similar code backlog

@@ -38,6 +38,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every step runs with -o pipefail, so `script | tee` fails when the script does.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   lint:
     name: Lint
@@ -75,6 +80,10 @@ jobs:
           advanced-security: false
           annotations: true
           min-severity: low
+      # The gates' own scripts, against fakes of the slow tools: a gate that
+      # can't fail is caught here, not on a PR that should have failed.
+      - name: Pipeline scripts
+        run: tests/pipeline/run.sh
 
   policy:
     name: Policy
@@ -192,6 +201,12 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tests
         run: cargo test
+      - name: Pipeline scripts under bash 3.2
+        if: runner.os == 'macOS'
+        env:
+          BASH_UNDER_TEST: /bin/bash
+          SHELLCHECK: "0"
+        run: tests/pipeline/run.sh
 
   # Each mutant is a small injected bug; a "missed" one means no test noticed
   # it. A full run takes hours, so this only mutates the lines the PR changes;
@@ -259,9 +274,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          primitives=$(git diff --name-only "origin/${BASE_REF}..." -- contract tests/contract \
-            | sed -nE 's#^contract/([^/]+)/.*#\1#p; s#^tests/contract/([^/]+)\.rs$#\1#p' \
-            | sort -u | while read -r p; do if [ -f "contract/$p/README.md" ]; then echo "$p"; fi; done)
+          primitives=$(scripts/contract-primitives.sh "origin/${BASE_REF}")
           echo "Primitives: ${primitives:-none}"
           echo "list=$(echo "$primitives" | tr "\n" " ")" >> "$GITHUB_OUTPUT"
       - name: Contract mutants
