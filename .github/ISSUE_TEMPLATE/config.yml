@@ -1,0 +1,10 @@
+# Every issue starts from a Contract (IMP rules 1, 20 and 28), so there are no
+# blank issues; the forms in this folder ask for the obligations.
+blank_issues_enabled: false
+contact_links:
+  - name: How sara uses Impatient Programming
+    url: https://abarbesgaard.github.io/Sara/imp.html
+    about: Why issues are written as obligations, and how sara applies the IMP rules.
+  - name: The Contract
+    url: https://github.com/Abarbesgaard/Sara/blob/main/contract/README.md
+    about: The obligations sara already promises, one folder per primitive.

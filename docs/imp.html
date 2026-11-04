@@ -192,7 +192,8 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
   </div>
 
   <h2>When a bug is found</h2>
-  <p>A bug means the Contract was missing something (Rule 28). The obligation comes first and the fix comes last.</p>
+  <p>A bug means the Contract was missing something (Rule 28). The obligation comes first and the fix comes last.
+    The <a href="https://github.com/Abarbesgaard/Sara/issues/new?template=bug.yml">Bug form</a> asks for the missing obligation alongside the steps to reproduce.</p>
   <div class="loop">
     <div><b>1. Obligation</b>Write the promise the bug broke into the Contract.</div>
     <div class="red"><b>2. Red</b>Its test fails against the unchanged code.</div>
@@ -208,6 +209,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
   <table>
     <thead><tr><th>Rule</th><th>What IMP asks</th><th>Status</th><th>How sara does it</th></tr></thead>
     <tbody>
+      <tr><td>1, 20</td><td>Success criteria written down first</td><td><i class="dot live"></i>in place</td><td>Every issue starts from a form that asks for obligations in the Contract's format; there are no blank issues</td></tr>
       <tr><td>13, 20</td><td>An executable Contract</td><td><i class="dot part"></i>partial</td><td>Checker and tagging are in place; one primitive written (<a href="https://github.com/Abarbesgaard/Sara/issues/316">#316</a>)</td></tr>
       <tr><td>29</td><td>Contract coverage published</td><td><i class="dot live"></i>in place</td><td>CI job summary</td></tr>
       <tr><td>19, 24</td><td>Machines enforce standards</td><td><i class="dot live"></i>in place</td><td>fmt, Clippy, unused dependencies, zizmor, cargo-deny, archunit</td></tr>
