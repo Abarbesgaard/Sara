@@ -39,3 +39,12 @@ fn done_closes_exactly_the_named_task() {
     );
     assert!(list.contains("Keep open"), "{list}");
 }
+
+// CANARY, never merge: a Contract test that proves nothing. Contract mutants
+// (strict) and New tests must both fail this PR.
+#[test]
+#[impish::contract("done/A1")]
+fn done_canary_proves_nothing() {
+    let s = Sara::new();
+    s.run(&["add", "-y", "Anything"]);
+}
