@@ -216,6 +216,11 @@ pub(crate) fn mcp_err(e: anyhow::Error) -> String {
     e.to_string()
 }
 
+/// A tool's result: the value as pretty JSON, an error as its text.
+pub(crate) fn tool_json(r: anyhow::Result<serde_json::Value>) -> Result<String, String> {
+    ok_json(r.map_err(mcp_err)?)
+}
+
 pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, String> {
     serde_json::to_string_pretty(&v).map_err(|e| mcp_err(e.into()))
 }
