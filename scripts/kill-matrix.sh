@@ -244,15 +244,26 @@ one_test() {
   re=()
   while IFS= read -r k; do re+=(--re "$(exact_re "$k")"); done < "$out/one.kills"
   rm -rf "$out/rest"
-  mutants "${args[@]}" "${re[@]}" --output "$out/rest" -- -- --skip "$path" --exact || true
+  # --no-fail-fast so each log names every test that caught the mutant.
+  mutants "${args[@]}" "${re[@]}" --cargo-test-arg=--no-fail-fast --output "$out/rest" \
+    -- -- --skip "$path" --exact || true
   outcomes "$out/rest" | awk -F'\t' '$2 == "MissedMutant" { print $1 }' > "$out/rest.missed"
+  local name summary log
+  outcomes "$out/rest" | while IFS=$'\t' read -r name summary log; do
+    [ "$summary" = CaughtMutant ] && tests_in_log "$out/rest/mutants.out/$log" FAILED
+  done | sort -u > "$out/rest.sharers"
 
   n=$(wc -l < "$out/rest.missed" | tr -d ' ')
   if [ "$n" -eq 0 ]; then
-    if grep -qxF "$id" "$out/spec.txt"; then
-      echo "Every kill is shared: $id is a Contract test, so the tests that also catch these duplicate it; fold them into the Contract or delete them."
-    else
+    if ! grep -qxF "$id" "$out/spec.txt"; then
       echo "Every kill is shared: $id is a candidate to delete."
+      echo "Shared with: $(tr '\n' ' ' < "$out/rest.sharers")"
+    elif grep -vxF -f "$out/spec.txt" "$out/rest.sharers" > "$out/rest.dups"; then
+      # Other Contract tests are spec too; only the rest can duplicate it.
+      echo "Every kill is shared: $id is a Contract test, so the tests that also catch these duplicate it; fold them into the Contract or delete them."
+      echo "Shared with: $(tr '\n' ' ' < "$out/rest.dups")"
+    else
+      echo "Keep $id: a Contract test whose kills only other Contract tests share."
     fi
   else
     echo "Keep $id: it alone catches $n mutant(s):"

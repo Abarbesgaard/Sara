@@ -10,10 +10,10 @@
 #   - a unit test (tests/unit/…, compiled into src/ by #[path]): the src file
 #     that includes it;
 #   - any other test: the src files the PR changes.
-# It fails when a test catches nothing, or when a test that is not a Contract
-# test catches nothing another test doesn't. A Contract test is the spec, so
-# when its kills are shared the other tests are the duplicates: that is
-# reported, not failed. It also fails when the PR adds more than NEW_TESTS_MAX
+# It fails when a test catches nothing, or nothing another test doesn't, and
+# names the tests that share its kills. A Contract test is the spec, so for
+# one those other tests are the duplicates: fold them into the Contract or
+# delete them in the same PR. It also fails when the PR adds more than NEW_TESTS_MAX
 # tests (default 3; each takes about 20 minutes): split the PR.
 # NEW_TESTS_DRY=1 only lists each new test and the files it would break.
 set -euo pipefail
@@ -100,6 +100,8 @@ fail() {
   if [ -n "$gha" ]; then echo "::error title=New test::$1"; else echo "error: $1"; fi
 }
 
+sharers() { printf '%s\n' "$1" | sed -n 's/^Shared with: //p'; }
+
 checked=0
 while IFS=$'\t' read -r id globs; do
   if [ "$checked" -ge "$max" ]; then
@@ -117,8 +119,8 @@ while IFS=$'\t' read -r id globs; do
   [ -z "$gha" ] || echo "::endgroup::"
   case "$verdict" in
     *"kills nothing"*) fail "$id catches no mutant in $globs: it would pass whatever that code did." ;;
-    *"is a Contract test"*) echo "$id is a Contract test whose kills other tests share: those tests duplicate it; fold them into the Contract or delete them." ;;
-    *"Every kill is shared"*) fail "$id catches nothing another test doesn't already catch in $globs." ;;
+    *"is a Contract test"*) fail "$id is a Contract test and every bug it catches is also caught by: $(sharers "$verdict"). They duplicate the Contract: fold them into it or delete them." ;;
+    *"Every kill is shared"*) fail "$id catches nothing these tests don't already catch: $(sharers "$verdict"). Delete it, or make it catch something new." ;;
     *"Keep "*) echo "$id catches a bug no other test catches." ;;
     *) fail "$id: the kill matrix gave no verdict; see the log." ;;
   esac
