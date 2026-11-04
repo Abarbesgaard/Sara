@@ -112,3 +112,39 @@ fn a_matching_open_task_is_named() {
         .expect("count tasks");
     assert_eq!(tasks, 5, "every add still creates a task");
 }
+
+#[test]
+#[impish::contract("add/A5")]
+fn flags_win_over_inline_modifiers() {
+    let s = Sara::new();
+
+    s.run(&[
+        "add",
+        "-y",
+        "--project",
+        "kitchen",
+        "--priority",
+        "l",
+        "--tag",
+        "weekly",
+        "project:garden",
+        "pri:h",
+        "+home",
+        "Water the plants",
+    ]);
+
+    let (description, project, priority, tags): (String, String, String, String) = s
+        .db()
+        .query_row(
+            "SELECT description, project, priority, tags_json FROM tasks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .expect("the task is stored");
+    assert_eq!(description, "Water the plants");
+    assert_eq!(project, "kitchen");
+    assert_eq!(priority, "L");
+    let mut tags: Vec<String> = serde_json::from_str(&tags).expect("tags are JSON");
+    tags.sort();
+    assert_eq!(tags, ["home", "weekly"]);
+}
