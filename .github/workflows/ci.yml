@@ -9,6 +9,9 @@ name: CI
 #   Portability ─────────────────────────────┘
 #                                            └─ Release (main, when the version is new)
 #
+# New tests (PRs) also waits for Lint, Policy and Test; it only warns, so the
+# CI gate does not wait for it.
+#
 # Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
 # Policy:      a change to what ships bumps the version; no new similar code.
 # Test:        the suite with and without default features, then the Contract.
@@ -16,6 +19,7 @@ name: CI
 # Mutants:     mutation testing on the lines the PR changes.
 # Contract mutants: every obligation of a primitive the PR touches catches a
 #              mutant (cargo impish mutate).
+# New tests:   warns when a test the PR adds catches no bug of its own.
 # Release:     every green merge that bumps the version ships (release.yml).
 
 on:
@@ -276,6 +280,32 @@ jobs:
             { echo '```'; sed -n '/ killed, /,$p' "mutate-$p.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           done
           exit "$status"
+  # A new test must catch a bug no other test catches (IMP Rule 26). Breaks
+  # the code each added test is about and warns when the test catches nothing
+  # unique. Warnings only, so it stays out of the CI gate.
+  new-tests:
+    name: New tests
+    needs: [lint, policy, test]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: false
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-mutants
+      - name: Does each new test earn its place?
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: scripts/new-tests.sh "origin/${BASE_REF}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   # The one check the main ruleset requires. Skipped jobs count as passed and a
   # skipped matrix job loses its name, so requiring jobs directly can block a
