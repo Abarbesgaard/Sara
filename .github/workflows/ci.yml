@@ -163,7 +163,7 @@ jobs:
 
       - name: Contract
         run: |
-          cargo install cargo-impish --version 0.6.5 --locked
+          cargo install cargo-impish --version 0.6.11 --locked
           cargo impish check
       - name: Contract coverage summary
         run: |
@@ -282,7 +282,7 @@ jobs:
         env:
           PRIMITIVES: ${{ steps.touched.outputs.list }}
         run: |
-          cargo install cargo-impish --version 0.6.5 --locked
+          cargo install cargo-impish --version 0.6.11 --locked
           status=0
           for p in $PRIMITIVES; do
             echo "## cargo impish mutate $p" >> "$GITHUB_STEP_SUMMARY"

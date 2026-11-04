@@ -1,5 +1,5 @@
 ---
-source: tests/contract/recall.rs
+source: tests/behaviour/recall.rs
 expression: "recall(&s, &[\"--spread\", \"dependabot\"])"
 ---
 Note: Keyword-match only (literal FTS). Paraphrased or conceptually similar content with different wording may not appear.

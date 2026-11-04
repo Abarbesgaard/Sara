@@ -153,6 +153,20 @@ new_tests_fails_past_the_cap() {
   expect_exit $rc 1 "$out" && expect_has "$out" "Split it" && ok
 }
 
+new_tests_names_tests_in_other_targets() {
+  repo ntb
+  cp "$root/scripts/new-tests.sh" scripts/
+  mkdir -p tests/behaviour && echo 'mod cite;' > tests/behaviour/main.rs && commit setup
+  git checkout -q -b pr
+  printf '#[test]\nfn quotes() {}\n' > tests/behaviour/cite.rs
+  printf '#[test]\nfn layers() {}\n' > tests/architecture.rs
+  echo 'pub fn b() {}' >> src/lib.rs
+  commit pr
+  local out
+  out=$(NEW_TESTS_DRY=1 "$sh" scripts/new-tests.sh main 2>&1)
+  expect_has "$out" "behaviour/cite::quotes	src/lib.rs" && expect_has "$out" "architecture/layers	src/lib.rs" && ok
+}
+
 new_tests_passes_without_new_tests() {
   repo nt0
   cp "$root/scripts/new-tests.sh" scripts/ && commit setup

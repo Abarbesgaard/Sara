@@ -1,5 +1,5 @@
 ---
-source: tests/contract/cli_json.rs
+source: tests/behaviour/cli_json.rs
 expression: "redact(s.json(&[\"info\", \"1\", \"--json\"]))"
 ---
 {

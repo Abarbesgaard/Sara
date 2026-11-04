@@ -1,5 +1,5 @@
 ---
-source: tests/contract/reflect.rs
+source: tests/behaviour/reflect.rs
 expression: "s.run(&[\"reflect\", \"--apply\"])"
 ---
 Consolidated 2 link(s) across 1 cluster(s):

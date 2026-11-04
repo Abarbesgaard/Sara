@@ -1341,9 +1341,9 @@ dependencies = [
 
 [[package]]
 name = "impish"
-version = "0.6.5"
+version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be4be1d4ff14f1d7149271fb0a770c676519277a34a23afcd01f2f6fa9830830"
+checksum = "9628b8980e2b9ebfc9c717747ec4943d91c50e760b65c935fcdf42070ad836cc"
 dependencies = [
  "impish-core",
  "proc-macro2",
@@ -1353,9 +1353,9 @@ dependencies = [
 
 [[package]]
 name = "impish-core"
-version = "0.6.5"
+version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad9fa53ee1124d4825bea5bdf896df14c8a79a34d4581a5b182e653ff7a0562b"
+checksum = "b824e2c7ab90a659f27dfaa2f11507a98be73c1d4d60e35085646a821ff1eefb"
 
 [[package]]
 name = "indexmap"
@@ -2505,7 +2505,7 @@ dependencies = [
 
 [[package]]
 name = "sara-tasks"
-version = "2.7.3"
+version = "2.7.4"
 dependencies = [
  "anyhow",
  "archunit",

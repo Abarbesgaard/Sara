@@ -203,6 +203,10 @@ mod tests;
 
 `#[cfg(test)]` may appear in `src/` only directly above such a `#[path = ".../tests/..."]`.
 
+End-to-end tests drive the binary: `tests/contract/<primitive>.rs` holds only the tests that prove
+a Contract obligation (`cargo impish check` fails on any other test there), and `tests/behaviour/`
+holds the rest. A behaviour test moves to `tests/contract/` when an obligation claims it.
+
 ## Adding a new command
 
 1. Create `src/commands/<name>/mod.rs` with a `pub fn run(…)` entry-point.

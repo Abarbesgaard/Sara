@@ -1,6 +1,6 @@
 ---
-source: tests/contract/cli_json.rs
-expression: "redact(s.json(&[\"recall\", \"--json\", \"imports\"]))"
+source: tests/behaviour/mcp.rs
+expression: redact(recall)
 ---
 {
   "associative": [],
@@ -15,14 +15,14 @@ expression: "redact(s.json(&[\"recall\", \"--json\", \"imports\"]))"
       "derived_children": [],
       "derived_count": 0,
       "derived_from": [],
-      "description": "Prefer explicit imports in split modules",
+      "description": "The payments client takes amounts in minor units",
       "exact_match": false,
       "files": [],
       "label": "m1",
       "linked_tasks": [],
       "loose": false,
       "modified": "[redacted]",
-      "preview": "Prefer explicit imports in split modules",
+      "preview": "The payments client takes amounts in minor units",
       "provenance": {
         "cited": 0,
         "cited_verified": 0,
@@ -36,12 +36,12 @@ expression: "redact(s.json(&[\"recall\", \"--json\", \"imports\"]))"
       "stale": [],
       "strength": 1.0,
       "superseded_by": [],
-      "text": "Prefer explicit imports in split modules"
+      "text": "The payments client takes amounts in minor units"
     }
   ],
   "patterns": [],
   "project": [],
-  "query": "imports",
+  "query": "payments minor units",
   "spread": "auto",
   "tag": []
 }

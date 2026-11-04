@@ -9,7 +9,8 @@
 #     files in the primitive's covers block;
 #   - a unit test (tests/unit/…, compiled into src/ by #[path]): the src file
 #     that includes it;
-#   - any other test: the src files the PR changes.
+#   - any other test (tests/<target>.rs or tests/<target>/…): the src files
+#     the PR changes.
 # It fails when a test catches nothing, or nothing another test doesn't, and
 # names the tests that share its kills. A Contract test is the spec, so for
 # one those other tests are the duplicates: fold them into the Contract or
@@ -81,6 +82,12 @@ added=$(git diff --name-only --diff-filter=AM "${base}...HEAD" -- 'tests/*.rs' |
       (tests/unit/*)
         mod=$(unit_module "$file")
         [ -n "$mod" ] && printf 'sara/%s::%s\t%s\n' "$mod" "$fn" "$(unit_src "$file")" ;;
+      (tests/*/*.rs)
+        # A target with a main.rs, e.g. tests/behaviour/cite.rs -> behaviour/cite::fn.
+        target="${file#tests/}"; target="${target%%/*}"
+        mod="${file#tests/"$target"/}"; mod="${mod%.rs}"; mod="${mod%/mod}"; mod="${mod//\//::}"
+        [ "$mod" = main ] && mod="" || mod="$mod::"
+        printf '%s/%s%s\t%s\n' "$target" "$mod" "$fn" "$changed_src" ;;
       (tests/*.rs)
         printf '%s/%s\t%s\n' "$(basename "$file" .rs)" "$fn" "$changed_src" ;;
     esac
