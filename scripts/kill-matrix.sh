@@ -52,6 +52,19 @@ tests_in_log() {
   ' "$1"
 }
 
+# "contract/<file>::<fn>" for every test that proves an obligation. They are
+# the Contract's spec (IMP Rule 20), so the report keeps them and judges the
+# other tests against them.
+spec_tests() {
+  awk '
+    FNR == 1 { file = FILENAME; sub(/^.*\//, "", file); sub(/\.rs$/, "", file); tagged = 0 }
+    /#\[impish::contract\(/ { tagged = 1; next }
+    tagged && match($0, /fn [A-Za-z0-9_]+/) {
+      print "contract/" file "::" substr($0, RSTART + 3, RLENGTH - 3); tagged = 0
+    }
+  ' tests/contract/*.rs | sort -u
+}
+
 # Writes $out/matrix.tsv ("mutant<TAB>test" per kill) and $out/tests.txt.
 collect() {
   local dir="$out/mutants.out" name summary log
@@ -63,15 +76,24 @@ collect() {
   tests_in_log "$dir/log/baseline.log" ok | sort -u > "$out/tests.txt"
 }
 
-# Report over a matrix and a test list. Also writes "<test><TAB>kills" for each
+# Report over a matrix and a test list, after "Shards done: $4" when given.
+# Also writes "<test><TAB>kills" for each
 # suspect to $3: tests that kill nothing, and the tests that can be removed
 # together (not every test without unique kills: two tests that only duplicate
 # each other can't both go).
 report() {
-  local matrix="$1" tests="$2" suspects="$3"
+  local matrix="$1" tests="$2" suspects="$3" progress="${4:-}"
+  spec_tests > "$out/spec.txt"
+  if [ -n "$progress" ]; then
+    echo "Shards done: $progress."
+    [ "${progress%/*}" = "${progress#*/}" ] ||
+      echo "Partial: a test marked removable may still catch a mutant in a shard not yet swept."
+    echo
+  fi
   # Old rows for tests that no longer exist are dropped.
   awk -F'\t' 'FNR == NR { live[$0]; next } $2 in live' "$tests" "$matrix" > "$out/live.tsv"
-  awk -F'\t' -v suspects="$suspects" -v quiet="$no_kills_expected" '
+  awk -F'\t' -v suspects="$suspects" -v quiet="$no_kills_expected" -v specfile="$out/spec.txt" '
+    BEGIN { while ((getline line < specfile) > 0) spec[line] }
     FNR == NR { kills[$2] = kills[$2] SUBSEP $1; n[$2]++; by[$1]++; m[$1]; next }
     { all[$0] }
     END {
@@ -79,9 +101,14 @@ report() {
         split(substr(kills[t], 2), ks, SUBSEP)
         for (i in ks) if (by[ks[i]] == 1) uniq[t]++
       }
-      # Greedy set cover: keep the test covering most uncovered mutants until all
-      # are covered. The rest can go together without losing a kill.
+      # Greedy set cover: keep the Contract tests, then the test covering most
+      # uncovered mutants until all are covered. The rest can go together
+      # without losing a kill.
       left = length(m)
+      for (t in n) if (t in spec) {
+        keep[t]; split(substr(kills[t], 2), ks, SUBSEP)
+        for (i in ks) if (!(ks[i] in covered)) { covered[ks[i]]; left-- }
+      }
       while (left > 0) {
         best = ""; bestn = 0
         for (t in n) if (!(t in keep)) {
@@ -96,14 +123,14 @@ report() {
       printf "%d caught mutant(s), killed by %d of %d test(s).\n\n", length(m), length(n), length(all)
       print "Tests that kill something (kills, unique kills):"
       cmd = "sort -k3"
-      for (t in n) printf "  %4d %4d  %s%s\n", n[t], uniq[t] + 0, t, (t in keep) ? "" : "   <- removable" | cmd
+      for (t in n) printf "  %4d %4d  %s%s\n", n[t], uniq[t] + 0, t, (t in spec) ? "   (Contract)" : (t in keep) ? "" : "   <- removable" | cmd
       close(cmd)
       r = 0; for (t in n) if (!(t in keep)) r++
       printf "\n%d test(s) can be removed together without losing a kill (marked above).\n", r
       z = 0; for (t in all) if (!(t in n)) z++
       printf "%d test(s) killed nothing in what was swept.\n", z
       for (t in n) if (!(t in keep)) print t "\t" n[t] > suspects
-      for (t in all) if (!(t in n) && t !~ quiet) print t "\t0" > suspects
+      for (t in all) if (!(t in n) && t !~ quiet && !(t in spec)) print t "\t0" > suspects
       close(suspects)
     }
   ' "$out/live.tsv" "$tests"
@@ -140,10 +167,10 @@ sweep() {
   cp "$out/matrix.tsv" "$data/shards/$k.tsv"
   cp "$out/tests.txt" "$data/tests.txt"
   done_shards=$(find "$data/shards" -name '*.tsv' | wc -l | tr -d ' ')
-  echo "Shard $shard swept. $done_shards of $total shard(s) have results."
+  echo "Shard $shard swept."
   echo
   cat "$data"/shards/*.tsv > "$out/all.tsv"
-  report "$out/all.tsv" "$data/tests.txt" "$out/suspects.tsv" | tee "$data/REPORT.md"
+  report "$out/all.tsv" "$data/tests.txt" "$out/suspects.tsv" "$done_shards/$total" | tee "$data/REPORT.md"
 
   if [ -n "$file_issues" ]; then
     if [ "$done_shards" -lt "$total" ]; then
