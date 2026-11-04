@@ -38,15 +38,25 @@ impl Sara {
     }
 
     pub fn run(&self, args: &[&str]) -> String {
+        String::from_utf8(self.exec(args, true).stdout).expect("utf8 stdout")
+    }
+
+    /// Runs sara expecting it to fail, and returns its stderr.
+    pub fn refused(&self, args: &[&str]) -> String {
+        String::from_utf8_lossy(&self.exec(args, false).stderr).into_owned()
+    }
+
+    fn exec(&self, args: &[&str], succeeds: bool) -> std::process::Output {
         let out = self.cmd().args(args).output().expect("spawn sara");
-        assert!(
+        assert_eq!(
             out.status.success(),
-            "`sara {}` failed ({}):\n{}",
+            succeeds,
+            "`sara {}` exited {}:\n{}",
             args.join(" "),
             out.status,
             String::from_utf8_lossy(&out.stderr),
         );
-        String::from_utf8(out.stdout).expect("utf8 stdout")
+        out
     }
 
     /// Commits everything in the project, making it a git repo first if needed.
@@ -74,17 +84,6 @@ impl Sara {
                 .expect("spawn git");
             assert!(status.success(), "git {step:?} failed");
         }
-    }
-
-    /// Runs sara expecting it to fail, and returns its stderr.
-    pub fn refused(&self, args: &[&str]) -> String {
-        let out = self.cmd().args(args).output().expect("spawn sara");
-        assert!(
-            !out.status.success(),
-            "`sara {}` should fail",
-            args.join(" ")
-        );
-        String::from_utf8_lossy(&out.stderr).into_owned()
     }
 
     pub fn db(&self) -> rusqlite::Connection {
