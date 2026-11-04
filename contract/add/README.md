@@ -72,3 +72,19 @@ src/commands/add/input.rs::resolve
 ```surface
 cli add
 ```
+
+### A6 — An unknown priority is refused
+- **must:** refuse a `pri:` word or `--priority` value that is not a known priority (H, M, L, high, med, medium or low, in any case); name the bad value, exit 1, and create no task
+- **why:** a typo in a priority must not quietly become a task with no priority
+- **kind:** functional
+- **status:** active
+
+```covers
+src/commands/add/input.rs::resolve
+src/domain/value_objects/priority.rs::from_str
+```
+
+```surface
+cli add
+cli list
+```

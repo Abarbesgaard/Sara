@@ -44,20 +44,3 @@ fn unknown_subcommand_exits_2() {
     let (code, _) = fails(&s, &["frobnicate"]);
     assert_eq!(code, Some(2), "clap usage error should exit 2");
 }
-
-#[test]
-fn add_rejects_an_unknown_priority() {
-    let s = Sara::new();
-    for args in [
-        &["add", "-y", "pri:zzz", "Thing"][..],
-        &["add", "-y", "--priority", "zzz", "Thing"],
-    ] {
-        let (code, stderr) = fails(&s, args);
-        assert_eq!(code, Some(1));
-        assert!(stderr.contains("Unknown priority: ZZZ"), "{stderr}");
-    }
-    assert!(
-        s.run(&["list"]).contains("No pending tasks"),
-        "nothing is saved"
-    );
-}
