@@ -58,6 +58,7 @@ mkdir -p "$INSTALL_DIR"
 install -m 0755 "$binpath" "$INSTALL_DIR/$BIN"
 
 printf '\nInstalled %s to %s\n' "$BIN" "$INSTALL_DIR/$BIN"
+# shellcheck disable=SC2016 # print $PATH literally, for the user's shell profile
 case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
     *) printf '\nNote: %s is not on your PATH. Add it:\n  export PATH="%s:$PATH"\n' "$INSTALL_DIR" "$INSTALL_DIR" ;;
