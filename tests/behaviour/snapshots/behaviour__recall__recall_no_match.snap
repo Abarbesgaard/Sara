@@ -1,5 +1,5 @@
 ---
-source: tests/contract/recall.rs
+source: tests/behaviour/recall.rs
 expression: "recall(&s, &[\"zzzqqqxxv\"])"
 ---
 No matches for "zzzqqqxxv".

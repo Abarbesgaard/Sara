@@ -443,8 +443,9 @@ scripts/similar-code.sh origin/main   # only functions changed on your branch
 by a tagged test in `tests/contract/`.
 [impish](https://github.com/Abarbesgaard/impish)'s `cargo impish check` fails
 when an obligation has no test, and keeps `contract/coverage.json`, the share of
-commands and tools the Contract covers, up to date. See
-[contract/README.md](contract/README.md).
+commands and tools the Contract covers, up to date. Only Contract tests live
+in `tests/contract/`; integration tests no obligation claims yet live in
+`tests/behaviour/`. See [contract/README.md](contract/README.md).
 
 ### Kill matrix
 

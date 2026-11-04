@@ -1,5 +1,5 @@
 ---
-source: tests/contract/mcp.rs
+source: tests/behaviour/mcp.rs
 expression: redact(begin)
 ---
 {

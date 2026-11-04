@@ -1,5 +1,5 @@
 ---
-source: tests/contract/reflect.rs
+source: tests/behaviour/reflect.rs
 expression: "s.run(&[\"reflect\"])"
 ---
 1 consolidation candidate(s) — related memories with no shared canonical:
