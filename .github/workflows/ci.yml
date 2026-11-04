@@ -4,16 +4,18 @@ name: CI
 # for every check that is cheaper than it.
 #
 #   Lint ─────────┐
-#   Policy (PRs) ─┼─ Mutants (PRs) ─┐
-#   Test ─────────┘                 ├─ CI
-#   Portability ────────────────────┘
-#                                   └─ Release (main, when the version is new)
+#   Policy (PRs) ─┼─ Mutants (PRs) ──────────┐
+#   Test ─────────┴─ Contract mutants (PRs) ─┼─ CI
+#   Portability ─────────────────────────────┘
+#                                            └─ Release (main, when the version is new)
 #
 # Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
 # Policy:      a change to what ships bumps the version; no new similar code.
 # Test:        the suite with and without default features, then the Contract.
 # Portability: the suite on macOS and Windows.
 # Mutants:     mutation testing on the lines the PR changes.
+# Contract mutants: every obligation of a primitive the PR touches catches a
+#              mutant (cargo impish mutate).
 # Release:     every green merge that bumps the version ships (release.yml).
 
 on:
@@ -226,12 +228,61 @@ jobs:
           name: mutants.out
           path: mutants.out
 
+  # A test that passes proves little until it catches a bug. For each primitive
+  # whose Contract or contract tests the PR changes, break the code it covers
+  # and fail if an obligation's tests catch nothing (IMP Rule 20, 26).
+  # Survivors are reported, not failed; Mutants above judges changed lines.
+  contract-mutants:
+    name: Contract mutants
+    needs: [lint, policy, test]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: false
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-mutants
+
+      - name: Primitives this PR touches
+        id: touched
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          primitives=$(git diff --name-only "origin/${BASE_REF}..." -- contract tests/contract \
+            | sed -nE 's#^contract/([^/]+)/.*#\1#p; s#^tests/contract/([^/]+)\.rs$#\1#p' \
+            | sort -u | while read -r p; do [ -f "contract/$p/README.md" ] && echo "$p"; done)
+          echo "Primitives: ${primitives:-none}"
+          echo "list=$(echo "$primitives" | tr "\n" " ")" >> "$GITHUB_OUTPUT"
+      - name: Contract mutants
+        if: steps.touched.outputs.list != ''
+        env:
+          PRIMITIVES: ${{ steps.touched.outputs.list }}
+        run: |
+          cargo install cargo-impish --version 0.6.5 --locked
+          status=0
+          for p in $PRIMITIVES; do
+            echo "## cargo impish mutate $p" >> "$GITHUB_STEP_SUMMARY"
+            cargo impish mutate "$p" > "mutate-$p.txt" 2>&1 || status=1
+            cat "mutate-$p.txt"
+            { echo '```'; sed -n '/ killed, /,$p' "mutate-$p.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit "$status"
+
   # The one check the main ruleset requires. Skipped jobs count as passed and a
   # skipped matrix job loses its name, so requiring jobs directly can block a
   # PR forever or let a failure through; this job fails if anything failed.
   ci:
     name: CI
-    needs: [lint, policy, test, portability, mutants]
+    needs: [lint, policy, test, portability, mutants, contract-mutants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
