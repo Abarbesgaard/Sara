@@ -122,9 +122,8 @@ jobs:
           fi
           echo "Version $base -> $head" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # Fails when a function this PR adds or edits looks like another one and
-      # the pair is neither on the base already nor declared in
-      # scripts/similar-code.allow.
+      # Exhale: fails on a similar pair in src/ that is new since the base
+      # (introduced or shifted) and not declared in scripts/similar-code.allow.
       - name: No new similar functions
         env:
           BASE_REF: ${{ github.base_ref }}
