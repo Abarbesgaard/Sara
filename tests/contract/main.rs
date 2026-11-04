@@ -8,6 +8,7 @@ mod cli_errors;
 mod cli_json;
 mod completion;
 mod doctor;
+mod done;
 mod ids;
 mod links;
 mod mcp;
