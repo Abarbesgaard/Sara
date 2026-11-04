@@ -1,5 +1,6 @@
 use crate::harness::Sara;
 
+#[test]
 #[impish::contract("add/A1")]
 fn an_added_task_is_pending() {
     let s = Sara::new();
@@ -22,6 +23,7 @@ fn an_added_task_is_pending() {
     assert_eq!(status, "pending");
 }
 
+#[test]
 #[impish::contract("add/A2")]
 fn an_empty_description_is_refused() {
     let s = Sara::new();
@@ -51,6 +53,7 @@ fn an_empty_description_is_refused() {
     assert_eq!(tasks, 0, "no task is created");
 }
 
+#[test]
 #[impish::contract("add/A3")]
 fn modifiers_set_the_tasks_fields() {
     let s = Sara::new();
