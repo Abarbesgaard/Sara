@@ -1,0 +1,44 @@
+src/commands/add/input.rs:75:13: delete field priority from struct FormInput expression in resolve	behaviour/cli_json::list_json_shape
+src/commands/add/input.rs:75:13: delete field priority from struct FormInput expression in resolve	behaviour/cli_json::info_json_shape
+src/commands/add/input.rs:75:13: delete field priority from struct FormInput expression in resolve	contract/add::flags_win_over_inline_modifiers
+src/commands/add/input.rs:75:13: delete field priority from struct FormInput expression in resolve	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	behaviour/cli_json::info_json_shape
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	behaviour/cli_json::list_json_shape
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	behaviour/tag_parsing::add_trims_tags_and_drops_empty_ones
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	behaviour/tag_parsing::mcp_accepts_comma_separated_tags
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	contract/add::flags_win_over_inline_modifiers
+src/commands/add/input.rs:77:13: delete field tags from struct FormInput expression in resolve	contract/add::modifiers_set_the_tasks_fields
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/cite::cite_cli_step_done_and_done_record_cited_uses
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/cite::cite_cli_bad_label_fails_atomically
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/cite::cite_info_lists_cited_memories
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/provenance::provenance_memories_lists_track_record_in_text_and_json
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/provenance::provenance_recall_shows_track_record_in_text_and_json
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/recall::recall_task_cli_records_uses_only_when_a_task_is_given
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/recall::recall_task_cli_rejects_an_unknown_task_before_recording
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/recall::recall_task_mcp_records_uses_and_rejects_an_unknown_task
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/recall::recall_text_covers_every_output_branch
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/telemetry::outcome_cli_done_records_prior_memory_count
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	behaviour/telemetry::outcome_mcp_done_records_prior_memory_count
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	contract/ids::an_all_digit_uuid_prefix_is_a_uuid
+src/commands/add/input.rs:146:5: replace atty_check -> bool with true	contract/ids::a_short_number_is_a_display_id
+src/commands/add/persist.rs:96:5: replace apply_guide -> Result<()> with Ok(())	sara/commands::add::tests::form_with_guide_fields_founds_a_begin_equivalent_task
+src/commands/add/persist.rs:96:5: replace apply_guide -> Result<()> with Ok(())	sara/commands::add::tests::guide_assignment_defaults_to_the_title_like_begin
+src/commands/add/persist.rs:98:21: delete ! in apply_guide	sara/commands::add::tests::form_with_guide_fields_founds_a_begin_equivalent_task
+src/commands/add/persist.rs:98:21: delete ! in apply_guide	sara/commands::add::tests::guide_assignment_defaults_to_the_title_like_begin
+src/commands/add/persist.rs:102:8: delete ! in apply_guide	sara/commands::add::tests::form_with_guide_fields_founds_a_begin_equivalent_task
+src/commands/add/persist.rs:106:8: delete ! in apply_guide	sara/commands::add::tests::form_with_guide_fields_founds_a_begin_equivalent_task
+src/commands/add/persist.rs:107:58: delete ! in apply_guide	sara/commands::add::tests::form_with_guide_fields_founds_a_begin_equivalent_task
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with None	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with None	contract/ids::the_suggested_id_works
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with Some(String::new())	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with Some(String::new())	contract/ids::the_suggested_id_works
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with Some("xyzzy".into())	contract/ids::the_branch_guard_refuses_a_display_id
+src/commands/add/persist.rs:123:5: replace tie_branch -> Option<String> with Some("xyzzy".into())	contract/ids::the_suggested_id_works
+src/commands/add/similar.rs:21:5: replace meaningful_tokens -> Vec<String> with vec![]	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
+src/commands/add/similar.rs:21:5: replace meaningful_tokens -> Vec<String> with vec![String::new()]	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
+src/commands/add/similar.rs:21:5: replace meaningful_tokens -> Vec<String> with vec!["xyzzy".into()]	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
+src/commands/add/similar.rs:21:26: delete ! in meaningful_tokens	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
+src/commands/add/similar.rs:23:29: replace >= with < in meaningful_tokens	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
+src/commands/add/similar.rs:23:37: delete ! in meaningful_tokens	sara/commands::add::similar::tests::reordered_words_still_find_the_task_by_tokens
