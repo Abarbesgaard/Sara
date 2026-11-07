@@ -1,0 +1,41 @@
+src/commands/agent/finish.rs:41:5: replace finish_value -> Result<Value> with Ok(Default::default())	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/finish.rs:41:5: replace finish_value -> Result<Value> with Ok(Default::default())	sara/mcp::tests::finish_closes_a_merged_task_validated_at_head
+src/commands/agent/finish.rs:49:16: delete ! in finish_value	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/finish.rs:62:15: replace != with == in finish_value	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/finish.rs:62:15: replace != with == in finish_value	sara/mcp::tests::finish_closes_a_merged_task_validated_at_head
+src/commands/agent/maintain.rs:32:5: replace maintain_value -> Result<Value> with Ok(Default::default())	sara/mcp::tests::maintain_dispatches_actions
+src/commands/agent/next_actions.rs:11:5: replace is_pr_url -> bool with false	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/next_actions.rs:11:5: replace is_pr_url -> bool with false	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:11:28: replace || with && in is_pr_url	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/next_actions.rs:11:28: replace || with && in is_pr_url	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:16:5: replace pr_link -> Result<Option<String>> with Ok(None)	sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+src/commands/agent/next_actions.rs:16:5: replace pr_link -> Result<Option<String>> with Ok(None)	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:16:5: replace pr_link -> Result<Option<String>> with Ok(Some(String::new()))	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:16:5: replace pr_link -> Result<Option<String>> with Ok(Some("xyzzy".into()))	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:24:5: replace action -> Value with Default::default()	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:24:5: replace action -> Value with Default::default()	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/next_actions.rs:24:5: replace action -> Value with Default::default()	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![])	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![])	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![])	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![Default::default()])	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![Default::default()])	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/next_actions.rs:32:5: replace next_actions -> Result<Vec<Value>> with Ok(vec![Default::default()])	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:32:20: replace != with == in next_actions	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:32:20: replace != with == in next_actions	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/next_actions.rs:32:20: replace != with == in next_actions	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:39:66: delete ! in next_actions	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:39:66: delete ! in next_actions	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:51:25: replace && with || in next_actions	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:58:71: delete ! in next_actions	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:78:13: delete match arm (None, _) in next_actions	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	sara/mcp::tests::next_actions_walk_the_task_lifecycle
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	behaviour/cite::cite_mcp_step_done_and_done_record_and_reject_atomically
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	behaviour/links::mcp_link_reports_already_linked
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	behaviour/links::mcp_unlink_by_task_and_url
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	behaviour/mcp::begin_learn_recall_payloads
+src/commands/agent/next_actions.rs:108:5: replace with_next_actions -> Value with Default::default()	behaviour/mcp::find_tool_searches_tasks_by_partial_uuid
+src/commands/agent/resume.rs:21:5: replace clip -> String with String::new()	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/resume.rs:21:5: replace clip -> String with "xyzzy".into()	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/resume.rs:21:26: replace <= with > in clip	sara/mcp::tests::resume_briefs_the_most_recent_task
+src/commands/agent/resume.rs:31:5: replace latest_task -> Result<Option<Task>> with Ok(None)	sara/mcp::tests::resume_briefs_the_most_recent_task

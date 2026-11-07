@@ -1,16 +1,20 @@
-Shards done: 4/128.
+Shards done: 5/128.
 Partial: a test marked removable may still catch a mutant in a shard not yet swept.
 
-68 caught mutant(s), killed by 48 of 932 test(s).
+90 caught mutant(s), killed by 57 of 932 test(s).
 
 Tests that kill something (kills, unique kills):
      1    0  architecture/known_large_files_are_still_large   <- removable
      1    0  behaviour/cite::cite_cli_bad_label_fails_atomically   <- removable
      1    0  behaviour/cite::cite_cli_step_done_and_done_record_cited_uses   <- removable
      1    0  behaviour/cite::cite_info_lists_cited_memories   <- removable
-     1    0  behaviour/cite::cite_mcp_step_done_and_done_record_and_reject_atomically   <- removable
+     2    0  behaviour/cite::cite_mcp_step_done_and_done_record_and_reject_atomically   <- removable
      2    0  behaviour/cli_json::info_json_shape   <- removable
      2    0  behaviour/cli_json::list_json_shape   <- removable
+     1    0  behaviour/links::mcp_link_reports_already_linked   <- removable
+     1    0  behaviour/links::mcp_unlink_by_task_and_url   <- removable
+     6    0  behaviour/mcp::begin_learn_recall_payloads   <- removable
+     1    0  behaviour/mcp::find_tool_searches_tasks_by_partial_uuid   <- removable
      1    0  behaviour/provenance::provenance_memories_lists_track_record_in_text_and_json   <- removable
      1    0  behaviour/provenance::provenance_recall_shows_track_record_in_text_and_json   <- removable
      1    0  behaviour/recall::recall_task_cli_records_uses_only_when_a_task_is_given   <- removable
@@ -52,6 +56,11 @@ Tests that kill something (kills, unique kills):
      2    0  sara/commands::begin::tests::begin_records_every_folded_operation_as_an_ordered_event   <- removable
      6    0  sara/commands::begin::tests::begin_records_surfaced_use_against_the_new_task   <- removable
      2    0  sara/commands::begin::tests::missing_acceptance_warns_but_still_founds_the_task   <- removable
+     2    0  sara/mcp::tests::finish_closes_a_merged_task_validated_at_head   <- removable
+     6    1  sara/mcp::tests::finish_waits_for_the_merge_and_links_the_pr_once
+     1    1  sara/mcp::tests::maintain_dispatches_actions
+    14    5  sara/mcp::tests::next_actions_walk_the_task_lifecycle
+     8    4  sara/mcp::tests::resume_briefs_the_most_recent_task
 
-28 test(s) can be removed together without losing a kill (marked above).
-884 test(s) killed nothing in what was swept.
+33 test(s) can be removed together without losing a kill (marked above).
+875 test(s) killed nothing in what was swept.
