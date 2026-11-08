@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Tests for the scripts and workflows that make up the CI pipeline. Each case
-# builds a throwaway git repo, fakes the slow tools (the kill matrix,
-# similarity-rs) and checks a script's output and exit code.
+# builds a throwaway git repo, fakes the slow tools (cargo, the kill
+# matrix) and checks a script's output and exit code.
 #
 #   tests/pipeline/run.sh            # every case
-#   tests/pipeline/run.sh similar    # cases whose name contains "similar"
+#   tests/pipeline/run.sh kill       # cases whose name contains "kill"
 #
 # BASH_UNDER_TEST (default bash) runs the scripts, so macOS can check them
 # with its bash 3.2: BASH_UNDER_TEST=/bin/bash tests/pipeline/run.sh
@@ -151,151 +151,6 @@ new_tests_failure_survives_the_pipe_to_tee() {
   expect_exit $rc 1 "" && ok
 }
 
-# ── similar-code.sh ────────────────────────────────────────────────────────
-
-# A similarity-rs that prints the pairs in .pairs ("locA nameA locB nameB pct"
-# per line) under the directory it is asked to scan.
-fake_similarity() {
-  mkdir -p "$work/bin"
-  cat > "$work/bin/similarity-rs" <<'EOF'
-#!/usr/bin/env bash
-[ -f .pairs ] || exit 0
-while read -r la na lb nb pct; do
-  case "$la" in "$1"/*) ;; *) continue ;; esac
-  printf '  %s function %s <-> %s function %s\n  Similarity: %s\n\n' "$la" "$na" "$lb" "$nb" "$pct"
-done < .pairs
-EOF
-  chmod +x "$work/bin/similarity-rs"
-}
-
-# main has a and b alike; the PR branch is checked out.
-similar_repo() {
-  repo sim
-  fake_similarity
-  cp "$root/scripts/similar-code.sh" scripts/
-  : > scripts/similar-code.allow
-  printf 'pub fn a() {}\npub fn b() {}\n' > src/lib.rs
-  echo 'src/lib.rs:1-1 a src/lib.rs:2-2 b 95.00%' > .pairs
-  commit setup
-  git checkout -q -b pr
-}
-
-# The PR adds c, which looks like a.
-add_c_like_a() {
-  printf 'pub fn a() {}\npub fn b() {}\npub fn c() {}\n' > src/lib.rs
-  echo 'src/lib.rs:3-3 c src/lib.rs:1-1 a 90.00%' >> .pairs
-}
-
-similar() { PATH="$work/bin:$PATH" "$sh" scripts/similar-code.sh main 2>&1; }
-
-similar_code_fails_on_a_new_pair_only() {
-  similar_repo && add_c_like_a && commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 1 "$out" && expect_has "$out" "1 new pair(s)" &&
-    expect_has "$out" "error: function \`c\` is 90.00% similar to \`a\`" && expect_lacks "$out" "\`b\`" && ok
-}
-
-similar_code_passes_a_pair_already_on_the_base() {
-  similar_repo
-  printf 'pub fn a() {}\npub fn b() { }\n' > src/lib.rs
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "(already there)" && ok
-}
-
-similar_code_passes_a_declared_pair() {
-  similar_repo && add_c_like_a
-  echo 'src/lib.rs::a src/lib.rs::c  # intended' > scripts/similar-code.allow
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "(declared)" && ok
-}
-
-similar_code_leaves_tests_damp() {
-  similar_repo
-  printf '#[test]\nfn one() {}\n#[test]\nfn two() {}\n' > tests/contract/x.rs
-  echo 'tests/contract/x.rs:4-4 two tests/contract/x.rs:2-2 one 88.50%' >> .pairs
-  echo '// touch' >> src/lib.rs
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_lacks "$out" "\`two\`" && ok
-}
-
-similar_code_fails_on_a_shifted_pair() {
-  similar_repo
-  printf 'pub fn a() {}\npub fn b() {}\npub fn d() {}\n' > src/lib.rs
-  printf 'src/lib.rs:1-1 a src/lib.rs:2-2 b 95.00%%\nsrc/lib.rs:1-1 a src/other.rs:1-1 z 91.00%%\n' > .pairs
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 1 "$out" && expect_has "$out" "(shifted)" && ok
-}
-
-similar_code_follows_a_renamed_file() {
-  similar_repo
-  git mv src/lib.rs src/moved.rs
-  echo 'src/moved.rs:1-1 a src/moved.rs:2-2 b 95.00%' > .pairs
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "1 already there" && expect_has "$out" "0 contracted" && ok
-}
-
-similar_code_lists_a_contracted_pair() {
-  similar_repo
-  printf 'pub fn a() {}\n' > src/lib.rs
-  : > .pairs
-  commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "contracted: src/lib.rs::a src/lib.rs::b" && ok
-}
-
-similar_code_passes_without_rust_changes() {
-  similar_repo
-  echo docs > README.md && commit pr
-  local out rc
-  out=$(similar); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "no Rust source changed" && ok
-}
-
-# ── similar-backlog.sh ─────────────────────────────────────────────────────
-
-# similar-code.sh stubbed to report f~g, g~h (one cluster) and x~y.
-backlog_repo() {
-  repo bl
-  cp "$root/scripts/similar-backlog.sh" scripts/
-  cat > scripts/similar-code.sh <<'EOF'
-#!/usr/bin/env bash
-echo 'src/a.rs:1-4: warning: function `f` is 90.00% similar to `g` (src/a.rs:5-9)'
-echo 'src/a.rs:5-9: warning: function `g` is 91.00% similar to `h` (src/b.rs:1-4)'
-echo 'src/c.rs:1-4: warning: function `x` is 95.00% similar to `y` (src/c.rs:9-12)'
-echo '3 similar function pair(s)'
-EOF
-  chmod +x scripts/*.sh
-}
-
-similar_backlog_counts_pairs_and_clusters() {
-  backlog_repo
-  : > scripts/similar-code.allow   # an empty allow list once dropped every pair
-  local out rc
-  out=$("$sh" scripts/similar-backlog.sh 2>&1); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "3 similar function pair(s) in 2 cluster(s)" &&
-    expect_has "$out" "| 3 | 2 | \`src/a.rs::f\` |" && ok
-}
-
-similar_backlog_leaves_out_declared_pairs() {
-  backlog_repo
-  echo 'src/c.rs::y src/c.rs::x' > scripts/similar-code.allow
-  local out
-  out=$("$sh" scripts/similar-backlog.sh 2>&1)
-  expect_has "$out" "2 similar function pair(s) in 1 cluster(s)" && ok
-}
-
 # ── kill-matrix.sh report ──────────────────────────────────────────────────
 
 # m1 is killed by a Contract test and a unit test, m2 by another unit test.
@@ -373,8 +228,8 @@ kill_matrix_reads_tests_from_a_nextest_log() {
   ok
 }
 
-cases=$(declare -F | awk '{ print $3 }' | grep -E '^(workflows|scripts|new_tests|similar|kill_matrix)_' |
-  grep -vE '^(new_tests_repo|new_tests_verdict|similar_repo)$')
+cases=$(declare -F | awk '{ print $3 }' | grep -E '^(workflows|scripts|new_tests|kill_matrix)_' |
+  grep -vE '^(new_tests_repo|new_tests_verdict)$')
 passed=0 failed=0
 for case in $cases; do
   case "$case" in *"$only"*) ;; *) continue ;; esac
