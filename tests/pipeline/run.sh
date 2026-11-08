@@ -317,6 +317,36 @@ kill_matrix_report_keeps_contract_tests() {
   ok
 }
 
+# A fake `cargo mutants` for kill-matrix.sh --test: on its own the test kills
+# m1 and m2; without it the suite kills m1 and misses m2, the last mutant.
+fake_mutants() {
+  mkdir -p "$work/bin"
+  cat > "$work/bin/cargo" <<'FAKE'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
+mkdir -p "$out/mutants.out/log"
+m() { printf '{"scenario":{"Mutant":{"name":"%s"}},"summary":"%s","log_path":"log/%s.log"}' "$1" "$2" "$1"; }
+case "$out" in
+  */one) rest="$(m m1 CaughtMutant),$(m m2 CaughtMutant)" ;;
+  *) rest="$(m m1 CaughtMutant),$(m m2 MissedMutant)"
+     printf '     Running `target/debug/deps/behaviour-0123abcd`\ntest other ... FAILED\n' > "$out/mutants.out/log/m1.log" ;;
+esac
+printf '{"outcomes":[{"scenario":"Baseline","summary":"Success","log_path":"log/b.log"},%s]}' "$rest" > "$out/mutants.out/outcomes.json"
+FAKE
+  chmod +x "$work/bin/cargo"
+}
+
+kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
+  repo kmlast
+  printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
+  cp "$root/scripts/kill-matrix.sh" scripts/
+  fake_mutants
+  local out rc
+  out=$(PATH="$work/bin:$PATH" KILLMX_OUT="$work/kmlast-out" "$sh" scripts/kill-matrix.sh --test behaviour/mcp::t src/lib.rs 2>&1); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "Keep behaviour/mcp::t: it alone catches 1 mutant(s):" || return
+  ok
+}
+
 cases=$(declare -F | awk '{ print $3 }' | grep -E '^(workflows|scripts|new_tests|similar|kill_matrix)_' |
   grep -vE '^(new_tests_repo|new_tests_verdict|similar_repo)$')
 passed=0 failed=0
