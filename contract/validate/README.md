@@ -30,8 +30,3 @@ git repo with at least one commit.
 src/commands/shared/project.rs::require_project_head
 src/commands/guide/handlers/validate.rs::validate_value
 ```
-
-```surface
-cli begin
-cli validate
-```

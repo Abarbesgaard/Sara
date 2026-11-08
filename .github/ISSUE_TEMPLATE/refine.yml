@@ -61,7 +61,7 @@ body:
     id: surface
     attributes:
       label: Surface
-      description: The commands and MCP tools a test would drive, as `cli <command>` or `mcp <tool>`, comma-separated. `scripts/surface.sh` lists them all.
+      description: The commands and MCP tools a test would drive, as `cli <command>` or `mcp <tool>`, comma-separated.
       placeholder: cli add, mcp add
   - type: textarea
     id: existing

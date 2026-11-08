@@ -42,10 +42,3 @@ src/commands/shared/project.rs::stable_id
 src/infrastructure/db/tasks.rs::get_task_by_uuid_prefix
 src/infrastructure/db/memory/items.rs::get_item_by_uuid_prefix
 ```
-
-```surface
-cli done
-cli forget
-cli info
-cli validate
-```
