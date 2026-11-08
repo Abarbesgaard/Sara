@@ -88,7 +88,6 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
 
   <div class="stats">
     <div class="stat"><b id="obligations">–</b><span>Contract obligations</span></div>
-    <div class="stat"><b id="percent">–</b><span id="covered">of commands and tools covered</span></div>
     <div class="stat"><b>18</b><span>checks per PR</span></div>
     <div class="stat"><b>1 / 128</b><span>kill-matrix shard a night</span></div>
   </div>
@@ -108,7 +107,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
       <h3>Write the obligation <span class="rule">Rule 13</span><span class="rule">Rule 20</span></h3>
       <p>Before the code, what sara must do goes into the Contract as one numbered sentence a test can prove,
         such as <em>ids/A6: a blank id matches nothing</em>. Obligations are never renumbered. A <code>covers</code> block names the
-        code they are about and a <code>surface</code> block the commands and MCP tools their tests drive.</p>
+        code they are about, so a new contract test can be checked against it.</p>
       <div class="where"><span class="chip">contract/&lt;primitive&gt;/README.md</span></div>
       <p class="gap">Only the <code>ids</code> primitive is written so far. 52 contract tests in 15 files still need obligations (<a href="https://github.com/Abarbesgaard/Sara/issues/316">#316</a>).</p>
     </div>
@@ -117,8 +116,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
       <h3>Make it executable <span class="rule">Rule 20</span></h3>
       <p>Each contract test names the obligations it proves with <code>#[impish::contract("ids/A6")]</code>, which
         fails to compile when the tag points nowhere. <a href="https://github.com/Abarbesgaard/impish">impish</a>'s
-        <code>cargo impish check</code> fails the build when an obligation has no test, a <code>covers</code> or
-        <code>surface</code> line names something sara doesn't have, or the published coverage is stale.</p>
+        <code>cargo impish check</code> fails the build when an obligation has no test or a contract test names no obligation.</p>
       <div class="where"><span class="chip">tests/contract/&lt;primitive&gt;.rs</span><span class="chip">cargo impish check</span></div>
     </div>
 
@@ -185,9 +183,9 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
 
     <div class="step s-live" data-n="10">
       <h3>Coverage is published <span class="rule">Rule 29</span></h3>
-      <p>Every CI run prints Contract coverage from <code>contract/coverage.json</code> in its job summary:
-        obligations per primitive, and which commands and tools no obligation covers yet.</p>
-      <div class="where"><span class="chip">contract/coverage.json</span><span class="chip">ci.yml (Test)</span></div>
+      <p>Every CI run prints the Contract in its job summary: <code>cargo impish check</code> lists each primitive's
+        obligations and the tests that prove them, and annotates the line of any obligation left without one.</p>
+      <div class="where"><span class="chip">cargo impish check</span><span class="chip">ci.yml (Test)</span></div>
     </div>
   </div>
 
@@ -211,7 +209,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
     <tbody>
       <tr><td>1, 20</td><td>Success criteria written down first</td><td><i class="dot live"></i>in place</td><td>Every issue starts from a form that asks for obligations in the Contract's format; there are no blank issues</td></tr>
       <tr><td>13, 20</td><td>An executable Contract</td><td><i class="dot part"></i>partial</td><td>Checker and tagging are in place; one primitive written (<a href="https://github.com/Abarbesgaard/Sara/issues/316">#316</a>)</td></tr>
-      <tr><td>29</td><td>Contract coverage published</td><td><i class="dot live"></i>in place</td><td>CI job summary</td></tr>
+      <tr><td>29</td><td>Contract coverage published</td><td><i class="dot live"></i>in place</td><td>CI job summary, written by <code>cargo impish check</code></td></tr>
       <tr><td>19, 24</td><td>Machines enforce standards</td><td><i class="dot live"></i>in place</td><td>fmt, Clippy, unused dependencies, zizmor, cargo-deny, archunit</td></tr>
       <tr><td>26</td><td>Every test earns its place</td><td><i class="dot part"></i>partial</td><td>Mutants fail PRs; the nightly kill matrix files issues but doesn't fail the build (<a href="https://github.com/Abarbesgaard/Sara/issues/296">#296</a>)</td></tr>
       <tr><td>27</td><td>Green merges itself</td><td><i class="dot live"></i>in place</td><td>The <code>CI</code> gate is required; auto-merge is on</td></tr>
@@ -222,16 +220,14 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
     </tbody>
   </table>
 
-  <footer>Rules quoted from <a href="https://impatientprogramming.org/primer.md">the IMP primer</a>. Live numbers come from
-    <a href="https://github.com/Abarbesgaard/Sara/blob/main/contract/coverage.json">contract/coverage.json</a>.</footer>
+  <footer>Rules quoted from <a href="https://impatientprogramming.org/primer.md">the IMP primer</a>. The obligation count is
+    counted from <a href="https://github.com/Abarbesgaard/Sara/tree/main/contract">contract/</a> on every deploy.</footer>
 </main>
 <script>
 fetch("coverage.json")
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then(c => {
     document.getElementById("obligations").textContent = c.obligations;
-    document.getElementById("percent").textContent = c.surface.percent + "%";
-    document.getElementById("covered").textContent = `of ${c.surface.total} commands and tools covered`;
   })
   .catch(() => {});
 </script>

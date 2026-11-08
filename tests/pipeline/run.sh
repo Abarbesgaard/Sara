@@ -62,39 +62,6 @@ scripts_parse() {
   ok
 }
 
-# ── contract-primitives.sh ─────────────────────────────────────────────────
-
-contract_primitives_lists_only_primitives_with_a_contract() {
-  repo cp
-  cp "$root/scripts/contract-primitives.sh" scripts/
-  mkdir -p contract/done && echo '# done' > contract/done/README.md
-  echo '{}' > contract/coverage.json
-  commit setup
-  git checkout -q -b pr
-  echo 'more' >> contract/done/README.md
-  echo '{"x":1}' > contract/coverage.json
-  echo 'fn t() {}' > tests/contract/done.rs
-  echo 'mod done;' > tests/contract/main.rs   # no Contract, and sorts last
-  commit pr
-  local out rc
-  out=$("$sh" scripts/contract-primitives.sh main 2>&1); rc=$?
-  expect_exit $rc 0 "$out" || return
-  [ "$out" = "done" ] || { bad "want 'done', got '$out'"; return; }
-  ok
-}
-
-contract_primitives_is_empty_without_contract_changes() {
-  repo cp2
-  cp "$root/scripts/contract-primitives.sh" scripts/
-  commit setup
-  git checkout -q -b pr && echo 'pub fn b() {}' >> src/lib.rs && commit pr
-  local out rc
-  out=$("$sh" scripts/contract-primitives.sh main 2>&1); rc=$?
-  expect_exit $rc 0 "$out" || return
-  [ -z "$out" ] || { bad "want nothing, got '$out'"; return; }
-  ok
-}
-
 # ── new-tests.sh ───────────────────────────────────────────────────────────
 
 # A PR that adds one Contract test and one unit test; the kill matrix is a
@@ -350,7 +317,7 @@ kill_matrix_report_keeps_contract_tests() {
   ok
 }
 
-cases=$(declare -F | awk '{ print $3 }' | grep -E '^(workflows|scripts|contract_primitives|new_tests|similar|kill_matrix)_' |
+cases=$(declare -F | awk '{ print $3 }' | grep -E '^(workflows|scripts|new_tests|similar|kill_matrix)_' |
   grep -vE '^(new_tests_repo|new_tests_verdict|similar_repo)$')
 passed=0 failed=0
 for case in $cases; do

@@ -13,9 +13,3 @@ the most recent one can be reverted.
 ```covers
 src/commands/undo/mod.rs::run
 ```
-
-```surface
-cli add
-cli list
-cli undo
-```

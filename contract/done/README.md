@@ -27,12 +27,3 @@ src/commands/done/mod.rs::done_value
 src/commands/done/mod.rs::done_gate
 src/commands/done/mod.rs::run
 ```
-
-```surface
-cli add
-cli begin
-cli dep
-cli done
-cli list
-cli validate
-```

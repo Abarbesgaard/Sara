@@ -1,4 +1,0 @@
-# sara's settings for `cargo impish check`; see contract/README.md.
-
-[surface]
-command = ["sh", "scripts/surface.sh"]

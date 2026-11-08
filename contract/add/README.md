@@ -45,8 +45,3 @@ src/infrastructure/project.rs::parse_add_tokens
 src/commands/add/duplicate.rs::find_duplicate_open_task
 src/domain/value_objects/priority.rs::from_str
 ```
-
-```surface
-cli add
-cli list
-```
