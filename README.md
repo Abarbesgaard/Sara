@@ -468,7 +468,8 @@ the spec changed.
 A full sweep takes over a day, so a nightly job runs one of 128 small shards and
 adds it to the results on the `kill-matrix-data` branch. Once every shard has
 run, it files an issue labelled `kill-matrix` per suspect test, at most 3 a
-night. Close the issue to keep the test.
+night. Close the issue to keep the test. It needs `cargo-mutants` and
+`cargo-nextest`.
 
 ```bash
 scripts/kill-matrix.sh 'src/domain/**'                       # sweep files, print the report
