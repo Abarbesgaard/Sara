@@ -150,7 +150,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
     <div class="step s-live" data-n="6">
       <h3>Mutants on the PR diff <span class="rule">Rule 26</span></h3>
       <p>cargo-mutants changes every line the PR touched (<code>+</code> becomes <code>*</code>, a <code>!</code> disappears, a function returns a default)
-        and runs the tests against each mutant. A mutant no test catches fails the PR: new code must come with a test that notices when it breaks.</p>
+        and runs the tests against each mutant. A mutant no test catches fails the PR: new code must come with a test that notices when it breaks. The mutants are split across four runners.</p>
       <div class="where"><span class="chip">Mutants</span><span class="chip">.cargo/mutants.toml</span></div>
     </div>
 

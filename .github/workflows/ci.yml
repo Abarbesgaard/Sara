@@ -14,7 +14,8 @@ name: CI
 # Test:        the suite with and without default features, then the Contract
 #              (cargo impish check: every obligation has a test).
 # Portability: the suite on macOS and Windows.
-# Mutants:     mutation testing on the lines the PR changes.
+# Mutants:     mutation testing on the lines the PR changes, in four shards,
+#              under nextest.
 # New tests:   each test the PR adds catches a bug no other test catches.
 # Release:     every green merge that bumps the version ships (release.yml).
 
@@ -191,12 +192,18 @@ jobs:
   # Each mutant is a small injected bug; a "missed" one means no test noticed
   # it. A full run takes hours, so this only mutates the lines the PR changes;
   # kill-matrix.yml covers the rest nightly. Config: .cargo/mutants.toml.
+  # Four shards, each its own runner, so a large diff doesn't queue its
+  # mutants behind one another.
   mutants:
-    name: Mutants
+    name: Mutants (${{ matrix.shard }}/4)
     needs: [lint, policy, test]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -210,19 +217,23 @@ jobs:
           save-if: false
       - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
         with:
-          tool: cargo-mutants
+          tool: cargo-mutants,cargo-nextest
 
       - name: Diff against base
         env:
           BASE_REF: ${{ github.base_ref }}
         run: git diff "origin/${BASE_REF}.." | tee git.diff
       - name: Mutants
-        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff
+        env:
+          SHARD: ${{ matrix.shard }}
+        # nextest runs every test binary in one parallel pool; cargo test runs
+        # them one after another, about three times slower per mutant.
+        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff --shard "${SHARD}/4" --test-tool nextest
       - name: Archive mutants.out
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants.out
+          name: mutants.out-${{ matrix.shard }}
           path: mutants.out
 
   # A new test must catch a bug no other test catches (IMP Rule 26). Breaks
