@@ -292,3 +292,65 @@ fn lifecycle_tools_answer_with_json() {
     );
     assert_eq!(finished["status"], "waiting_for_merge", "{finished}");
 }
+
+#[test]
+fn guide_tools_answer_with_json() {
+    let s = Sara::new();
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+    let mut call = |tool: &str, mut args: serde_json::Value| {
+        args["project_path"] = json!(project);
+        mcp.call_result(tool, args)
+    };
+
+    let id = call("begin", json!({"description": "Guide over MCP"}))["uuid"]
+        .as_str()
+        .expect("begin returns a uuid")
+        .to_string();
+    let doing = call("doing", json!({"id": id, "text": "running the tests"}));
+    assert_eq!(doing["doing"], "running the tests", "{doing}");
+    let note = call(
+        "annotate",
+        json!({"id": id, "text": "Parsers need a trailing newline", "kind": "finding"}),
+    );
+    assert_eq!(note["kind"], "finding", "{note}");
+    let step = call("check", json!({"id": id, "text": "write it"}));
+    assert_eq!(step["index"], 2, "{step}");
+    call("step_done", json!({"id": id, "n": 1, "result": "recalled"}));
+    let undone = call("step_undone", json!({"id": id, "n": 1}));
+    assert_eq!(undone["done"], false, "{undone}");
+    let removed = call("step_remove", json!({"id": id, "n": 2}));
+    assert_eq!(removed["removed"], "write it", "{removed}");
+    let attached = call("attach", json!({"id": id, "path": "src/lib.rs"}));
+    assert_eq!(attached["attached"], "src/lib.rs", "{attached}");
+    let plan = call(
+        "plan_import",
+        json!({"plan_json": r#"{"tasks":[{"description":"Imported"}]}"#}),
+    );
+    assert_eq!(plan["created"], 1, "{plan}");
+
+    let m = call(
+        "learn",
+        json!({"text": "Guide tools answer in JSON", "tags": ["mcp"]}),
+    )["label"]
+        .as_str()
+        .expect("learn returns a label")
+        .to_string();
+    let relearned = call(
+        "relearn",
+        json!({"handle": m, "text": "Guide tools answer in pretty JSON"}),
+    );
+    assert_eq!(
+        relearned["title"], "Guide tools answer in pretty JSON",
+        "{relearned}"
+    );
+    let forgotten = call("forget", json!({"handle": m}));
+    assert_eq!(forgotten["archived"], true, "{forgotten}");
+
+    let done = call("done", json!({"id": id, "force": true}));
+    let provisional = done["auto_memory"]
+        .as_str()
+        .expect("done saves a provisional memory from the finding");
+    let promoted = call("promote", json!({"handle": provisional}));
+    assert_eq!(promoted["promoted"], true, "{promoted}");
+}

@@ -4,7 +4,7 @@ use rmcp::{tool, tool_router};
 use crate::commands;
 
 use super::params::*;
-use super::server::{SaraServer, mcp_err, ok_json};
+use super::server::{SaraServer, tool_json};
 
 #[tool_router(router = guide_router, vis = "pub(crate)")]
 impl SaraServer {
@@ -20,8 +20,8 @@ impl SaraServer {
     fn begin(&self, Parameters(p): Parameters<BeginParams>) -> Result<String, String> {
         let tags = p.tags.clone().unwrap_or_default();
         let files = p.files.clone().unwrap_or_default();
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp begin", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp begin", |conn, cfg| {
                 commands::begin::begin_value(
                     conn,
                     cfg,
@@ -40,9 +40,8 @@ impl SaraServer {
                     Some(id) => commands::agent::with_next_actions(conn, &id, v),
                     None => v,
                 })
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -61,8 +60,8 @@ impl SaraServer {
         let links = p.links.clone().unwrap_or_default();
         let checks = p.checks.clone().unwrap_or_default();
         let depends_on = p.depends_on.clone().unwrap_or_default();
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp add", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp add", |conn, cfg| {
                 let req = commands::add::AddRequest {
                     words: &words,
                     project: p.project.as_deref(),
@@ -75,9 +74,8 @@ impl SaraServer {
                     depends_on: &depends_on,
                 };
                 commands::add::run_value(conn, cfg, &req)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -90,42 +88,35 @@ impl SaraServer {
         )
     )]
     fn step_done(&self, Parameters(p): Parameters<StepDoneParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp step_done",
-                &p.id,
-                |conn, _cfg| {
-                    let used = p.used.as_deref().unwrap_or(&[]);
-                    commands::shared::with_citation(conn, &p.id, used, || {
-                        if let Some(step_id) = p.step_id {
-                            commands::guide::step_done_by_id_value(
-                                conn,
-                                step_id,
-                                p.result.as_deref(),
-                            )
-                        } else if let Some(n) = p.n {
-                            commands::guide::step_done_value(
-                                conn,
-                                &p.id,
-                                n,
-                                p.result.as_deref(),
-                                p.kind.as_deref(),
-                            )
-                        } else {
-                            commands::guide::step_done_current_value(
-                                conn,
-                                &p.id,
-                                p.result.as_deref(),
-                                p.kind.as_deref(),
-                            )
-                        }
-                    })
-                    .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp step_done",
+            &p.id,
+            |conn, _cfg| {
+                let used = p.used.as_deref().unwrap_or(&[]);
+                commands::shared::with_citation(conn, &p.id, used, || {
+                    if let Some(step_id) = p.step_id {
+                        commands::guide::step_done_by_id_value(conn, step_id, p.result.as_deref())
+                    } else if let Some(n) = p.n {
+                        commands::guide::step_done_value(
+                            conn,
+                            &p.id,
+                            n,
+                            p.result.as_deref(),
+                            p.kind.as_deref(),
+                        )
+                    } else {
+                        commands::guide::step_done_current_value(
+                            conn,
+                            &p.id,
+                            p.result.as_deref(),
+                            p.kind.as_deref(),
+                        )
+                    }
+                })
+                .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
+            },
+        ))
     }
 
     #[tool(
@@ -139,12 +130,11 @@ impl SaraServer {
     )]
     fn doing(&self, Parameters(p): Parameters<DoingParams>) -> Result<String, String> {
         let client = self.client_name();
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp doing", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp doing", |conn, _cfg| {
                 commands::doing::doing_value(conn, &p.id, &p.text, client.as_deref())
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -158,8 +148,8 @@ impl SaraServer {
     )]
     fn annotate(&self, Parameters(p): Parameters<AnnotateParams>) -> Result<String, String> {
         let words = vec![p.text.clone()];
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp annotate", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp annotate", |conn, _cfg| {
                 commands::annotate::annotate_value(
                     conn,
                     &p.id,
@@ -170,9 +160,8 @@ impl SaraServer {
                     p.reconsider.unwrap_or(false),
                 )
                 .and_then(|v| self.report_doing(conn, &p.id, p.doing.as_deref(), v))
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -185,12 +174,11 @@ impl SaraServer {
         )
     )]
     fn plan_import(&self, Parameters(p): Parameters<PlanImportParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp plan_import", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp plan_import", |conn, cfg| {
                 commands::plan::import_raw(conn, cfg, &p.plan_json)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -203,25 +191,22 @@ impl SaraServer {
         )
     )]
     fn check(&self, Parameters(p): Parameters<CheckParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp check",
-                &p.id,
-                |conn, _cfg| {
-                    commands::guide::check_value(
-                        conn,
-                        &p.id,
-                        &p.text,
-                        p.intent.as_deref(),
-                        p.kind.as_deref(),
-                        p.source.as_deref(),
-                        p.verify.as_deref(),
-                    )
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp check",
+            &p.id,
+            |conn, _cfg| {
+                commands::guide::check_value(
+                    conn,
+                    &p.id,
+                    &p.text,
+                    p.intent.as_deref(),
+                    p.kind.as_deref(),
+                    p.source.as_deref(),
+                    p.verify.as_deref(),
+                )
+            },
+        ))
     }
 
     #[tool(
@@ -234,24 +219,21 @@ impl SaraServer {
         )
     )]
     fn step_undone(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp step_undone",
-                &p.id,
-                |conn, _cfg| {
-                    if let Some(step_id) = p.step_id {
-                        commands::guide::step_undone_by_id_value(conn, step_id)
-                    } else {
-                        let n = p.n.ok_or_else(|| {
-                            anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
-                        })?;
-                        commands::guide::step_undone_value(conn, &p.id, n, p.kind.as_deref())
-                    }
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp step_undone",
+            &p.id,
+            |conn, _cfg| {
+                if let Some(step_id) = p.step_id {
+                    commands::guide::step_undone_by_id_value(conn, step_id)
+                } else {
+                    let n = p.n.ok_or_else(|| {
+                        anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
+                    })?;
+                    commands::guide::step_undone_value(conn, &p.id, n, p.kind.as_deref())
+                }
+            },
+        ))
     }
 
     #[tool(
@@ -264,24 +246,21 @@ impl SaraServer {
         )
     )]
     fn step_remove(&self, Parameters(p): Parameters<StepEditParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp step_remove",
-                &p.id,
-                |conn, _cfg| {
-                    if let Some(step_id) = p.step_id {
-                        commands::guide::step_remove_by_id_value(conn, step_id)
-                    } else {
-                        let n = p.n.ok_or_else(|| {
-                            anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
-                        })?;
-                        commands::guide::step_remove_value(conn, &p.id, n, p.kind.as_deref())
-                    }
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp step_remove",
+            &p.id,
+            |conn, _cfg| {
+                if let Some(step_id) = p.step_id {
+                    commands::guide::step_remove_by_id_value(conn, step_id)
+                } else {
+                    let n = p.n.ok_or_else(|| {
+                        anyhow::anyhow!("provide `n` (1-based position) or `step_id`")
+                    })?;
+                    commands::guide::step_remove_value(conn, &p.id, n, p.kind.as_deref())
+                }
+            },
+        ))
     }
 
     #[tool(
@@ -294,8 +273,8 @@ impl SaraServer {
         )
     )]
     fn attach(&self, Parameters(p): Parameters<AttachParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp attach", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp attach", |conn, _cfg| {
                 commands::annotate::attach_value(
                     conn,
                     &p.id,
@@ -305,9 +284,8 @@ impl SaraServer {
                     p.lines.as_deref(),
                     p.source.as_deref(),
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -327,8 +305,8 @@ impl SaraServer {
         let supersedes = p.supersedes.unwrap_or_default();
         let derived_from = p.derived_from.unwrap_or_default();
         let similar_to = p.similar_to.unwrap_or_default();
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp learn", |conn, cfg| {
                 commands::learn::learn_value(
                     conn,
                     cfg,
@@ -345,9 +323,8 @@ impl SaraServer {
                         ..Default::default()
                     },
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -360,12 +337,11 @@ impl SaraServer {
         )
     )]
     fn forget(&self, Parameters(p): Parameters<ForgetParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp forget", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp forget", |conn, _cfg| {
                 commands::forget::forget_value(conn, &p.handle, p.cascade.unwrap_or(false))
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -378,12 +354,11 @@ impl SaraServer {
         )
     )]
     fn promote(&self, Parameters(p): Parameters<PromoteParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp promote", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp promote", |conn, _cfg| {
                 commands::promote::promote_value(conn, &p.handle)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -396,8 +371,8 @@ impl SaraServer {
         )
     )]
     fn relearn(&self, Parameters(p): Parameters<RelearnParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp relearn", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp relearn", |conn, _cfg| {
                 commands::relearn::relearn_value(
                     conn,
                     &p.handle,
@@ -406,8 +381,7 @@ impl SaraServer {
                     p.files.as_deref().unwrap_or(&[]),
                     p.force.unwrap_or(false),
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 }
