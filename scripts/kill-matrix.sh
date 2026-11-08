@@ -250,7 +250,11 @@ one_test() {
   outcomes "$out/rest" | awk -F'\t' '$2 == "MissedMutant" { print $1 }' > "$out/rest.missed"
   local name summary log
   outcomes "$out/rest" | while IFS=$'\t' read -r name summary log; do
-    [ "$summary" = CaughtMutant ] && tests_in_log "$out/rest/mutants.out/$log" FAILED
+    # An `if`, not `&&`: a missed last mutant would end the loop with status 1,
+    # and pipefail would exit before the verdict.
+    if [ "$summary" = CaughtMutant ]; then
+      tests_in_log "$out/rest/mutants.out/$log" FAILED
+    fi
   done | sort -u > "$out/rest.sharers"
 
   n=$(wc -l < "$out/rest.missed" | tr -d ' ')
