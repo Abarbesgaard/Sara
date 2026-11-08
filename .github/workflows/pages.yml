@@ -54,6 +54,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
         run: |
+          # apt-ftparchive is no longer on the runner image.
+          sudo apt-get install -y -qq apt-utils
           mkdir -p docs/apt/pool/main docs/apt/dists/stable/main/binary-amd64
           gh release download --repo "$GITHUB_REPOSITORY" --pattern 'sara_*-*_amd64.deb' --dir docs/apt/pool/main
           cd docs/apt
