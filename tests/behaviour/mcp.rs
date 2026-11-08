@@ -149,3 +149,72 @@ fn find_tool_searches_tasks_by_partial_uuid() {
         "'%' is literal, not a wildcard: {wild}"
     );
 }
+
+#[test]
+fn read_tools_answer_with_json() {
+    let s = Sara::new();
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+
+    let begin = mcp.call_result(
+        "begin",
+        json!({"description": "Listed over MCP", "project_path": project}),
+    );
+    let id = begin["uuid"]
+        .as_str()
+        .expect("begin returns a uuid")
+        .to_string();
+    let listed = mcp.call_result("list", json!({"project_path": project}));
+    assert!(
+        listed["tasks"]
+            .as_array()
+            .expect("list returns its tasks")
+            .iter()
+            .any(|t| t["description"] == "Listed over MCP"),
+        "the begun task is listed: {listed}"
+    );
+
+    let label = |v: serde_json::Value| {
+        v["label"]
+            .as_str()
+            .expect("learn returns a label")
+            .to_string()
+    };
+    let a = label(mcp.call_result(
+        "learn",
+        json!({"text": "Read tools answer in JSON", "tags": ["mcp"], "project_path": project}),
+    ));
+    let b = label(mcp.call_result(
+        "learn",
+        json!({"text": "Tool payloads are pretty JSON", "tags": ["mcp"], "project_path": project}),
+    ));
+
+    for (tool, args) in [
+        ("resume", json!({"id": id})),
+        ("next", json!({"id": id})),
+        ("steps", json!({"id": id})),
+        ("verify", json!({"id": id})),
+        ("feedback", json!({"id": id})),
+        ("plan_show", json!({"id": id})),
+        ("tags", json!({})),
+        ("memories", json!({})),
+        ("projects", json!({})),
+        (
+            "link_memory",
+            json!({"from": b, "relation": "similar_to", "to": a}),
+        ),
+        ("maintain", json!({"action": "diagnose"})),
+    ] {
+        let mut args = args;
+        args["project_path"] = json!(project);
+        let env = mcp.call(tool, args);
+        let text = env["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
+        assert_ne!(env["result"]["isError"], true, "{tool} fails: {env}");
+        assert!(
+            serde_json::from_str::<serde_json::Value>(text).is_ok(),
+            "{tool} answers with JSON: {env}"
+        );
+    }
+}
