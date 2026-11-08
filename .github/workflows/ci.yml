@@ -9,8 +9,9 @@ name: CI
 #   Portability ──────────────────────┘
 #                                     └─ Release (main, when the version is new)
 #
-# Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor.
-# Policy:      a change to what ships bumps the version; no new similar code.
+# Lint:        fmt, clippy (both feature sets), unused deps, cargo-deny, zizmor,
+#              copy-paste (jscpd).
+# Policy:      a change to what ships bumps the version.
 # Test:        the suite with and without default features, then the Contract
 #              (cargo impish check: every obligation has a test).
 # Portability: the suite on macOS and Windows.
@@ -79,6 +80,10 @@ jobs:
           advanced-security: false
           annotations: true
           min-severity: low
+      # Exhale: copy-paste above the threshold in .jscpd.json fails. Fold it
+      # into what exists, or mark intended copies with jscpd:ignore-start/end.
+      - name: Copy-paste (jscpd)
+        run: npx --yes jscpd@4.3.0 .
       # The gates' own scripts, against fakes of the slow tools: a gate that
       # can't fail is caught here, not on a PR that should have failed.
       - name: Pipeline scripts
@@ -94,9 +99,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
-        with:
-          tool: similarity-rs
 
       # Every green merge is a release (IMP Rule 3): a PR that changes what
       # ships must bump the version. Dependabot can't, so its updates ship with
@@ -120,23 +122,6 @@ jobs:
             exit 1
           fi
           echo "Version $base -> $head" | tee -a "$GITHUB_STEP_SUMMARY"
-
-      # Exhale: fails on a similar pair in src/ that is new since the base
-      # (introduced or shifted) and not declared in scripts/similar-code.allow.
-      - name: No new similar functions
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          status=0
-          scripts/similar-code.sh "origin/${BASE_REF}" > report.txt || status=$?
-          cat report.txt
-          {
-            echo "### Similar code"
-            echo '```'
-            sed -E 's/^::(warning|error) file=([^,]+),line=([0-9]+),title=Similar code::/\2:\3: \1: /' report.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
 
   test:
     name: Test

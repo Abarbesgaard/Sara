@@ -1,0 +1,14 @@
+{
+  "format": ["rust", "bash", "yaml", "markdown", "toml"],
+  "ignore": [
+    "**/target/**",
+    "**/node_modules/**",
+    "**/Cargo.lock",
+    "tests/**",
+    "assets/**",
+    "CHANGELOG.md"
+  ],
+  "gitignore": true,
+  "threshold": 1.7,
+  "reporters": ["console"]
+}

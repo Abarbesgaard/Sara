@@ -422,30 +422,22 @@ in released code and needs the `bug` label; anything else that changes sara is
 `refine:`, which gets the `refine` label. `.github/workflows/pr-title.yml`
 checks both.
 
-### Similar code
+### Copy-paste
 
 This is the exhale half of IMP's "breathe in, breathe out": a PR folds what it
 learned into what already exists instead of leaving a copy behind.
-[similarity-rs](https://github.com/mizchi/similarity) finds functions in `src/`
-that are at least 87% similar; tests are left out, because tests stay DAMP, not
-DRY. On PRs, CI compares the branch with the merge base and labels each pair:
+[jscpd](https://jscpd.dev/) finds copy-pasted blocks in the Rust, shell,
+workflows, Markdown and TOML. Tests are left out, because tests stay DAMP, not
+DRY. The Lint job fails when duplicated lines reach the `threshold` in
+`.jscpd.json`, which sits just above today's level, so new copies fail and
+folding old ones lets the threshold come down.
 
-| Label | Meaning | Gate |
-| --- | --- | --- |
-| introduced | The PR touched a side and the pair didn't match at the base | fails |
-| shifted | Neither side was touched, yet the pair is new | fails |
-| already there | The pair matched at the base too | warns |
-| declared | `scripts/similar-code.allow` keeps it, with its reason | warns |
-
-The report also lists the pairs the PR contracted. File renames are followed,
-so moving code is not a new pair. To fix a failure, reuse the existing function
-or extract a shared helper, or declare the pair in `scripts/similar-code.allow`
-with the reason the two should stay separate.
+To fix a failure, reuse the existing code or extract a shared helper. If two
+copies should stay separate, wrap one in `// jscpd:ignore-start` and
+`// jscpd:ignore-end` (`#` in shell, YAML and TOML) with the reason.
 
 ```bash
-cargo install --locked similarity-rs
-scripts/similar-code.sh               # every similar pair in src/
-scripts/similar-code.sh origin/main   # label every pair against your branch's base
+npx --yes jscpd@4.3.0 .   # every clone, and whether the total passes
 ```
 
 ### Contract
