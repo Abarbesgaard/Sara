@@ -5,7 +5,7 @@ use crate::commands;
 use crate::infrastructure::telemetry::Source;
 
 use super::params::*;
-use super::server::{SaraServer, mcp_err, ok_json};
+use super::server::{SaraServer, mcp_err, ok_json, tool_json};
 
 #[tool_router(router = lifecycle_router, vis = "pub(crate)")]
 impl SaraServer {
@@ -19,8 +19,8 @@ impl SaraServer {
         )
     )]
     fn done(&self, Parameters(p): Parameters<DoneParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp done", |conn, cfg| {
                 let used = p.used.as_deref().unwrap_or(&[]);
                 if p.validate.unwrap_or(false) {
                     commands::guide::validate_value(
@@ -37,9 +37,8 @@ impl SaraServer {
                 .map_err(with_done_hint)?;
                 commands::done::report_outcome(conn, cfg, Source::Mcp, &v);
                 Ok(v)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -52,17 +51,12 @@ impl SaraServer {
         )
     )]
     fn link(&self, Parameters(p): Parameters<LinkParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp link",
-                &p.id,
-                |conn, _cfg| {
-                    commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref())
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp link",
+            &p.id,
+            |conn, _cfg| commands::annotate::link_value(conn, &p.id, &p.url, p.label.as_deref()),
+        ))
     }
 
     #[tool(
@@ -75,8 +69,8 @@ impl SaraServer {
         )
     )]
     fn dep(&self, Parameters(p): Parameters<DepParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp dep", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp dep", |conn, cfg| {
                 match p.action.as_str() {
                     "on" => {
                         let other = p
@@ -98,9 +92,8 @@ impl SaraServer {
                         )
                     }
                 }
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -113,23 +106,20 @@ impl SaraServer {
         )
     )]
     fn validate(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp validate",
-                &p.id,
-                |conn, _cfg| {
-                    commands::guide::validate_value(
-                        conn,
-                        &p.id,
-                        false,
-                        commands::guide::GateOutput::Capture,
-                        false,
-                    )
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp validate",
+            &p.id,
+            |conn, _cfg| {
+                commands::guide::validate_value(
+                    conn,
+                    &p.id,
+                    false,
+                    commands::guide::GateOutput::Capture,
+                    false,
+                )
+            },
+        ))
     }
 
     #[tool(
@@ -153,8 +143,8 @@ impl SaraServer {
             || p.clear_estimate.unwrap_or(false)
             || p.every.is_some()
             || p.clear_recur.unwrap_or(false);
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp modify", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp modify", |conn, cfg| {
                 let mut out = serde_json::json!({});
                 if let Some(text) = p.assignment.as_deref() {
                     out["assignment"] = commands::guide::assignment_value(conn, &p.id, text)?;
@@ -184,9 +174,8 @@ impl SaraServer {
                     obj.extend(extra.clone());
                 }
                 Ok(v)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -200,8 +189,8 @@ impl SaraServer {
     )]
     fn finish(&self, Parameters(p): Parameters<FinishParams>) -> Result<String, String> {
         let used = p.used.clone().unwrap_or_default();
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp finish", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp finish", |conn, cfg| {
                 let v = commands::agent::finish_value(
                     conn,
                     cfg,
@@ -217,9 +206,8 @@ impl SaraServer {
                     commands::done::report_outcome(conn, cfg, Source::Mcp, &v["done"]);
                 }
                 Ok(v)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -232,12 +220,11 @@ impl SaraServer {
         )
     )]
     fn resolve(&self, Parameters(p): Parameters<ResolveParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp resolve", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp resolve", |conn, _cfg| {
                 commands::guide::resolve_value(conn, p.feedback_id, p.run_id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -253,8 +240,8 @@ impl SaraServer {
         let total = p
             .total_tokens
             .or_else(|| p.prompt_tokens.zip(p.completion_tokens).map(|(a, b)| a + b));
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp record_run", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp record_run", |conn, _cfg| {
                 commands::guide::record_run_value(
                     conn,
                     &p.id,
@@ -267,9 +254,8 @@ impl SaraServer {
                     p.completion_tokens,
                     total,
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -311,12 +297,11 @@ impl SaraServer {
         )
     )]
     fn denotate(&self, Parameters(p): Parameters<DenotateParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp denotate", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp denotate", |conn, _cfg| {
                 commands::annotate::denotate_value(conn, p.annotation_id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -329,12 +314,11 @@ impl SaraServer {
         )
     )]
     fn move_task(&self, Parameters(p): Parameters<MoveTaskParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp move_task", |conn, cfg| {
                 commands::move_task::move_value(conn, cfg, &p.id, &p.project)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 }
 

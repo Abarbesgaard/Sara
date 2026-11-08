@@ -218,3 +218,77 @@ fn read_tools_answer_with_json() {
         );
     }
 }
+
+#[test]
+fn lifecycle_tools_answer_with_json() {
+    let s = Sara::new();
+    s.commit("init");
+    let project = s.project().to_string_lossy().to_string();
+    let mut mcp = s.mcp();
+    let mut call = |tool: &str, mut args: serde_json::Value| {
+        args["project_path"] = json!(project);
+        mcp.call_result(tool, args)
+    };
+
+    let id = call("begin", json!({"description": "Lifecycle over MCP"}))["uuid"]
+        .as_str()
+        .expect("begin returns a uuid")
+        .to_string();
+    call(
+        "check",
+        json!({"id": id, "text": "it holds", "kind": "acceptance", "verify": "true"}),
+    );
+    let validated = call("validate", json!({"id": id}));
+    assert_eq!(validated["criteria_ran"], 1, "{validated}");
+    let deps = call("dep", json!({"id": id, "action": "list"}));
+    assert_eq!(deps["blocked_by"], json!([]), "{deps}");
+
+    let modified = call(
+        "modify",
+        json!({"id": id, "assignment": "Do the thing", "priority": "H"}),
+    );
+    assert_eq!(
+        modified["priority"], "H",
+        "fields change with the assignment: {modified}"
+    );
+    let recurring = call(
+        "modify",
+        json!({"id": id, "rationale": "It repeats", "every": "weekly"}),
+    );
+    assert!(
+        !recurring["recur"].is_null(),
+        "a recurrence alone still changes the task: {recurring}"
+    );
+    assert_eq!(
+        modified["assignment"]["assignment"], "Do the thing",
+        "{modified}"
+    );
+
+    let run = call(
+        "record_run",
+        json!({"id": id, "kind": "review", "prompt_tokens": 3, "completion_tokens": 4}),
+    );
+    assert_eq!(
+        run["total_tokens"], 7,
+        "total is prompt plus completion: {run}"
+    );
+
+    call("annotate", json!({"id": id, "text": "a note"}));
+    call("annotate", json!({"id": id, "text": "another note"}));
+    let notes = call("info", json!({"id": id}))["notes"].clone();
+    let note = |i: usize| notes[i]["id"].as_i64().expect("a note has an id");
+    let resolved = call(
+        "resolve",
+        json!({"feedback_id": note(0), "run_id": run["run_id"]}),
+    );
+    assert_eq!(resolved["resolved"], true, "{resolved}");
+    call("denotate", json!({"annotation_id": note(1)}));
+
+    let moved = call("move_task", json!({"id": id, "project": "Other"}));
+    assert_eq!(moved["to"], "Other", "{moved}");
+    let finished = call(
+        "finish",
+        json!({"id": id, "pr_url": "https://github.com/o/r/pull/1", "merged": false}),
+    );
+    assert_eq!(finished["status"], "waiting_for_merge", "{finished}");
+}
