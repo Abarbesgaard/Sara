@@ -5,7 +5,7 @@ use crate::commands;
 use crate::infrastructure::db;
 
 use super::params::*;
-use super::server::{SaraServer, mcp_err, ok_json};
+use super::server::{SaraServer, tool_json};
 
 #[tool_router(router = read_router, vis = "pub(crate)")]
 impl SaraServer {
@@ -14,12 +14,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn list(&self, Parameters(p): Parameters<ListParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp list", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp list", |conn, cfg| {
                 commands::list::list_value(conn, cfg, p.all.unwrap_or(false), p.project.as_deref())
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -27,8 +26,8 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn find(&self, Parameters(p): Parameters<FindParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp find", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp find", |conn, cfg| {
                 commands::find::find_value(
                     conn,
                     cfg,
@@ -37,9 +36,8 @@ impl SaraServer {
                     p.all.unwrap_or(false),
                     p.limit.unwrap_or(commands::find::DEFAULT_LIMIT),
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -47,12 +45,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn info(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp info", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp info", |conn, _cfg| {
                 commands::info::guide_value(conn, &p.id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -60,12 +57,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn resume(&self, Parameters(p): Parameters<ResumeParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp resume", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp resume", |conn, cfg| {
                 commands::agent::resume_value(conn, cfg, p.id.as_deref())
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -73,15 +69,12 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn next(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
-        let v = self
-            .with_task(
-                p.project_path.as_deref(),
-                "mcp next",
-                &p.id,
-                |conn, _cfg| commands::guide::next_value(conn, &p.id),
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_task(
+            p.project_path.as_deref(),
+            "mcp next",
+            &p.id,
+            |conn, _cfg| commands::guide::next_value(conn, &p.id),
+        ))
     }
 
     #[tool(
@@ -89,12 +82,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn steps(&self, Parameters(p): Parameters<StepsParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp steps", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp steps", |conn, _cfg| {
                 commands::guide::steps_value(conn, &p.id, p.until)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -102,12 +94,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn verify(&self, Parameters(p): Parameters<VerifyParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp verify", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp verify", |conn, _cfg| {
                 commands::guide::verify_value(conn, &p.id, p.step)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -115,8 +106,8 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp recall", |conn, cfg| {
                 let task = commands::recall::use_task(conn, p.task.as_deref())?;
                 db::with_use_attribution(task, || {
                     commands::recall::recall_value(
@@ -130,9 +121,8 @@ impl SaraServer {
                         p.spread.unwrap_or(false),
                     )
                 })
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -140,12 +130,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn feedback(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp feedback", |conn, _cfg| {
                 commands::guide::feedback_value(conn, &p.id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -153,12 +142,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn plan_show(&self, Parameters(p): Parameters<IdParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp plan_show", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp plan_show", |conn, _cfg| {
                 commands::plan::show_value(conn, &p.id)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -166,13 +154,12 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn tags(&self, Parameters(p): Parameters<TagsParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp tags", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp tags", |conn, cfg| {
                 let scope = commands::agent::Scope::parse(p.scope.as_deref())?;
                 commands::agent::tags_value(conn, cfg, scope, p.prefix.as_deref(), p.limit)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -180,13 +167,12 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn memories(&self, Parameters(p): Parameters<MemoriesParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp memories", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp memories", |conn, cfg| {
                 let scope = commands::agent::Scope::parse(p.scope.as_deref())?;
                 commands::agent::memories_value(conn, cfg, scope, p.limit)
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -194,8 +180,8 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn projects(&self, Parameters(p): Parameters<ProjectsParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp projects", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp projects", |conn, _cfg| {
                 let names = crate::infrastructure::db::project_names(conn)?;
                 let mut rows = Vec::with_capacity(names.len());
                 for name in names {
@@ -212,9 +198,8 @@ impl SaraServer {
                     }));
                 }
                 Ok(serde_json::Value::Array(rows))
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -227,26 +212,23 @@ impl SaraServer {
         )
     )]
     fn link_memory(&self, Parameters(p): Parameters<LinkMemoryParams>) -> Result<String, String> {
-        let v = self
-            .with_project(
-                p.project_path.as_deref(),
-                "mcp link_memory",
-                |conn, _cfg| {
-                    if p.remove.unwrap_or(false) {
-                        commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to)
-                    } else {
-                        commands::link_memory::link_memory_value(
-                            conn,
-                            &p.from,
-                            &p.relation,
-                            &p.to,
-                            p.weight.unwrap_or(1.0),
-                        )
-                    }
-                },
-            )
-            .map_err(mcp_err)?;
-        ok_json(v)
+        tool_json(self.with_project(
+            p.project_path.as_deref(),
+            "mcp link_memory",
+            |conn, _cfg| {
+                if p.remove.unwrap_or(false) {
+                    commands::link_memory::unlink_value(conn, &p.from, &p.relation, &p.to)
+                } else {
+                    commands::link_memory::link_memory_value(
+                        conn,
+                        &p.from,
+                        &p.relation,
+                        &p.to,
+                        p.weight.unwrap_or(1.0),
+                    )
+                }
+            },
+        ))
     }
 
     #[tool(
@@ -259,8 +241,8 @@ impl SaraServer {
         )
     )]
     fn maintain(&self, Parameters(p): Parameters<MaintainParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp maintain", |conn, _cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp maintain", |conn, _cfg| {
                 commands::agent::maintain_value(
                     conn,
                     &commands::agent::MaintainRequest {
@@ -280,9 +262,8 @@ impl SaraServer {
                         limit: p.limit,
                     },
                 )
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 
     #[tool(
@@ -290,12 +271,11 @@ impl SaraServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     fn doctor(&self, Parameters(p): Parameters<DoctorParams>) -> Result<String, String> {
-        let v = self
-            .with_project(p.project_path.as_deref(), "mcp doctor", |conn, cfg| {
+        tool_json(
+            self.with_project(p.project_path.as_deref(), "mcp doctor", |conn, cfg| {
                 let project = commands::doctor::current_project(conn, cfg);
                 commands::doctor::doctor_value(conn, project.as_deref())
-            })
-            .map_err(mcp_err)?;
-        ok_json(v)
+            }),
+        )
     }
 }
