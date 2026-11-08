@@ -17,11 +17,13 @@
 #
 # Test ids are <target>/<path>: `sara/…` for unit tests, `contract/…` for
 # tests/contract. KILLMX_OUT (default /tmp/sara-killmx) holds cargo-mutants
-# output; KILLMX_JOBS (default 1) sets cargo-mutants -j. Runs niced.
+# output; KILLMX_JOBS (default 1) sets cargo-mutants -j. Runs niced, under
+# cargo-nextest: it runs every test binary in one parallel pool, where cargo
+# test runs them one after another, about three times slower per mutant.
 set -euo pipefail
 
 out="${KILLMX_OUT:-/tmp/sara-killmx}"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" RUST_TEST_THREADS="${RUST_TEST_THREADS:-4}"
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 # Tests that check structure, not behaviour: they kill nothing by design.
 no_kills_expected='^architecture/'
 max_new_issues=3
@@ -30,7 +32,7 @@ mkdir -p "$out"
 
 # Without GITHUB_ACTIONS, cargo-mutants adds no annotation per missed mutant:
 # here a miss is one test's result, not the suite's.
-mutants() { env -u GITHUB_ACTIONS nice -n 19 cargo mutants -j "${KILLMX_JOBS:-1}" --no-shuffle "$@"; }
+mutants() { env -u GITHUB_ACTIONS nice -n 19 cargo mutants -j "${KILLMX_JOBS:-1}" --no-shuffle --test-tool nextest "$@"; }
 
 # Sets the array `args` to `-f <glob>` for each glob (bash 3.2 has no mapfile).
 globs() { args=(); for g in "$@"; do args+=(-f "$g"); done; }
@@ -41,16 +43,18 @@ outcomes() {
          | [.scenario.Mutant.name, .summary, .log_path] | @tsv' "$1/mutants.out/outcomes.json"
 }
 
-# "<target>/<path>" for every test with result $2 (ok or FAILED) in a test log.
-# cargo-mutants runs cargo verbosely, so each binary shows as
-# `Running `.../deps/<target>-<hash>``, coloured when CARGO_TERM_COLOR=always.
+# "<target>/<path>" for every test with result $2 (ok or FAILED) in a nextest
+# log, from status lines like `FAIL [ 0.1s] (3/934) sara-tasks::bin/sara a::b`:
+# binary `<crate>::bin/sara` is target `sara`, `<crate>::contract` is `contract`.
+# A timeout or crash is a kill too; START and SLOW lines are not results.
 tests_in_log() {
   awk -v want="$2" '
     { gsub(/\033\[[0-9;]*m/, "") }
-    /^ *Running / && match($0, /\/deps\/[A-Za-z0-9_]+-[0-9a-f]+/) {
-      t = substr($0, RSTART + 6, RLENGTH - 6); sub(/-[0-9a-f]+$/, "", t); target = t; next
+    match($0, /^ *[A-Z][A-Z-]* \[[^]]*\]( \( *[0-9]+\/[0-9]+\))? +[^ ]+ +[^ ]+$/) {
+      if (want == "ok" ? $1 != "PASS" : $1 !~ /^(FAIL|TIMEOUT|ABORT|LEAK-FAIL|SIG[A-Z]+)$/) next
+      bin = $(NF - 1); sub(/^[^:]*::/, "", bin); sub(/^bin\//, "", bin)
+      print bin "/" $NF
     }
-    $1 == "test" && $3 == "..." && $4 == want { print target "/" $2 }
   ' "$1"
 }
 
@@ -153,8 +157,8 @@ sweep() {
   [ $# -eq 0 ] || globs "$@"
   [ -z "$shard" ] || args+=(--shard "$shard")
   rm -rf "$out/mutants.out"
-  # --no-fail-fast keeps cargo test running every test binary, so each mutant's
-  # log names every test that killed it, not just the first.
+  # --no-fail-fast keeps nextest running every test, so each mutant's log
+  # names every test that killed it, not just the first.
   mutants "${args[@]}" --cargo-test-arg=--no-fail-fast --output "$out" || true
   collect
 
@@ -214,11 +218,19 @@ target_args() {
   if [ "$target" = sara ]; then echo "--bin sara"; else echo "--test $target"; fi
 }
 
+# The nextest filter for one test id: <target>/<path> is test `=<path>` in the
+# binary named for the target.
+test_filter() {
+  local target="${1%%/*}" bin
+  if [ "$target" = sara ]; then bin='*::bin/sara'; else bin="*::$target"; fi
+  printf 'binary_id(%s) & test(=%s)' "$bin" "${1#*/}"
+}
+
 one_test() {
   local id="$1"; shift
   [ $# -gt 0 ] || { echo "give the file glob(s) the test covers, e.g. 'src/main.rs'" >&2; exit 2; }
   [[ "$id" == */* ]] || { echo "test id must be <target>/<path>, e.g. contract/undo::undo_reverts_the_last_command" >&2; exit 2; }
-  local path="${id#*/}" args re k n
+  local args re k n
   globs "$@"
 
   echo "1/2  Which mutants does $id kill on its own? (MISSED: this test alone lets it through)"
@@ -226,7 +238,7 @@ one_test() {
   # shellcheck disable=SC2046 # target_args is two words on purpose
   # One test makes a tiny baseline, so the auto timeout would be too short.
   mutants "${args[@]}" --minimum-test-timeout 120 --output "$out/one" \
-    -- $(target_args "$id") -- "$path" --exact || true
+    -- $(target_args "$id") -E "$(test_filter "$id")" || true
   outcomes "$out/one" | awk -F'\t' '$2 == "CaughtMutant" { print $1 }' > "$out/one.kills"
   n=$(wc -l < "$out/one.kills" | tr -d ' ')
   spec_tests > "$out/spec.txt"
@@ -246,7 +258,7 @@ one_test() {
   rm -rf "$out/rest"
   # --no-fail-fast so each log names every test that caught the mutant.
   mutants "${args[@]}" "${re[@]}" --cargo-test-arg=--no-fail-fast --output "$out/rest" \
-    -- -- --skip "$path" --exact || true
+    -- -E "not ($(test_filter "$id"))" || true
   outcomes "$out/rest" | awk -F'\t' '$2 == "MissedMutant" { print $1 }' > "$out/rest.missed"
   local name summary log
   outcomes "$out/rest" | while IFS=$'\t' read -r name summary log; do
