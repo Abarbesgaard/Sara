@@ -14,7 +14,8 @@ name: CI
 # Test:        the suite with and without default features, then the Contract
 #              (cargo impish check: every obligation has a test).
 # Portability: the suite on macOS and Windows.
-# Mutants:     mutation testing on the lines the PR changes, in four shards.
+# Mutants:     mutation testing on the lines the PR changes, in four shards,
+#              under nextest.
 # New tests:   each test the PR adds catches a bug no other test catches.
 # Release:     every green merge that bumps the version ships (release.yml).
 
@@ -216,7 +217,7 @@ jobs:
           save-if: false
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: cargo-mutants
+          tool: cargo-mutants,cargo-nextest
 
       - name: Diff against base
         env:
@@ -225,7 +226,9 @@ jobs:
       - name: Mutants
         env:
           SHARD: ${{ matrix.shard }}
-        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff --shard "${SHARD}/4"
+        # nextest runs every test binary in one parallel pool; cargo test runs
+        # them one after another, about three times slower per mutant.
+        run: cargo mutants --no-shuffle -vV --in-place --in-diff git.diff --shard "${SHARD}/4" --test-tool nextest
       - name: Archive mutants.out
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
