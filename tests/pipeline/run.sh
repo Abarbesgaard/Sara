@@ -323,13 +323,14 @@ fake_mutants() {
   mkdir -p "$work/bin"
   cat > "$work/bin/cargo" <<'FAKE'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/cargo.args"
 while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done
 mkdir -p "$out/mutants.out/log"
 m() { printf '{"scenario":{"Mutant":{"name":"%s"}},"summary":"%s","log_path":"log/%s.log"}' "$1" "$2" "$1"; }
 case "$out" in
   */one) rest="$(m m1 CaughtMutant),$(m m2 CaughtMutant)" ;;
   *) rest="$(m m1 CaughtMutant),$(m m2 MissedMutant)"
-     printf '     Running `target/debug/deps/behaviour-0123abcd`\ntest other ... FAILED\n' > "$out/mutants.out/log/m1.log" ;;
+     printf '        PASS [   0.010s] (  1/934) sara-tasks::behaviour mcp::t\n        FAIL [   0.020s] (  2/934) sara-tasks::bin/sara a::other\n' > "$out/mutants.out/log/m1.log" ;;
 esac
 printf '{"outcomes":[{"scenario":"Baseline","summary":"Success","log_path":"log/b.log"},%s]}' "$rest" > "$out/mutants.out/outcomes.json"
 FAKE
@@ -344,6 +345,31 @@ kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
   local out rc
   out=$(PATH="$work/bin:$PATH" KILLMX_OUT="$work/kmlast-out" "$sh" scripts/kill-matrix.sh --test behaviour/mcp::t src/lib.rs 2>&1); rc=$?
   expect_exit $rc 0 "$out" && expect_has "$out" "Keep behaviour/mcp::t: it alone catches 1 mutant(s):" || return
+  expect_has "$(cat "$work/bin/cargo.args")" "--test behaviour -E binary_id(*::behaviour) & test(=mcp::t)" &&
+    expect_has "$(cat "$work/bin/cargo.args")" "-E not (binary_id(*::behaviour) & test(=mcp::t))" && ok
+}
+
+# Kills and passes come from nextest status lines, a unit test's binary
+# <crate>::bin/sara named target sara.
+kill_matrix_reads_tests_from_a_nextest_log() {
+  sed '/^case /,$d' "$root/scripts/kill-matrix.sh" > "$work/km-lib.sh"
+  printf '%s\n' \
+    '    Starting 4 tests across 2 binaries' \
+    '       START [         ] (1/4) sara-tasks::contract add::spec' \
+    '        SLOW [> 60.000s] (3/4) sara-tasks::behaviour cite::slow' \
+    '        PASS [   0.010s] (1/4) sara-tasks::contract add::spec' \
+    $'\033[31m        FAIL\033[0m [   0.020s] (2/4) sara-tasks::bin/sara commands::x::own' \
+    '     TIMEOUT [  60.000s] (3/4) sara-tasks::behaviour cite::slow' \
+    '        PASS [   0.030s] (4/4) sara-tasks::bin/sara commands::x::fine' \
+    '     Summary [   0.100s] 4 tests run: 2 passed, 2 failed' \
+    '        FAIL [   0.020s] (2/4) sara-tasks::bin/sara commands::x::own' > "$work/nx.log"
+  local failed passed
+  # shellcheck disable=SC2016 # expands in the inner shell
+  failed=$("$sh" -c 'source "$1"; tests_in_log "$2" FAILED' _ "$work/km-lib.sh" "$work/nx.log" | sort -u | tr '\n' ' ')
+  # shellcheck disable=SC2016 # expands in the inner shell
+  passed=$("$sh" -c 'source "$1"; tests_in_log "$2" ok' _ "$work/km-lib.sh" "$work/nx.log" | tr '\n' ' ')
+  [ "$failed" = "behaviour/cite::slow sara/commands::x::own " ] || { bad "failed: '$failed'"; return; }
+  [ "$passed" = "contract/add::spec sara/commands::x::fine " ] || { bad "passed: '$passed'"; return; }
   ok
 }
 

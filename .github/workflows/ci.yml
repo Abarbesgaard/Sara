@@ -247,7 +247,7 @@ jobs:
           save-if: false
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: cargo-mutants
+          tool: cargo-mutants,cargo-nextest
       - name: Does each new test earn its place?
         env:
           BASE_REF: ${{ github.base_ref }}
