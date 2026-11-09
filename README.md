@@ -458,7 +458,7 @@ tests also kill. It only suggests: contract tests are spec, so keep them unless
 the spec changed.
 
 A full sweep is about a day of runner time, too much for a PR, which only
-mutates what it changes and checks each test it adds. So each night 32 shards
+mutates what it changes and checks each test it adds. So each night 64 shards
 sweep the whole crate on parallel runners, and a final job merges them and
 files an issue labelled `kill-matrix` per suspect test, at most 3 a night. If a
 shard fails, nothing is filed. Close the issue to keep the test. It needs

@@ -13,7 +13,7 @@
 # Nightly (.github/workflows/kill-matrix.yml) sweeps the whole crate in shards
 # on parallel runners, then merges them and files one issue per suspect:
 #
-#   scripts/kill-matrix.sh --shard 7/32 'src/**'
+#   scripts/kill-matrix.sh --shard 7/64 'src/**'
 #   scripts/kill-matrix.sh --merge [--file-issues] DIR...   # DIR: a shard's KILLMX_OUT
 #
 # Test ids are <target>/<path>: `sara/…` for unit tests, `contract/…` for
@@ -145,8 +145,11 @@ sweep() {
   [ -z "$shard" ] || args+=(--shard "$shard")
   rm -rf "$out/mutants.out"
   # --no-fail-fast keeps nextest running every test, so each mutant's log
-  # names every test that killed it, not just the first.
-  mutants "${args[@]}" --cargo-test-arg=--no-fail-fast --output "$out" || true
+  # names every test that killed it, not just the first. The architecture
+  # tests read the source tree, which no mutant changes: about a third of the
+  # suite's time for no kills.
+  mutants "${args[@]}" --cargo-test-arg=--no-fail-fast --output "$out" \
+    -- -E 'not binary_id(*::architecture)' || true
   # A failed baseline catches nothing, so every test would look removable.
   [ "$(jq -r '.outcomes[] | select(.scenario == "Baseline") | .summary' "$out/mutants.out/outcomes.json" 2>/dev/null)" = Success ] ||
     { echo "the baseline failed; no report" >&2; exit 1; }
