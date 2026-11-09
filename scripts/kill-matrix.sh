@@ -90,8 +90,9 @@ collect() {
 report() {
   local matrix="$1" tests="$2" suspects="$3"
   spec_tests > "$out/spec.txt"
-  # Old rows for tests that no longer exist are dropped.
-  awk -F'\t' 'FNR == NR { live[$0]; next } $2 in live' "$tests" "$matrix" > "$out/live.tsv"
+  # Old rows for tests that no longer exist are dropped, and repeated ones:
+  # nextest names a failed test again in its summary.
+  awk -F'\t' 'FNR == NR { live[$0]; next } ($2 in live) && !seen[$0]++' "$tests" "$matrix" > "$out/live.tsv"
   awk -F'\t' -v suspects="$suspects" -v quiet="$no_kills_expected" -v specfile="$out/spec.txt" '
     BEGIN { while ((getline line < specfile) > 0) spec[line] }
     FNR == NR { kills[$2] = kills[$2] SUBSEP $1; n[$2]++; by[$1]++; m[$1]; next }

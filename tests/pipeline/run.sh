@@ -154,10 +154,11 @@ new_tests_failure_survives_the_pipe_to_tee() {
 # ── kill-matrix.sh report ──────────────────────────────────────────────────
 
 # m1 is killed by a Contract test and a unit test, m2 by another unit test.
+# nextest names a failed test again in its summary, so a kill can be listed twice.
 kill_matrix_report_keeps_contract_tests() {
   repo km
   printf '#[test]\n#[impish::contract("add/A1")]\nfn spec() {}\n' > tests/contract/add.rs
-  printf 'm1\tcontract/add::spec\nm1\tsara/x::dup\nm2\tsara/x::own\n' > "$work/matrix.tsv"
+  printf 'm1\tcontract/add::spec\nm1\tsara/x::dup\nm2\tsara/x::own\nm2\tsara/x::own\n' > "$work/matrix.tsv"
   printf 'contract/add::spec\nsara/x::dup\nsara/x::own\nsara/x::idle\narchitecture/layers\n' > "$work/tests.txt"
   sed '/^case /,$d' "$root/scripts/kill-matrix.sh" > "$work/km-lib.sh"
   local out rc suspects
@@ -165,7 +166,7 @@ kill_matrix_report_keeps_contract_tests() {
   out=$(KILLMX_OUT="$work/kmout" "$sh" -c 'source "$1"; report "$2" "$3" "$4"' _ \
         "$work/km-lib.sh" "$work/matrix.tsv" "$work/tests.txt" "$work/suspects.tsv" 2>&1); rc=$?
   expect_exit $rc 0 "$out" && expect_has "$out" "contract/add::spec   (Contract)" && expect_has "$out" "sara/x::dup   <- removable" &&
-    expect_lacks "$out" "own   <- removable" || return
+    expect_lacks "$out" "own   <- removable" && expect_has "$out" "   1    1  sara/x::own" || return
   suspects=$(cut -f1 "$work/suspects.tsv" | sort | tr '\n' ' ')
   [ "$suspects" = "sara/x::dup sara/x::idle " ] || { bad "suspects: '$suspects'"; return; }
   ok
