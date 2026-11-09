@@ -175,7 +175,7 @@ Inside `infrastructure/`, dependencies point inwards (every module may also use 
 - `clap` / `clap_complete`: only `main.rs`, `cli.rs`, `dispatch.rs`, `completion.rs`.
 - `rmcp`, `tokio`, `schemars`: only `mcp/`.
 - `ureq`, `libc`: only `infrastructure/telemetry.rs`.
-- `rusqlite_migration`, `Migrations::new`, `M::up`: only `infrastructure/db/`.
+- Schema migrations (`M::up`): only `infrastructure/db/migrations.rs`.
 - Raw SQL: never in `commands/`.
 - `ratatui`, `ratatui_textarea`, `crossterm`: only `infrastructure/tui/` and a slice's presentation
   files (`render.rs`, `render/`, `edit.rs`, `interactive/`). `init_terminal()` lives in

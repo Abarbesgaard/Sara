@@ -538,17 +538,6 @@ fn only_the_composition_root_knows_clap() {
 }
 
 #[test]
-fn migrations_framework_is_owned_by_db() {
-    let rule = project_files()
-        .in_path(pattern("src/**").except_in_path("src/infrastructure/db/**"))
-        .should_not()
-        .depend_on_external_modules()
-        .matching("rusqlite_migration");
-
-    assert_passes!(rule);
-}
-
-#[test]
 fn tui_framework_is_confined_to_presentation_files() {
     let rule = project_files()
         .in_path(
