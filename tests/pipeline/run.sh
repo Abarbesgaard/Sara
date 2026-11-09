@@ -77,11 +77,14 @@ new_tests_repo() {
   printf '# add\n\n```covers\nsrc/commands/add/mod.rs::run\n```\n' > contract/add/README.md
   printf 'pub fn run() {}\n#[cfg(test)]\n#[path = "../../../tests/unit/commands/add/mod.rs"]\nmod tests;\n' > src/commands/add/mod.rs
   printf '#[test]\nfn old_unit() {}\n' > tests/unit/commands/add/mod.rs
+  printf 'pub fn parse() {}\n' > src/commands/add/parse.rs
+  printf '#[test]\nfn old_parse() {}\n' > tests/unit/commands/add/parse.rs
   printf '#[test]\n#[impish::contract("add/A1")]\nfn old_contract() {}\n' > tests/contract/add.rs
   commit setup
   git checkout -q -b pr
   printf '\n#[test]\n#[impish::contract("add/A2")]\nfn new_contract() {}\n' >> tests/contract/add.rs
   printf '\n#[test]\nfn new_unit() {}\n' >> tests/unit/commands/add/mod.rs
+  printf '\n#[test]\nfn new_parse() {}\n' >> tests/unit/commands/add/parse.rs
   commit pr
 }
 
@@ -91,6 +94,7 @@ new_tests_maps_each_test_to_the_code_it_is_about() {
   out=$(NEW_TESTS_DRY=1 "$sh" scripts/new-tests.sh main 2>&1)
   expect_has "$out" "contract/add::new_contract	src/commands/add/mod.rs" &&
     expect_has "$out" "sara/commands::add::tests::new_unit	src/commands/add/mod.rs" &&
+    expect_has "$out" "sara/commands::add::tests::parse::new_parse	src/commands/add/parse.rs" &&
     expect_lacks "$out" "old_" && ok
 }
 

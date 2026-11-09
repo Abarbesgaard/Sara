@@ -64,6 +64,16 @@ unit_src() {
   done
 }
 
+# The code a unit test file is about: the src file it is named after, beside
+# the one that includes it (db/tests/migrations.rs -> db/migrations.rs), else
+# the including file.
+unit_code() {
+  local src named
+  src=$(unit_src "$1")
+  named="$(dirname "$src")/$(basename "$1")"
+  if [ -n "$src" ] && [ "$(basename "$1")" != mod.rs ] && [ -f "$named" ]; then echo "$named"; else echo "$src"; fi
+}
+
 changed_src=$(git diff --name-only --diff-filter=AM "${base}...HEAD" -- 'src/*.rs' | tr '\n' ' ')
 
 # "<test id><TAB><globs>" for each added test.
@@ -81,7 +91,7 @@ added=$(git diff --name-only --diff-filter=AM "${base}...HEAD" -- 'tests/*.rs' |
         printf 'contract/%s::%s\t%s\n' "$p" "$fn" "$globs" ;;
       (tests/unit/*)
         mod=$(unit_module "$file")
-        [ -n "$mod" ] && printf 'sara/%s::%s\t%s\n' "$mod" "$fn" "$(unit_src "$file")" ;;
+        [ -n "$mod" ] && printf 'sara/%s::%s\t%s\n' "$mod" "$fn" "$(unit_code "$file")" ;;
       (tests/*/*.rs)
         # A target with a main.rs, e.g. tests/behaviour/cite.rs -> behaviour/cite::fn.
         target="${file#tests/}"; target="${target%%/*}"
