@@ -66,12 +66,12 @@ pub fn prune_old_events(conn: &Connection, days: i64) -> Result<usize> {
 }
 
 pub fn get_task_anchors(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Anchor>> {
-    let mut stmt = conn.prepare(
+    query_rows(
+        conn,
         "SELECT path, source, reason, symbol, line_start, line_end
          FROM task_files WHERE task_uuid=?1 ORDER BY source DESC, path",
-    )?;
-    let rows = stmt
-        .query_map([task_uuid.to_string()], |r| {
+        [task_uuid.to_string()],
+        |r| {
             Ok(Anchor {
                 path: r.get(0)?,
                 source: r.get(1)?,
@@ -80,10 +80,8 @@ pub fn get_task_anchors(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<Ancho
                 line_start: r.get(4)?,
                 line_end: r.get(5)?,
             })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
+        },
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -229,12 +227,12 @@ pub fn record_ai_run(
 }
 
 pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
-    let mut stmt = conn.prepare(
+    query_rows(
+        conn,
         "SELECT id, kind, model, provider, created_at, prompt_tokens, completion_tokens, total_tokens FROM task_ai_runs
          WHERE task_uuid=?1 ORDER BY created_at ASC, id ASC",
-    )?;
-    let rows = stmt
-        .query_map([task_uuid.to_string()], |r| {
+        [task_uuid.to_string()],
+        |r| {
             let at: String = r.get(4)?;
             Ok(AiRun {
                 id: r.get(0)?,
@@ -246,10 +244,8 @@ pub fn get_ai_runs(conn: &Connection, task_uuid: &Uuid) -> Result<Vec<AiRun>> {
                 completion_tokens: r.get(6)?,
                 total_tokens: r.get(7)?,
             })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
+        },
+    )
 }
 
 pub fn guide_json(conn: &Connection, task_uuid: &Uuid) -> Result<serde_json::Value> {
@@ -273,21 +269,19 @@ fn fts_phrase(text: &str) -> String {
 }
 
 fn fts_match(conn: &Connection, fts_query: &str, limit: i64) -> Result<Vec<SearchHit>> {
-    let mut stmt = conn.prepare(
+    query_rows(
+        conn,
         "SELECT ref_kind, task_uuid, text FROM search_index
          WHERE search_index MATCH ?1 ORDER BY rank LIMIT ?2",
-    )?;
-    let rows = stmt
-        .query_map(params![fts_query, limit], |r| {
+        params![fts_query, limit],
+        |r| {
             Ok(SearchHit {
                 ref_kind: r.get(0)?,
                 task_uuid: r.get(1)?,
                 text: r.get(2)?,
             })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
+        },
+    )
 }
 
 pub fn search_fts(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchHit>> {

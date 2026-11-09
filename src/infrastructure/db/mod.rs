@@ -150,6 +150,21 @@ fn with_write_lock<T>(conn: &Connection, f: impl FnOnce() -> Result<T>) -> Resul
     }
 }
 
+/// Runs `sql` and maps each row, leaving out rows that fail to map.
+fn query_rows<T>(
+    conn: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+    map: impl FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+) -> Result<Vec<T>> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt
+        .query_map(params, map)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 fn fold_tag(tag: &str) -> String {
     tag.trim().to_lowercase()
 }
