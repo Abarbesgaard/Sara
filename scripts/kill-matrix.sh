@@ -10,10 +10,9 @@
 #   scripts/kill-matrix.sh --test contract/undo::undo_reverts_the_last_command \
 #                          'src/main.rs'            # does this one test earn its place?
 #
-# Nightly (.github/workflows/kill-matrix.yml) sweeps one small shard and adds it
-# to the results so far; once every shard has run it files one issue per suspect:
+# A full sweep is a local, overnight run (KILLMX_JOBS=4 on a laptop):
 #
-#   scripts/kill-matrix.sh --shard 7/128 --data DIR [--file-issues]
+#   KILLMX_JOBS=4 scripts/kill-matrix.sh 'src/**'
 #
 # Test ids are <target>/<path>: `sara/…` for unit tests, `contract/…` for
 # tests/contract. KILLMX_OUT (default /tmp/sara-killmx) holds cargo-mutants
@@ -26,7 +25,6 @@ out="${KILLMX_OUT:-/tmp/sara-killmx}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 # Tests that check structure, not behaviour: they kill nothing by design.
 no_kills_expected='^architecture/'
-max_new_issues=3
 
 mkdir -p "$out"
 
@@ -82,20 +80,13 @@ collect() {
   tests_in_log "$dir/log/baseline.log" ok | sort -u > "$out/tests.txt"
 }
 
-# Report over a matrix and a test list, after "Shards done: $4" when given.
-# Also writes "<test><TAB>kills" for each
+# Report over a matrix and a test list. Also writes "<test><TAB>kills" for each
 # suspect to $3: tests that kill nothing, and the tests that can be removed
 # together (not every test without unique kills: two tests that only duplicate
 # each other can't both go).
 report() {
-  local matrix="$1" tests="$2" suspects="$3" progress="${4:-}"
+  local matrix="$1" tests="$2" suspects="$3"
   spec_tests > "$out/spec.txt"
-  if [ -n "$progress" ]; then
-    echo "Shards done: $progress."
-    [ "${progress%/*}" = "${progress#*/}" ] ||
-      echo "Partial: a test marked removable may still catch a mutant in a shard not yet swept."
-    echo
-  fi
   # Old rows for tests that no longer exist are dropped.
   awk -F'\t' 'FNR == NR { live[$0]; next } $2 in live' "$tests" "$matrix" > "$out/live.tsv"
   awk -F'\t' -v suspects="$suspects" -v quiet="$no_kills_expected" -v specfile="$out/spec.txt" '
@@ -143,70 +134,15 @@ report() {
 }
 
 sweep() {
-  local shard="" data="" file_issues="" args
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --shard) shard="$2"; shift 2 ;;
-      --data) data="$2"; shift 2 ;;
-      --file-issues) file_issues=1; shift ;;
-      *) break ;;
-    esac
-  done
-  [ $# -gt 0 ] || [ -n "$shard" ] || { echo "give file glob(s) or --shard k/n" >&2; exit 2; }
-  args=()
-  [ $# -eq 0 ] || globs "$@"
-  [ -z "$shard" ] || args+=(--shard "$shard")
+  local args
+  globs "$@"
   rm -rf "$out/mutants.out"
   # --no-fail-fast keeps nextest running every test, so each mutant's log
   # names every test that killed it, not just the first.
   mutants "${args[@]}" --cargo-test-arg=--no-fail-fast --output "$out" || true
   collect
-
-  if [ -z "$data" ]; then
-    report "$out/matrix.tsv" "$out/tests.txt" "$out/suspects.tsv"
-    echo; echo "Matrix (mutant, killing test): $out/matrix.tsv"
-    return
-  fi
-  [ -n "$shard" ] || { echo "--data needs --shard" >&2; exit 2; }
-  local k="${shard%/*}" total="${shard#*/}" done_shards
-  mkdir -p "$data/shards"
-  cp "$out/matrix.tsv" "$data/shards/$k.tsv"
-  cp "$out/tests.txt" "$data/tests.txt"
-  done_shards=$(find "$data/shards" -name '*.tsv' | wc -l | tr -d ' ')
-  echo "Shard $shard swept."
-  echo
-  cat "$data"/shards/*.tsv > "$out/all.tsv"
-  report "$out/all.tsv" "$data/tests.txt" "$out/suspects.tsv" "$done_shards/$total" | tee "$data/REPORT.md"
-
-  if [ -n "$file_issues" ]; then
-    if [ "$done_shards" -lt "$total" ]; then
-      echo; echo "No issues filed until every shard has run."
-    else
-      file_issues "$out/suspects.tsv" "$out/all.tsv"
-    fi
-  fi
-}
-
-# One issue per suspect test, never twice for the same test (closed = keep it).
-file_issues() {
-  local suspects="$1" matrix="$2" t kills filed=0 body
-  gh label create kill-matrix --color BFD4F2 \
-    --description "Test the kill matrix suspects adds nothing" 2>/dev/null || true
-  while IFS=$'\t' read -r t kills; do
-    [ "$filed" -lt "$max_new_issues" ] || break
-    [ -z "$(gh issue list --label kill-matrix --state all --search "\"$t\" in:title" --json number -q '.[].number')" ] || continue
-    if [ "$kills" -eq 0 ]; then
-      body="No mutant made this test fail, across a full kill-matrix cycle. It would pass whatever the code did."
-    else
-      body="Every mutant this test kills is also killed by another test:"$'\n\n'"$(T="$t" awk -F'\t' '
-        FNR == NR { if ($2 == ENVIRON["T"]) mine[$1]; next }
-        ($1 in mine) && $2 != ENVIRON["T"] { print "- `" $1 "`: also `" $2 "`" }' "$matrix" "$matrix" | sort -u | head -20)"
-    fi
-    body+=$'\n\n'"Delete it, or close this issue to keep it (for example, a contract test that is spec). Found by \`scripts/kill-matrix.sh\` (#296)."
-    gh issue create --label kill-matrix --title "Kill matrix: \`$t\` catches nothing new" --body "$body" >/dev/null
-    echo "Filed an issue for $t"
-    filed=$((filed + 1))
-  done < "$suspects"
+  report "$out/matrix.tsv" "$out/tests.txt" "$out/suspects.tsv"
+  echo; echo "Matrix (mutant, killing test): $out/matrix.tsv"
 }
 
 # Escapes a mutant name for an exact cargo-mutants --re match.

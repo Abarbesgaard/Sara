@@ -162,10 +162,9 @@ kill_matrix_report_keeps_contract_tests() {
   sed '/^case /,$d' "$root/scripts/kill-matrix.sh" > "$work/km-lib.sh"
   local out rc suspects
   # shellcheck disable=SC2016 # expands in the inner shell
-  out=$(KILLMX_OUT="$work/kmout" "$sh" -c 'source "$1"; report "$2" "$3" "$4" "3/128"' _ \
+  out=$(KILLMX_OUT="$work/kmout" "$sh" -c 'source "$1"; report "$2" "$3" "$4"' _ \
         "$work/km-lib.sh" "$work/matrix.tsv" "$work/tests.txt" "$work/suspects.tsv" 2>&1); rc=$?
-  expect_exit $rc 0 "$out" && expect_has "$out" "Shards done: 3/128." && expect_has "$out" "Partial:" &&
-    expect_has "$out" "contract/add::spec   (Contract)" && expect_has "$out" "sara/x::dup   <- removable" &&
+  expect_exit $rc 0 "$out" && expect_has "$out" "contract/add::spec   (Contract)" && expect_has "$out" "sara/x::dup   <- removable" &&
     expect_lacks "$out" "own   <- removable" || return
   suspects=$(cut -f1 "$work/suspects.tsv" | sort | tr '\n' ' ')
   [ "$suspects" = "sara/x::dup sara/x::idle " ] || { bad "suspects: '$suspects'"; return; }
