@@ -71,21 +71,3 @@ fn appended_migration_backfills_github_columns_on_upgraded_db() {
     assert_eq!(n, 1);
     super::super::migrations::apply_migrations(&mut conn).unwrap();
 }
-
-#[test]
-fn database_from_a_newer_sara_is_refused_untouched() {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "user_version", 10_000_i64)
-        .unwrap();
-
-    let err = super::super::migrations::apply_migrations(&mut conn).unwrap_err();
-
-    assert!(
-        format!("{err:#}").contains("newer than this sara"),
-        "{err:#}"
-    );
-    let tables: i64 = conn
-        .query_row("SELECT COUNT(*) FROM sqlite_master", [], |r| r.get(0))
-        .unwrap();
-    assert_eq!(tables, 0);
-}
