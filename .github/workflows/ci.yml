@@ -176,7 +176,7 @@ jobs:
 
   # Each mutant is a small injected bug; a "missed" one means no test noticed
   # it. A full run takes hours, so this only mutates the lines the PR changes;
-  # a full sweep is a local run of scripts/kill-matrix.sh. Config: .cargo/mutants.toml.
+  # kill-matrix.yml sweeps everything nightly. Config: .cargo/mutants.toml.
   # Four shards, each its own runner, so a large diff doesn't queue its
   # mutants behind one another.
   mutants:

@@ -457,11 +457,14 @@ tests fail ("kill" it), and lists tests that kill nothing or only mutants other
 tests also kill. It only suggests: contract tests are spec, so keep them unless
 the spec changed.
 
-A full sweep is a local, overnight run: CI only mutates what a PR changes, and
-checks each test the PR adds. It needs `cargo-mutants` and `cargo-nextest`.
+A full sweep is about a day of runner time, too much for a PR, which only
+mutates what it changes and checks each test it adds. So each night 32 shards
+sweep the whole crate on parallel runners, and a final job merges them and
+files an issue labelled `kill-matrix` per suspect test, at most 3 a night. If a
+shard fails, nothing is filed. Close the issue to keep the test. It needs
+`cargo-mutants` and `cargo-nextest`.
 
 ```bash
-KILLMX_JOBS=4 scripts/kill-matrix.sh 'src/**'               # full sweep, overnight
 scripts/kill-matrix.sh 'src/domain/**'                       # sweep files, print the report
 scripts/kill-matrix.sh --test contract/undo::undo_reverts_the_last_command \
                        'src/main.rs'                         # is this one test needed?

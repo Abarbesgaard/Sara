@@ -10,9 +10,11 @@
 #   scripts/kill-matrix.sh --test contract/undo::undo_reverts_the_last_command \
 #                          'src/main.rs'            # does this one test earn its place?
 #
-# A full sweep is a local, overnight run (KILLMX_JOBS=4 on a laptop):
+# Nightly (.github/workflows/kill-matrix.yml) sweeps the whole crate in shards
+# on parallel runners, then merges them and files one issue per suspect:
 #
-#   KILLMX_JOBS=4 scripts/kill-matrix.sh 'src/**'
+#   scripts/kill-matrix.sh --shard 7/32 'src/**'
+#   scripts/kill-matrix.sh --merge [--file-issues] DIR...   # DIR: a shard's KILLMX_OUT
 #
 # Test ids are <target>/<path>: `sara/…` for unit tests, `contract/…` for
 # tests/contract. KILLMX_OUT (default /tmp/sara-killmx) holds cargo-mutants
@@ -25,6 +27,7 @@ out="${KILLMX_OUT:-/tmp/sara-killmx}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 # Tests that check structure, not behaviour: they kill nothing by design.
 no_kills_expected='^architecture/'
+max_new_issues=3
 
 mkdir -p "$out"
 
@@ -134,15 +137,58 @@ report() {
 }
 
 sweep() {
-  local args
+  local args shard=""
+  if [ "${1:-}" = --shard ]; then shard="$2"; shift 2; fi
+  [ $# -gt 0 ] || { echo "give file glob(s), e.g. 'src/**'" >&2; exit 2; }
   globs "$@"
+  [ -z "$shard" ] || args+=(--shard "$shard")
   rm -rf "$out/mutants.out"
   # --no-fail-fast keeps nextest running every test, so each mutant's log
   # names every test that killed it, not just the first.
   mutants "${args[@]}" --cargo-test-arg=--no-fail-fast --output "$out" || true
+  # A failed baseline catches nothing, so every test would look removable.
+  [ "$(jq -r '.outcomes[] | select(.scenario == "Baseline") | .summary' "$out/mutants.out/outcomes.json" 2>/dev/null)" = Success ] ||
+    { echo "the baseline failed; no report" >&2; exit 1; }
   collect
   report "$out/matrix.tsv" "$out/tests.txt" "$out/suspects.tsv"
   echo; echo "Matrix (mutant, killing test): $out/matrix.tsv"
+}
+
+# Merges the sweeps in DIR... (one per shard) into one report. Only a sweep of
+# every shard can say a test is removable, so give them all.
+merge() {
+  local file_issues="" d
+  if [ "${1:-}" = --file-issues ]; then file_issues=1; shift; fi
+  [ $# -gt 0 ] || { echo "give the shards' output dirs" >&2; exit 2; }
+  for d in "$@"; do
+    [ -f "$d/matrix.tsv" ] && [ -f "$d/tests.txt" ] || { echo "no sweep in $d" >&2; exit 2; }
+  done
+  for d in "$@"; do cat "$d/matrix.tsv"; done > "$out/all.tsv"
+  for d in "$@"; do cat "$d/tests.txt"; done | sort -u > "$out/all-tests.txt"
+  report "$out/all.tsv" "$out/all-tests.txt" "$out/suspects.tsv"
+  [ -z "$file_issues" ] || file_issues "$out/suspects.tsv" "$out/all.tsv"
+}
+
+# One issue per suspect test, never twice for the same test (closed = keep it).
+file_issues() {
+  local suspects="$1" matrix="$2" t kills filed=0 body
+  gh label create kill-matrix --color BFD4F2 \
+    --description "Test the kill matrix suspects adds nothing" 2>/dev/null || true
+  while IFS=$'\t' read -r t kills; do
+    [ "$filed" -lt "$max_new_issues" ] || break
+    [ -z "$(gh issue list --label kill-matrix --state all --search "\"$t\" in:title" --json number -q '.[].number')" ] || continue
+    if [ "$kills" -eq 0 ]; then
+      body="No mutant made this test fail in a full sweep. It would pass whatever the code did."
+    else
+      body="Every mutant this test kills is also killed by another test:"$'\n\n'"$(T="$t" awk -F'\t' '
+        FNR == NR { if ($2 == ENVIRON["T"]) mine[$1]; next }
+        ($1 in mine) && $2 != ENVIRON["T"] { print "- `" $1 "`: also `" $2 "`" }' "$matrix" "$matrix" | sort -u | head -20)"
+    fi
+    body+=$'\n\n'"Delete it, or close this issue to keep it (for example, a contract test that is spec). Found by \`scripts/kill-matrix.sh\` (#296)."
+    gh issue create --label kill-matrix --title "Kill matrix: \`$t\` catches nothing new" --body "$body" >/dev/null
+    echo "Filed an issue for $t"
+    filed=$((filed + 1))
+  done < "$suspects"
 }
 
 # Escapes a mutant name for an exact cargo-mutants --re match.
@@ -225,7 +271,8 @@ one_test() {
 
 case "${1:-}" in
   --report) collect; report "$out/matrix.tsv" "$out/tests.txt" "$out/suspects.tsv" ;;
+  --merge) shift; merge "$@" ;;
   --test) [ $# -ge 2 ] || { echo "--test needs a test id" >&2; exit 2; }; shift; one_test "$@" ;;
-  -h | --help | "") sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h | --help | "") sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) sweep "$@" ;;
 esac
