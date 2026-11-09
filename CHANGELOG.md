@@ -8,6 +8,8 @@
 - MCP `unlink`: remove a link by task `id` and `url`, not only by `link_id`.
 
 ### Fixed
+- A due date given as `YYYY-MM-DD` is now the end of that day in your own
+  timezone; east of UTC it used to show as the following day.
 - Bundled SQLite updated to 3.54 (rusqlite 0.41) for CVE-2026-119375
   (RUSTSEC-2026-0459), and rmcp to 3.9 for RUSTSEC-2026-0457 and
   RUSTSEC-2026-0462.

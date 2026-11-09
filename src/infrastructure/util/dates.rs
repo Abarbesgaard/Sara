@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 
 pub const DUE_PRESETS: &[&str] = &[
     "",
@@ -24,8 +24,8 @@ pub fn parse_due(s: &str, dialect_str: &str) -> Option<DateTime<Utc>> {
     };
 
     if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        let dt = date.and_hms_opt(23, 59, 59)?;
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
+        let local = date.and_hms_opt(23, 59, 59)?.and_local_timezone(Local);
+        return Some(local.latest()?.with_timezone(&Utc));
     }
 
     if s.eq_ignore_ascii_case("today") {

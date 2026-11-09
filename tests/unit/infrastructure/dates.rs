@@ -29,9 +29,12 @@ proptest! {
     #[test]
     fn parse_due_iso_date_is_end_of_that_day(y in 1i32..=9999, m in 1u32..=12, d in 1u32..=28) {
         let date = NaiveDate::from_ymd_opt(y, m, d).unwrap();
+        let mut env = crate::test_support::env_guard();
+        env.set("TZ", "Pacific/Kiritimati");
         let due = parse_due(&date.format("%Y-%m-%d").to_string(), "uk").unwrap();
-        prop_assert_eq!(due.date_naive(), date);
-        prop_assert_eq!(due.time(), chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+        let local = due.with_timezone(&chrono::Local);
+        prop_assert_eq!(local.date_naive(), date);
+        prop_assert_eq!(local.time(), chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap());
     }
 
     #[test]
