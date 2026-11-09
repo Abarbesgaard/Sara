@@ -116,3 +116,60 @@ fn done_closes_only_work_validated_at_head() {
     );
     assert_eq!(status(&s, "Fresh"), "completed");
 }
+
+#[test]
+#[impish::contract("done/A4")]
+fn done_brings_a_recurring_task_back() {
+    let s = Sara::new();
+    s.run(&[
+        "add",
+        "-y",
+        "project:garden",
+        "+home",
+        "pri:h",
+        "Water the plants",
+        "--every",
+        "weekly",
+    ]);
+    s.run(&["modify", "1", "--due", "2026-01-05"]);
+    s.run(&["add", "-y", "Sweep", "--every", "daily"]);
+
+    let out = s.run(&["done", "1"]);
+    assert!(out.contains("Next recurrence: #"), "{out}");
+    assert!(out.contains("due 2026-01-12"), "{out}");
+    s.run(&["done", "1"]);
+
+    let conn = s.db();
+    let pending = |description: &str| -> (String, Option<String>, String, String, String) {
+        conn.query_row(
+            "SELECT project, priority, tags_json, recur, date(due, 'localtime') FROM tasks
+             WHERE description = ?1 AND status = 'pending'",
+            [description],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .expect("the next occurrence is pending")
+    };
+    let (project, priority, tags, recur, due) = pending("Water the plants");
+    assert_eq!(
+        (
+            project.as_str(),
+            priority.as_deref(),
+            tags.as_str(),
+            recur.as_str(),
+            due.as_str()
+        ),
+        ("garden", Some("H"), r#"["home"]"#, "weekly", "2026-01-12")
+    );
+    let days_ahead: f64 = conn
+        .query_row(
+            "SELECT julianday(due) - julianday('now') FROM tasks
+             WHERE description = 'Sweep' AND status = 'pending'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        (0.99..=1.0).contains(&days_ahead),
+        "no due date: one interval from now, got {days_ahead} days"
+    );
+}

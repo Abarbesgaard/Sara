@@ -22,8 +22,16 @@ records that the work is finished and takes the task off the list.
 - **kind:** functional
 - **status:** active
 
+### A4 — A recurring task comes back
+- **must:** `done <id>` on a task added with `--every` also adds its next occurrence: a pending task with the same description, project, priority, tags and interval, due one interval after the closed task's due date, or one interval from now when it had none; it reports the new task's id and due date
+- **why:** a chore that repeats must not be dropped by finishing it once
+- **kind:** functional
+- **status:** active
+
 ```covers
 src/commands/done/mod.rs::done_value
 src/commands/done/mod.rs::done_gate
 src/commands/done/mod.rs::run
+src/domain/entities/task.rs::next_occurrence
+src/domain/entities/task.rs::next_due
 ```
