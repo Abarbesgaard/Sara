@@ -186,7 +186,7 @@ file_issues() {
     else
       body="Every mutant this test kills is also killed by another test:"$'\n\n'"$(T="$t" awk -F'\t' '
         FNR == NR { if ($2 == ENVIRON["T"]) mine[$1]; next }
-        ($1 in mine) && $2 != ENVIRON["T"] { print "- `" $1 "`: also `" $2 "`" }' "$matrix" "$matrix" | sort -u | head -20)"
+        ($1 in mine) && $2 != ENVIRON["T"] { print "- `" $1 "`: also `" $2 "`" }' "$matrix" "$matrix" | sort -u | awk 'NR <= 20')"
     fi
     body+=$'\n\n'"Delete it, or close this issue to keep it (for example, a contract test that is spec). Found by \`scripts/kill-matrix.sh\` (#296)."
     gh issue create --label kill-matrix --title "Kill matrix: \`$t\` catches nothing new" --body "$body" >/dev/null

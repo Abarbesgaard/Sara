@@ -207,6 +207,26 @@ kill_matrix_merges_shards_before_judging() {
     expect_has "$out" "sara/x::dup   <- removable" && expect_lacks "$out" "own   <- removable" && ok
 }
 
+# A suspect sharing more kills than the issue lists must not break the pipe.
+kill_matrix_files_an_issue_for_a_suspect_sharing_many_kills() {
+  repo kmfile
+  printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
+  mkdir -p "$work/kmfile-shard" "$work/bin"
+  awk 'BEGIN { for (i = 0; i < 3000; i++) printf "src/some/long/path.rs:%d: replace a_function_name -> bool with true\tsara/x::dup\nsrc/some/long/path.rs:%d: replace a_function_name -> bool with true\tsara/x::own\n", i, i
+    print "src/lone.rs:1: delete !\tsara/x::own" }' > "$work/kmfile-shard/matrix.tsv"
+  printf 'sara/x::dup\nsara/x::own\n' > "$work/kmfile-shard/tests.txt"
+  # shellcheck disable=SC2016 # expands in the fake gh
+  printf '#!/bin/sh\n[ "$1 $2" = "issue create" ] && printf "%%s\\n" "$@" >> "%s/gh.issues"\nexit 0\n' "$work" > "$work/bin/gh"
+  chmod +x "$work/bin/gh"
+  local out rc
+  out=$(PATH="$work/bin:$PATH" KILLMX_OUT="$work/kmfile-out" "$sh" "$root/scripts/kill-matrix.sh" --merge --file-issues "$work/kmfile-shard" 2>&1); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "Filed an issue for sara/x::dup" || return
+  local listed
+  listed=$(grep -cF ': also ' "$work/gh.issues")
+  [ "$listed" -eq 20 ] || { bad "issue lists $listed kills, want 20"; return; }
+  ok
+}
+
 kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
   repo kmlast
   printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
