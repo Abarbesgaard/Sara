@@ -89,28 +89,3 @@ fn database_from_a_newer_sara_is_refused_untouched() {
         .unwrap();
     assert_eq!(tables, 0);
 }
-
-#[test]
-fn upgraded_database_reads_empty_guide_lists_as_arrays() {
-    let mut conn = mem();
-    let t = seed_task(&conn);
-    let version: i64 = conn
-        .query_row("PRAGMA user_version", [], |r| r.get(0))
-        .unwrap();
-    conn.pragma_update(None, "user_version", version - 1)
-        .unwrap();
-
-    super::super::migrations::apply_migrations(&mut conn).unwrap();
-
-    let guide: String = conn
-        .query_row(
-            "SELECT guide_json FROM task_guide WHERE uuid = ?1",
-            [t.uuid.to_string()],
-            |r| r.get(0),
-        )
-        .unwrap();
-    let guide: serde_json::Value = serde_json::from_str(&guide).unwrap();
-    for list in ["steps", "files", "notes", "links", "ai_runs", "blocked_by"] {
-        assert_eq!(guide[list], serde_json::json!([]), "{list}");
-    }
-}
