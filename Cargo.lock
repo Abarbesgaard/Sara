@@ -2554,7 +2554,7 @@ dependencies = [
 
 [[package]]
 name = "sara-tasks"
-version = "2.7.10"
+version = "2.7.11"
 dependencies = [
  "anyhow",
  "archunit",
