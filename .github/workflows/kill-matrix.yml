@@ -2,7 +2,7 @@ name: Kill matrix
 
 # Finds tests that catch nothing another test doesn't already catch (#296).
 # Every mutant runs against the whole suite, so a full sweep is about a day of
-# runner time: each night splits it into 32 shards on parallel runners, then
+# runner time: each night splits it into 64 shards on parallel runners, then
 # merges them and files an issue (label kill-matrix, at most 3 a night) per
 # test that adds nothing; closing one means "keep it". Only a sweep where every
 # shard finished can call a test removable, so a failed shard files nothing.
@@ -22,7 +22,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  SHARDS: 32
+  SHARDS: 64
 
 # Every step runs with -o pipefail, so `script | tee` fails when the script does.
 defaults:
@@ -31,14 +31,17 @@ defaults:
 
 jobs:
   sweep:
-    name: Kill matrix (${{ matrix.shard }}/32)
+    name: Kill matrix (${{ matrix.shard }}/64)
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+                42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+                55, 56, 57, 58, 59, 60, 61, 62, 63]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -89,7 +89,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
   <div class="stats">
     <div class="stat"><b id="obligations">–</b><span>Contract obligations</span></div>
     <div class="stat"><b>18</b><span>checks per PR</span></div>
-    <div class="stat"><b>32</b><span>kill-matrix shards a night</span></div>
+    <div class="stat"><b>64</b><span>kill-matrix shards a night</span></div>
   </div>
 
   <h2>The flow of one change</h2>
@@ -175,7 +175,7 @@ footer{margin-top:64px;color:var(--dim);font-size:13px;}
 
     <div class="step s-part" data-n="9">
       <h3>Every test proves it's worth keeping <span class="rule">Rule 26</span></h3>
-      <p>The kill matrix runs every test against every mutant each night, in 32 shards on parallel runners, and records which tests catch what.
+      <p>The kill matrix runs every test against every mutant each night, in 64 shards on parallel runners, and records which tests catch what.
         A test that catches nothing another test doesn't already catch gets an issue: delete it, or close the issue to keep it.
         On PRs, each new test must catch a bug no other test catches.</p>
       <div class="where"><span class="chip">kill-matrix.yml</span><span class="chip">scripts/kill-matrix.sh</span><span class="chip">ci.yml (New tests)</span></div>
