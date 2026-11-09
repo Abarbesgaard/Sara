@@ -77,11 +77,14 @@ new_tests_repo() {
   printf '# add\n\n```covers\nsrc/commands/add/mod.rs::run\n```\n' > contract/add/README.md
   printf 'pub fn run() {}\n#[cfg(test)]\n#[path = "../../../tests/unit/commands/add/mod.rs"]\nmod tests;\n' > src/commands/add/mod.rs
   printf '#[test]\nfn old_unit() {}\n' > tests/unit/commands/add/mod.rs
+  printf 'pub fn parse() {}\n' > src/commands/add/parse.rs
+  printf '#[test]\nfn old_parse() {}\n' > tests/unit/commands/add/parse.rs
   printf '#[test]\n#[impish::contract("add/A1")]\nfn old_contract() {}\n' > tests/contract/add.rs
   commit setup
   git checkout -q -b pr
   printf '\n#[test]\n#[impish::contract("add/A2")]\nfn new_contract() {}\n' >> tests/contract/add.rs
   printf '\n#[test]\nfn new_unit() {}\n' >> tests/unit/commands/add/mod.rs
+  printf '\n#[test]\nfn new_parse() {}\n' >> tests/unit/commands/add/parse.rs
   commit pr
 }
 
@@ -91,6 +94,7 @@ new_tests_maps_each_test_to_the_code_it_is_about() {
   out=$(NEW_TESTS_DRY=1 "$sh" scripts/new-tests.sh main 2>&1)
   expect_has "$out" "contract/add::new_contract	src/commands/add/mod.rs" &&
     expect_has "$out" "sara/commands::add::tests::new_unit	src/commands/add/mod.rs" &&
+    expect_has "$out" "sara/commands::add::tests::parse::new_parse	src/commands/add/parse.rs" &&
     expect_lacks "$out" "old_" && ok
 }
 
@@ -205,6 +209,26 @@ kill_matrix_merges_shards_before_judging() {
   out=$(KILLMX_OUT="$work/kmmerge-out" "$sh" "$root/scripts/kill-matrix.sh" --merge "$work/shard-a" "$work/shard-b" 2>&1); rc=$?
   expect_exit $rc 0 "$out" && expect_has "$out" "2 caught mutant(s), killed by 2 of 3 test(s)." &&
     expect_has "$out" "sara/x::dup   <- removable" && expect_lacks "$out" "own   <- removable" && ok
+}
+
+# A suspect sharing more kills than the issue lists must not break the pipe.
+kill_matrix_files_an_issue_for_a_suspect_sharing_many_kills() {
+  repo kmfile
+  printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
+  mkdir -p "$work/kmfile-shard" "$work/bin"
+  awk 'BEGIN { for (i = 0; i < 3000; i++) printf "src/some/long/path.rs:%d: replace a_function_name -> bool with true\tsara/x::dup\nsrc/some/long/path.rs:%d: replace a_function_name -> bool with true\tsara/x::own\n", i, i
+    print "src/lone.rs:1: delete !\tsara/x::own" }' > "$work/kmfile-shard/matrix.tsv"
+  printf 'sara/x::dup\nsara/x::own\n' > "$work/kmfile-shard/tests.txt"
+  # shellcheck disable=SC2016 # expands in the fake gh
+  printf '#!/bin/sh\n[ "$1 $2" = "issue create" ] && printf "%%s\\n" "$@" >> "%s/gh.issues"\nexit 0\n' "$work" > "$work/bin/gh"
+  chmod +x "$work/bin/gh"
+  local out rc
+  out=$(PATH="$work/bin:$PATH" KILLMX_OUT="$work/kmfile-out" "$sh" "$root/scripts/kill-matrix.sh" --merge --file-issues "$work/kmfile-shard" 2>&1); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "Filed an issue for sara/x::dup" || return
+  local listed
+  listed=$(grep -cF ': also ' "$work/gh.issues")
+  [ "$listed" -eq 20 ] || { bad "issue lists $listed kills, want 20"; return; }
+  ok
 }
 
 kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
