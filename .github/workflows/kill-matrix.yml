@@ -1,0 +1,93 @@
+name: Kill matrix
+
+# Finds tests that catch nothing another test doesn't already catch (#296).
+# Every mutant runs against the whole suite, so a full sweep is about a day of
+# runner time: each night splits it into 32 shards on parallel runners, then
+# merges them and files an issue (label kill-matrix, at most 3 a night) per
+# test that adds nothing; closing one means "keep it". Only a sweep where every
+# shard finished can call a test removable, so a failed shard files nothing.
+# Never runs on PRs.
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kill-matrix
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  SHARDS: 32
+
+# Every step runs with -o pipefail, so `script | tee` fails when the script does.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sweep:
+    name: Kill matrix (${{ matrix.shard }}/32)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: mutants
+          save-if: false
+      - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
+        with:
+          tool: cargo-mutants,cargo-nextest
+
+      - name: Sweep
+        env:
+          KILLMX_JOBS: "2"
+          KILLMX_OUT: ${{ runner.temp }}/killmx
+          SHARD: ${{ matrix.shard }}
+        run: scripts/kill-matrix.sh --shard "$SHARD/$SHARDS" 'src/**'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kill-matrix-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/killmx/matrix.tsv
+            ${{ runner.temp }}/killmx/tests.txt
+          retention-days: 7
+
+  report:
+    name: Kill matrix report
+    needs: sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: kill-matrix-*
+          path: ${{ runner.temp }}/shards
+      - name: Merge and file issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KILLMX_OUT: ${{ runner.temp }}/killmx
+          SHARDS_DIR: ${{ runner.temp }}/shards
+        run: |
+          scripts/kill-matrix.sh --merge --file-issues "$SHARDS_DIR"/kill-matrix-* \
+            | tee -a "$GITHUB_STEP_SUMMARY"

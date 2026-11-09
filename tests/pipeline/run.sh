@@ -191,6 +191,21 @@ FAKE
   chmod +x "$work/bin/cargo"
 }
 
+# Shard a alone ties dup and own, so it would keep dup; merged with shard b,
+# own covers both mutants and dup is the one that can go.
+kill_matrix_merges_shards_before_judging() {
+  repo kmmerge
+  printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
+  mkdir -p "$work/shard-a" "$work/shard-b"
+  printf 'm1\tsara/x::dup\nm1\tsara/x::own\n' > "$work/shard-a/matrix.tsv"
+  printf 'm2\tsara/x::own\n' > "$work/shard-b/matrix.tsv"
+  printf 'sara/x::dup\nsara/x::own\nsara/x::idle\n' | tee "$work/shard-a/tests.txt" > "$work/shard-b/tests.txt"
+  local out rc
+  out=$(KILLMX_OUT="$work/kmmerge-out" "$sh" "$root/scripts/kill-matrix.sh" --merge "$work/shard-a" "$work/shard-b" 2>&1); rc=$?
+  expect_exit $rc 0 "$out" && expect_has "$out" "2 caught mutant(s), killed by 2 of 3 test(s)." &&
+    expect_has "$out" "sara/x::dup   <- removable" && expect_lacks "$out" "own   <- removable" && ok
+}
+
 kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
   repo kmlast
   printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
