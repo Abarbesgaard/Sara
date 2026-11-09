@@ -8,6 +8,9 @@
 - MCP `unlink`: remove a link by task `id` and `url`, not only by `link_id`.
 
 ### Fixed
+- Bundled SQLite updated to 3.54 (rusqlite 0.41) for CVE-2026-119375
+  (RUSTSEC-2026-0459), and rmcp to 3.9 for RUSTSEC-2026-0457 and
+  RUSTSEC-2026-0462.
 - `--due +Nd` / `+Nw` and `--estimate` no longer crash on huge numbers; an
   out-of-range value is rejected as invalid instead.
 - `--estimate` rejects negative durations such as `-30m` instead of saving them.

@@ -1,9 +1,9 @@
+use anyhow::bail;
 use anyhow::{Context, Result};
-use rusqlite::Connection;
-use rusqlite_migration::{M, Migrations};
+use rusqlite::{Connection, Transaction};
 
 pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
-    let migrations = Migrations::new(vec![
+    let migrations = [
         M::up(
             "CREATE TABLE IF NOT EXISTS projects (
                 name           TEXT PRIMARY KEY,
@@ -243,55 +243,11 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              END;
              CREATE TRIGGER IF NOT EXISTS trg_files_ad AFTER DELETE ON task_files BEGIN
                 DELETE FROM search_index WHERE ref_kind='anchor' AND ref_id=old.rowid;
-             END;
-
-             CREATE VIEW IF NOT EXISTS task_guide AS
-             SELECT t.uuid AS uuid, json_object(
-                'uuid', t.uuid,
-                'id', t.id,
-                'description', t.description,
-                'project', t.project,
-                'status', t.status,
-                'priority', t.priority,
-                'due', t.due,
-                'entry', t.entry,
-                'modified', t.modified,
-                'tags', json(t.tags_json),
-                'urgency', t.urgency,
-                'assignment', t.assignment,
-                'rationale', t.rationale,
-                'validated_commit', t.validated_commit,
-                'validated_at', t.validated_at,
-                'meta', CASE WHEN t.meta_json IS NOT NULL AND t.meta_json != '' THEN json(t.meta_json) ELSE NULL END,
-                'steps', (SELECT json_group_array(json_object(
-                        'id', c.id, 'position', c.position, 'text', c.text, 'intent', c.intent,
-                        'done', c.done, 'kind', c.kind, 'source', c.source, 'verify_cmd', c.verify_cmd,
-                        'result', c.result, 'done_commit', c.done_commit, 'done_at', c.done_at))
-                    FROM task_checklist c WHERE c.task_uuid = t.uuid),
-                'files', (SELECT json_group_array(json_object(
-                        'path', f.path, 'source', f.source, 'reason', f.reason,
-                        'symbol', f.symbol, 'line_start', f.line_start, 'line_end', f.line_end))
-                    FROM task_files f WHERE f.task_uuid = t.uuid),
-                'notes', (SELECT json_group_array(json_object(
-                        'id', a.id, 'kind', a.kind, 'author', a.author, 'text', a.text,
-                        'target_kind', a.target_kind, 'target_id', a.target_id,
-                        'status', a.status, 'request_revision', a.request_revision,
-                        'resolved_by_run', a.resolved_by_run, 'entry', a.entry))
-                    FROM annotations a WHERE a.task_uuid = t.uuid),
-                'links', (SELECT json_group_array(json_object('id', l.id, 'url', l.url, 'label', l.label))
-                    FROM task_links l WHERE l.task_uuid = t.uuid),
-                'ai_runs', (SELECT json_group_array(json_object(
-                        'id', r.id, 'kind', r.kind, 'model', r.model, 'provider', r.provider, 'created_at', r.created_at))
-                    FROM task_ai_runs r WHERE r.task_uuid = t.uuid),
-                'blocked_by', (SELECT json_group_array(b.id)
-                    FROM dependencies d JOIN tasks b ON b.uuid = d.depends_on_uuid
-                    WHERE d.task_uuid = t.uuid AND b.status = 'pending')
-             ) AS guide_json
-             FROM tasks t;",
+             END;",
         ),
         M::up_with_hook(
             "",
-            |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
+            |tx: &rusqlite::Transaction| -> rusqlite::Result<()> {
                 let existing: std::collections::HashSet<String> = tx
                     .prepare("PRAGMA table_info(projects)")?
                     .query_map([], |r| r.get::<_, String>(1))?
@@ -423,7 +379,7 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
         ),
         M::up_with_hook(
             "",
-            |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
+            |tx: &rusqlite::Transaction| -> rusqlite::Result<()> {
                 let tables: std::collections::HashSet<String> = tx
                     .prepare("SELECT name FROM sqlite_master WHERE type='table'")?
                     .query_map([], |r| r.get::<_, String>(0))?
@@ -495,7 +451,7 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
         ),
         M::up_with_hook(
             "",
-            |tx: &rusqlite::Transaction| -> rusqlite_migration::HookResult {
+            |tx: &rusqlite::Transaction| -> rusqlite::Result<()> {
                 let has_table: bool = tx
                     .query_row(
                         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_branches'",
@@ -537,8 +493,103 @@ pub(super) fn apply_migrations(conn: &mut Connection) -> Result<()> {
              );
              CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_uuid, id);",
         ),
-    ]);
-    migrations
-        .to_latest(conn)
-        .context("Database migration failed")
+        M::up(TASK_GUIDE_VIEW),
+    ];
+    to_latest(conn, &migrations).context("Database migration failed")
+}
+
+/// Every guide as JSON. Each list is wrapped in `json()`: since SQLite 3.54 an
+/// aggregate read through a subquery is text, so an empty list came out "[]".
+const TASK_GUIDE_VIEW: &str = "DROP VIEW IF EXISTS task_guide;
+             CREATE VIEW task_guide AS
+             SELECT t.uuid AS uuid, json_object(
+                'uuid', t.uuid,
+                'id', t.id,
+                'description', t.description,
+                'project', t.project,
+                'status', t.status,
+                'priority', t.priority,
+                'due', t.due,
+                'entry', t.entry,
+                'modified', t.modified,
+                'tags', json(t.tags_json),
+                'urgency', t.urgency,
+                'assignment', t.assignment,
+                'rationale', t.rationale,
+                'validated_commit', t.validated_commit,
+                'validated_at', t.validated_at,
+                'meta', CASE WHEN t.meta_json IS NOT NULL AND t.meta_json != '' THEN json(t.meta_json) ELSE NULL END,
+                'steps', json((SELECT json_group_array(json_object(
+                        'id', c.id, 'position', c.position, 'text', c.text, 'intent', c.intent,
+                        'done', c.done, 'kind', c.kind, 'source', c.source, 'verify_cmd', c.verify_cmd,
+                        'result', c.result, 'done_commit', c.done_commit, 'done_at', c.done_at))
+                    FROM task_checklist c WHERE c.task_uuid = t.uuid)),
+                'files', json((SELECT json_group_array(json_object(
+                        'path', f.path, 'source', f.source, 'reason', f.reason,
+                        'symbol', f.symbol, 'line_start', f.line_start, 'line_end', f.line_end))
+                    FROM task_files f WHERE f.task_uuid = t.uuid)),
+                'notes', json((SELECT json_group_array(json_object(
+                        'id', a.id, 'kind', a.kind, 'author', a.author, 'text', a.text,
+                        'target_kind', a.target_kind, 'target_id', a.target_id,
+                        'status', a.status, 'request_revision', a.request_revision,
+                        'resolved_by_run', a.resolved_by_run, 'entry', a.entry))
+                    FROM annotations a WHERE a.task_uuid = t.uuid)),
+                'links', json((SELECT json_group_array(json_object('id', l.id, 'url', l.url, 'label', l.label))
+                    FROM task_links l WHERE l.task_uuid = t.uuid)),
+                'ai_runs', json((SELECT json_group_array(json_object(
+                        'id', r.id, 'kind', r.kind, 'model', r.model, 'provider', r.provider, 'created_at', r.created_at))
+                    FROM task_ai_runs r WHERE r.task_uuid = t.uuid)),
+                'blocked_by', json((SELECT json_group_array(b.id)
+                    FROM dependencies d JOIN tasks b ON b.uuid = d.depends_on_uuid
+                    WHERE d.task_uuid = t.uuid AND b.status = 'pending'))
+             ) AS guide_json
+             FROM tasks t;";
+
+/// One schema step: its SQL, then an optional hook for what SQL alone can't
+/// express (adding a column only if it is missing).
+struct M {
+    sql: &'static str,
+    hook: Option<fn(&Transaction) -> rusqlite::Result<()>>,
+}
+
+impl M {
+    const fn up(sql: &'static str) -> Self {
+        Self { sql, hook: None }
+    }
+
+    const fn up_with_hook(
+        sql: &'static str,
+        hook: fn(&Transaction) -> rusqlite::Result<()>,
+    ) -> Self {
+        Self {
+            sql,
+            hook: Some(hook),
+        }
+    }
+}
+
+/// `PRAGMA user_version` counts the steps applied. The pending ones run in one
+/// transaction, so a failure leaves the database as it was.
+fn to_latest(conn: &mut Connection, migrations: &[M]) -> Result<()> {
+    let applied: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    let applied = usize::try_from(applied)?;
+    if applied > migrations.len() {
+        bail!(
+            "the database is at schema version {applied}, newer than this sara ({}); upgrade sara",
+            migrations.len()
+        );
+    }
+    if applied == migrations.len() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    for m in &migrations[applied..] {
+        tx.execute_batch(m.sql)?;
+        if let Some(hook) = m.hook {
+            hook(&tx)?;
+        }
+    }
+    tx.pragma_update(None, "user_version", i64::try_from(migrations.len())?)?;
+    tx.commit()?;
+    Ok(())
 }

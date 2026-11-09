@@ -5,7 +5,7 @@ use anyhow::Context as _;
 use rusqlite::Connection;
 
 use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::model::{ErrorData, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{ErrorData, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::transport::async_rw::AsyncRwTransport;
 use rmcp::transport::stdio;
 use rmcp::{ServerHandler, ServiceExt, tool_handler};
@@ -159,7 +159,7 @@ impl SaraServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         self.tool_router.call(tcc).await
     }
@@ -173,7 +173,7 @@ impl SaraServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
         use crate::infrastructure::telemetry;
 
         let tool_name = request.name.to_string();
@@ -189,7 +189,7 @@ impl SaraServer {
         let elapsed_ms = started.elapsed().as_millis() as u64;
 
         let telem: anyhow::Result<()> = match &outcome {
-            Ok(r) if r.is_error == Some(true) => {
+            Ok(rmcp::model::CallToolResponse::Complete(r)) if r.is_error == Some(true) => {
                 Err(anyhow::anyhow!("mcp tool returned an error result"))
             }
             Ok(_) => Ok(()),
@@ -227,8 +227,8 @@ pub(crate) fn ok_json(v: serde_json::Value) -> Result<String, String> {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for SaraServer {
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
+    fn get_info(&self) -> ServerConfig {
+        let mut info = ServerConfig::default();
         info.instructions = Some(INSTRUCTIONS.to_string());
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.server_info = Implementation::new("sara", env!("CARGO_PKG_VERSION"));
@@ -239,7 +239,7 @@ impl ServerHandler for SaraServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<rmcp::model::CallToolResult, ErrorData> {
+    ) -> Result<rmcp::model::CallToolResponse, ErrorData> {
         if let Some(info) = context.peer.peer_info()
             && let Ok(mut slot) = self.client.lock()
             && slot.is_none()
