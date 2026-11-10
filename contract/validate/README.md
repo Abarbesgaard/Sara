@@ -26,6 +26,12 @@ git repo with at least one commit.
 - **kind:** functional
 - **status:** active
 
+### A5 — A stamp names the steps still open
+- **must:** when validate stamps a task, it reports the commit; while checklist steps are still open it says how many, and once all are ticked it doesn't mention open steps
+- **why:** a green gate on an unfinished plan must not read as finished work
+- **kind:** functional
+- **status:** active
+
 ```covers
 src/commands/shared/project.rs::require_project_head
 src/commands/guide/handlers/validate.rs::validate_value
