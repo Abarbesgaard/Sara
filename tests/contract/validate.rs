@@ -69,3 +69,34 @@ fn validate_explains_a_folder_outside_git() {
     let err = validate_err(&s, &[&uuid, "--no-run"]);
     assert!(err.contains("not in a git repo"), "{err}");
 }
+
+#[test]
+#[impish::contract("validate/A5")]
+fn validate_names_the_steps_still_open() {
+    let s = Sara::new();
+    git(&s, &["init", "-q"]);
+    git(
+        &s,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+    );
+    begin(&s);
+
+    let out = s.run(&["validate", "1"]);
+    assert!(out.contains("Stamped task 1 validated @"), "{out}");
+    assert!(out.contains("1 checklist step(s) still open"), "{out}");
+
+    s.run(&["step", "done", "1", "1"]);
+    let out = s.run(&["validate", "1"]);
+    assert!(out.contains("Stamped task 1 validated @"), "{out}");
+    assert!(!out.contains("still open"), "{out}");
+}
