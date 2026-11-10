@@ -61,22 +61,19 @@ pub(super) fn resolve(
         github_sync_scope: None,
     });
 
-    let is_tty = atty_check();
-    let yes = yes || words.iter().any(|w| w == "--yes" || w == "-y");
-
-    let form_result: Option<FormInput> = if yes || !is_tty {
-        let priority = parsed
+    let initial = FormInput {
+        description: parsed.description.clone(),
+        project: project_name.clone(),
+        priority: parsed
             .priority
             .as_deref()
-            .and_then(|p| p.parse::<Priority>().ok());
-        Some(FormInput {
-            description: parsed.description.clone(),
-            project: project_name.clone(),
-            priority,
-            due: String::new(),
-            tags: parsed.tags.join(","),
-            ..Default::default()
-        })
+            .and_then(|p| p.parse::<Priority>().ok()),
+        tags: parsed.tags.join(","),
+        ..Default::default()
+    };
+
+    let form_result: Option<FormInput> = if !wants_form(atty_check(), yes, words) {
+        Some(initial)
     } else {
         let pending = db::list_tasks(conn, None)?;
         let available_deps: Vec<(String, String)> = pending
@@ -95,20 +92,8 @@ pub(super) fn resolve(
             })
             .unwrap_or_default();
 
-        let priority_init = parsed
-            .priority
-            .as_deref()
-            .and_then(|p| p.parse::<Priority>().ok());
-
         let ctx = FormContext {
-            initial: FormInput {
-                description: parsed.description.clone(),
-                project: project_name.clone(),
-                priority: priority_init,
-                due: String::new(),
-                tags: parsed.tags.join(","),
-                ..Default::default()
-            },
+            initial,
             available_deps,
             available_files: project_files,
             suggested_dep_indices: vec![],
@@ -142,7 +127,15 @@ fn hint_lookup<'a>(
     })
 }
 
+fn wants_form(is_tty: bool, yes: bool, words: &[String]) -> bool {
+    is_tty && !yes && !words.iter().any(|w| w == "--yes" || w == "-y")
+}
+
 fn atty_check() -> bool {
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/commands/add/input.rs"]
+mod tests;
