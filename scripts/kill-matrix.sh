@@ -9,6 +9,7 @@
 #   scripts/kill-matrix.sh --report                 # re-print the last sweep
 #   scripts/kill-matrix.sh --test contract/undo::undo_reverts_the_last_command \
 #                          'src/main.rs'            # does this one test earn its place?
+#   (a `file::fn` argument, as in a covers block, breaks only that function)
 #
 # Nightly (.github/workflows/kill-matrix.yml) sweeps the whole crate in shards
 # on parallel runners, then merges them and files one issue per suspect:
@@ -36,7 +37,27 @@ mkdir -p "$out"
 mutants() { env -u GITHUB_ACTIONS nice -n 19 cargo mutants -j "${KILLMX_JOBS:-1}" --no-shuffle --test-tool nextest "$@"; }
 
 # Sets the array `args` to `-f <glob>` for each glob (bash 3.2 has no mapfile).
-globs() { args=(); for g in "$@"; do args+=(-f "$g"); done; }
+# A glob mutates the whole file; `file::fn` (a covers line) only that function,
+# kept apart in fn_re: cargo-mutants ORs every --re, so it must not reach phase 2.
+globs() {
+  args=(); fn_re=()
+  local g file
+  for g in "$@"; do
+    file="${g%%::*}"
+    args+=(-f "$file")
+    [ "$file" = "$g" ] || fn_re+=(--re "$(function_re "$file" "${g#*::}")")
+  done
+}
+
+# Every mutant cargo-mutants names inside one function: "replace [Type::]fn ->",
+# "replace [Type::]fn with ()", or "… in [Type::]fn".
+# shellcheck disable=SC2016 # the $ in the sed class is a literal
+function_re() {
+  local file fn
+  file=$(printf '%s' "$1" | sed 's/[][\\.|$(){}?+*^]/\\&/g')
+  fn=$(printf '%s' "$2" | sed 's/[][\\.|$(){}?+*^]/\\&/g')
+  printf '^%s:[0-9]+:[0-9]+: (replace (.*::)?%s (->|with) |.* in (.*::)?%s$)' "$file" "$fn" "$fn"
+}
 
 # "mutant<TAB>outcome<TAB>log" for every mutant in a cargo-mutants output dir.
 outcomes() {
@@ -223,7 +244,7 @@ one_test() {
   rm -rf "$out/one"
   # shellcheck disable=SC2046 # target_args is two words on purpose
   # One test makes a tiny baseline, so the auto timeout would be too short.
-  mutants "${args[@]}" --minimum-test-timeout 120 --output "$out/one" \
+  mutants "${args[@]}" ${fn_re[@]+"${fn_re[@]}"} --minimum-test-timeout 120 --output "$out/one" \
     -- $(target_args "$id") -E "$(test_filter "$id")" || true
   outcomes "$out/one" | awk -F'\t' '$2 == "CaughtMutant" { print $1 }' > "$out/one.kills"
   n=$(wc -l < "$out/one.kills" | tr -d ' ')

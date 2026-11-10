@@ -92,7 +92,7 @@ new_tests_maps_each_test_to_the_code_it_is_about() {
   new_tests_repo
   local out
   out=$(NEW_TESTS_DRY=1 "$sh" scripts/new-tests.sh main 2>&1)
-  expect_has "$out" "contract/add::new_contract	src/commands/add/mod.rs" &&
+  expect_has "$out" "contract/add::new_contract	src/commands/add/mod.rs::run " &&
     expect_has "$out" "sara/commands::add::tests::new_unit	src/commands/add/mod.rs" &&
     expect_has "$out" "sara/commands::add::tests::parse::new_parse	src/commands/add/parse.rs" &&
     expect_lacks "$out" "old_" && ok
@@ -241,6 +241,22 @@ kill_matrix_keeps_a_test_whose_last_mutant_only_it_catches() {
   expect_exit $rc 0 "$out" && expect_has "$out" "Keep behaviour/mcp::t: it alone catches 1 mutant(s):" || return
   expect_has "$(cat "$work/bin/cargo.args")" "--test behaviour -E binary_id(*::behaviour) & test(=mcp::t)" &&
     expect_has "$(cat "$work/bin/cargo.args")" "-E not (binary_id(*::behaviour) & test(=mcp::t))" && ok
+}
+
+# A covers line breaks only its function on the first pass. The second pass
+# reruns exact kills, so the function's --re must not widen it.
+kill_matrix_breaks_only_the_covered_function() {
+  repo kmfn
+  printf '#[test]\nfn spec() {}\n' > tests/contract/add.rs
+  cp "$root/scripts/kill-matrix.sh" scripts/
+  fake_mutants
+  local out rc one rest
+  out=$(PATH="$work/bin:$PATH" KILLMX_OUT="$work/kmfn-out" "$sh" scripts/kill-matrix.sh --test contract/add::spec 'src/lib.rs::a' 2>&1); rc=$?
+  expect_exit $rc 0 "$out" || return
+  one=$(grep -F -- '/one' "$work/bin/cargo.args")
+  rest=$(grep -F -- '/rest' "$work/bin/cargo.args")
+  expect_has "$one" '-f src/lib.rs --re ^src/lib\.rs:[0-9]+:[0-9]+: (replace (.*::)?a (->|with) |.* in (.*::)?a$)' &&
+    expect_has "$rest" '-f src/lib.rs' && expect_lacks "$rest" '(.*::)?a' && ok
 }
 
 # Kills and passes come from nextest status lines, a unit test's binary

@@ -6,7 +6,7 @@
 # For every test function added since the base, it breaks the code the test is
 # about and runs scripts/kill-matrix.sh --test on it:
 #   - a Contract test (tests/contract/<p>.rs with contract/<p>/README.md): the
-#     files in the primitive's covers block;
+#     functions in the primitive's covers block;
 #   - a unit test (tests/unit/…, compiled into src/ by #[path]): the src file
 #     that includes it;
 #   - any other test (tests/<target>.rs or tests/<target>/…): the src files
@@ -86,7 +86,7 @@ added=$(git diff --name-only --diff-filter=AM "${base}...HEAD" -- 'tests/*.rs' |
         globs="$changed_src"
         if [ -f "contract/$p/README.md" ]; then
           # shellcheck disable=SC2016 # the backticks are a literal markdown fence
-          globs=$(sed -n '/^```covers$/,/^```$/p' "contract/$p/README.md" | grep '::' | sed 's/::.*//' | sort -u | tr '\n' ' ')
+          globs=$(sed -n '/^```covers$/,/^```$/p' "contract/$p/README.md" | grep '::' | sort -u | tr '\n' ' ')
         fi
         printf 'contract/%s::%s\t%s\n' "$p" "$fn" "$globs" ;;
       (tests/unit/*)
