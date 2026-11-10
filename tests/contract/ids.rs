@@ -33,17 +33,14 @@ fn task_on_other_branch(s: &Sara) -> String {
     v["task"].as_i64().expect("display id").to_string()
 }
 
-/// Rewrites the only task's uuid so its 8-char prefix is all digits.
-fn give_digit_uuid(s: &Sara) {
+/// Rewrites a uuid everywhere it is stored.
+fn set_uuid(s: &Sara, old: &str, new: &str) {
     let conn = s.db();
-    let old: String = conn
-        .query_row("SELECT uuid FROM tasks", [], |r| r.get(0))
-        .unwrap();
     conn.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
     let columns: Vec<(String, String)> = conn
         .prepare(
             "SELECT m.name, c.name FROM sqlite_master m, pragma_table_info(m.name) c
-             WHERE m.type='table' AND c.name IN ('uuid', 'task_uuid', 'depends_on_uuid')",
+             WHERE m.type='table' AND (c.name = 'uuid' OR c.name LIKE '%\\_uuid' ESCAPE '\\')",
         )
         .unwrap()
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -53,10 +50,19 @@ fn give_digit_uuid(s: &Sara) {
     for (table, col) in columns {
         conn.execute(
             &format!("UPDATE \"{table}\" SET {col}=?1 WHERE {col}=?2"),
-            [DIGIT_UUID, &old],
+            [new, old],
         )
         .unwrap_or_else(|e| panic!("{table}.{col}: {e}"));
     }
+}
+
+/// Rewrites the only task's uuid so its 8-char prefix is all digits.
+fn give_digit_uuid(s: &Sara) {
+    let old: String = s
+        .db()
+        .query_row("SELECT uuid FROM tasks", [], |r| r.get(0))
+        .unwrap();
+    set_uuid(s, &old, DIGIT_UUID);
 }
 
 #[test]
@@ -152,4 +158,56 @@ fn a_blank_id_matches_nothing() {
     }
     assert!(s.run(&["info", "1"]).contains("Only task"));
     assert!(s.run(&["memories"]).contains("the only memory"));
+}
+
+#[test]
+#[impish::contract("ids/A7")]
+fn a_uuid_prefix_names_exactly_one() {
+    let s = Sara::new();
+    for n in 1..=6 {
+        s.run(&["add", "-y", &format!("Task {n}")]);
+        s.run(&["learn", &format!("memory {n}")]);
+    }
+    for (table, n) in [("tasks", 6), ("items", 2)] {
+        let uuids: Vec<String> = s
+            .db()
+            .prepare(&format!(
+                "SELECT uuid FROM {table} ORDER BY rowid LIMIT {n}"
+            ))
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for (i, old) in uuids.iter().enumerate() {
+            set_uuid(
+                &s,
+                old,
+                &format!(
+                    "{}0{i}-0000-4000-8000-00000000000{i}",
+                    if i == 5 { "abcdee" } else { "abcdef" }
+                ),
+            );
+        }
+    }
+
+    for (prefix, more) in [("abcde", true), ("abcdef", false)] {
+        let out = sara(&s, &["info", prefix]);
+        assert!(!out.status.success());
+        let err = stderr(&out);
+        assert!(err.contains("Ambiguous"), "{err}");
+        assert_eq!(err.matches("  abcde").count(), 5, "{err}");
+        assert_eq!(err.contains('…'), more, "{err}");
+    }
+
+    let out = sara(&s, &["info", "abcdef99"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("No pending task"), "{}", stderr(&out));
+
+    let out = sara(&s, &["forget", "abcdef"]);
+    assert!(stderr(&out).contains("Ambiguous"), "{}", stderr(&out));
+    s.run(&["forget", "abcdef01"]);
+    let memories = s.run(&["memories"]);
+    assert!(!memories.contains("memory 2"), "{memories}");
+    assert!(memories.contains("memory 1"), "{memories}");
 }

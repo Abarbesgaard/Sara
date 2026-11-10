@@ -35,6 +35,12 @@ when tasks complete; uuid prefixes never change.
 - **kind:** functional
 - **status:** active
 
+### A7 — A uuid prefix names exactly one
+- **must:** a uuid prefix that matches one task or memory acts on it; one that matches several is refused as ambiguous, listing at most five of the tasks; one that matches none is refused as not found
+- **why:** a short prefix must never act on a record the user did not mean
+- **kind:** functional
+- **status:** active
+
 ```covers
 src/infrastructure/db/tasks.rs::resolve_task_matched
 src/commands/shared/project.rs::guard_branch_mutation
